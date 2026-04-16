@@ -159,6 +159,9 @@ app.use(errorHandler);
 const PORT = parseInt(process.env.PORT || "9000", 10);
 const server = httpServer.listen(PORT, "0.0.0.0", async () => {
     console.log(`🚀 Urbexon API v2.0 running on port ${PORT} [${process.env.NODE_ENV || "development"}]`);
+    console.log("📡 CORS & WebSocket Origins Allowed:");
+    buildAllowedOrigins().forEach(origin => console.log(`   ✅ ${origin}`));
+
     initWebSocket(server);
     console.log("🔌 WebSocket ready at /ws");
 
