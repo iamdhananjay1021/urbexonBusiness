@@ -10,7 +10,7 @@ const getWSBase = () => {
     const apiUrl = import.meta.env.VITE_API_URL;
     // If explicit API URL and NOT localhost, derive WS from it
     if (apiUrl && !apiUrl.includes("localhost")) {
-        return apiUrl.replace("/api", "").replace("http://", "ws://").replace("https://", "wss://");
+        return apiUrl.replace("https://", "wss://").replace("http://", "ws://").replace(/\/api\/?$/, "");
     }
     // Runtime detection: if browser is on production domain, use api.urbexon.in
     if (typeof window !== "undefined" && !window.location.hostname.includes("localhost")) {
