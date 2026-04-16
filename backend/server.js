@@ -91,7 +91,7 @@ const buildAllowedOrigins = () => {
         process.env.DELIVERY_FRONTEND_URL,
         process.env.CLIENT_URL,
     ].filter(Boolean);
-    return [...new Set([...defaults, ...fromEnv])];
+    return [...new Set([...allowedOrigins, ...fromEnv])];
 };
 
 app.use(cors({
