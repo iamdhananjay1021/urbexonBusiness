@@ -74,16 +74,15 @@ app.use(mongoSanitize()); // ✅ NoSQL injection protection
 
 // ── CORS ──────────────────────────────────────────────────
 const buildAllowedOrigins = () => {
-    const defaults = [
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "http://localhost:5176",
-        "https://urbexon.in",
-        "https://www.urbexon.in",
-        "https://admin.urbexon.in",
-        "https://vendor.urbexon.in",
-        "https://delivery.urbexon.in",
+    const allowedOrigins = [
+        'https://urbexon.in',
+        'https://admin.urbexon.in',
+        'https://vendor.urbexon.in',
+        'https://delivery.partner.urbexon.in',  // ← yeh add karo
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://localhost:5175',
+        'http://localhost:5176',
     ];
     const fromEnv = [
         process.env.FRONTEND_URL,
