@@ -5,9 +5,19 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 
-const WS_BASE = (import.meta.env.VITE_WS_URL || "http://localhost:9000")
-    .replace("http://", "ws://")
-    .replace("https://", "wss://");
+// Determine WS URL: use current origin for production, or VITE_WS_URL if set
+const getWSBase = () => {
+    const envUrl = import.meta.env.VITE_WS_URL;
+    if (envUrl) {
+        return envUrl.replace("http://", "ws://").replace("https://", "wss://");
+    }
+    // Production: use current window origin (frontend domain)
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws_domain = window.location.origin.replace(/^https?:\/\//, "");
+    return `${protocol}//${ws_domain}`;
+};
+
+const WS_BASE = getWSBase();
 
 export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {}) => {
     const wsRef = useRef(null);
@@ -21,14 +31,16 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
         if (!token) return;
         if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-        const wsUrl = `${WS_BASE}/ws?token=${token}`;
+        // Construct WebSocket URL: ensure clean path without duplication
+        const basePath = WS_BASE.endsWith("/") ? WS_BASE.slice(0, -1) : WS_BASE;
+        const wsUrl = `${basePath}/ws?token=${token}`;
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
             setIsConnected(true);
             reconnectCount.current = 0;
-            console.log("[WS] Connected");
+            console.log(`[Client WS] Connected to: ${basePath}/ws`);
             onConnect?.();
 
             // Ping every 25s to keep alive

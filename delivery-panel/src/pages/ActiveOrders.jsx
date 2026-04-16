@@ -97,15 +97,29 @@ const ActiveOrders = () => {
     const authRaw = localStorage.getItem("deliveryAuth");
     const token = authRaw ? JSON.parse(authRaw)?.token : null;
     if (!token) return;
-    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:9000/api";
-    const WS_BASE = apiUrl.replace("/api", "").replace("http://", "ws://").replace("https://", "wss://");
+
+    // Get WebSocket base URL - use current origin in production
+    const getWSBase = () => {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:9000/api";
+      // If API URL contains full backend domain, use it; otherwise use current origin
+      if (apiUrl.includes("://")) {
+        return apiUrl.replace("/api", "").replace("http://", "ws://").replace("https://", "wss://");
+      }
+      // Production: use current window origin (delivery-panel domain)
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const ws_domain = window.location.origin.replace(/^https?:\/\//, "");
+      return `${protocol}//${ws_domain}`;
+    };
+
+    const WS_BASE = getWSBase();
     let ws, pingInterval, retryTimeout, mounted = true;
     const connect = () => {
       if (!mounted) return;
       try {
-        ws = new WebSocket(`${WS_BASE}/ws?token=${token}`);
+        const basePath = WS_BASE.endsWith("/") ? WS_BASE.slice(0, -1) : WS_BASE;
+        ws = new WebSocket(`${basePath}/ws?token=${token}`);
         wsRef.current = ws;
-        ws.onopen = () => { pingInterval = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: "ping" })); }, 25000); };
+        ws.onopen = () => { console.log("[WS] Connected from ActiveOrders"); pingInterval = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: "ping" })); }, 25000); };
         ws.onmessage = (e) => {
           try {
             const msg = JSON.parse(e.data);
@@ -135,7 +149,7 @@ const ActiveOrders = () => {
         };
         ws.onclose = () => { clearInterval(pingInterval); if (mounted) retryTimeout = setTimeout(connect, 5000); };
         ws.onerror = () => ws.close();
-      } catch { }
+      } catch (err) { console.error("[WS] Connection error:", err); }
     };
     connect();
     return () => { mounted = false; clearInterval(pingInterval); clearTimeout(retryTimeout); clearInterval(countdownRef.current); stopAlert(); ws?.close(); };
