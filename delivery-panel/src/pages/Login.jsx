@@ -1,10 +1,12 @@
 /**
  * Delivery Partner Login — Production v2.0
+ * ✅ Forgot Password link added
+ * ✅ Production-ready registration & training section
  */
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { FaMotorcycle, FaEye, FaEyeSlash } from "react-icons/fa";
+import { FaMotorcycle, FaEye, FaEyeSlash, FaPhone, FaBook } from "react-icons/fa";
 
 const CSS = `
 *{box-sizing:border-box}
@@ -22,6 +24,14 @@ const CSS = `
 .dl-btn:hover{background:#1e293b}
 .dl-btn:disabled{opacity:.5;cursor:not-allowed}
 .dl-err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;padding:10px 14px;border-radius:8px;font-size:12.5px;margin-top:12px}
+.dl-forgot{text-align:right;margin-top:8px}
+.dl-forgot a{color:#22c55e;font-size:11px;font-weight:700;text-decoration:none}
+.dl-section{margin-top:24px;padding-top:20px;border-top:1px solid #e2e8f0}
+.dl-section-title{font-size:12px;font-weight:800;color:#1e293b;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px}
+.dl-action-btn{display:flex;align-items:center;gap:10px;width:100%;padding:12px;background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13px;font-weight:600;color:#22c55e;cursor:pointer;text-decoration:none;margin-bottom:8px;transition:all .2s}
+.dl-action-btn:hover{background:#e2e8f0;border-color:#22c55e}
+.dl-help{background:#f0fdf4;border:1px solid #dcfce7;border-radius:8px;padding:12px;font-size:11px;color:#166534;line-height:1.6}
+.dl-help p{margin:0 0 6px}
 .dl-link{text-align:center;margin-top:16px;font-size:13px;color:#64748b}
 .dl-link a{color:#22c55e;font-weight:700;text-decoration:none}
 `;
@@ -29,11 +39,11 @@ const CSS = `
 const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail]   = useState("");
-  const [pass,  setPass]    = useState("");
-  const [show,  setShow]    = useState(false);
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const [error, setError] = useState("");
 
   const submit = async (e) => {
     e.preventDefault();
@@ -51,27 +61,51 @@ const Login = () => {
       <style>{CSS}</style>
       <div className="dl-card">
         <div className="dl-logo">
-          <FaMotorcycle size={32} color="#22c55e"/>
+          <FaMotorcycle size={32} color="#22c55e" />
           <h1 className="dl-title">Delivery Partner</h1>
           <p className="dl-sub">URBEXON — Delivery App</p>
         </div>
         <form onSubmit={submit}>
           <label className="dl-label">Email</label>
-          <input className="dl-inp" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="aapka@email.com" required/>
+          <input className="dl-inp" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="aapka@email.com" required />
           <label className="dl-label">Password</label>
           <div className="dl-pw">
-            <input className="dl-inp" type={show?"text":"password"} value={pass} onChange={e=>setPass(e.target.value)} required style={{paddingRight:40}}/>
-            <button type="button" className="dl-pw-btn" onClick={()=>setShow(s=>!s)}>
-              {show ? <FaEyeSlash size={14}/> : <FaEye size={14}/>}
+            <input className="dl-inp" type={show ? "text" : "password"} value={pass} onChange={e => setPass(e.target.value)} required style={{ paddingRight: 40 }} />
+            <button type="button" className="dl-pw-btn" onClick={() => setShow(s => !s)}>
+              {show ? <FaEyeSlash size={14} /> : <FaEye size={14} />}
             </button>
+          </div>
+          <div className="dl-forgot">
+            <a href="/forgot-password">Forgot password?</a>
           </div>
           {error && <div className="dl-err">{error}</div>}
           <button type="submit" className="dl-btn" disabled={loading}>
             {loading ? "Logging in…" : "LOGIN"}
           </button>
         </form>
+
+        {/* Registration & Training Section */}
+        <div className="dl-section">
+          <div className="dl-section-title">🚀 Join Our Network</div>
+          <a href="/register" className="dl-action-btn">
+            <FaMotorcycle size={14} />
+            Register as New Partner
+          </a>
+          <a href="/training" className="dl-action-btn">
+            <FaBook size={14} />
+            Training & Guidelines
+          </a>
+        </div>
+
+        {/* Help Section */}
+        <div className="dl-help">
+          <p><strong>📞 Need Help?</strong></p>
+          <p>Contact us: <strong>+91-1234-567890</strong></p>
+          <p>Email: support@urbexon.in</p>
+        </div>
+
         <div className="dl-link">
-          Naya partner? <Link to="/register">Register karein</Link>
+          New partner? <Link to="/register">Register karein</Link>
         </div>
       </div>
     </div>

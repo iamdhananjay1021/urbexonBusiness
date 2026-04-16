@@ -1,6 +1,8 @@
 /**
  * Login.jsx — Production v3.0
  * Clean dark gradient login, matches Figma branding
+ * ✅ Forgot Password link added
+ * ✅ Production-ready registration section
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -132,6 +134,12 @@ const Login = () => {
                 {showPwd ? <FiEyeOff size={16} /> : <FiEye size={16} />}
               </button>
             </div>
+            {/* Forgot Password Link */}
+            <div style={{ marginTop: 8, textAlign: "right" }}>
+              <a href="/forgot-password" style={{ fontSize: 12, color: "#7c3aed", fontWeight: 600, textDecoration: "none" }}>
+                Forgot password?
+              </a>
+            </div>
           </div>
 
           <button
@@ -157,11 +165,41 @@ const Login = () => {
           </button>
         </form>
 
-        <div style={{ marginTop: 24, textAlign: "center", fontSize: 13, color: "#6b7280" }}>
-          Don't have an account?{" "}
-          <a href="/apply" style={{ color: "#7c3aed", fontWeight: 700, textDecoration: "none" }}>
-            Apply as Vendor
-          </a>
+        <div style={{ marginTop: 28, paddingTop: 20, borderTop: "1px solid #e5e7eb" }}>
+          {/* Register Section */}
+          <div style={{ marginBottom: 16 }}>
+            <p style={{ fontSize: 13, color: "#6b7280", textAlign: "center", margin: 0, marginBottom: 10 }}>
+              ✨ New to Urbexon?
+            </p>
+            <a href="/apply" style={{
+              display: "inline-block", width: "100%", padding: "11px",
+              background: "#f3f4f6", border: "1.5px solid #e5e7eb",
+              borderRadius: 10, color: "#7c3aed", fontSize: 14, fontWeight: 700,
+              textDecoration: "none", textAlign: "center",
+              transition: "all 0.2s", fontFamily: "inherit"
+            }} onMouseEnter={e => {
+              e.target.style.background = "#e5e7eb";
+              e.target.style.borderColor = "#d1d5db";
+            }} onMouseLeave={e => {
+              e.target.style.background = "#f3f4f6";
+              e.target.style.borderColor = "#e5e7eb";
+            }}>
+              Apply as Vendor Now
+            </a>
+            <p style={{ fontSize: 11, color: "#9ca3af", textAlign: "center", marginTop: 8, margin: 0 }}>
+              Join our partner network and grow your business
+            </p>
+          </div>
+
+          {/* Help Section */}
+          <div style={{ marginTop: 16, padding: "12px 14px", background: "#f9fafb", borderRadius: 10, textAlign: "center" }}>
+            <p style={{ fontSize: 12, color: "#6b7280", margin: 0, marginBottom: 8 }}>
+              Need help? Contact our vendor support team
+            </p>
+            <a href="mailto:vendor-support@urbexon.in" style={{ fontSize: 12, color: "#7c3aed", fontWeight: 600, textDecoration: "none" }}>
+              vendor-support@urbexon.in
+            </a>
+          </div>
         </div>
       </div>
     </div>

@@ -2,6 +2,8 @@ import { flushQueueForUser } from "./notificationQueue.js";
 /**
  * wsHub.js — WebSocket real-time hub
  * Used for: order updates, vendor notifications, delivery tracking, rider assignment
+ * ✅ Production domains configured
+ * ✅ Origin validation for WebSocket
  */
 
 import { WebSocketServer } from "ws";
@@ -12,11 +14,50 @@ import { getRedis, isRedisUp } from "../config/redis.js";
 const clients = new Map();  // userId -> Set<ws>
 const rooms = new Map();    // roomName -> Set<userId>
 
+// ── Allowed WebSocket Origins (Production + Dev) ──────────────────
+const buildAllowedWsOrigins = () => {
+    const allowedOrigins = [
+        'https://urbexon.in',
+        'https://admin.urbexon.in',
+        'https://vendor.urbexon.in',
+        'https://delivery.partner.urbexon.in',
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://localhost:5175',
+        'http://localhost:5176',
+    ];
+    const fromEnv = [
+        process.env.FRONTEND_URL,
+        process.env.ADMIN_FRONTEND_URL,
+        process.env.VENDOR_FRONTEND_URL,
+        process.env.DELIVERY_FRONTEND_URL,
+        process.env.CLIENT_URL,
+    ].filter(Boolean);
+    return [...new Set([...allowedOrigins, ...fromEnv])];
+};
+
 export const initWebSocket = (server) => {
-    const wss = new WebSocketServer({ server, path: "/ws" });
+    const allowedOrigins = buildAllowedWsOrigins();
+
+    const wss = new WebSocketServer({
+        server,
+        path: "/ws",
+        verifyClient: (info, callback) => {
+            const origin = info.req.headers.origin;
+            const isAllowed = !origin || allowedOrigins.includes(origin);
+
+            if (!isAllowed) {
+                console.warn(`[WS] ⚠️  Blocked WebSocket from origin: ${origin}`);
+                return callback(false, 403, "Origin not allowed");
+            }
+
+            callback(true);
+        }
+    });
 
     wss.on("connection", (ws, req) => {
         let userId = null;
+        const clientOrigin = req.headers.origin || "unknown";
 
         try {
             const { query } = url.parse(req.url, true);
@@ -34,10 +75,10 @@ export const initWebSocket = (server) => {
         if (!clients.has(userId)) clients.set(userId, new Set());
         clients.get(userId).add(ws);
 
-        console.log(`[WS] Connected: ${userId} (total: ${wss.clients.size})`);
+        console.log(`✅ [WS] Connected: ${userId} from ${clientOrigin} (total: ${wss.clients.size})`);
 
         // Send welcome ping
-        ws.send(JSON.stringify({ type: "connected", message: "Real-time connected" }));
+        ws.send(JSON.stringify({ type: "connected", message: "Real-time connected", origin: clientOrigin }));
 
         // Flush any queued notifications for this user
         try { flushQueueForUser(userId); } catch { /* non-fatal */ }
