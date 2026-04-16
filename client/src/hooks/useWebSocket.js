@@ -5,16 +5,19 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 
-// Determine WS URL: use current origin for production, or VITE_WS_URL if set
+// Determine WS URL: production → api.urbexon.in, dev → localhost:9000
 const getWSBase = () => {
-    const envUrl = import.meta.env.VITE_WS_URL;
-    if (envUrl) {
-        return envUrl.replace("http://", "ws://").replace("https://", "wss://");
+    const apiUrl = import.meta.env.VITE_API_URL;
+    // If explicit API URL and NOT localhost, derive WS from it
+    if (apiUrl && !apiUrl.includes("localhost")) {
+        return apiUrl.replace("/api", "").replace("http://", "ws://").replace("https://", "wss://");
     }
-    // Production: use current window origin (frontend domain)
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws_domain = window.location.origin.replace(/^https?:\/\//, "");
-    return `${protocol}//${ws_domain}`;
+    // Runtime detection: if browser is on production domain, use api.urbexon.in
+    if (typeof window !== "undefined" && !window.location.hostname.includes("localhost")) {
+        return "wss://api.urbexon.in";
+    }
+    // Local dev fallback
+    return "ws://localhost:9000";
 };
 
 const WS_BASE = getWSBase();

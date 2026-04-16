@@ -1,6 +1,14 @@
 import { useEffect, useRef } from "react";
 
-const getApiBase = () => import.meta.env.VITE_API_URL || import.meta.env.VITE_API_URL || "http://localhost:9000/api";
+const getApiBase = () => {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl && !apiUrl.includes("localhost")) return apiUrl;
+    // Runtime detection: if on production domain, use api.urbexon.in
+    if (typeof window !== "undefined" && !window.location.hostname.includes("localhost")) {
+        return "https://api.urbexon.in/api";
+    }
+    return "http://localhost:9000/api";
+};
 
 export const useOrderRealtime = ({ enabled = true, onStatusUpdate }) => {
     const retryRef = useRef(null);

@@ -106,7 +106,7 @@ const vendorSchema = new mongoose.Schema(
         subscription: {
             plan: {
                 type: String,
-                enum: ["basic", "standard", "premium"],
+                enum: ["starter", "basic", "standard", "premium"],
                 default: "basic",
             },
             startDate: { type: Date, default: null },

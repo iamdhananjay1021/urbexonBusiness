@@ -104,7 +104,7 @@ router.get("/vendor/status", protect, getVendorStatus);
 // ── Vendor Profile ────────────────────────────────────────────────────────────
 router.get("/vendor/me", protectVendor, getMyProfile);
 router.put("/vendor/me", protectVendor, requireApprovedVendor, docUpload, updateMyProfile);
-router.patch("/vendor/toggle-shop", protectVendor, requireApprovedVendor, requireActiveSubscription, toggleShopOpen);
+router.patch("/vendor/toggle-shop", protectVendor, requireApprovedVendor, toggleShopOpen);
 
 // ── Vendor Orders ─────────────────────────────────────────────────────────────
 router.get("/vendor/orders", protectVendor, requireApprovedVendor, requireActiveSubscription, getVendorOrders);

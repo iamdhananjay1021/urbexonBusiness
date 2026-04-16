@@ -95,17 +95,19 @@ const Dashboard = () => {
     const token = authRaw ? JSON.parse(authRaw)?.token : null;
     if (!token) return;
 
-    // Get WebSocket base URL - use current origin in production
+    // Get WebSocket base URL - production → api.urbexon.in, dev → localhost:9000
     const getWSBase = () => {
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:9000/api";
-      // If API URL contains full backend domain, use it; otherwise use current origin
-      if (apiUrl.includes("://")) {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      // If explicit API URL and NOT localhost, derive WS from it
+      if (apiUrl && !apiUrl.includes("localhost")) {
         return apiUrl.replace("/api", "").replace("http://", "ws://").replace("https://", "wss://");
       }
-      // Production: use current window origin (delivery-panel domain)
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws_domain = window.location.origin.replace(/^https?:\/\//, "");
-      return `${protocol}//${ws_domain}`;
+      // Runtime detection: if browser is on production domain, use api.urbexon.in
+      if (typeof window !== "undefined" && !window.location.hostname.includes("localhost")) {
+        return "wss://api.urbexon.in";
+      }
+      // Local dev fallback
+      return "ws://localhost:9000";
     };
 
     const WS_BASE = getWSBase();

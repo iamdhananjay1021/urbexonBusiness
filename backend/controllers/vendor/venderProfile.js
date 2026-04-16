@@ -70,14 +70,29 @@ export const updateMyProfile = async (req, res) => {
 // PATCH /api/vendor/toggle-shop
 export const toggleShopOpen = async (req, res) => {
     try {
+        if (!req.vendor || !req.vendor._id) {
+            return res.status(400).json({ success: false, message: "Vendor context not found" });
+        }
+
         const vendor = await Vendor.findById(req.vendor._id);
-        if (!vendor) return res.status(404).json({ success: false, message: "Vendor not found" });
-        if (vendor.status !== "approved") return res.status(403).json({ success: false, message: "Account not approved yet" });
+        if (!vendor) {
+            return res.status(404).json({ success: false, message: "Vendor not found" });
+        }
 
         vendor.isOpen = !vendor.isOpen;
         await vendor.save();
-        res.json({ success: true, isOpen: vendor.isOpen, message: vendor.isOpen ? "Shop is now open" : "Shop is now closed" });
+
+        res.json({
+            success: true,
+            isOpen: vendor.isOpen,
+            message: vendor.isOpen ? "Shop is now open" : "Shop is now closed"
+        });
     } catch (err) {
-        res.status(500).json({ success: false, message: "Failed to toggle shop status" });
+        console.error("[toggleShopOpen] Error:", err);
+        res.status(500).json({
+            success: false,
+            message: "Failed to toggle shop status",
+            error: process.env.NODE_ENV === "development" ? err.message : undefined
+        });
     }
 };

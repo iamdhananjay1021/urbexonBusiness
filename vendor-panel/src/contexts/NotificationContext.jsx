@@ -74,19 +74,32 @@ export const NotificationProvider = ({ children }) => {
 
         if (!token) return;
 
-        const WS_BASE = (
-            import.meta?.env?.VITE_API_URL || "http://localhost:9000/api"
-        )
-            .replace("/api", "")
-            .replace("http://", "ws://")
-            .replace("https://", "wss://");
+        // Get WebSocket base URL - production → api.urbexon.in, dev → localhost:9000
+        const getWSBase = () => {
+            const apiUrl = import.meta.env.VITE_API_URL;
+            // If explicit API URL and NOT localhost, derive WS from it
+            if (apiUrl && !apiUrl.includes("localhost")) {
+                return apiUrl.replace("/api", "").replace("http://", "ws://").replace("https://", "wss://");
+            }
+            // Runtime detection: if browser is on production domain, use api.urbexon.in
+            if (typeof window !== "undefined" && !window.location.hostname.includes("localhost")) {
+                return "wss://api.urbexon.in";
+            }
+            // Local dev fallback
+            return "ws://localhost:9000";
+        };
+
+        const WS_BASE = getWSBase();
 
         const connect = () => {
             try {
-                const ws = new WebSocket(`${WS_BASE}/ws?token=${token}`);
+                const basePath = WS_BASE.endsWith("/") ? WS_BASE.slice(0, -1) : WS_BASE;
+                const tkn = encodeURIComponent(token);
+                const ws = new WebSocket(`${basePath}/ws?token=${tkn}`);
                 wsRef.current = ws;
 
                 ws.onopen = () => {
+                    console.log("[Vendor WS] Connected to:", `${basePath}/ws`);
                     pingRef.current = setInterval(() => {
                         if (ws.readyState === WebSocket.OPEN) {
                             ws.send(JSON.stringify({ type: "ping" }));
