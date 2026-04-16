@@ -10,6 +10,8 @@ import { G } from "../utils/theme";
 import Login from "../pages/Login";
 
 const Register = lazy(() => import("../pages/Register"));
+const ForgotPassword = lazy(() => import("../pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("../pages/ResetPassword"));
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const ActiveOrders = lazy(() => import("../pages/ActiveOrders"));
 const Earnings = lazy(() => import("../pages/Earnings"));
@@ -118,6 +120,8 @@ const AppRoutes = () => (
     <Routes>
       <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
       <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />
+      <Route path="/reset-password/:token" element={<PublicOnly><ResetPassword /></PublicOnly>} />
       <Route path="/dashboard" element={<Protected><PrivateLayout><Dashboard /></PrivateLayout></Protected>} />
       <Route path="/orders" element={<Protected><PrivateLayout><ActiveOrders /></PrivateLayout></Protected>} />
       <Route path="/earnings" element={<Protected><PrivateLayout><Earnings /></PrivateLayout></Protected>} />

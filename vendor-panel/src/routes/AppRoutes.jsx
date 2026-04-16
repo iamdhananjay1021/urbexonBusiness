@@ -9,6 +9,8 @@ import { useAuth } from "../contexts/AuthContext";
 import Layout from "../components/Layout";
 import Login from "../pages/Login";
 
+const ForgotPassword = lazy(() => import("../pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("../pages/ResetPassword"));
 const VendorApply = lazy(() => import("../pages/VendorApply"));
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const ProductList = lazy(() => import("../pages/products/ProductList"));
@@ -70,6 +72,8 @@ const AppRoutes = () => (
       {/* Public Routes */}
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
       <Route path="/apply" element={<PublicRoute><VendorApply /></PublicRoute>} />
+      <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+      <Route path="/reset-password/:token" element={<PublicRoute><ResetPassword /></PublicRoute>} />
 
       {/* Protected Routes */}
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>

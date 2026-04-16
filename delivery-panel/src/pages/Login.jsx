@@ -76,7 +76,7 @@ const Login = () => {
             </button>
           </div>
           <div className="dl-forgot">
-            <a href="/forgot-password">Forgot password?</a>
+            <Link to="/forgot-password">Forgot password?</Link>
           </div>
           {error && <div className="dl-err">{error}</div>}
           <button type="submit" className="dl-btn" disabled={loading}>

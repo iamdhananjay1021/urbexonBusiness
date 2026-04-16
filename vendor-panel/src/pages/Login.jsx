@@ -5,7 +5,7 @@
  * ✅ Production-ready registration section
  */
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { FiMail, FiLock, FiAlertCircle, FiEye, FiEyeOff } from "react-icons/fi";
 
@@ -134,11 +134,10 @@ const Login = () => {
                 {showPwd ? <FiEyeOff size={16} /> : <FiEye size={16} />}
               </button>
             </div>
-            {/* Forgot Password Link */}
             <div style={{ marginTop: 8, textAlign: "right" }}>
-              <a href="/forgot-password" style={{ fontSize: 12, color: "#7c3aed", fontWeight: 600, textDecoration: "none" }}>
+              <Link to="/forgot-password" style={{ fontSize: 12, color: "#7c3aed", fontWeight: 600, textDecoration: "none" }}>
                 Forgot password?
-              </a>
+              </Link>
             </div>
           </div>
 

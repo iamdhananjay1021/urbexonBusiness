@@ -12,6 +12,8 @@ import {
     getAllUsers,
     forgotPassword, resetPassword,
     adminForgotPassword, adminResetPassword,
+    vendorForgotPassword, vendorResetPassword,
+    deliveryForgotPassword, deliveryResetPassword,
     adminGetDashboard,
 } from "../controllers/authController.js";
 
@@ -79,6 +81,28 @@ router.post("/admin/forgot-password",
 router.post("/admin/reset-password/:token",
     validateBody({ password: { required: true, minLength: 8 } }),
     adminResetPassword,
+);
+
+/* ── Vendor password reset ── */
+router.post("/vendor/forgot-password",
+    validateBody({ email: { required: true, type: "email" } }),
+    vendorForgotPassword,
+);
+
+router.post("/vendor/reset-password/:token",
+    validateBody({ password: { required: true, minLength: 8 } }),
+    vendorResetPassword,
+);
+
+/* ── Delivery password reset ── */
+router.post("/delivery/forgot-password",
+    validateBody({ email: { required: true, type: "email" } }),
+    deliveryForgotPassword,
+);
+
+router.post("/delivery/reset-password/:token",
+    validateBody({ password: { required: true, minLength: 8 } }),
+    deliveryResetPassword,
 );
 
 /* ── Protected user routes ── */

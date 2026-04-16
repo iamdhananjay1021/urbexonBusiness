@@ -481,6 +481,112 @@ export const adminResetPassword = async (req, res) => {
 };
 
 /* ═══════════════════════════════════════════════════
+   VENDOR FORGOT / RESET PASSWORD
+═══════════════════════════════════════════════════ */
+export const vendorForgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email?.trim()) return res.status(400).json({ success: false, message: "Email is required" });
+        const SAFE = { success: true, message: "If this email is registered, a reset link has been sent." };
+
+        const vendor = await User.findOne({ email: sanitizeEmail(email), role: "vendor" });
+        if (!vendor) return res.json(SAFE);
+
+        const resetToken = crypto.randomBytes(32).toString("hex");
+        const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+        vendor.passwordResetToken = hashedToken;
+        vendor.passwordResetExpires = Date.now() + RESET_EXPIRY_MS;
+        await vendor.save({ validateBeforeSave: false });
+
+        const resetUrl = `${process.env.VENDOR_FRONTEND_URL || "https://vendor.urbexon.in"}/reset-password/${resetToken}`;
+        sendEmailBackground({ to: vendor.email, subject: `${BRAND.name} Vendor — Password Reset`, html: buildVendorResetEmail(vendor.name, resetUrl), label: "VendorAuth/ForgotPassword" });
+        res.json(SAFE);
+    } catch (err) {
+        res.status(500).json({ success: false, message: "Something went wrong." });
+    }
+};
+
+export const vendorResetPassword = async (req, res) => {
+    try {
+        const { token } = req.params;
+        const { password } = req.body;
+        if (!token || !password?.trim())
+            return res.status(400).json({ success: false, message: "Token and password required" });
+        if (password.length < 8)
+            return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
+
+        const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+        const vendor = await User.findOne({
+            passwordResetToken: hashedToken,
+            passwordResetExpires: { $gt: Date.now() },
+            role: "vendor",
+        });
+        if (!vendor) return res.status(400).json({ success: false, message: "Reset link is invalid or has expired" });
+
+        vendor.password = await bcrypt.hash(password, BCRYPT_ROUNDS);
+        vendor.passwordResetToken = undefined;
+        vendor.passwordResetExpires = undefined;
+        await vendor.save();
+        res.json({ success: true, message: "Password reset successfully." });
+    } catch (err) {
+        res.status(500).json({ success: false, message: "Password reset failed." });
+    }
+};
+
+/* ═══════════════════════════════════════════════════
+   DELIVERY FORGOT / RESET PASSWORD
+═══════════════════════════════════════════════════ */
+export const deliveryForgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email?.trim()) return res.status(400).json({ success: false, message: "Email is required" });
+        const SAFE = { success: true, message: "If this email is registered, a reset link has been sent." };
+
+        const rider = await User.findOne({ email: sanitizeEmail(email), role: "delivery_boy" });
+        if (!rider) return res.json(SAFE);
+
+        const resetToken = crypto.randomBytes(32).toString("hex");
+        const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+        rider.passwordResetToken = hashedToken;
+        rider.passwordResetExpires = Date.now() + RESET_EXPIRY_MS;
+        await rider.save({ validateBeforeSave: false });
+
+        const resetUrl = `${process.env.DELIVERY_FRONTEND_URL || "https://delivery.partner.urbexon.in"}/reset-password/${resetToken}`;
+        sendEmailBackground({ to: rider.email, subject: `${BRAND.name} Delivery — Password Reset`, html: buildDeliveryResetEmail(rider.name, resetUrl), label: "DeliveryAuth/ForgotPassword" });
+        res.json(SAFE);
+    } catch (err) {
+        res.status(500).json({ success: false, message: "Something went wrong." });
+    }
+};
+
+export const deliveryResetPassword = async (req, res) => {
+    try {
+        const { token } = req.params;
+        const { password } = req.body;
+        if (!token || !password?.trim())
+            return res.status(400).json({ success: false, message: "Token and password required" });
+        if (password.length < 8)
+            return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
+
+        const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+        const rider = await User.findOne({
+            passwordResetToken: hashedToken,
+            passwordResetExpires: { $gt: Date.now() },
+            role: "delivery_boy",
+        });
+        if (!rider) return res.status(400).json({ success: false, message: "Reset link is invalid or has expired" });
+
+        rider.password = await bcrypt.hash(password, BCRYPT_ROUNDS);
+        rider.passwordResetToken = undefined;
+        rider.passwordResetExpires = undefined;
+        await rider.save();
+        res.json({ success: true, message: "Password reset successfully." });
+    } catch (err) {
+        res.status(500).json({ success: false, message: "Password reset failed." });
+    }
+};
+
+/* ═══════════════════════════════════════════════════
    REFRESH TOKEN
 ═══════════════════════════════════════════════════ */
 export const refreshToken = async (req, res) => {
@@ -606,4 +712,12 @@ function buildResetEmail(name, resetUrl) {
 
 function buildAdminResetEmail(name, resetUrl) {
     return `<div style="font-family:'DM Sans',Arial,sans-serif;background:#0f0e17;padding:40px 20px"><div style="max-width:480px;margin:auto;background:rgba(255,255,255,0.04);border:1px solid rgba(201,168,76,0.2);border-radius:16px;overflow:hidden"><div style="height:3px;background:linear-gradient(90deg,#c9a84c,#e8d080,#c9a84c)"></div><div style="padding:36px 32px;text-align:center"><p style="font-size:22px;font-weight:800;color:#c9a84c;letter-spacing:3px;text-transform:uppercase;margin-bottom:4px">${BRAND.name}</p><p style="font-size:14px;color:rgba(255,255,255,0.7);margin-bottom:28px;line-height:1.6">Hi <strong style="color:#fff">${name}</strong>, reset link expires in <strong>15 minutes</strong>.</p><a href="${resetUrl}" style="display:inline-block;padding:14px 36px;background:linear-gradient(135deg,#c9a84c,#e8d080);color:#0f0e17;text-decoration:none;border-radius:8px;font-weight:800;font-size:14px">Reset Admin Password →</a></div></div></div>`;
+}
+
+function buildVendorResetEmail(name, resetUrl) {
+    return `<div style="font-family:'DM Sans',Arial,sans-serif;background:#f5f7fa;padding:32px 16px"><div style="max-width:520px;margin:auto;background:#fff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden"><div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:28px 32px;text-align:center"><p style="margin:0;font-size:22px;font-weight:800;color:#fff;letter-spacing:3px;text-transform:uppercase">${BRAND.name}</p><p style="margin:6px 0 0;font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:2px;text-transform:uppercase">Vendor Password Reset</p></div><div style="padding:36px 32px;text-align:center"><p style="font-size:16px;font-weight:600;color:#111827;margin-bottom:8px">Hi ${name}!</p><p style="font-size:14px;color:#6b7280;margin-bottom:28px;line-height:1.6">Click below to reset your vendor account password. Expires in <strong>15 minutes</strong>.</p><a href="${resetUrl}" style="display:inline-block;padding:14px 36px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px">Reset Vendor Password →</a></div><div style="background:#f9fafb;padding:16px 32px;text-align:center;border-top:1px solid #f3f4f6"><p style="font-size:11px;color:#d1d5db;margin:0">${BRAND.name} · ${BRAND.website}</p></div></div></div>`;
+}
+
+function buildDeliveryResetEmail(name, resetUrl) {
+    return `<div style="font-family:'DM Sans',Arial,sans-serif;background:#f5f7fa;padding:32px 16px"><div style="max-width:520px;margin:auto;background:#fff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden"><div style="background:linear-gradient(135deg,#0f172a,#134e2a);padding:28px 32px;text-align:center"><p style="margin:0;font-size:22px;font-weight:800;color:#22c55e;letter-spacing:3px;text-transform:uppercase">${BRAND.name}</p><p style="margin:6px 0 0;font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:2px;text-transform:uppercase">Delivery Partner Password Reset</p></div><div style="padding:36px 32px;text-align:center"><p style="font-size:16px;font-weight:600;color:#111827;margin-bottom:8px">Hi ${name}!</p><p style="font-size:14px;color:#6b7280;margin-bottom:28px;line-height:1.6">Click below to reset your delivery partner password. Expires in <strong>15 minutes</strong>.</p><a href="${resetUrl}" style="display:inline-block;padding:14px 36px;background:#0f172a;color:#22c55e;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px">Reset Password →</a></div><div style="background:#f9fafb;padding:16px 32px;text-align:center;border-top:1px solid #f3f4f6"><p style="font-size:11px;color:#d1d5db;margin:0">${BRAND.name} · ${BRAND.website}</p></div></div></div>`;
 }
