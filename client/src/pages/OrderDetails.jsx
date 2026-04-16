@@ -338,7 +338,10 @@ const OrderDetails = () => {
                             <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>{new Date(order.createdAt).toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })} at {new Date(order.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</p>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", borderRadius: 12, background: STATUS_CFG[order?.orderStatus]?.bg, border: `2px solid ${STATUS_CFG[order?.orderStatus]?.accent}`, boxShadow: C.shadow }}>
-                            {STATUS_CFG[order?.orderStatus]?.icon && <STATUS_CFG[order?.orderStatus].icon size={16} color={STATUS_CFG[order?.orderStatus]?.accent} />}
+                            {(() => {
+                                const Icon = STATUS_CFG[order?.orderStatus]?.icon;
+                                return Icon ? <Icon size={16} color={STATUS_CFG[order?.orderStatus]?.accent} /> : null;
+                            })()}
                             <span style={{ fontSize: 13, fontWeight: 700, color: STATUS_CFG[order?.orderStatus]?.accent }}>{STATUS_CFG[order?.orderStatus]?.label}</span>
                         </div>
                     </div>

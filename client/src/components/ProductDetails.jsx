@@ -378,6 +378,7 @@ const ProductDetails = () => {
                 @keyframes mcSlideDown { from{opacity:0;transform:translateY(-18px)} to{opacity:1;transform:translateY(0)} }
                 @keyframes spin        { to{transform:rotate(360deg)} }
 
+                /* ═══ BASE STYLES (DESKTOP) ═══ */
                 .pd-tab { padding:12px 20px; font-size:13px; font-weight:600; border:none; background:none; cursor:pointer; border-bottom:3px solid transparent; color:#878787; white-space:nowrap; transition:all .2s; }
                 .pd-tab.active { color:#2874f0; border-bottom-color:#2874f0; }
                 .pd-tab:hover  { color:#2874f0; }
@@ -404,15 +405,106 @@ const ProductDetails = () => {
 
                 .pd-trust { display:flex; align-items:center; gap:8px; padding:12px 0; font-size:12px; color:#555; border-bottom:1px solid #f0f0f0; }
 
+                /* ═══ TABLET (1024px and below) ═══ */
+                @media (max-width: 1024px) {
+                    .pd-main-grid { grid-template-columns: 1fr 1.1fr !important; gap: 0 !important; }
+                    .pd-img-wrap { padding: 20px 16px !important; }
+                    .pd-info-wrap { padding: 20px 20px !important; }
+                    h1.pd-title { font-size: 1.2rem !important; }
+                    .pd-btn { height: 48px !important; font-size: 13px !important; }
+                    .pd-thumb { width: 64px !important; height: 64px !important; }
+                    .pd-size { min-width: 48px !important; height: 40px !important; padding: 0 12px !important; font-size: 12px !important; }
+                }
+
+                /* ═══ MEDIUM TABLET (768px) ═══ */
                 @media (max-width: 768px) {
-                    .pd-main-grid  { grid-template-columns:1fr !important; gap:0 !important; }
-                    .pd-img-wrap   { border-radius:0 !important; border-left:none !important; border-right:none !important; }
-                    .pd-info-wrap  { padding:16px !important; }
-                    .pd-page-wrap  { padding:0 !important; margin:0 !important; border-radius:0 !important; }
-                    .pd-breadcrumb { padding:10px 16px !important; }
-                    .pd-thumb      { width:60px !important; height:60px !important; }
-                    .pd-btn        { height:48px !important; font-size:13px !important; }
-                    h1.pd-title    { font-size:1.15rem !important; }
+                    .pd-main-grid  { grid-template-columns: 1fr !important; gap: 0 !important; }
+                    .pd-img-wrap {
+                        border-radius: 0 !important;
+                        border-left: none !important;
+                        border-right: none !important;
+                        border-bottom: 1px solid #f0f0f0 !important;
+                        padding: 16px 14px !important;
+                    }
+                    .pd-info-wrap  { padding: 16px 14px !important; }
+                    .pd-page-wrap  { padding: 0 !important; margin: 0 !important; border-radius: 0 !important; }
+                    .pd-breadcrumb { padding: 10px 14px !important; }
+                    
+                    .pd-thumb { width: 56px !important; height: 56px !important; }
+                    .pd-btn { height: 44px !important; font-size: 12px !important; gap: 6px !important; }
+                    .pd-size { min-width: 44px !important; height: 36px !important; padding: 0 10px !important; font-size: 11px !important; }
+                    
+                    h1.pd-title { font-size: 1.1rem !important; }
+                    .pd-share-btn { top: 10px !important; right: 10px !important; padding: 5px 12px !important; font-size: 10px !important; }
+                    
+                    .pd-tab { padding: 10px 16px !important; font-size: 12px !important; }
+                    .pd-trust { font-size: 11px !important; gap: 6px !important; }
+                }
+
+                /* ═══ SMALL TABLET / LARGE PHONE (640px) ═══ */
+                @media (max-width: 640px) {
+                    .pd-main-grid { grid-template-columns: 1fr !important; }
+                    .pd-img-wrap { padding: 12px 12px !important; }
+                    .pd-info-wrap { padding: 12px 12px !important; }
+                    .pd-page-wrap { margin: 0 !important; border-radius: 0 !important; }
+                    
+                    .pd-thumb { width: 50px !important; height: 50px !important; gap: 6px !important; }
+                    .pd-btn { height: 42px !important; font-size: 11px !important; }
+                    .pd-size { min-width: 40px !important; height: 34px !important; padding: 0 8px !important; font-size: 10px !important; }
+                    
+                    h1.pd-title { font-size: 1rem !important; line-height: 1.3 !important; }
+                    .pd-breadcrumb { padding: 8px 12px !important; }
+                    .pd-page-wrap { padding: 0 !important; }
+                    
+                    .pd-tab { padding: 8px 14px !important; font-size: 11px !important; }
+                    .pd-trust { font-size: 10px !important; padding: 8px 0 !important; }
+                    .pd-share-btn { padding: 4px 10px !important; font-size: 9px !important; }
+                }
+
+                /* ═══ PHONE (480px and below) ═══ */
+                @media (max-width: 480px) {
+                    .pd-main-grid { grid-template-columns: 1fr !important; gap: 0 !important; }
+                    .pd-img-wrap {
+                        border-radius: 0 !important;
+                        border: none !important;
+                        padding: 10px 10px !important;
+                        border-bottom: 1px solid #f0f0f0 !important;
+                    }
+                    .pd-info-wrap { padding: 10px 10px !important; }
+                    .pd-page-wrap { padding: 0 !important; margin: 0 !important; border-radius: 0 !important; }
+                    .pd-breadcrumb { padding: 8px 10px !important; font-size: 12px !important; }
+                    
+                    /* Typography Scaling */
+                    h1.pd-title { font-size: 0.95rem !important; line-height: 1.25 !important; margin-bottom: 8px !important; }
+                    .pd-category { font-size: 10px !important; margin-bottom: 4px !important; }
+                    
+                    /* Price Scaling */
+                    .pd-price-large { font-size: 1.4rem !important; }
+                    .pd-price-old { font-size: 0.9rem !important; }
+                    .pd-price-off { font-size: 0.85rem !important; }
+                    
+                    /* Image Gallery */
+                    .pd-hero-img { max-height: 300px !important; }
+                    .pd-thumb { width: 45px !important; height: 45px !important; gap: 4px !important; }
+                    .pd-thumb-wrap { gap: 6px !important; }
+                    
+                    /* Buttons */
+                    .pd-btn { height: 40px !important; font-size: 10px !important; gap: 4px !important; padding: 0 8px !important; }
+                    .pd-size { min-width: 36px !important; height: 32px !important; padding: 0 6px !important; font-size: 9px !important; }
+                    
+                    /* Tabs */
+                    .pd-tab { padding: 8px 12px !important; font-size: 10px !important; }
+                    .pd-tabs-wrap { padding-left: 10px !important; }
+                    .pd-tab-content { padding: 16px 10px !important; }
+                    
+                    /* Trust strip */
+                    .pd-trust { font-size: 9px !important; padding: 6px 0 !important; gap: 6px !important; }
+                    
+                    /* Share button */
+                    .pd-share-btn { top: 8px !important; right: 8px !important; padding: 3px 8px !important; font-size: 8px !important; }
+                    
+                    /* Accordions */
+                    .pd-accordion { margin-top: 12px !important; }
                 }
             `}</style>
 
@@ -454,7 +546,8 @@ const ProductDetails = () => {
 
                                 {/* Hero image */}
                                 <div
-                                    style={{ aspectRatio: "3/4", background: "#fafafa", border: "1px solid #f0f0f0", borderRadius: 4, overflow: "hidden", cursor: "zoom-in", position: "relative" }}
+                                    className="pd-hero-img"
+                                    style={{ aspectRatio: "3/4", background: "#fafafa", border: "1px solid #f0f0f0", borderRadius: 4, overflow: "hidden", cursor: "zoom-in", position: "relative", maxWidth: "100%", maxHeight: "600px" }}
                                     onClick={() => { if (!shareOpen) setImgZoomed(true); }}
                                 >
                                     {heroUrl
@@ -478,7 +571,7 @@ const ProductDetails = () => {
 
                             {/* Thumbnails */}
                             {allImages.length > 1 && (
-                                <div style={{ display: "flex", gap: 8, marginTop: 12, overflowX: "auto", paddingBottom: 4 }}>
+                                <div className="pd-thumb-wrap" style={{ display: "flex", gap: 8, marginTop: 12, overflowX: "auto", paddingBottom: 4 }}>
                                     {allImages.map((img, i) => (
                                         <div key={i} className={`pd-thumb ${activeImg === i ? "active" : ""}`} onClick={() => setActiveImg(i)}>
                                             <img src={imgUrl.card(img.url)} alt={`${product.name} ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top center" }} />
@@ -493,7 +586,7 @@ const ProductDetails = () => {
 
                             {/* Category */}
                             {product.category && (
-                                <p style={{ fontSize: 11, color: "#878787", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>
+                                <p className="pd-category" style={{ fontSize: 11, color: "#878787", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>
                                     {product.category.replace(/-/g, " ")}
                                 </p>
                             )}
@@ -504,7 +597,7 @@ const ProductDetails = () => {
                             </h1>
 
                             {/* Rating row */}
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f0f0f0" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f0f0f0", flexWrap: "wrap" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 4, background: "#388e3c", color: "#fff", borderRadius: 3, padding: "2px 8px" }}>
                                     <span style={{ fontSize: 13, fontWeight: 700 }}>{avgRating.toFixed(1)}</span>
                                     <FaStar size={10} />
@@ -515,12 +608,12 @@ const ProductDetails = () => {
                             {/* Price */}
                             <div style={{ marginBottom: 4 }}>
                                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                                    <span style={{ fontSize: "2rem", fontWeight: 700, color: "#212121", lineHeight: 1 }}>
+                                    <span className="pd-price-large" style={{ fontSize: "2rem", fontWeight: 700, color: "#212121", lineHeight: 1 }}>
                                         ₹{Number(product.price).toLocaleString("en-IN")}
                                     </span>
                                     {hasDiscount && <>
-                                        <span style={{ fontSize: "1rem", color: "#878787", textDecoration: "line-through" }}>₹{Number(mrpValue).toLocaleString("en-IN")}</span>
-                                        <span style={{ fontSize: "1rem", fontWeight: 700, color: "#388e3c" }}>{discountPct}% off</span>
+                                        <span className="pd-price-old" style={{ fontSize: "1rem", color: "#878787", textDecoration: "line-through" }}>₹{Number(mrpValue).toLocaleString("en-IN")}</span>
+                                        <span className="pd-price-off" style={{ fontSize: "1rem", fontWeight: 700, color: "#388e3c" }}>{discountPct}% off</span>
                                     </>}
                                 </div>
                                 <p style={{ fontSize: 12, color: "#878787" }}>Inclusive of all taxes</p>
@@ -537,7 +630,7 @@ const ProductDetails = () => {
                             </p>
 
                             {/* Stock */}
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
                                 {product.inStock ? (<>
                                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#388e3c", display: "inline-block" }} />
                                     <span style={{ fontSize: 13, fontWeight: 600, color: "#388e3c" }}>In Stock</span>
@@ -751,7 +844,7 @@ const ProductDetails = () => {
                             </div>
 
                             {/* Accordions */}
-                            <div style={{ marginTop: 16 }}>
+                            <div className="pd-accordion" style={{ marginTop: 16 }}>
                                 <Accordion title="Products Details & Description" icon={<FaTag size={13} color="#878787" />} defaultOpen={false}>
                                     {product.description || "No details available."}
                                 </Accordion>
@@ -767,7 +860,7 @@ const ProductDetails = () => {
 
                     {/* ── Tabs ── */}
                     <div style={{ borderTop: "1px solid #f0f0f0" }}>
-                        <div style={{ display: "flex", borderBottom: "1px solid #f0f0f0", overflowX: "auto", paddingLeft: 16 }}>
+                        <div className="pd-tabs-wrap" style={{ display: "flex", borderBottom: "1px solid #f0f0f0", overflowX: "auto", paddingLeft: 16 }}>
                             {[
                                 { key: "description", label: "Description" },
                                 ...(highlightEntries.length > 0 ? [{ key: "highlights", label: "Specifications" }] : []),
@@ -783,7 +876,7 @@ const ProductDetails = () => {
                             ))}
                         </div>
 
-                        <div style={{ padding: "24px 28px" }}>
+                        <div className="pd-tab-content" style={{ padding: "24px 28px" }}>
                             {/* Description */}
                             {activeTab === "description" && (
                                 <div style={{ maxWidth: 680 }}>
