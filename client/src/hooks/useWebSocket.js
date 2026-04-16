@@ -5,16 +5,15 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 
-const WS_BASE = import.meta.env.VITE_WS_URL || 
-    (import.meta.env.VITE_API_URL || import.meta.env.VITE_WS_URL || "http://localhost:9000")
-        .replace("http://", "ws://")
-        .replace("https://", "wss://");
+const WS_BASE = (import.meta.env.VITE_WS_URL || "http://localhost:9000")
+    .replace("http://", "ws://")
+    .replace("https://", "wss://");
 
 export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {}) => {
-    const wsRef            = useRef(null);
-    const pingRef          = useRef(null);
-    const reconnectRef     = useRef(null);
-    const reconnectCount   = useRef(0);
+    const wsRef = useRef(null);
+    const pingRef = useRef(null);
+    const reconnectRef = useRef(null);
+    const reconnectCount = useRef(0);
     const [isConnected, setIsConnected] = useState(false);
     const [lastMessage, setLastMessage] = useState(null);
 
