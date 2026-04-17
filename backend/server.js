@@ -46,8 +46,17 @@ import schedulerRoutes from "./routes/schedulerRoutes.js";
 import { notFound, errorHandler } from "./middlewares/errorMiddleware.js";
 import scheduler from "./jobs/scheduler.js";
 import logger from "./utils/logger.js";
+import cloudinary from "./config/cloudinary.js";
 
 dotenv.config();
+
+// ── Re-configure Cloudinary after dotenv loads ───────────────
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true,
+});
 
 // ── Validate critical env vars at startup ─────────────────────
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
@@ -57,6 +66,9 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
 if (!process.env.MONGO_URI) {
     console.error("❌ FATAL: MONGO_URI is not defined in .env");
     process.exit(1);
+}
+if (!process.env.CLOUDINARY_API_KEY) {
+    console.error("⚠️  WARNING: CLOUDINARY_API_KEY not set — image uploads will fail");
 }
 
 const app = express();

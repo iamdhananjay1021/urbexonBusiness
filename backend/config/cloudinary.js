@@ -5,15 +5,23 @@
  */
 import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
-import dotenv from "dotenv";
-dotenv.config();
 
-cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-    secure: true,
-});
+/* Ensure Cloudinary is configured — called lazily before every upload
+   so it works even if env vars weren't available at initial import time */
+const ensureConfig = () => {
+    const cfg = cloudinary.config();
+    if (cfg.cloud_name && cfg.api_key && cfg.api_secret) return;
+    // Re-read from env (covers Docker env_file & process env)
+    cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+        secure: true,
+    });
+};
+
+// Initial config attempt
+ensureConfig();
 
 /**
  * Upload a Buffer to Cloudinary using a stream
@@ -23,6 +31,7 @@ cloudinary.config({
  * @returns {Promise<object>} Cloudinary result
  */
 export const uploadToCloudinary = (buffer, folder = "urbexon", opts = {}) => {
+    ensureConfig();
     return new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
             { folder, resource_type: "auto", quality: "auto", fetch_format: "auto", ...opts },
