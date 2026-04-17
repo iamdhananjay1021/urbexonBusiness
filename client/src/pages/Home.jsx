@@ -40,7 +40,7 @@ const disc = p => p.mrp && p.mrp > p.price ? Math.round(((p.mrp - p.price) / p.m
 
 /* ─── CSS ─────────────────────────────────────────────────── */
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+/* fonts loaded from index.html */
 
 :where(.h-root), :where(.h-root) *, :where(.h-root) *::before, :where(.h-root) *::after {
     box-sizing: border-box; margin: 0; padding: 0;
@@ -577,79 +577,75 @@ const CSS = `
 .h-why-sub   { font-size: 12px; color: #6b7280; line-height: 1.5; }
 
 /* ══════════════════════════════════════════
-   URBEXON HOUR CTA BANNER (Professional)
+   URBEXON HOUR QUICK STRIP (Flipkart Minutes style)
 ══════════════════════════════════════════ */
-.h-uh-banner {
-    background: linear-gradient(135deg, #ff6b35 0%, #ff4500 50%, #ff5722 100%);
-    padding: clamp(32px, 6vw, 52px) 0;
-    cursor: pointer; transition: all .3s; position: relative;
-    overflow: hidden;
+.h-uh-strip {
+    background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+    cursor: pointer; transition: all .25s; position: relative;
+    overflow: hidden; border-bottom: 3px solid #3b82f6;
 }
-.h-uh-banner::before {
+.h-uh-strip::before {
     content: ''; position: absolute; inset: 0;
-    background: radial-gradient(circle at 20% 50%, rgba(255,255,255,.1) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(0,0,0,.1) 0%, transparent 50%);
+    background: radial-gradient(circle at 10% 50%, rgba(59,130,246,.15) 0%, transparent 60%);
     pointer-events: none;
 }
-.h-uh-banner:hover { filter: brightness(1.08); }
+.h-uh-strip:hover { filter: brightness(1.06); }
 
-.h-uh-content {
+.h-uh-strip-inner {
     position: relative; z-index: 2;
-    display: flex; align-items: center; justify-content: space-between;
-    flex-wrap: wrap; gap: clamp(16px, 4vw, 32px);
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 0;
 }
 
-.h-uh-left {
-    display: flex; align-items: center; gap: clamp(14px, 3vw, 20px);
-    flex: 1; min-width: 0;
+.h-uh-strip-logo {
+    flex-shrink: 0;
 }
 
-.h-uh-icon-box {
-    width: clamp(54px, 8vw, 72px); height: clamp(54px, 8vw, 72px);
-    background: rgba(255,255,255,.15); border-radius: 16px;
+.h-uh-strip-icon {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
     display: flex; align-items: center; justify-content: center;
-    font-size: clamp(28px, 5vw, 42px); flex-shrink: 0;
-    border: 2px solid rgba(255,255,255,.2);
-    box-shadow: inset 0 4px 12px rgba(0,0,0,.1);
+    color: #fbbf24; font-size: 20px;
+    box-shadow: 0 4px 16px rgba(59,130,246,.35);
 }
 
-.h-uh-text h3 {
-    font-size: clamp(18px, 3vw, 26px); font-weight: 800; color: #fff;
-    margin-bottom: 4px; line-height: 1;
+.h-uh-strip-info {
+    display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0;
 }
 
-.h-uh-text p {
-    font-size: clamp(11px, 2vw, 14px); color: rgba(255,255,255,.85);
-    line-height: 1.4; margin: 0;
+.h-uh-strip-title {
+    font-size: 16px; color: #fff; letter-spacing: -.3px;
+    font-weight: 500;
+}
+.h-uh-strip-title strong { font-weight: 800; color: #60a5fa; }
+
+.h-uh-strip-sub {
+    font-size: 12px; color: rgba(255,255,255,.65); font-weight: 500;
+}
+.h-uh-strip-sub strong { color: #34d399; font-weight: 700; }
+
+.h-uh-strip-right {
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
 }
 
-.h-uh-badge {
-    display: inline-flex; align-items: center; gap: 5px;
-    background: rgba(255,255,255,.2); border: 1px solid rgba(255,255,255,.3);
-    padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 700;
-    color: #fff; margin-top: 6px; letter-spacing: .5px;
+.h-uh-strip-tag {
+    background: rgba(59,130,246,.2); border: 1px solid rgba(59,130,246,.35);
+    padding: 5px 12px; border-radius: 20px;
+    font-size: 10px; font-weight: 800; color: #60a5fa;
+    letter-spacing: .8px; white-space: nowrap;
 }
 
-.h-uh-btn {
-    padding: clamp(10px, 2vw, 14px) clamp(20px, 3vw, 32px);
-    background: #fff; color: #ff4500; border: none;
-    border-radius: 12px; font-size: 14px; font-weight: 800;
-    cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    transition: all .22s; white-space: nowrap; flex-shrink: 0;
-    box-shadow: 0 6px 20px rgba(0,0,0,.15);
+.h-uh-strip-arrow {
+    color: rgba(255,255,255,.5); transition: transform .2s;
 }
-
-.h-uh-btn:hover {
-    transform: translateY(-3px); box-shadow: 0 10px 28px rgba(0,0,0,.2);
-}
-
-.h-uh-btn:active { transform: translateY(-1px); }
+.h-uh-strip:hover .h-uh-strip-arrow { transform: translateX(3px); color: #fff; }
 
 @media(max-width:640px) {
-    .h-uh-content { flex-direction: column; gap: 16px; }
-    .h-uh-left { width: 100%; justify-content: space-between; }
-    .h-uh-btn { width: 100%; justify-content: center; }
+    .h-uh-strip-inner { gap: 12px; padding: 12px 0; }
+    .h-uh-strip-icon { width: 38px; height: 38px; font-size: 16px; border-radius: 10px; }
+    .h-uh-strip-title { font-size: 14px; }
+    .h-uh-strip-sub { font-size: 11px; }
+    .h-uh-strip-tag { display: none; }
 }
 
 /* ══════════════════════════════════════════
@@ -1073,21 +1069,21 @@ const Home = () => {
                 )
             )}
 
-            {/* ════ URBEXON HOUR FEATURED BANNER ════════════ */}
-            <div className="h-uh-banner" onClick={() => navigate("/urbexon-hour")}>
+            {/* ════ URBEXON HOUR — Flipkart Minutes Style Quick Card ════ */}
+            <div className="h-uh-strip" onClick={() => navigate("/urbexon-hour")}>
                 <div className="h-wrap">
-                    <div className="h-uh-content">
-                        <div className="h-uh-left">
-                            <div className="h-uh-icon-box">⚡</div>
-                            <div className="h-uh-text">
-                                <h3>Urbexon Hour</h3>
-                                <p>Groceries & essentials delivered in <strong>45–120 mins</strong></p>
-                                <div className="h-uh-badge">🚀 FAST EXPRESS</div>
-                            </div>
+                    <div className="h-uh-strip-inner">
+                        <div className="h-uh-strip-logo">
+                            <div className="h-uh-strip-icon"><FaBolt /></div>
                         </div>
-                        <button className="h-uh-btn" onClick={e => { e.stopPropagation(); navigate("/urbexon-hour"); }}>
-                            Start Ordering <FaArrowRight size={13} />
-                        </button>
+                        <div className="h-uh-strip-info">
+                            <span className="h-uh-strip-title">Urbexon <strong>Hour</strong></span>
+                            <span className="h-uh-strip-sub">Groceries & essentials in <strong>45 min</strong></span>
+                        </div>
+                        <div className="h-uh-strip-right">
+                            <span className="h-uh-strip-tag">FAST DELIVERY</span>
+                            <FaArrowRight size={14} className="h-uh-strip-arrow" />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1112,7 +1108,7 @@ const Home = () => {
                                             <div className="h-cat-icon"
                                                 style={{ background: cat.lightColor || "#f3f4ff" }}>
                                                 {cat.image?.url
-                                                    ? <img src={cat.image.url} alt={cat.name} style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
+                                                    ? <img src={cat.image.url} alt={cat.name} loading="lazy" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
                                                     : <span>{cat.emoji || "🛍️"}</span>}
                                             </div>
                                             <span className="h-cat-nm">{cat.name}</span>
@@ -1215,7 +1211,7 @@ const Home = () => {
                                             <div className="h-seller-top">
                                                 <div className="h-seller-av">
                                                     {v.shopLogo
-                                                        ? <img src={v.shopLogo} alt={v.shopName} />
+                                                        ? <img src={v.shopLogo} alt={v.shopName} loading="lazy" />
                                                         : v.shopName?.[0]?.toUpperCase() || "S"}
                                                 </div>
                                                 <div>

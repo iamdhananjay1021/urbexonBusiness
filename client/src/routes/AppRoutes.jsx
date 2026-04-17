@@ -33,6 +33,7 @@ const NotFound = lazy(() => import("../pages/Notfound"));
 const UrbexonHour = lazy(() => import("../pages/UrbexonHour"));
 const UHCart = lazy(() => import("../pages/UHCart"));
 const UHCheckout = lazy(() => import("../pages/UHCheckout"));
+const UHProductDetail = lazy(() => import("../pages/UHProductDetail"));
 const Wishlist = lazy(() => import("../pages/Wishlist"));
 const BecomeVendor = lazy(() => import("../pages/BecomeVendor"));
 const BecomeDelivery = lazy(() => import("../pages/BecomeDelivery"));
@@ -80,6 +81,7 @@ const AppRoutes = () => (
         {/* Standalone pages (no MainLayout) */}
         <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />
         <Route path="/uh-checkout" element={<RequireAuth><UHCheckout /></RequireAuth>} />
+        <Route path="/uh-product/:id" element={<PageTransition><UHProductDetail /></PageTransition>} />
 
         {/* Main Layout routes */}
         <Route element={<MainLayout />}>

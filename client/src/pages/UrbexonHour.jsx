@@ -11,7 +11,7 @@
  * • Auto-detect location from GPS
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useAuth } from "../contexts/AuthContext";
@@ -25,11 +25,12 @@ import {
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
 /* ── Product Card (Flipkart Minutes style: qty controls) ── */
-const ProductCard = ({ product }) => {
+const ProductCard = memo(({ product }) => {
     const { addItem, isInUHCart, uhItems, increment, decrement, removeItem } = useCart();
     const inCart = isInUHCart(product._id);
     const cartItem = uhItems.find((i) => i._id === product._id);
     const qty = cartItem?.quantity || 0;
+    const nav = useNavigate();
 
     const discount =
         product.mrp && product.mrp > product.price
@@ -45,8 +46,12 @@ const ProductCard = ({ product }) => {
         }
     }, [inCart, product, addItem]);
 
+    const handleCardClick = useCallback(() => {
+        nav(`/uh-product/${product.slug || product._id}`);
+    }, [nav, product]);
+
     return (
-        <div className="pc">
+        <div className="pc" onClick={handleCardClick} role="link">
             <div className="pc-img-wrap">
                 {discount > 0 && <span className="pc-disc">{discount}% OFF</span>}
                 {product.tag && <span className="pc-tag">{product.tag}</span>}
@@ -93,7 +98,7 @@ const ProductCard = ({ product }) => {
             </div>
         </div>
     );
-};
+});
 
 /* ── Helper Functions (Industry-level cart management) ── */
 const calculateEstimatedDeliveryTime = (pinData) => {
@@ -140,8 +145,14 @@ const UrbexonHour = () => {
     const [waitlistEmail, setWaitlistEmail] = useState("");
     const [waitlistSuccess, setWaitlistSuccess] = useState(false);
     const [activeCategory, setActiveCategory] = useState(null);
-    const [savedPincode, setSavedPincode] = useState(null);
-    const [initialLoading, setInitialLoading] = useState(true);
+    const [savedPincode, setSavedPincode] = useState(() => {
+        try {
+            const stored = localStorage.getItem("uh_pincode");
+            if (stored) { const p = JSON.parse(stored); if (p?.code && /^\d{6}$/.test(p.code)) return p; }
+        } catch { }
+        return null;
+    });
+    const [initialLoading, setInitialLoading] = useState(false);
     const [showPincodeEdit, setShowPincodeEdit] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [uhDeals, setUhDeals] = useState([]);
@@ -158,40 +169,32 @@ const UrbexonHour = () => {
 
     /* ── Load saved pincode on mount ── */
     useEffect(() => {
-        const loadSavedPincode = async () => {
-            // Try from user account first (logged in)
+        let cancelled = false;
+        const load = async () => {
+            // 1) Try user account pincode (logged in)
+            let code = null;
             if (user) {
                 try {
                     const { data } = await api.get("/addresses/uh-pincode");
-                    if (data?.uhPincode?.code) {
+                    if (data?.uhPincode?.code && !cancelled) {
                         setSavedPincode(data.uhPincode);
                         setPincode(data.uhPincode.code);
-                        await checkPincodeInner(data.uhPincode.code);
-                        setInitialLoading(false);
-                        return;
+                        code = data.uhPincode.code;
                     }
-                } catch { /* continue to localStorage */ }
+                } catch { /* continue */ }
             }
-
-            // Fallback to localStorage for guests
-            try {
-                const stored = localStorage.getItem("uh_pincode");
-                if (stored) {
-                    const parsed = JSON.parse(stored);
-                    if (parsed?.code && /^\d{6}$/.test(parsed.code)) {
-                        setSavedPincode(parsed);
-                        setPincode(parsed.code);
-                        await checkPincodeInner(parsed.code);
-                        setInitialLoading(false);
-                        return;
-                    }
-                }
-            } catch { /* ignore */ }
-
-            setInitialLoading(false);
+            // 2) Fallback to localStorage (already read in state init)
+            if (!code && savedPincode?.code) {
+                code = savedPincode.code;
+                setPincode(code);
+            }
+            // 3) Fetch products for pincode
+            if (code && !cancelled) {
+                checkPincodeInner(code);
+            }
         };
-
-        loadSavedPincode();
+        load();
+        return () => { cancelled = true; };
     }, []); // eslint-disable-line
 
     /* ── Save pincode permanently ── */
@@ -394,21 +397,13 @@ const UrbexonHour = () => {
 
     const vendorGroups = groupByVendor(filteredProducts);
 
-    const hasActiveService = pinData?.available && products.length > 0;
-    const showHero = !hasActiveService || showPincodeEdit;
+    /* ── Memoized cart metrics ── */
+    const cartSavings = useMemo(() => calculateEstimatedSavings(uhItems), [uhItems]);
+    const deliveryEta = useMemo(() => calculateEstimatedDeliveryTime(pinData), [pinData]);
 
-    // Show loading spinner while checking saved pincode
-    if (initialLoading) {
-        return (
-            <div className="uh-root">
-                <style>{PAGE_CSS}</style>
-                <div className="uh-initial-loading">
-                    <div className="uh-loader" />
-                    <p>Loading Urbexon Hour…</p>
-                </div>
-            </div>
-        );
-    }
+    const hasActiveService = pinData?.available && products.length > 0;
+    const showHero = !hasActiveService && !loading || showPincodeEdit;
+    const showSkeleton = loading && savedPincode?.code && !showPincodeEdit;
 
     return (
         <div className="uh-root">
@@ -442,89 +437,48 @@ const UrbexonHour = () => {
                     </div>
                 )}
 
-                {/* ── SINGLE PROFESSIONAL NAVBAR (combined header + navbar) ── */}
-                {hasActiveService && !showPincodeEdit && (
+                {/* ── COMPACT NAVBAR (Flipkart Minutes style) ── */}
+                {(hasActiveService || showSkeleton) && !showPincodeEdit && (
                     <div className="uh-navbar">
                         <div className="container uh-navbar-inner">
-                            {/* Left: Brand Logo + Title */}
-                            <div className="uh-navbar-brand" onClick={() => navigate("/urbexon-hour")} title="Go to Urbexon Hour Home">
-                                <div className="uh-logo-mark">
-                                    <FaBolt size={18} />
-                                </div>
+                            <div className="uh-navbar-brand" onClick={() => navigate("/urbexon-hour")}>
+                                <div className="uh-logo-mark"><FaBolt size={14} /></div>
                                 <div className="uh-navbar-title-full">
                                     <div className="uh-navbar-main-full">Urbexon Hour</div>
                                     <div className="uh-navbar-sub-full">45–120 min delivery</div>
                                 </div>
                             </div>
 
-                            {/* Center: Search Bar */}
                             <div className="uh-navbar-search-wrap">
                                 <div className="uh-navbar-search">
-                                    <FaSearch size={14} className="uh-navbar-search-ic" />
+                                    <FaSearch size={12} className="uh-navbar-search-ic" />
                                     <input
                                         className="uh-navbar-search-inp"
                                         type="text"
                                         placeholder="Search products, brands..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === "Enter") {
-                                                e.preventDefault();
-                                            }
-                                        }}
+                                        onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
                                     />
                                     {searchQuery && (
-                                        <button
-                                            className="uh-navbar-search-clear"
-                                            onClick={() => setSearchQuery("")}
-                                            title="Clear search"
-                                            type="button"
-                                        >
-                                            <FaTimes size={12} />
-                                        </button>
-                                    )}
-                                    {!searchQuery && (
-                                        <button
-                                            className="uh-navbar-search-btn"
-                                            title="Search products"
-                                            type="button"
-                                        >
-                                            <FaSearch size={12} />
+                                        <button className="uh-navbar-search-clear" onClick={() => setSearchQuery("")} type="button">
+                                            <FaTimes size={10} />
                                         </button>
                                     )}
                                 </div>
                             </div>
 
-                            {/* Right: Location + Store Switch + Account */}
                             <div className="uh-navbar-right">
-                                <div className="uh-navbar-location-full">
-                                    <FaMapMarkerAlt size={12} />
-                                    <span>
-                                        {savedPincode?.area || savedPincode?.city || pincode}
-                                    </span>
-                                </div>
-                                <button className="uh-navbar-change-btn-full" onClick={handleChangePincode}>
-                                    Change
+                                <button className="uh-loc-pill" onClick={handleChangePincode} title="Change location">
+                                    <FaMapMarkerAlt size={10} />
+                                    <span>{savedPincode?.area || savedPincode?.city || pincode || "Location"}</span>
                                 </button>
-
-                                {/* Store Switch Button - Navigate to Main Store */}
-                                <button
-                                    className="uh-navbar-store-switch-btn"
-                                    onClick={handleNavigateToMainStore}
-                                    title="Browse main Urbexon store"
-                                >
+                                <button className="uh-nav-icon-btn" onClick={handleNavigateToMainStore} title="Urbexon Store">
                                     <FaStore size={14} />
-                                    <span className="store-switch-label">Store</span>
                                 </button>
-
-                                <button
-                                    className="uh-navbar-account"
-                                    onClick={() => navigate(user ? "/profile" : "/login")}
-                                    title={user ? "Go to profile" : "Login"}
-                                >
-                                    <div className="uh-navbar-avatar">
-                                        <span>{user?.name?.charAt(0)?.toUpperCase() || "👤"}</span>
-                                    </div>
+                                <button className="uh-nav-icon-btn uh-avatar-btn"
+                                    onClick={() => navigate(user ? "/profile" : "/login")}>
+                                    <span>{user?.name?.charAt(0)?.toUpperCase() || "👤"}</span>
                                 </button>
                             </div>
                         </div>
@@ -599,24 +553,45 @@ const UrbexonHour = () => {
                 )}
 
                 {/* ── TRUST STRIP ── */}
-                <div className="trust-strip">
-                    <div className="container trust-inner">
-                        {[
-                            { ic: "🏍️", t: "Fast Delivery", s: "45–120 mins to your door" },
-                            { ic: "✅", t: "Quality Checked", s: "Fresh, handpicked items" },
-                            { ic: "🏪", t: "Local Vendors", s: "Support your community" },
-                            { ic: "🔒", t: "Secure Payments", s: "Safe & encrypted" },
-                        ].map((f) => (
-                            <div key={f.t} className="trust-item">
-                                <span className="trust-ic">{f.ic}</span>
-                                <div>
+                {(hasActiveService || showSkeleton) && !showPincodeEdit && (
+                    <div className="trust-strip">
+                        <div className="container trust-inner">
+                            {[
+                                { ic: "🏍️", t: "FAST DELIVERY" },
+                                { ic: "✅", t: "QUALITY CHECKED" },
+                                { ic: "🏪", t: "LOCAL VENDORS" },
+                                { ic: "🔒", t: "SECURE PAYMENTS" },
+                            ].map((f) => (
+                                <div key={f.t} className="trust-item">
+                                    <span className="trust-ic">{f.ic}</span>
                                     <div className="trust-title">{f.t}</div>
-                                    <div className="trust-sub">{f.s}</div>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-                </div>
+                )}
+
+                {/* ── SKELETON LOADING ── */}
+                {showSkeleton && (
+                    <div className="container" style={{ padding: "20px 16px" }}>
+                        <div className="uh-sk-cats">
+                            {[1, 2, 3, 4].map(i => <div key={i} className="uh-sk-cat"><div className="uh-sk-circle" /><div className="uh-sk-line-sm" /></div>)}
+                        </div>
+                        <div className="uh-sk-section"><div className="uh-sk-line-lg" /></div>
+                        <div className="uh-sk-grid">
+                            {[1, 2, 3, 4, 5, 6].map(i => (
+                                <div key={i} className="uh-sk-card">
+                                    <div className="uh-sk-card-img" />
+                                    <div className="uh-sk-card-body">
+                                        <div className="uh-sk-line" style={{ width: "70%" }} />
+                                        <div className="uh-sk-line" style={{ width: "50%" }} />
+                                        <div className="uh-sk-line" style={{ width: "40%" }} />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* ── CATEGORY CHIPS (hide when searching) ── */}
                 {categories.length > 0 && !searchQuery && (
@@ -841,12 +816,12 @@ const UrbexonHour = () => {
                         <div className="cart-amount-text">{fmt(uhTotal)}</div>
                     </div>
                     <div className="float-cart-meta">
-                        {calculateEstimatedSavings(uhItems) > 0 && (
-                            <span className="cart-savings">Save {fmt(calculateEstimatedSavings(uhItems))}</span>
+                        {cartSavings > 0 && (
+                            <span className="cart-savings">Save {fmt(cartSavings)}</span>
                         )}
                         {pinData && (
                             <span className="cart-delivery">
-                                {calculateEstimatedDeliveryTime(pinData).min}-{calculateEstimatedDeliveryTime(pinData).max} min
+                                {deliveryEta.min}-{deliveryEta.max} min
                             </span>
                         )}
                     </div>
@@ -970,7 +945,7 @@ const getCategoryEmoji = (cat) => {
 
 /* ── CSS ── */
 const PAGE_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
+/* fonts loaded from index.html */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{background:#fafbfc}
 main{position:relative;z-index:1}
@@ -1006,95 +981,51 @@ main{position:relative;z-index:1}
 .uh-search-clear{position:absolute;right:12px;background:none;border:none;color:#9ca3af;cursor:pointer;padding:5px;font-size:12px}
 .uh-search-clear:hover{color:#6b7280}
 
-/* PROFESSIONAL NAVBAR - Ultra Premium */
-.uh-navbar{background:#fff;border-bottom:none;position:sticky;top:0;z-index:30;box-shadow:0 6px 32px rgba(0,0,0,.08);transition:all .3s}
-.uh-navbar-inner{display:flex;align-items:center;gap:clamp(12px,2vw,22px);padding:clamp(10px,2vw,14px) 0;justify-content:space-between;font-family:'DM Sans';width:100%;min-width:0}
-.uh-navbar-brand{display:flex;align-items:center;gap:clamp(8px,2vw,14px);cursor:pointer;transition:all .3s;flex-shrink:0;min-width:0}
-.uh-navbar-brand:hover{transform:translateX(2px)}
-.uh-logo-mark{width:clamp(40px,8vw,50px);height:clamp(40px,8vw,50px);border-radius:16px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:950;box-shadow:0 10px 32px rgba(59,130,246,.32);font-size:clamp(18px,4vw,24px);transition:all .3s;flex-shrink:0}
-.uh-navbar-brand:hover .uh-logo-mark{transform:scale(1.08);box-shadow:0 14px 40px rgba(59,130,246,.4)}
-
-/* Combined Title + Subtitle */
-.uh-navbar-title-full{display:flex;flex-direction:column;gap:0;min-width:0}
-.uh-navbar-main-full{font-size:clamp(14px,2.5vw,16px);font-weight:950;color:#0f172a;letter-spacing:-.5px;font-family:'DM Sans';white-space:nowrap}
-.uh-navbar-sub-full{font-size:clamp(9px,2vw,11px);font-weight:700;color:#3b82f6;letter-spacing:.3px;white-space:nowrap}
-
-/* Search Bar */
-.uh-navbar-search-wrap{flex:1;max-width:500px;min-width:120px}
-.uh-navbar-search{position:relative;display:flex;align-items:center;width:100%;background:linear-gradient(135deg,#f8fafc,#f0f9ff);border:1.5px solid #e2e8f0;border-radius:14px;transition:all .3s cubic-bezier(.34,.1,.68,1);box-shadow:0 2px 12px rgba(59,130,246,.05);padding-right:clamp(36px,8vw,40px)}
-.uh-navbar-search:focus-within{border-color:#3b82f6;background:#fff;box-shadow:0 8px 32px rgba(59,130,246,.18);transform:translateY(-1px)}
-.uh-navbar-search-ic{position:absolute;left:clamp(12px,3vw,16px);color:#3b82f6;pointer-events:none;font-size:clamp(13px,2vw,16px);flex-shrink:0;font-weight:700}
-.uh-navbar-search-inp{width:100%;padding:clamp(10px,2vw,13px) 8px clamp(10px,2vw,13px) clamp(36px,8vw,44px);border:none;border-radius:14px;font-size:clamp(12px,2vw,13px);font-family:'DM Sans',sans-serif;color:#0f172a;outline:none;background:transparent;min-width:0;flex:1;font-weight:600;letter-spacing:.2px}
-.uh-navbar-search-inp::placeholder{color:#cbd5e1;font-weight:600;letter-spacing:.3px;font-size:clamp(11px,2vw,13px)}
-.uh-navbar-search-btn{position:absolute;right:8px;background:none;border:none;color:#3b82f6;cursor:pointer;padding:10px;font-size:15px;display:flex;align-items:center;justify-content:center;transition:all .2s;border-radius:8px;flex-shrink:0;font-weight:800}
-.uh-navbar-search-btn:hover{background:rgba(59,130,246,.15);transform:scale(1.1)}
-.uh-navbar-search-clear{position:absolute;right:8px;background:none;border:none;color:#64748b;cursor:pointer;padding:10px;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .2s;border-radius:8px;flex-shrink:0;font-weight:800}
-.uh-navbar-search-clear:hover{color:#ef4444;background:rgba(239,68,68,.1)}
-
-/* Right Section */
-.uh-navbar-right{display:flex;align-items:center;gap:clamp(8px,2vw,12px);flex-shrink:0;min-width:0}
-
-/* Combined Location */
-.uh-navbar-location-full{background:linear-gradient(135deg,#f0f9ff,#f8fafc);border:1px solid #dbeafe;display:flex;align-items:center;gap:clamp(6px,2vw,8px);padding:clamp(8px,1.5vw,10px) clamp(10px,2vw,14px);border-radius:12px;font-size:clamp(11px,2vw,12px);font-weight:800;color:#1e40af;font-family:'DM Sans',sans-serif;transition:all .3s;letter-spacing:.3px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
-.uh-navbar-location-full:hover{background:linear-gradient(135deg,#eff6ff,#f0f9ff);border-color:#3b82f6;color:#3b82f6}
-
-/* Change Button */
-.uh-navbar-change-btn-full{background:rgba(59,130,246,.15);border:1.5px solid rgba(59,130,246,.3);color:#3b82f6;padding:clamp(7px,1.5vw,9px) clamp(12px,2vw,16px);border-radius:12px;font-size:clamp(10px,2vw,11px);font-weight:900;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;white-space:nowrap;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
-.uh-navbar-change-btn-full:hover{background:rgba(59,130,246,.25);border-color:rgba(59,130,246,.5);transform:translateY(-2px);box-shadow:0 6px 16px rgba(59,130,246,.2)}
-
-/* Avatar */
-.uh-navbar-account{background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .3s;padding:4px;flex-shrink:0}
-.uh-navbar-account:hover{transform:scale(1.15) rotate(5deg)}
-
-/* Store Switch Button */
-.uh-navbar-store-switch-btn{background:linear-gradient(135deg,#fbbf24,#f59e0b);border:1.5px solid rgba(245,158,11,.3);color:#fff;padding:clamp(8px,1.5vw,10px) clamp(10px,2vw,14px);border-radius:10px;font-size:clamp(11px,2vw,12px);font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s cubic-bezier(.34,.1,.68,1);white-space:nowrap;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(245,158,11,.2)}
-.uh-navbar-store-switch-btn:hover{background:linear-gradient(135deg,#fcd34d,#fbbf24);border-color:rgba(245,158,11,.6);transform:translateY(-2px);box-shadow:0 6px 16px rgba(245,158,11,.3)}
-.uh-navbar-store-switch-btn:active{transform:translateY(0)}
-.store-switch-label{font-weight:900}
-
-.uh-navbar-avatar{width:clamp(36px,8vw,42px);height:clamp(36px,8vw,42px);border-radius:50%;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:950;font-size:clamp(12px,3vw,15px);box-shadow:0 8px 24px rgba(59,130,246,.28);transition:all .3s;border:2.5px solid #fff;position:relative;flex-shrink:0}
-.uh-navbar-avatar::after{content:'';position:absolute;inset:0;border-radius:50%;border:2px solid rgba(59,130,246,.3);animation:avatarRing 2s ease-in-out infinite}
-@keyframes avatarRing{0%{transform:scale(1)}50%{transform:scale(1.1)}100%{transform:scale(1)}}
-@media(max-width:768px){
-  .uh-navbar-inner{gap:10px;padding:10px 0;flex-wrap:wrap}
-  .uh-navbar-brand{gap:8px;flex-basis:100%;order:1}
-  .uh-logo-mark{width:clamp(38px,6vw,45px);height:clamp(38px,6vw,45px);font-size:clamp(16px,3vw,20px)}
-  .uh-navbar-main-full{font-size:clamp(13px,2vw,15px)}
-  .uh-navbar-sub-full{font-size:clamp(9px,1.5vw,10px)}
-  .uh-navbar-search-wrap{max-width:none;min-width:0;flex:1;flex-basis:100%;order:2}
-  .uh-navbar-search{padding-right:clamp(36px,8vw,42px);border-radius:12px}
-  .uh-navbar-search-ic{left:12px;font-size:14px}
-  .uh-navbar-right{gap:8px;flex-basis:100%;order:3;justify-content:space-between;width:100%}
-  .uh-navbar-location-full{flex:1;min-width:0}
-  .uh-navbar-store-switch-btn{padding:8px 12px;font-size:11px;gap:6px}
-  .store-switch-label{display:inline}
-  .search-results-inner{flex-direction:column;align-items:flex-start;gap:10px}
-  .search-results-inner>span{width:100%}
-  .search-clear-btn{width:100%;justify-content:center}
-}
+/* COMPACT NAVBAR */
+.uh-navbar{background:#fff;position:sticky;top:0;z-index:30;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.uh-navbar-inner{display:flex;align-items:center;gap:10px;padding:10px 0;font-family:'DM Sans'}
+.uh-navbar-brand{display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0}
+.uh-logo-mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0}
+.uh-navbar-title-full{display:flex;flex-direction:column;line-height:1.1}
+.uh-navbar-main-full{font-size:14px;font-weight:800;color:#0f172a;letter-spacing:-.3px}
+.uh-navbar-sub-full{font-size:9px;font-weight:700;color:#3b82f6}
+.uh-navbar-search-wrap{flex:1;min-width:0;max-width:420px}
+.uh-navbar-search{position:relative;display:flex;align-items:center}
+.uh-navbar-search-ic{position:absolute;left:10px;color:#94a3b8;pointer-events:none}
+.uh-navbar-search-inp{width:100%;padding:8px 32px 8px 30px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-family:inherit;color:#0f172a;outline:none;background:#f8fafc;transition:border .2s}
+.uh-navbar-search-inp:focus{border-color:#3b82f6;background:#fff}
+.uh-navbar-search-inp::placeholder{color:#94a3b8;font-size:12px}
+.uh-navbar-search-clear{position:absolute;right:6px;background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px;display:flex;align-items:center}
+.uh-navbar-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.uh-loc-pill{display:flex;align-items:center;gap:4px;padding:6px 10px;background:#f0f9ff;border:1px solid #dbeafe;border-radius:8px;font-size:11px;font-weight:700;color:#1e40af;cursor:pointer;font-family:inherit;max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all .2s}
+.uh-loc-pill:hover{border-color:#3b82f6}
+.uh-loc-pill span{overflow:hidden;text-overflow:ellipsis}
+.uh-nav-icon-btn{width:34px;height:34px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#475569;transition:all .2s;font-size:13px}
+.uh-nav-icon-btn:hover{background:#f0f9ff;border-color:#3b82f6;color:#3b82f6}
+.uh-avatar-btn{background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;border:none;font-weight:800;font-size:13px}
+.uh-avatar-btn:hover{opacity:.9}
 @media(max-width:480px){
-  .uh-navbar-inner{gap:8px;padding:10px 0}
-  .uh-navbar-brand{flex-basis:auto;order:0;gap:6px}
-  .uh-logo-mark{width:38px;height:38px;font-size:16px}
-  .uh-navbar-main-full{font-size:13px;font-weight:900}
-  .uh-navbar-sub-full{font-size:9px}
-  .uh-navbar-search-wrap{flex:1;min-width:0;order:0}
-  .uh-navbar-search{padding-right:40px;border-radius:10px}
-  .uh-navbar-search-inp{font-size:11px;padding:9px 8px 9px 36px}
-  .uh-navbar-search-btn{font-size:12px;padding:6px}
-  .uh-navbar-search-clear{font-size:11px;padding:6px}
-  .uh-navbar-right{gap:6px;order:0;width:auto}
-  .uh-navbar-location-full{padding:8px 10px;font-size:10px;display:none}
-  .uh-navbar-change-btn-full{padding:7px 10px;font-size:9px}
-  .uh-navbar-store-switch-btn{padding:6px 8px;font-size:10px;font-weight:800}
-  .store-switch-label{display:none}
-  .uh-navbar-account{padding:0}
-  .uh-navbar-avatar{width:34px;height:34px;font-size:11px}
-  .search-results-bar{margin:8px 0}
-  .search-results-inner{padding:10px 12px;gap:8px}
-  .search-results-inner>span{font-size:12px}
-  .search-clear-btn{padding:4px 8px;font-size:10px}
+  .uh-navbar-inner{gap:6px;padding:8px 0}
+  .uh-navbar-title-full{display:none}
+  .uh-logo-mark{width:32px;height:32px;border-radius:8px}
+  .uh-navbar-search-inp{font-size:11px;padding:7px 28px 7px 28px}
+  .uh-loc-pill{padding:5px 8px;font-size:10px;max-width:80px}
+  .uh-nav-icon-btn{width:30px;height:30px;font-size:12px}
 }
+
+/* SKELETON */
+.uh-sk-cats{display:flex;gap:16px;margin-bottom:20px}
+.uh-sk-cat{display:flex;flex-direction:column;align-items:center;gap:8px}
+.uh-sk-circle{width:56px;height:56px;border-radius:14px;background:linear-gradient(90deg,#eee 25%,#e0e0e0 50%,#eee 75%);background-size:200% 100%;animation:uhsk 1.2s infinite}
+.uh-sk-line-sm{width:48px;height:10px;border-radius:4px;background:linear-gradient(90deg,#eee 25%,#e0e0e0 50%,#eee 75%);background-size:200% 100%;animation:uhsk 1.2s infinite}
+.uh-sk-section{margin-bottom:16px}
+.uh-sk-line-lg{width:140px;height:18px;border-radius:6px;background:linear-gradient(90deg,#eee 25%,#e0e0e0 50%,#eee 75%);background-size:200% 100%;animation:uhsk 1.2s infinite}
+.uh-sk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.uh-sk-card{border-radius:12px;border:1px solid #f0f0f0;overflow:hidden;background:#fff}
+.uh-sk-card-img{aspect-ratio:1;background:linear-gradient(90deg,#eee 25%,#e0e0e0 50%,#eee 75%);background-size:200% 100%;animation:uhsk 1.2s infinite}
+.uh-sk-card-body{padding:12px;display:flex;flex-direction:column;gap:8px}
+.uh-sk-line{height:10px;border-radius:4px;background:linear-gradient(90deg,#eee 25%,#e0e0e0 50%,#eee 75%);background-size:200% 100%;animation:uhsk 1.2s infinite}
+@keyframes uhsk{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
 /* HERO */
 .hero{background:linear-gradient(135deg,#667eea 0%,#764ba2 50%,#f093fb 100%);position:relative;overflow:hidden;margin-bottom:0}

@@ -388,9 +388,10 @@ export const getRelatedProducts = async (req, res) => {
         const related = await Product.find({
             _id: { $ne: product._id },
             isActive: true,
-            productType: "ecommerce",
+            productType: product.productType || "ecommerce",
             $or: orConditions,
         })
+            .populate("vendorId", "shopName shopLogo rating isOpen city")
             .sort({ isFeatured: -1, rating: -1, createdAt: -1 })
             .limit(10)
             .lean();
