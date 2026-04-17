@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useAdminAuth } from "../auth/AdminAuthContext";
+import useAdminWs from "../hooks/useAdminWs";
 import api from "../api/adminApi";
 import {
     FaThLarge, FaBox, FaClipboardList,
@@ -448,6 +449,16 @@ const Admin = () => {
         const interval = setInterval(fetchUnreadCount, 30000);
         return () => clearInterval(interval);
     }, [fetchUnreadCount]);
+
+    /* Global WebSocket — refresh notifications on any real-time event */
+    const wsHandler = useCallback((msg) => {
+        if (msg.type === "connected" || msg.type === "pong") return;
+        // Refresh unread count on any real-time message
+        fetchUnreadCount();
+        // Dispatch event so child pages can react (e.g. AdminLocalDelivery, AdminOrders)
+        window.dispatchEvent(new CustomEvent("admin:ws_message", { detail: msg }));
+    }, [fetchUnreadCount]);
+    const { connected: wsConnected } = useAdminWs(wsHandler);
 
     /* Fetch full list when dropdown opens */
     const fetchNotifications = useCallback(async () => {

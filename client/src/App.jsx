@@ -1,5 +1,6 @@
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Toast, useToast } from "./components/Toast";
+import GlobalWebSocket from "./components/GlobalWebSocket";
 import { BrowserRouter as Router } from "react-router-dom";
 import { Suspense, lazy, useEffect, useState } from "react";
 
@@ -28,6 +29,7 @@ export default function App() {
     <ErrorBoundary>
       <Router>
         <AuthProvider>
+          <GlobalWebSocket />
           <AppRoutes />
           <Toast toast={toast} />
         </AuthProvider>
