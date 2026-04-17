@@ -4,7 +4,7 @@
  * ✅ All API bugs fixed
  * ✅ WebSocket via NotificationContext
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "../api/axios";
 import {
@@ -25,7 +25,7 @@ const STATUS_CFG = {
     CANCELLED: { bg: "#fee2e2", c: "#b91c1c", label: "Cancelled" },
 };
 
-const StatCard = ({ label, value, icon: Icon, color, sub, index }) => (
+const StatCard = memo(({ label, value, icon: Icon, color, sub, index }) => (
     <div style={{
         background: "#fff",
         borderRadius: 16,
@@ -51,9 +51,9 @@ const StatCard = ({ label, value, icon: Icon, color, sub, index }) => (
             <Icon size={22} color={color} />
         </div>
     </div>
-);
+));
 
-const QuickCard = ({ icon: Icon, label, sub, color, onClick }) => (
+const QuickCard = memo(({ icon: Icon, label, sub, color, onClick }) => (
     <button onClick={onClick} style={{
         flex: 1, minWidth: 0, padding: "20px 16px",
         background: color, border: "none", borderRadius: 16,
@@ -66,9 +66,9 @@ const QuickCard = ({ icon: Icon, label, sub, color, onClick }) => (
         <div style={{ fontSize: 14, fontWeight: 700 }}>{label}</div>
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>{sub}</div>
     </button>
-);
+));
 
-const OrderRow = ({ order, onRefresh }) => {
+const OrderRow = memo(({ order, onRefresh }) => {
     const cfg = STATUS_CFG[order.orderStatus] || STATUS_CFG.PLACED;
     const [updating, setUpdating] = useState(false);
     const next = { PLACED: "CONFIRMED", CONFIRMED: "PACKED", PACKED: "READY_FOR_PICKUP" };
@@ -120,7 +120,7 @@ const OrderRow = ({ order, onRefresh }) => {
             </td>
         </tr>
     );
-};
+});
 
 const Dashboard = () => {
     const navigate = useNavigate();

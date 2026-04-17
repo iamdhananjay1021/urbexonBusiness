@@ -2,7 +2,7 @@
  * Orders.jsx — v3.0 Production
  * Matches Figma: Tab filters, stats cards, order table with product images
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { FiSearch, FiEye, FiPackage, FiClock, FiTruck, FiCheckCircle } from "react-icons/fi";
@@ -32,6 +32,7 @@ const Orders = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateRange, setDateRange] = useState("7");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -41,7 +42,7 @@ const Orders = () => {
     setLoading(true);
     const p = new URLSearchParams({ page, limit: 15 });
     if (filter !== "all") p.set("status", filter);
-    if (search.trim()) p.set("search", search.trim());
+    if (debouncedSearch.trim()) p.set("search", debouncedSearch.trim());
     if (dateRange) p.set("days", dateRange);
     api.get(`/vendor/orders?${p}`)
       .then(({ data }) => {
@@ -51,7 +52,13 @@ const Orders = () => {
       })
       .catch(() => { })
       .finally(() => setLoading(false));
-  }, [filter, page, search, dateRange]);
+  }, [filter, page, debouncedSearch, dateRange]);
+
+  // Debounce search input — 400ms delay
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 400);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => { load(); }, [load]);
 

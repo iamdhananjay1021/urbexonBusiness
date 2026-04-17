@@ -39,6 +39,11 @@ const subscriptionSchema = new mongoose.Schema({
         months: { type: Number, default: 1 },
     }],
 
+    // Plan change request (vendor self-service)
+    requestedPlan: { type: String, enum: ["starter", "basic", "standard", "premium", null], default: null },
+    planChangeRequestedAt: { type: Date, default: null },
+    planChangeNote: { type: String, maxlength: 300, default: "" },
+
     // Trial
     isTrialActive: { type: Boolean, default: false },
     trialEndsAt: { type: Date, default: null },

@@ -16,6 +16,7 @@ export const NotificationProvider = ({ children }) => {
     const wsRef = useRef(null);
     const reconnectRef = useRef(null);
     const pingRef = useRef(null);
+    const backoffRef = useRef(5000); // exponential backoff start
 
     // � Sound notification helper
     const playSoundRef = useRef(() => {
@@ -74,32 +75,26 @@ export const NotificationProvider = ({ children }) => {
 
         if (!token) return;
 
-        // Get WebSocket base URL - production → api.urbexon.in, dev → localhost:9000
-        const getWSBase = () => {
-            const apiUrl = import.meta.env.VITE_API_URL;
-            // If explicit API URL and NOT localhost, derive WS from it
-            if (apiUrl && !apiUrl.includes("localhost")) {
-                return apiUrl.replace("https://", "wss://").replace("http://", "ws://").replace(/\/api\/?$/, "");
-            }
-            // Runtime detection: if browser is on production domain, use api.urbexon.in
-            if (typeof window !== "undefined" && !window.location.hostname.includes("localhost")) {
-                return "wss://api.urbexon.in";
-            }
-            // Local dev fallback
-            return "ws://localhost:9000";
-        };
+        // WebSocket URL: explicit env var → runtime hostname detection → fallback
+        const wsBase = import.meta.env.VITE_WS_URL
+            || (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+                ? "ws://localhost:9000" : "wss://api.urbexon.in");
 
-        const WS_BASE = getWSBase();
+        let retries = 0;
+        const MAX_RETRIES = 15;
 
         const connect = () => {
+            if (retries >= MAX_RETRIES) return;
+            if (document.hidden) return;
             try {
-                const basePath = WS_BASE.endsWith("/") ? WS_BASE.slice(0, -1) : WS_BASE;
                 const tkn = encodeURIComponent(token);
-                const ws = new WebSocket(`${basePath}/ws?token=${tkn}`);
+                const ws = new WebSocket(`${wsBase}/ws?token=${tkn}`);
                 wsRef.current = ws;
 
                 ws.onopen = () => {
-                    console.log("[Vendor WS] Connected to:", `${basePath}/ws`);
+                    console.log("[Vendor WS] Connected to:", wsBase);
+                    backoffRef.current = 3000;
+                    retries = 0;
                     pingRef.current = setInterval(() => {
                         if (ws.readyState === WebSocket.OPEN) {
                             ws.send(JSON.stringify({ type: "ping" }));
@@ -155,22 +150,39 @@ export const NotificationProvider = ({ children }) => {
 
                 ws.onclose = () => {
                     clearInterval(pingRef.current);
-                    reconnectRef.current = setTimeout(connect, 5000);
+                    if (retries < MAX_RETRIES) {
+                        retries++;
+                        const delay = backoffRef.current;
+                        backoffRef.current = Math.min(delay * 2, 60000);
+                        reconnectRef.current = setTimeout(connect, delay);
+                    }
                 };
 
                 ws.onerror = () => {
                     ws.close();
                 };
             } catch (err) {
-                console.error("WS connect error:", err);
+                console.error("[Vendor WS] Connection error:", err);
             }
         };
+
+        // Reconnect when tab becomes visible
+        const onVisChange = () => {
+            if (!document.hidden && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) {
+                retries = 0;
+                backoffRef.current = 3000;
+                clearTimeout(reconnectRef.current);
+                connect();
+            }
+        };
+        document.addEventListener("visibilitychange", onVisChange);
 
         connect();
 
         return () => {
             clearInterval(pingRef.current);
             clearTimeout(reconnectRef.current);
+            document.removeEventListener("visibilitychange", onVisChange);
             wsRef.current?.close();
         };
     }, [addNotification]);

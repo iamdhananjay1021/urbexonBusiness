@@ -28,7 +28,7 @@ import multer from "multer";
 import { registerVendor, getVendorStatus } from "../../controllers/vendor/vendorAuth.js";
 import { getFeaturedVendors, getVendorStore } from "../../controllers/vendor/vendorPublic.js";
 import { getMyProfile, updateMyProfile, toggleShopOpen } from "../../controllers/vendor/venderProfile.js";
-import { getEarnings, getWeeklyEarnings, getSubscription } from "../../controllers/vendor/vendorEarnings.js";
+import { getEarnings, getWeeklyEarnings, getSubscription, requestPlanChange, cancelPlanChangeRequest } from "../../controllers/vendor/vendorEarnings.js";
 import { getVendorOrders, updateOrderStatus } from "../../controllers/vendor/vendorOrders.js";
 import {
     getAllVendors, getVendorDetail,
@@ -114,6 +114,8 @@ router.patch("/vendor/orders/:id/status", protectVendor, requireApprovedVendor, 
 router.get("/vendor/earnings", protectVendor, requireApprovedVendor, getEarnings);
 router.get("/vendor/earnings/weekly", protectVendor, requireApprovedVendor, getWeeklyEarnings);
 router.get("/vendor/subscription", protectVendor, getSubscription);
+router.post("/vendor/subscription/request-change", protectVendor, requireApprovedVendor, requestPlanChange);
+router.post("/vendor/subscription/cancel-request", protectVendor, requireApprovedVendor, cancelPlanChangeRequest);
 // ── Vendor Payouts ────────────────────────────────────────────────────────
 router.get("/vendor/payouts", protectVendor, requireApprovedVendor, vendorGetPayouts);
 router.post("/vendor/payouts/request", protectVendor, requireApprovedVendor, vendorRequestPayout);

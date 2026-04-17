@@ -2,7 +2,7 @@
  * Layout.jsx — Vendor Portal v3.0
  * Matches Figma design: dark sidebar, clean content area
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotifications } from "../contexts/NotificationContext";
@@ -30,13 +30,13 @@ const Layout = () => {
   const [showNotifs, setShowNotifs] = useState(false);
   const [search, setSearch] = useState("");
 
-  const handleLogout = () => { logout(); navigate("/login"); };
+  const handleLogout = useCallback(() => { logout(); navigate("/login"); }, [logout, navigate]);
 
   // Close sidebar on route change (mobile)
   useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
 
-  const initials = (vendor?.ownerName || vendor?.shopName || "V")
-    .split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const initials = useMemo(() => (vendor?.ownerName || vendor?.shopName || "V")
+    .split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase(), [vendor?.ownerName, vendor?.shopName]);
 
   const Sidebar = () => (
     <aside style={{

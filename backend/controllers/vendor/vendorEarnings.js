@@ -5,6 +5,8 @@
 import Order from "../../models/Order.js";
 import Product from "../../models/Product.js";
 import Subscription from "../../models/vendorModels/Subscription.js";
+import Notification from "../../models/Notification.js";
+import Vendor from "../../models/vendorModels/Vendor.js";
 
 // GET /api/vendor/earnings
 export const getEarnings = async (req, res) => {
@@ -143,5 +145,93 @@ export const getSubscription = async (req, res) => {
         res.json({ success: true, subscription: subscription || null, plans: Subscription.PLANS || {} });
     } catch (err) {
         res.status(500).json({ success: false, message: "Failed to fetch subscription" });
+    }
+};
+
+// POST /api/vendor/subscription/request-change
+export const requestPlanChange = async (req, res) => {
+    try {
+        const { plan, note } = req.body;
+        const validPlans = Object.keys(Subscription.PLANS);
+        if (!plan || !validPlans.includes(plan)) {
+            return res.status(400).json({ success: false, message: `Invalid plan. Choose from: ${validPlans.join(", ")}` });
+        }
+
+        const vendorId = req.vendor._id;
+        let subscription = await Subscription.findOne({ vendorId });
+
+        // If same as current plan
+        if (subscription?.plan === plan && subscription?.status === "active") {
+            return res.status(400).json({ success: false, message: "You are already on this plan." });
+        }
+
+        // If already has a pending request
+        if (subscription?.requestedPlan) {
+            return res.status(400).json({ success: false, message: `You already have a pending request for "${subscription.requestedPlan}" plan. Cancel it first to request a different one.` });
+        }
+
+        if (!subscription) {
+            // Create a new subscription doc in pending state
+            const planConfig = Subscription.PLANS[plan];
+            subscription = await Subscription.create({
+                vendorId,
+                plan: "starter",
+                monthlyFee: 0,
+                maxProducts: 10,
+                status: "pending_payment",
+                requestedPlan: plan,
+                planChangeRequestedAt: new Date(),
+                planChangeNote: (note || "").slice(0, 300),
+            });
+        } else {
+            subscription.requestedPlan = plan;
+            subscription.planChangeRequestedAt = new Date();
+            subscription.planChangeNote = (note || "").slice(0, 300);
+            await subscription.save();
+        }
+
+        // Get vendor name for notification
+        const vendor = await Vendor.findById(vendorId).select("businessName").lean();
+        const vendorName = vendor?.businessName || "A vendor";
+        const planLabel = Subscription.PLANS[plan]?.label || plan;
+        const currentLabel = subscription.plan ? (Subscription.PLANS[subscription.plan]?.label || subscription.plan) : "None";
+
+        // Create admin notification
+        await Notification.create({
+            type: "plan_change",
+            title: "Plan Change Request",
+            message: `${vendorName} requested to change from ${currentLabel} to ${planLabel} plan.`,
+            icon: "vendor",
+            link: `/admin/vendors/${vendorId}`,
+            meta: { vendorId, currentPlan: subscription.plan, requestedPlan: plan },
+        });
+
+        res.json({
+            success: true,
+            message: `Plan change request submitted! Admin will review and activate your "${planLabel}" plan.`,
+            subscription: subscription.toObject(),
+        });
+    } catch (err) {
+        console.error("[requestPlanChange]", err);
+        res.status(500).json({ success: false, message: "Failed to submit plan change request." });
+    }
+};
+
+// POST /api/vendor/subscription/cancel-request
+export const cancelPlanChangeRequest = async (req, res) => {
+    try {
+        const subscription = await Subscription.findOne({ vendorId: req.vendor._id });
+        if (!subscription?.requestedPlan) {
+            return res.status(400).json({ success: false, message: "No pending plan change request." });
+        }
+
+        subscription.requestedPlan = null;
+        subscription.planChangeRequestedAt = null;
+        subscription.planChangeNote = "";
+        await subscription.save();
+
+        res.json({ success: true, message: "Plan change request cancelled.", subscription: subscription.toObject() });
+    } catch (err) {
+        res.status(500).json({ success: false, message: "Failed to cancel request." });
     }
 };

@@ -95,31 +95,24 @@ const Dashboard = () => {
     const token = authRaw ? JSON.parse(authRaw)?.token : null;
     if (!token) return;
 
-    // Get WebSocket base URL - production → api.urbexon.in, dev → localhost:9000
-    const getWSBase = () => {
-      const apiUrl = import.meta.env.VITE_API_URL;
-      // If explicit API URL and NOT localhost, derive WS from it
-      if (apiUrl && !apiUrl.includes("localhost")) {
-        return apiUrl.replace("https://", "wss://").replace("http://", "ws://").replace(/\/api\/?$/, "");
-      }
-      // Runtime detection: if browser is on production domain, use api.urbexon.in
-      if (typeof window !== "undefined" && !window.location.hostname.includes("localhost")) {
-        return "wss://api.urbexon.in";
-      }
-      // Local dev fallback
-      return "ws://localhost:9000";
-    };
+    // WebSocket URL: explicit env var → runtime hostname detection → fallback
+    const wsBase = import.meta.env.VITE_WS_URL
+      || (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+        ? "ws://localhost:9000" : "wss://api.urbexon.in");
 
-    const WS_BASE = getWSBase();
-    let ws, pingInterval, retryTimeout, mounted = true;
+    let ws, pingInterval, retryTimeout, mounted = true, backoff = 3000, retries = 0;
+    const MAX_RETRIES = 15;
+
     const connect = () => {
-      if (!mounted) return;
+      if (!mounted || retries >= MAX_RETRIES) return;
+      if (document.hidden) return; // don't connect when tab is hidden
       try {
-        const basePath = WS_BASE.endsWith("/") ? WS_BASE.slice(0, -1) : WS_BASE;
-        ws = new WebSocket(`${basePath}/ws?token=${token}`);
+        ws = new WebSocket(`${wsBase}/ws?token=${token}`);
         wsRef.current = ws;
         ws.onopen = () => {
-          console.log("[WS] Connected from delivery-panel");
+          console.log("[Delivery WS] Connected to:", wsBase);
+          backoff = 3000;
+          retries = 0;
           pingInterval = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: "ping" })); }, 25000);
         };
         ws.onmessage = (e) => {
@@ -134,12 +127,24 @@ const Dashboard = () => {
             if (msg.type === "rider:order_assigned") { playNotification(); load(); }
           } catch { }
         };
-        ws.onclose = () => { clearInterval(pingInterval); if (mounted) retryTimeout = setTimeout(connect, 5000); };
+        ws.onclose = () => {
+          clearInterval(pingInterval);
+          if (mounted && retries < MAX_RETRIES) {
+            retries++;
+            retryTimeout = setTimeout(connect, backoff);
+            backoff = Math.min(backoff * 2, 60000);
+          }
+        };
         ws.onerror = () => ws.close();
-      } catch (err) { console.error("[WS] Connection error:", err); }
+      } catch (err) { console.error("[Delivery WS] Connection error:", err); }
     };
+
+    // Reconnect when tab becomes visible again
+    const onVisChange = () => { if (!document.hidden && (!ws || ws.readyState !== WebSocket.OPEN)) { retries = 0; backoff = 3000; clearTimeout(retryTimeout); connect(); } };
+    document.addEventListener("visibilitychange", onVisChange);
+
     connect();
-    return () => { mounted = false; clearInterval(pingInterval); clearTimeout(retryTimeout); stopAlert(); ws?.close(); };
+    return () => { mounted = false; clearInterval(pingInterval); clearTimeout(retryTimeout); document.removeEventListener("visibilitychange", onVisChange); stopAlert(); ws?.close(); };
   }, [load]);
 
   useEffect(() => { load(); }, [load]);

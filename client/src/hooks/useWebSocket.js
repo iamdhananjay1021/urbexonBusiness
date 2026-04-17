@@ -5,48 +5,37 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 
-// Determine WS URL: production → api.urbexon.in, dev → localhost:9000
-const getWSBase = () => {
-    const apiUrl = import.meta.env.VITE_API_URL;
-    // If explicit API URL and NOT localhost, derive WS from it
-    if (apiUrl && !apiUrl.includes("localhost")) {
-        return apiUrl.replace("https://", "wss://").replace("http://", "ws://").replace(/\/api\/?$/, "");
-    }
-    // Runtime detection: if browser is on production domain, use api.urbexon.in
-    if (typeof window !== "undefined" && !window.location.hostname.includes("localhost")) {
-        return "wss://api.urbexon.in";
-    }
-    // Local dev fallback
-    return "ws://localhost:9000";
-};
-
-const WS_BASE = getWSBase();
+// WebSocket URL: explicit env var → runtime hostname detection → fallback
+const WS_BASE = import.meta.env.VITE_WS_URL
+    || (typeof window !== "undefined" &&
+        (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+        ? "ws://localhost:9000" : "wss://api.urbexon.in");
 
 export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {}) => {
     const wsRef = useRef(null);
     const pingRef = useRef(null);
     const reconnectRef = useRef(null);
     const reconnectCount = useRef(0);
+    const backoffRef = useRef(3000);
     const [isConnected, setIsConnected] = useState(false);
     const [lastMessage, setLastMessage] = useState(null);
 
     const connect = useCallback(() => {
         if (!token) return;
         if (wsRef.current?.readyState === WebSocket.OPEN) return;
+        if (document.hidden) return;
 
-        // Construct WebSocket URL: ensure clean path without duplication
-        const basePath = WS_BASE.endsWith("/") ? WS_BASE.slice(0, -1) : WS_BASE;
-        const wsUrl = `${basePath}/ws?token=${token}`;
+        const wsUrl = `${WS_BASE}/ws?token=${token}`;
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
             setIsConnected(true);
             reconnectCount.current = 0;
-            console.log(`[Client WS] Connected to: ${basePath}/ws`);
+            backoffRef.current = 3000;
+            console.log(`[Client WS] Connected to: ${WS_BASE}`);
             onConnect?.();
 
-            // Ping every 25s to keep alive
             pingRef.current = setInterval(() => {
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: "ping" }));
@@ -57,7 +46,7 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
         ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                if (data.type === "pong") return; // ignore pings
+                if (data.type === "pong") return;
                 setLastMessage(data);
                 onMessage?.(data);
             } catch { /* ignore */ }
@@ -68,10 +57,10 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
             clearInterval(pingRef.current);
             onDisconnect?.();
 
-            // Auto reconnect with backoff (max 30s)
-            if (reconnectCount.current < 10) {
-                const delay = Math.min(1000 * 2 ** reconnectCount.current, 30000);
+            if (reconnectCount.current < 15) {
+                const delay = backoffRef.current;
                 reconnectCount.current++;
+                backoffRef.current = Math.min(delay * 2, 60000);
                 reconnectRef.current = setTimeout(connect, delay);
             }
         };
@@ -97,7 +86,22 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
 
     useEffect(() => {
         if (token) connect();
-        return disconnect;
+
+        // Reconnect when tab becomes visible
+        const onVisChange = () => {
+            if (!document.hidden && token && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) {
+                reconnectCount.current = 0;
+                backoffRef.current = 3000;
+                clearTimeout(reconnectRef.current);
+                connect();
+            }
+        };
+        document.addEventListener("visibilitychange", onVisChange);
+
+        return () => {
+            document.removeEventListener("visibilitychange", onVisChange);
+            disconnect();
+        };
     }, [token]);
 
     return { isConnected, lastMessage, send, disconnect };
