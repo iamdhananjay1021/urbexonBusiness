@@ -1,4 +1,5 @@
 import express from "express";
+import multer from "multer";
 import {
    getActiveCategories,
    getAllCategories,
@@ -8,7 +9,15 @@ import {
    deleteCategory,
 } from "../controllers/categoryController.js";
 import { protect, adminOnly } from "../middlewares/authMiddleware.js";
-import upload from "../middlewares/upload.middleware.js";
+
+const upload = multer({
+   storage: multer.memoryStorage(),
+   limits: { fileSize: 5 * 1024 * 1024 },
+   fileFilter: (_req, file, cb) => {
+      if (!file.mimetype.startsWith("image/")) return cb(new Error("Only image files allowed"), false);
+      cb(null, true);
+   },
+});
 
 const router = express.Router();
 

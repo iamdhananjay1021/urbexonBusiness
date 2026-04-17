@@ -1,6 +1,6 @@
 import { getCache, setCache, delCacheByPrefix } from "../utils/Cache.js";
 import Banner from "../models/Banner.js";
-import cloudinary from "../config/cloudinary.js";
+import cloudinary, { uploadToCloudinary } from "../config/cloudinary.js";
 
 const optimizeUrl = (url, width = 1200) => {
     if (!url || !url.includes("cloudinary.com")) return url ?? "";
@@ -48,8 +48,7 @@ export const createBanner = async (req, res) => {
 
         if (!req.file) return res.status(400).json({ success: false, message: "Banner image is required" });
 
-        // Debug: log file info
-        console.log("[Banner] File received:", { path: req.file.path, filename: req.file.filename, size: req.file.size });
+        const result = await uploadToCloudinary(req.file.buffer, "rv-gift-products");
 
         const banner = await Banner.create({
             title: title?.trim() || "",
@@ -58,8 +57,8 @@ export const createBanner = async (req, res) => {
             isActive: isActive === "true" || isActive === true,
             order: Number(order) || 0,
             image: {
-                url: optimizeUrl(req.file.path),
-                public_id: req.file.filename,
+                url: optimizeUrl(result.secure_url),
+                public_id: result.public_id,
             },
         });
 
@@ -88,9 +87,10 @@ export const updateBanner = async (req, res) => {
         // Replace image if new one uploaded
         if (req.file) {
             await safeDestroy(banner.image?.public_id);
+            const result = await uploadToCloudinary(req.file.buffer, "rv-gift-products");
             banner.image = {
-                url: optimizeUrl(req.file.path),
-                public_id: req.file.filename,
+                url: optimizeUrl(result.secure_url),
+                public_id: result.public_id,
             };
         }
 

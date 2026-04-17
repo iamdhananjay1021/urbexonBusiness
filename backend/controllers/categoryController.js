@@ -1,6 +1,6 @@
 import { getCache, setCache, delCacheByPrefix } from "../utils/Cache.js";
 import Category from "../models/Category.js";
-import cloudinary from "../config/cloudinary.js";
+import cloudinary, { uploadToCloudinary } from "../config/cloudinary.js";
 
 const optimizeUrl = (url, width = 400) => {
     if (!url || !url.includes("cloudinary.com")) return url ?? "";
@@ -64,7 +64,10 @@ export const createCategory = async (req, res) => {
         if (existing) return res.status(400).json({ success: false, message: "Category already exists" });
 
         const image = req.file
-            ? { url: optimizeUrl(req.file.path), public_id: req.file.filename }
+            ? await (async () => {
+                const result = await uploadToCloudinary(req.file.buffer, "rv-gift-products");
+                return { url: optimizeUrl(result.secure_url), public_id: result.public_id };
+            })()
             : { url: "", public_id: "" };
 
         const category = await Category.create({
@@ -102,9 +105,10 @@ export const updateCategory = async (req, res) => {
 
         if (req.file) {
             await safeDestroy(cat.image?.public_id);
+            const result = await uploadToCloudinary(req.file.buffer, "rv-gift-products");
             cat.image = {
-                url: optimizeUrl(req.file.path),
-                public_id: req.file.filename,
+                url: optimizeUrl(result.secure_url),
+                public_id: result.public_id,
             };
         }
 

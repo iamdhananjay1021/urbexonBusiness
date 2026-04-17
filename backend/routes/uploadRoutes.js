@@ -1,6 +1,16 @@
 import express from "express";
-import upload from "../middlewares/upload.middleware.js";
+import multer from "multer";
 import { protect } from "../middlewares/authMiddleware.js";
+import { uploadToCloudinary } from "../config/cloudinary.js";
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith("image/")) return cb(new Error("Only image files allowed"), false);
+        cb(null, true);
+    },
+});
 
 const router = express.Router();
 
@@ -12,15 +22,16 @@ router.post(
     "/custom-image",
     protect,
     upload.single("image"),
-    (req, res) => {
+    async (req, res) => {
         try {
             if (!req.file) {
                 return res.status(400).json({ message: "No image uploaded" });
             }
+            const result = await uploadToCloudinary(req.file.buffer, "rv-gift-products");
             res.json({
                 success: true,
-                url: req.file.path,        // Cloudinary URL
-                public_id: req.file.filename,
+                url: result.secure_url,
+                public_id: result.public_id,
             });
         } catch (error) {
             console.error("UPLOAD ERROR:", error);
