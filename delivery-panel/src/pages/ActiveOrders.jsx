@@ -301,7 +301,7 @@ const ActiveOrders = () => {
                   disabled={working[orderRequest.orderId]}
                   style={{ padding: "14px 20px", border: "1.5px solid #ef4444", borderRadius: 8, background: "rgba(239,68,68,.15)", color: "#ef4444", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
                 >
-                  ✕ Reject
+                  ⏭ Skip
                 </button>
               </div>
             </div>

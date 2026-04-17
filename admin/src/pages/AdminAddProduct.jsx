@@ -390,23 +390,11 @@ const AdminAddProduct = () => {
                 fd.append("highlights", JSON.stringify(obj));
             }
 
-            /* Debug — shows exactly what's being sent */
-            if (process.env.NODE_ENV !== "production") {
-                console.log("[AdminAddProduct] payload:");
-                for (const [k, v] of fd.entries()) {
-                    console.log(`  ${k} =`, v instanceof File ? `File(${v.name}, ${v.size}b)` : v);
-                }
-            }
-
             const response = await api.post("/products/admin", fd);
-            console.log("[AdminAddProduct] ✅ Product created:", response.data?.product?._id);
             showToast("success", "Product published successfully!");
             setTimeout(() => navigate("/admin/products"), 1400);
 
         } catch (err) {
-            console.error("[AdminAddProduct] ❌ Error:", err);
-            console.error("[AdminAddProduct] Response data:", err.response?.data);
-
             const respData = err.response?.data || {};
             const apiErrors = respData.errors;
 

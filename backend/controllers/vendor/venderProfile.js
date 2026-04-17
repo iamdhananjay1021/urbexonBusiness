@@ -96,3 +96,29 @@ export const toggleShopOpen = async (req, res) => {
         });
     }
 };
+
+// PATCH /api/vendor/location — update vendor lat/lng
+export const updateLocation = async (req, res) => {
+    try {
+        const { lat, lng } = req.body;
+        const latitude = parseFloat(lat);
+        const longitude = parseFloat(lng);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+            return res.status(400).json({ success: false, message: "Valid lat and lng are required" });
+        }
+        if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+            return res.status(400).json({ success: false, message: "Coordinates out of range" });
+        }
+
+        const vendor = await Vendor.findById(req.vendor._id);
+        if (!vendor) return res.status(404).json({ success: false, message: "Vendor not found" });
+
+        vendor.location = { type: "Point", coordinates: [longitude, latitude] };
+        await vendor.save();
+
+        res.json({ success: true, message: "Location updated", location: vendor.location });
+    } catch (err) {
+        console.error("[updateLocation]", err);
+        res.status(500).json({ success: false, message: "Failed to update location" });
+    }
+};

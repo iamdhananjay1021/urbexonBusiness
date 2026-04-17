@@ -52,8 +52,9 @@ const Checkout = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const buyNowItem = location.state?.buyNowItem || null;
+    const couponFromCart = location.state?.coupon || null;
 
-    const ck = useCheckout(buyNowItem);
+    const ck = useCheckout(buyNowItem, couponFromCart);
     const {
         step, setStep, error, setError,
         contact, setContact,
@@ -533,7 +534,7 @@ const Checkout = () => {
         position: fixed;
         bottom: 0; left: 0; right: 0;
         z-index: 200;
-        padding: 10px 16px 14px;
+        padding: 10px 16px calc(14px + env(safe-area-inset-bottom, 0px));
         background: #fff;
         border-top: 1px solid var(--border);
         box-shadow: 0 -4px 24px rgba(0,0,0,.12);
@@ -802,7 +803,7 @@ const Checkout = () => {
                                             </div>
                                         )}
 
-                                        {/* Delivery Mode */}
+                                        {/* Delivery Mode (E-commerce only) */}
                                         <div className="ck-card">
                                             <h2 className="ck-card-title"><FaTruck className="ck-card-icon" /> Delivery Mode</h2>
                                             <div style={{ display: "grid", gap: 10 }}>
@@ -815,21 +816,6 @@ const Checkout = () => {
                                                         <p style={{ fontSize: 12, color: "var(--faint)" }}>3–5 business days · Shiprocket managed</p>
                                                     </div>
                                                     {deliveryType === "ECOMMERCE_STANDARD" && <FaCheckCircle className="ck-pay-check pc-online" />}
-                                                </button>
-
-                                                <button
-                                                    onClick={() => setDeliveryType("URBEXON_HOUR")}
-                                                    disabled={(codDistance || 0) <= 0 || (codDistance || 0) > 15}
-                                                    className={`ck-pay-opt${deliveryType === "URBEXON_HOUR" ? " sel-cod" : ""}`}
-                                                    style={{ opacity: (codDistance || 0) <= 0 || (codDistance || 0) > 15 ? 0.6 : 1 }}>
-                                                    <div className="ck-pay-icon pi-cod"><FaStar size={13} /></div>
-                                                    <div style={{ flex: 1, textAlign: "left" }}>
-                                                        <p style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", marginBottom: 2 }}>Urbexon Hour</p>
-                                                        <p style={{ fontSize: 12, color: "var(--faint)" }}>
-                                                            45–120 mins · 15 km radius · {codDistance !== null ? `${Number(codDistance).toFixed(1)} km away` : "distance pending"}
-                                                        </p>
-                                                    </div>
-                                                    {deliveryType === "URBEXON_HOUR" && <FaCheckCircle className="ck-pay-check pc-cod" />}
                                                 </button>
                                             </div>
                                         </div>
@@ -855,7 +841,7 @@ const Checkout = () => {
                                                 {paymentMethod === "online" && <FaCheckCircle className="ck-pay-check pc-online" />}
                                             </button>
 
-                                            {/* COD */}
+                                            {/* COD (pincode-based, no distance) */}
                                             {codChecking ? (
                                                 <div className="ck-pay-opt">
                                                     <div className="ck-pay-icon pi-load"><FaSpinner size={13} className="spin" /></div>
@@ -870,9 +856,6 @@ const Checkout = () => {
                                                         <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 4, marginBottom: 3 }}>
                                                             <span style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>Cash on Delivery</span>
                                                             <span className="ck-pay-badge pb-cod">COD</span>
-                                                            {codDistance !== null && (
-                                                                <span className="ck-pay-badge pb-dist">📍 {Number(codDistance).toFixed(1)} km</span>
-                                                            )}
                                                         </div>
                                                         <p style={{ fontSize: 12, color: "var(--faint)" }}>
                                                             Pay on arrival · +₹{fmt(pricing?.deliveryCharge || 70)} delivery

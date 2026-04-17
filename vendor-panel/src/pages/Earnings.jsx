@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import api from "../api/axios";
 import {
   FiTrendingUp, FiClock, FiDollarSign,
-  FiArrowUpRight, FiArrowDownRight, FiPackage,
+  FiArrowUpRight, FiArrowDownRight, FiPackage, FiPercent,
 } from "react-icons/fi";
 
 const fmt = n => `₹${Number(n || 0).toLocaleString("en-IN")}`;
@@ -98,7 +98,7 @@ const Earnings = () => {
 
       {/* Top Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 24 }}>
-        {/* Total Earnings */}
+        {/* Net Earnings */}
         <div style={{
           background: "linear-gradient(135deg, #059669, #10b981)",
           borderRadius: 16, padding: 24,
@@ -107,7 +107,7 @@ const Earnings = () => {
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.8)", textTransform: "uppercase", letterSpacing: 1 }}>
-              Total Earnings
+              Net Earnings
             </div>
             <div style={{
               width: 36, height: 36, borderRadius: 10,
@@ -118,10 +118,10 @@ const Earnings = () => {
             </div>
           </div>
           <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", marginBottom: 4 }}>
-            {fmt(e.total)}
+            {fmt(e.netTotal || e.grossTotal)}
           </div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
-            {e.totalOrders || 0} delivered order{e.totalOrders !== 1 ? "s" : ""}
+            {e.totalOrders || 0} delivered order{e.totalOrders !== 1 ? "s" : ""} · Gross {fmt(e.grossTotal)}
           </div>
         </div>
 
@@ -138,7 +138,7 @@ const Earnings = () => {
             <FiTrendingUp size={18} color={isUp ? "#10b981" : "#ef4444"} />
           </div>
           <div style={{ fontSize: 28, fontWeight: 800, color: "#111827", marginBottom: 6 }}>
-            {fmt(e.thisMonth)}
+            {fmt(e.thisMonthNet || e.thisMonth)}
           </div>
           <div style={{
             fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 4,
@@ -152,7 +152,7 @@ const Earnings = () => {
           </div>
         </div>
 
-        {/* Pending */}
+        {/* Commission */}
         <div style={{
           background: "#fff", borderRadius: 16, padding: 24,
           boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
@@ -160,19 +160,19 @@ const Earnings = () => {
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 1 }}>
-              Pending
+              Commission ({e.commissionRate || 0}%)
             </div>
-            <FiClock size={18} color="#f59e0b" />
+            <FiPercent size={18} color="#ef4444" />
           </div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: "#111827", marginBottom: 6 }}>
-            {fmt(e.pendingAmount)}
+          <div style={{ fontSize: 28, fontWeight: 800, color: "#ef4444", marginBottom: 6 }}>
+            {fmt(e.commissionDeducted)}
           </div>
           <div style={{ fontSize: 12, color: "#9ca3af" }}>
-            {e.pendingOrders || 0} order{e.pendingOrders !== 1 ? "s" : ""} in progress
+            This month: {fmt(e.thisMonthCommission)}
           </div>
         </div>
 
-        {/* Orders */}
+        {/* Pending */}
         <div style={{
           background: "#fff", borderRadius: 16, padding: 24,
           boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
@@ -180,15 +180,15 @@ const Earnings = () => {
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 1 }}>
-              Total Orders
+              Pending Settlement
             </div>
-            <FiPackage size={18} color="#7c3aed" />
+            <FiClock size={18} color="#f59e0b" />
           </div>
           <div style={{ fontSize: 28, fontWeight: 800, color: "#111827", marginBottom: 6 }}>
-            {e.totalOrders || 0}
+            {fmt(e.pendingSettlement)}
           </div>
           <div style={{ fontSize: 12, color: "#9ca3af" }}>
-            {e.monthOrders || 0} this month
+            {e.pendingOrders || 0} order{e.pendingOrders !== 1 ? "s" : ""} in progress
           </div>
         </div>
       </div>

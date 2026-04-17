@@ -4,6 +4,7 @@ import {
    getActiveCategories,
    getAllCategories,
    getSingleCategory,
+   getCategorySubcategories,
    createCategory,
    updateCategory,
    deleteCategory,
@@ -32,12 +33,13 @@ router.get("/", getActiveCategories);
 router.get("/admin/all", protect, adminOnly, getAllCategories);  // ✅ specific pehle
 
 router.post("/", protect, adminOnly, upload.single("image"), createCategory);
-router.put("/:id", protect, adminOnly, upload.single("image"), updateCategory);
-router.delete("/:id", protect, adminOnly, deleteCategory);
+router.put("/:slug", protect, adminOnly, upload.single("image"), updateCategory);
+router.delete("/:slug", protect, adminOnly, deleteCategory);
 
 /* ─────────────────────────────────────────────
    DYNAMIC ROUTE — sabse baad mein
 ───────────────────────────────────────────── */
+router.get("/:slug/subcategories", getCategorySubcategories);
 router.get("/:slug", getSingleCategory);  // ✅ No mongoose auto ObjectId cast
 
 export default router;

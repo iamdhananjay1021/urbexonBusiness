@@ -8,10 +8,11 @@ import {
     FaSignOutAlt, FaBars, FaTimes, FaChevronRight, FaPlusCircle,
     FaImage, FaTags, FaStore, FaMapMarkerAlt, FaMoneyBillWave, FaUndoAlt, FaTruck,
     FaUsers, FaTicketAlt, FaBell, FaCheck, FaShoppingCart, FaExclamationTriangle, FaInfoCircle,
+    FaGlobeAsia,
 } from "react-icons/fa";
 
 /* ─── Pages that need zero padding (manage their own layout) ─── */
-const FULLBLEED_ROUTES = ["refunds", "settlements", "payouts", "pincodes", "local-delivery"];
+const FULLBLEED_ROUTES = ["refunds", "settlements", "payouts", "pincodes", "local-delivery", "map"];
 
 const ADMIN_STYLES = `
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
@@ -184,6 +185,9 @@ const ADMIN_STYLES = `
     @media (max-width: 480px) {
         .adm-notif-panel { width: calc(100vw - 24px); right: -8px; }
     }
+    @media (max-width: 640px) {
+        .adm-main-content { padding: 12px !important; }
+    }
     .adm-notif-item {
         display: flex; gap: 10px; padding: 12px 16px;
         border-bottom: 1px solid #f1f5f9;
@@ -242,6 +246,7 @@ const NAV_SECTIONS = [
         items: [
             { to: ".", end: true, icon: FaThLarge, label: "Dashboard" },
             { to: "orders", icon: FaClipboardList, label: "Orders" },
+            { to: "map", icon: FaGlobeAsia, label: "Live Map" },
         ],
     },
     {
@@ -653,6 +658,7 @@ const Admin = () => {
                         background: "var(--adm-bg)",
                         padding: isFullBleed ? 0 : "24px",
                     }}
+                    className={isFullBleed ? "" : "adm-main-content"}
                 >
                     <Outlet />
                 </main>

@@ -28,12 +28,12 @@ const AdminCategories = () => {
         })();
     }, []);
 
-    const handleDelete = async (id) => {
+    const handleDelete = async (slug) => {
         if (!window.confirm("Delete this category?")) return;
-        setDeletingId(id);
+        setDeletingId(slug);
         try {
-            await deleteCategory(id);
-            setCategories(prev => prev.filter(c => c._id !== id));
+            await deleteCategory(slug);
+            setCategories(prev => prev.filter(c => c.slug !== slug));
             showToast("success", "Category deleted");
         } catch {
             showToast("error", "Delete failed");
@@ -46,7 +46,7 @@ const AdminCategories = () => {
         try {
             const fd = new FormData();
             fd.append("isActive", !cat.isActive);
-            const { data } = await updateCategory(cat._id, fd);
+            const { data } = await updateCategory(cat.slug, fd);
             setCategories(prev => prev.map(c => c._id === cat._id ? data : c));
             showToast("success", `Category ${data.isActive ? "activated" : "deactivated"}`);
         } catch {
@@ -154,12 +154,12 @@ const AdminCategories = () => {
                                     style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", color: cat.isActive ? "#f59e0b" : "#22c55e", cursor: "pointer" }}>
                                     {cat.isActive ? <FiToggleRight size={16} /> : <FiToggleLeft size={16} />}
                                 </button>
-                                <button onClick={() => navigate(`/admin/categories/${cat._id}/edit`)} title="Edit"
+                                <button onClick={() => navigate(`/admin/categories/${cat.slug}/edit`)} title="Edit"
                                     style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", color: "#2563eb", cursor: "pointer" }}>
                                     <FiEdit2 size={14} />
                                 </button>
-                                <button onClick={() => handleDelete(cat._id)} disabled={deletingId === cat._id} title="Delete"
-                                    style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #fecaca", borderRadius: 8, background: "#fef2f2", color: "#ef4444", cursor: "pointer", opacity: deletingId === cat._id ? 0.5 : 1 }}>
+                                <button onClick={() => handleDelete(cat.slug)} disabled={deletingId === cat.slug} title="Delete"
+                                    style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #fecaca", borderRadius: 8, background: "#fef2f2", color: "#ef4444", cursor: "pointer", opacity: deletingId === cat.slug ? 0.5 : 1 }}>
                                     <FiTrash2 size={14} />
                                 </button>
                             </div>

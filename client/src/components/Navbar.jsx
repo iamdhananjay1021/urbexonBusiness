@@ -17,6 +17,7 @@ import { useSelector } from "react-redux";
 import { useAuth } from "../contexts/AuthContext";
 import { fetchActiveCategories } from "../api/categoryApi";
 import api from "../api/axios";
+import NotificationCenter from "./NotificationCenter";
 import {
     selectEcommerceTotalItems,
     selectUHTotalItems,
@@ -89,6 +90,11 @@ const CSS = `
 }
 .ux-hour-pill:hover { filter: brightness(1.1); transform: translateY(-1px); }
 @media(max-width:640px){ .ux-hour-pill span.ux-hp-label { display: none; } }
+@media(max-width:1024px){
+    .ux-icon-btn-lbl { display: none; }
+    .ux-usr-name, .ux-usr-sub { display: none; }
+    .ux-srch { max-width: 400px; }
+}
 
 /* Search */
 .ux-srch {
@@ -685,6 +691,9 @@ const Navbar = () => {
                                             <span className="ux-icon-btn-lbl">Wishlist</span>
                                         </button>
                                     )}
+
+                                    {/* Notifications */}
+                                    {!isUHMode && <NotificationCenter />}
 
                                     {!isUHMode && <div className="ux-vdiv" />}
 

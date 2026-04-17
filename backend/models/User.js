@@ -47,8 +47,16 @@ const userSchema = new mongoose.Schema(
         phone: {
             type: String,
             trim: true,
-            match: [/^[6-9]\d{9}$/, "Please enter a valid 10-digit Indian mobile number"],
+            validate: {
+                validator: function (v) {
+                    return !v || /^[6-9]\d{9}$/.test(v);
+                },
+                message: "Please enter a valid 10-digit Indian mobile number",
+            },
         },
+
+        // ── Google OAuth ──
+        googleId: { type: String, default: null, sparse: true },
 
         // ── ROLES: user | vendor | delivery_boy | admin | owner ──
         role: {

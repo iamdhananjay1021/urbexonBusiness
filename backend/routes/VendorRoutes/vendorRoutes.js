@@ -26,8 +26,8 @@ import express from "express";
 import multer from "multer";
 
 import { registerVendor, getVendorStatus } from "../../controllers/vendor/vendorAuth.js";
-import { getFeaturedVendors, getVendorStore } from "../../controllers/vendor/vendorPublic.js";
-import { getMyProfile, updateMyProfile, toggleShopOpen } from "../../controllers/vendor/venderProfile.js";
+import { getFeaturedVendors, getVendorStore, getNearbyVendors } from "../../controllers/vendor/vendorPublic.js";
+import { getMyProfile, updateMyProfile, toggleShopOpen, updateLocation } from "../../controllers/vendor/venderProfile.js";
 import { getEarnings, getWeeklyEarnings, getSubscription, requestPlanChange, cancelPlanChangeRequest } from "../../controllers/vendor/vendorEarnings.js";
 import { getVendorOrders, updateOrderStatus } from "../../controllers/vendor/vendorOrders.js";
 import {
@@ -46,10 +46,10 @@ import {
     markSettlementPaid, markBatchPaid,
 } from "../../controllers/admin/settlementManager.js";
 import {
-    vendorRequestPayout, vendorGetPayouts,
+    vendorRequestPayout, vendorGetPayouts, vendorCancelPayout,
     adminGetAllPayouts, adminApprovePayout, adminRejectPayout, adminCompletePayout,
 } from "../../controllers/admin/payoutController.js";
-import { getDashboardStats } from "../../controllers/admin/dashboardController.js";
+import { getDashboardStats, getMapData } from "../../controllers/admin/dashboardController.js";
 import { protect, adminOnly } from "../../middlewares/authMiddleware.js";
 import { validateBody } from "../../middlewares/validate.js";
 import { protectVendor, requireApprovedVendor, requireActiveSubscription } from "../../middlewares/vendorMiddleware.js";
@@ -83,6 +83,7 @@ const router = express.Router();
 router.get("/pincode/check/:code", checkPincode);
 router.post("/pincode/waitlist", joinWaitlist);
 router.get("/vendor/featured", getFeaturedVendors);
+router.get("/vendor/nearby", getNearbyVendors);
 router.get("/vendor/store/:slug", getVendorStore);
 
 // ── Vendor Registration (PUBLIC — no protect, auto creates user) ──────────────
@@ -105,6 +106,7 @@ router.get("/vendor/status", protect, getVendorStatus);
 router.get("/vendor/me", protectVendor, getMyProfile);
 router.put("/vendor/me", protectVendor, requireApprovedVendor, docUpload, updateMyProfile);
 router.patch("/vendor/toggle-shop", protectVendor, requireApprovedVendor, toggleShopOpen);
+router.patch("/vendor/location", protectVendor, requireApprovedVendor, updateLocation);
 
 // ── Vendor Orders ─────────────────────────────────────────────────────────────
 router.get("/vendor/orders", protectVendor, requireApprovedVendor, requireActiveSubscription, getVendorOrders);
@@ -119,8 +121,10 @@ router.post("/vendor/subscription/cancel-request", protectVendor, requireApprove
 // ── Vendor Payouts ────────────────────────────────────────────────────────
 router.get("/vendor/payouts", protectVendor, requireApprovedVendor, vendorGetPayouts);
 router.post("/vendor/payouts/request", protectVendor, requireApprovedVendor, vendorRequestPayout);
+router.patch("/vendor/payouts/:id/cancel", protectVendor, requireApprovedVendor, vendorCancelPayout);
 // ── Admin: Dashboard ──────────────────────────────────────────────────────────
 router.get("/admin/dashboard", protect, adminOnly, getDashboardStats);
+router.get("/admin/map-data", protect, adminOnly, getMapData);
 
 // ── Admin: Vendors ────────────────────────────────────────────────────────────
 router.get("/admin/vendors", protect, adminOnly, getAllVendors);

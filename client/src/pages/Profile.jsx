@@ -106,7 +106,7 @@ const Profile = () => {
 
     /* ── Save address ── */
     const handleSaveAddress = async () => {
-        if (!addrForm?.name || !addrForm?.phone || !addrForm?.line1 || !addrForm?.city || !addrForm?.state || !addrForm?.pincode) {
+        if (!addrForm?.name || !addrForm?.phone || !addrForm?.house || !addrForm?.area || !addrForm?.city || !addrForm?.state || !addrForm?.pincode) {
             return setAddrMsg({ type: "error", text: "Please fill all required fields" });
         }
         try {
@@ -271,7 +271,8 @@ const Profile = () => {
                                     </div>
                                     <div>
                                         <label className="pf-label">Phone</label>
-                                        <input className="pf-input" value={editMode ? editPhone : (user?.phone || "")} onChange={e => setEditPhone(e.target.value)} disabled={!editMode} placeholder="Phone number" />
+                                        <input className="pf-input" type="tel" maxLength={10} value={editMode ? editPhone : (user?.phone || "")} onChange={e => setEditPhone(e.target.value.replace(/\D/g, ""))} disabled={!editMode} placeholder="10-digit mobile number" />
+                                        {editMode && <p style={{ fontSize: 10, color: "var(--pf-muted)", marginTop: 4 }}>Enter 10-digit Indian mobile number</p>}
                                     </div>
                                 </div>
 
@@ -287,7 +288,7 @@ const Profile = () => {
                                             </button>
                                         </>
                                     ) : (
-                                        <button className="pf-btn-outline" onClick={() => setEditMode(true)} style={{ flex: 1 }}>
+                                        <button className="pf-btn-outline" onClick={() => { setEditMode(true); setEditName(user?.name || ""); setEditPhone(user?.phone || ""); }} style={{ flex: 1 }}>
                                             <FaEdit size={11} /> Edit Profile
                                         </button>
                                     )}
@@ -355,7 +356,7 @@ const Profile = () => {
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
                                     <p className="pf-card-title" style={{ margin: 0 }}><FaMapMarkerAlt size={10} /> Saved Addresses</p>
                                     {!addrForm && (
-                                        <button className="pf-btn-primary" onClick={() => setAddrForm({ name: "", phone: "", line1: "", line2: "", city: "", state: "", pincode: "", country: "India" })} style={{ padding: "8px 14px", fontSize: 11 }}>
+                                        <button className="pf-btn-primary" onClick={() => setAddrForm({ name: "", phone: "", house: "", area: "", landmark: "", city: "", state: "", pincode: "" })} style={{ padding: "8px 14px", fontSize: 11 }}>
                                             <FaPlus size={10} /> Add New
                                         </button>
                                     )}
@@ -383,12 +384,16 @@ const Profile = () => {
                                                 <input className="pf-input" value={addrForm.phone || ""} onChange={e => setAddrForm(f => ({ ...f, phone: e.target.value }))} placeholder="10-digit mobile number" />
                                             </div>
                                             <div style={{ gridColumn: "1/-1" }}>
-                                                <label className="pf-label">Address Line 1 *</label>
-                                                <input className="pf-input" value={addrForm.line1 || ""} onChange={e => setAddrForm(f => ({ ...f, line1: e.target.value }))} placeholder="House / Flat / Street" />
+                                                <label className="pf-label">House / Flat / Street *</label>
+                                                <input className="pf-input" value={addrForm.house || ""} onChange={e => setAddrForm(f => ({ ...f, house: e.target.value }))} placeholder="House no, building, street" />
                                             </div>
                                             <div style={{ gridColumn: "1/-1" }}>
-                                                <label className="pf-label">Address Line 2</label>
-                                                <input className="pf-input" value={addrForm.line2 || ""} onChange={e => setAddrForm(f => ({ ...f, line2: e.target.value }))} placeholder="Area / Locality (optional)" />
+                                                <label className="pf-label">Area / Locality *</label>
+                                                <input className="pf-input" value={addrForm.area || ""} onChange={e => setAddrForm(f => ({ ...f, area: e.target.value }))} placeholder="Area, colony, locality" />
+                                            </div>
+                                            <div style={{ gridColumn: "1/-1" }}>
+                                                <label className="pf-label">Landmark</label>
+                                                <input className="pf-input" value={addrForm.landmark || ""} onChange={e => setAddrForm(f => ({ ...f, landmark: e.target.value }))} placeholder="Nearby landmark (optional)" />
                                             </div>
                                             <div>
                                                 <label className="pf-label">City *</label>
@@ -400,7 +405,10 @@ const Profile = () => {
                                             </div>
                                             <div style={{ gridColumn: "1/-1" }}>
                                                 <label className="pf-label">State *</label>
-                                                <input className="pf-input" value={addrForm.state || ""} onChange={e => setAddrForm(f => ({ ...f, state: e.target.value }))} placeholder="State" />
+                                                <select className="pf-input" value={addrForm.state || ""} onChange={e => setAddrForm(f => ({ ...f, state: e.target.value }))}>
+                                                    <option value="">Select State</option>
+                                                    {["Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi", "Chandigarh", "Jammu & Kashmir", "Ladakh", "Puducherry", "Andaman & Nicobar", "Dadra & Nagar Haveli", "Lakshadweep"].map(s => <option key={s} value={s}>{s}</option>)}
+                                                </select>
                                             </div>
                                         </div>
                                         <div style={{ display: "flex", gap: 10, marginTop: 14 }}>

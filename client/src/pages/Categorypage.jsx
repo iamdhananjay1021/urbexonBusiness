@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/axios";
-import { fetchCategoryBySlug } from "../api/categoryApi";
+import { fetchCategoryBySlug, fetchCategorySubcategories } from "../api/categoryApi";
 import ProductCardUnified from "../components/ProductCardUnified";
 import {
     FaTimes, FaChevronDown, FaChevronUp,
@@ -34,33 +34,43 @@ const CategoryPage = () => {
     const [search, setSearch] = useState(searchParams.get("search") || "");
     const [searchInput, setSearchInput] = useState(searchParams.get("search") || "");
     const [sortOpen, setSortOpen] = useState(false);
+    const [activeSubcategory, setActiveSubcategory] = useState(searchParams.get("subcategory") || "");
+    const [subcategories, setSubcategories] = useState([]);
 
     const LIMIT = 12;
     const [categoryLabel, setCategoryLabel] = useState(
         slug?.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()) || "Products"
     );
 
-    // Fetch proper category name from API
+    // Fetch proper category name + subcategories from API
     useEffect(() => {
         if (!slug) return;
         setCategoryLabel(slug.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()));
         fetchCategoryBySlug(slug)
             .then(r => { if (r.data?.name) setCategoryLabel(r.data.name); })
             .catch(() => { });
+        fetchCategorySubcategories(slug)
+            .then(r => setSubcategories(r.data?.subcategories || []))
+            .catch(() => { });
     }, [slug]);
+
+    // Sync subcategory from URL
+    useEffect(() => {
+        setActiveSubcategory(searchParams.get("subcategory") || "");
+    }, [searchParams]);
 
     /* ── Fetch ── */
     const fetchProducts = useCallback(async (pg = 1, srt = sort, srch = search) => {
         try {
             setLoading(true);
 
-            // ✅ FIX: send slug directly as category — backend normalizeCategory handles it
             const params = new URLSearchParams({
                 category: slug,
                 sort: srt,
                 limit: LIMIT,
                 page: pg,
             });
+            if (activeSubcategory) params.set("subcategory", activeSubcategory);
             if (srch.trim()) params.set("search", srch.trim());
 
             const { data } = await api.get(`/products?${params}`);
@@ -76,15 +86,15 @@ const CategoryPage = () => {
             setLoading(false);
             setTimeout(() => setInView(true), 80);
         }
-    }, [slug, sort, search]);
+    }, [slug, sort, search, activeSubcategory]);
 
-    // Re-fetch when slug/sort/search changes
+    // Re-fetch when slug/sort/search/subcategory changes
     useEffect(() => {
         setPage(1);
         setProducts([]);
         setInView(false);
         fetchProducts(1, sort, search);
-    }, [slug, sort, search]);
+    }, [slug, sort, search, activeSubcategory]);
 
     const handleSearch = (e) => {
         e.preventDefault();
@@ -95,6 +105,14 @@ const CategoryPage = () => {
         setSort(val);
         setSortOpen(false);
         setSearchParams(p => { p.set("sort", val); return p; });
+    };
+
+    const handleSubcategory = (name) => {
+        setSearchParams(p => {
+            if (name) p.set("subcategory", name);
+            else p.delete("subcategory");
+            return p;
+        });
     };
 
     const loadMore = () => {
@@ -138,7 +156,7 @@ const CategoryPage = () => {
                             Urbexon · {categoryLabel}
                         </p>
                         <h1 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 700, color: "#fff", margin: "0 0 10px" }}>
-                            {categoryLabel}
+                            {categoryLabel}{activeSubcategory ? ` › ${activeSubcategory}` : ""}
                         </h1>
                         <p style={{ fontSize: 13, color: "rgba(255,255,255,.5)", margin: 0 }}>
                             {loading ? "Loading products…" : `${total || products.length} products`}
@@ -197,6 +215,39 @@ const CategoryPage = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* ── Subcategory Filter Chips ── */}
+                {subcategories.length > 0 && (
+                    <div style={{ background: "#fafaf8", borderBottom: "1px solid #e8e4d9" }}>
+                        <div style={{ maxWidth: 1440, margin: "0 auto", padding: "10px clamp(16px,5vw,80px)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                            <button
+                                onClick={() => handleSubcategory("")}
+                                style={{
+                                    padding: "6px 16px", borderRadius: 20, border: "1px solid", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all .2s",
+                                    background: !activeSubcategory ? "#1a1740" : "#fff",
+                                    color: !activeSubcategory ? "#fff" : "#374151",
+                                    borderColor: !activeSubcategory ? "#1a1740" : "#d1d5db",
+                                }}
+                            >
+                                All
+                            </button>
+                            {subcategories.map(sub => (
+                                <button
+                                    key={sub.name}
+                                    onClick={() => handleSubcategory(sub.name)}
+                                    style={{
+                                        padding: "6px 16px", borderRadius: 20, border: "1px solid", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all .2s",
+                                        background: activeSubcategory === sub.name ? "#1a1740" : "#fff",
+                                        color: activeSubcategory === sub.name ? "#fff" : "#374151",
+                                        borderColor: activeSubcategory === sub.name ? "#1a1740" : "#d1d5db",
+                                    }}
+                                >
+                                    {sub.name} <span style={{ fontSize: 10, opacity: .6 }}>({sub.count})</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* ── Products ── */}
                 <div style={{ maxWidth: 1440, margin: "0 auto", padding: "32px clamp(16px,5vw,80px) 64px" }}>

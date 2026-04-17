@@ -24,6 +24,8 @@ const Field = ({ label, hint, children }) => (
 const AdminAddCategory = () => {
     const navigate = useNavigate();
     const [form, setForm] = useState({ name: "", emoji: "🏷️", color: "#1a1740", lightColor: "#f0eefb", isActive: true, order: 0, type: "ecommerce" });
+    const [subcategories, setSubcategories] = useState([]);
+    const [subInput, setSubInput] = useState("");
     const [imageFile, setImageFile] = useState(null);
     const [preview, setPreview] = useState("");
     const [saving, setSaving] = useState(false);
@@ -57,6 +59,7 @@ const AdminAddCategory = () => {
             fd.append("isActive", form.isActive);
             fd.append("order", form.order);
             fd.append("type", form.type);
+            fd.append("subcategories", JSON.stringify(subcategories));
             if (imageFile) fd.append("image", imageFile);
             await createCategory(fd);
             navigate("/admin/categories");
@@ -171,6 +174,36 @@ const AdminAddCategory = () => {
                             ))}
                         </div>
                     </Field>
+
+                    {/* Subcategories */}
+                    <Field label="Subcategories" hint="(press Enter to add)">
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: subcategories.length ? 10 : 0 }}>
+                            {subcategories.map((sub, i) => (
+                                <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 600, color: "#1d4ed8" }}>
+                                    {sub}
+                                    <button type="button" onClick={() => setSubcategories(prev => prev.filter((_, j) => j !== i))}
+                                        style={{ background: "none", border: "none", color: "#93c5fd", cursor: "pointer", padding: 0, display: "flex", fontSize: 14, lineHeight: 1 }}>×</button>
+                                </span>
+                            ))}
+                        </div>
+                        <input
+                            value={subInput}
+                            onChange={e => setSubInput(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    const val = subInput.trim();
+                                    if (val && !subcategories.includes(val)) setSubcategories(prev => [...prev, val]);
+                                    setSubInput("");
+                                }
+                            }}
+                            placeholder="e.g. Shirts, Shoes, Laptops"
+                            style={inputStyle}
+                            onFocus={e => e.target.style.borderColor = "#93c5fd"}
+                            onBlur={e => e.target.style.borderColor = "#e2e8f0"}
+                        />
+                    </Field>
+
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                         <Field label="Display Order">
                             <input name="order" type="number" min="0" value={form.order} onChange={handleChange}

@@ -244,6 +244,7 @@ const orderSchema = new mongoose.Schema(
             readyForPickupAt: Date,
             pickedUpAt: Date,
             shippedAt: Date,
+            outForDeliveryAt: Date,
             deliveredAt: Date,
             cancelledAt: Date,
             returnRequestedAt: Date,

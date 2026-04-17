@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { getMyOrders } from "../features/orders/orderSlice";
 import { FaBoxOpen, FaSync, FaShoppingBag, FaArrowRight, FaCheckCircle, FaFileInvoice, FaFilter, FaTimes, FaBolt } from "react-icons/fa";
+import { useAuth } from "../contexts/AuthContext";
 import api from "../api/axios";
 
 const STATUS_CONFIG = {
@@ -27,7 +28,7 @@ const getItemImage = (item) => item.images?.[0]?.url || item.image || null;
 
 const MyOrders = () => {
     const dispatch = useDispatch();
-    const authToken = (() => { try { return JSON.parse(localStorage.getItem("auth") || "{}")?.token; } catch { return null; } })();
+    const { token: authToken } = useAuth();
 
     useWebSocket(authToken, {
         onMessage: (msg) => {
@@ -84,7 +85,7 @@ const MyOrders = () => {
     const handleDownloadInvoice = async (orderId) => {
         try {
             setDownloadingId(orderId);
-            const response = await api.get(`/orders/${orderId}/invoice`, { responseType: "blob" });
+            const response = await api.get(`/invoice/${orderId}/download`, { responseType: "blob" });
             const url = window.URL.createObjectURL(new Blob([response.data], { type: "application/pdf" }));
             const link = document.createElement("a");
             link.href = url;
@@ -389,6 +390,21 @@ const MyOrders = () => {
                                             <a href={order.shipping.trackingUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-indigo-700 border border-indigo-200 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition">
                                                 Track →
                                             </a>
+                                        </div>
+                                    )}
+
+                                    {/* ── Live rider tracking ── */}
+                                    {["OUT_FOR_DELIVERY", "READY_FOR_PICKUP"].includes(order.orderStatus) && order.delivery?.assignedTo && (
+                                        <div className="px-4 py-3 border-t border-stone-100 bg-orange-50/50 flex flex-wrap items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                                                <p className="text-xs text-orange-700 font-semibold">
+                                                    🛵 {order.delivery.riderName || "Delivery Partner"} is {order.orderStatus === "OUT_FOR_DELIVERY" ? "on the way" : "heading to pick up"}
+                                                </p>
+                                            </div>
+                                            <Link to={`/orders/${order._id}`} className="text-xs font-bold text-white bg-orange-500 px-4 py-1.5 rounded-lg hover:bg-orange-600 transition no-underline flex items-center gap-1.5">
+                                                📍 Live Track
+                                            </Link>
                                         </div>
                                     )}
 

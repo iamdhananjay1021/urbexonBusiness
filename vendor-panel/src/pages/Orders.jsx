@@ -10,8 +10,10 @@ import { FiSearch, FiEye, FiPackage, FiClock, FiTruck, FiCheckCircle } from "rea
 const STATUS_CFG = {
   PLACED: { bg: "#fef3c7", c: "#92400e", l: "Pending", dot: "#f59e0b" },
   CONFIRMED: { bg: "#dbeafe", c: "#1d4ed8", l: "Processing", dot: "#3b82f6" },
-  PACKED: { bg: "#ede9fe", c: "#5b21b6", l: "Processing", dot: "#7c3aed" },
-  OUT_FOR_DELIVERY: { bg: "#ffedd5", c: "#c2410c", l: "Shipped", dot: "#f97316" },
+  PACKED: { bg: "#ede9fe", c: "#5b21b6", l: "Packed", dot: "#7c3aed" },
+  READY_FOR_PICKUP: { bg: "#e0f2fe", c: "#075985", l: "Ready for Pickup", dot: "#0ea5e9" },
+  SHIPPED: { bg: "#f0f9ff", c: "#0369a1", l: "Shipped", dot: "#38bdf8" },
+  OUT_FOR_DELIVERY: { bg: "#ffedd5", c: "#c2410c", l: "Out for Delivery", dot: "#f97316" },
   DELIVERED: { bg: "#d1fae5", c: "#065f46", l: "Delivered", dot: "#10b981" },
   CANCELLED: { bg: "#fee2e2", c: "#b91c1c", l: "Cancelled", dot: "#ef4444" },
 };
@@ -154,7 +156,7 @@ const Orders = () => {
       </div>
 
       {/* Stats mini cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 20 }}>
         {[
           { label: "Total Orders", value: stats.total || 0, color: "#111827" },
           { label: "Pending", value: stats.pending || 0, color: "#f59e0b" },
@@ -257,6 +259,12 @@ const Orders = () => {
                           <span style={{ width: 5, height: 5, borderRadius: "50%", background: s.dot }} />
                           {s.l}
                         </span>
+                        {o.orderMode === "URBEXON_HOUR" && (
+                          <div style={{ fontSize: 10, color: "#f97316", fontWeight: 600, marginTop: 3 }}>⚡ Urbexon Hour</div>
+                        )}
+                        {o.delivery?.riderName && ["OUT_FOR_DELIVERY", "DELIVERED"].includes(o.orderStatus) && (
+                          <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>🏍️ {o.delivery.riderName}</div>
+                        )}
                       </td>
                       <td style={{ padding: "13px 16px" }}>
                         <div style={{ display: "flex", gap: 6 }}>
@@ -273,6 +281,13 @@ const Orders = () => {
                               border: "none", color: "#5b21b6",
                               borderRadius: 7, cursor: "pointer", fontSize: 11, fontWeight: 700,
                             }}>Mark Packed</button>
+                          )}
+                          {o.orderStatus === "PACKED" && o.orderMode === "URBEXON_HOUR" && (
+                            <button onClick={() => updateStatus(o._id, "READY_FOR_PICKUP")} style={{
+                              padding: "5px 10px", background: "#e0f2fe",
+                              border: "none", color: "#075985",
+                              borderRadius: 7, cursor: "pointer", fontSize: 11, fontWeight: 700,
+                            }}>Ready for Pickup</button>
                           )}
                           <button onClick={() => navigate(`/orders/${o._id}`)} style={{
                             width: 28, height: 28, display: "flex",

@@ -4,7 +4,7 @@
 import express from "express";
 import multer from "multer";
 import { validateBody } from "../../middlewares/validate.js";
-import { protect } from "../../middlewares/authMiddleware.js";
+import { protect, deliveryOnly } from "../../middlewares/authMiddleware.js";
 import {
     registerDeliveryBoy, getDeliveryStatus, toggleOnlineStatus,
     getDeliveryOrders, acceptOrder, pickupOrder, markDelivered,
@@ -45,9 +45,9 @@ router.patch("/location", protect, validateBody({ lat: { required: true, type: '
 router.get("/earnings", protect, getDeliveryEarnings);
 router.patch("/profile", protect, updateDeliveryProfile);
 router.patch("/documents", protect, docUpload, updateDeliveryDocuments);
-router.patch("/bank-details", protect, deliveryUpdateBankDetails);
-router.get("/payouts", protect, deliveryGetPayouts);
-router.post("/payouts/request", protect, deliveryRequestPayout);
+router.patch("/bank-details", protect, deliveryOnly, deliveryUpdateBankDetails);
+router.get("/payouts", protect, deliveryOnly, deliveryGetPayouts);
+router.post("/payouts/request", protect, deliveryOnly, deliveryRequestPayout);
 
 router.get("/orders/:id/rider-location", protect, getRiderLocationForOrder);
 

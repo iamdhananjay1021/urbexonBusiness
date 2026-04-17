@@ -599,6 +599,37 @@ const AdminDashboard = () => {
                     })}
                 </div>
             </Section>
+
+            {/* ── Quick Actions ── */}
+            <Section id="quick-actions" title="Quick Actions" subtitle="Jump to key sections" icon={FiGrid} iconColor={C.violet} iconBg={C.violetBg} delay={300}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, padding: "0 16px 16px" }}>
+                    {[
+                        { to: "map", icon: "🗺️", label: "Live Map", desc: "Users, orders & riders", bg: "linear-gradient(135deg, #2563eb, #3b82f6)" },
+                        { to: "local-delivery", icon: "🚴", label: "Local Delivery", desc: "Dispatch & track", bg: "linear-gradient(135deg, #f97316, #fb923c)" },
+                        { to: "orders", icon: "📦", label: "All Orders", desc: "Manage & process", bg: "linear-gradient(135deg, #10b981, #34d399)" },
+                        { to: "settlements", icon: "💰", label: "Settlements", desc: "Vendor payouts", bg: "linear-gradient(135deg, #8b5cf6, #a78bfa)" },
+                    ].map((a) => (
+                        <Link key={a.to} to={a.to} style={{
+                            textDecoration: "none", display: "flex", alignItems: "center", gap: 12,
+                            padding: "14px 16px", borderRadius: 12, background: C.white,
+                            border: `1px solid ${C.border}`, transition: "all 0.15s",
+                        }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = C.blue; e.currentTarget.style.boxShadow = "0 2px 8px rgba(37,99,235,0.1)"; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.boxShadow = "none"; }}
+                        >
+                            <div style={{
+                                width: 40, height: 40, borderRadius: 10, background: a.bg,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 18, flexShrink: 0,
+                            }}>{a.icon}</div>
+                            <div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{a.label}</div>
+                                <div style={{ fontSize: 11, color: C.hint }}>{a.desc}</div>
+                            </div>
+                        </Link>
+                    ))}
+                </div>
+            </Section>
         </div>
     );
 

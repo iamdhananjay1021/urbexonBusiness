@@ -364,13 +364,6 @@ const AdminEditProduct = () => {
                 formData.append("highlights", JSON.stringify(obj));
             }
 
-            if (process.env.NODE_ENV !== "production") {
-                console.log("[AdminEditProduct] payload:");
-                for (const [k, v] of formData.entries()) {
-                    console.log(`  ${k} =`, v instanceof File ? `File(${v.name})` : v);
-                }
-            }
-
             await api.put(`/products/admin/${id}`, formData, {
                 headers: { "Content-Type": "multipart/form-data" },
             });

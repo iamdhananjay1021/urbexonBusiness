@@ -5,6 +5,8 @@
 import Order from "../../models/Order.js";
 import Product from "../../models/Product.js";
 import { sendNotification as sendToUser } from "../../utils/notificationQueue.js";
+import { publishToUser } from "../../utils/realtimeHub.js";
+import { startAssignment } from "../../services/assignmentEngine.js";
 
 // GET /api/vendor/orders
 export const getVendorOrders = async (req, res) => {
@@ -90,17 +92,37 @@ export const updateOrderStatus = async (req, res) => {
 
         const prevStatus = order.orderStatus;
         order.orderStatus = status;
-        order.timeline = order.timeline || [];
-        order.timeline.push({ status, timestamp: new Date(), note: `Updated by vendor` });
+
+        // Update statusTimeline properly
+        const tMap = { CONFIRMED: "confirmedAt", PACKED: "packedAt", READY_FOR_PICKUP: "readyForPickupAt", CANCELLED: "cancelledAt" };
+        if (tMap[status]) {
+            const existing = order.statusTimeline?.toObject ? order.statusTimeline.toObject() : { ...order.statusTimeline };
+            order.statusTimeline = { ...existing, [tMap[status]]: new Date() };
+            order.markModified("statusTimeline");
+        }
+
         await order.save();
 
-        // Notify customer via WebSocket
+        // Trigger assignment engine on READY_FOR_PICKUP for UH local delivery
+        if (status === "READY_FOR_PICKUP" && order.delivery?.provider === "LOCAL_RIDER" && !order.delivery?.assignedTo) {
+            startAssignment(order._id).catch(err => {
+                console.warn("[Assignment] Auto-start on vendor READY_FOR_PICKUP failed:", err.message);
+            });
+        }
+
+        // Notify customer via WebSocket + SSE
         if (order.user) {
-            sendToUser(String(order.user), "order_status", {
+            const userId = String(order.user);
+            sendToUser(userId, "order_status_updated", {
                 orderId: order._id,
                 status,
                 prevStatus,
                 message: `Your order status updated to ${status}`,
+            });
+            publishToUser(userId, "order_status_updated", {
+                orderId: order._id,
+                status,
+                at: new Date().toISOString(),
             });
         }
 

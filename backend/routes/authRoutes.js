@@ -15,6 +15,7 @@ import {
     vendorForgotPassword, vendorResetPassword,
     deliveryForgotPassword, deliveryResetPassword,
     adminGetDashboard,
+    googleLogin,
 } from "../controllers/authController.js";
 
 const router = express.Router();
@@ -52,6 +53,9 @@ router.post("/resend-otp",
 );
 
 router.post("/refresh", refreshToken);
+
+/* ── Google OAuth ── */
+router.post("/google", googleLogin);
 
 /* ── User password reset ── */
 router.post("/forgot-password",

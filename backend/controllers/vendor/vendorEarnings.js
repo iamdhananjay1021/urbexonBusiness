@@ -1,12 +1,13 @@
 /**
  * vendorEarnings.js — Production, fixed
- * Fixed: Proper order-based revenue calculation (no commission model)
+ * Shows net vendor earnings after commission deduction
  */
 import Order from "../../models/Order.js";
 import Product from "../../models/Product.js";
 import Subscription from "../../models/vendorModels/Subscription.js";
 import Notification from "../../models/Notification.js";
 import Vendor from "../../models/vendorModels/Vendor.js";
+import { Settlement } from "../../models/vendorModels/Settlement.js";
 
 // GET /api/vendor/earnings
 export const getEarnings = async (req, res) => {
@@ -53,19 +54,44 @@ export const getEarnings = async (req, res) => {
         const lm = lastMonthTotals[0] || { total: 0, count: 0 };
         const p = pendingTotals[0] || { total: 0, count: 0 };
 
+        // Get vendor commission rate
+        const vendor = await Vendor.findById(vendorId).select("commissionRate pendingSettlement totalEarnings").lean();
+        const commissionRate = vendor?.commissionRate ?? 18;
+
+        // Settlement-based net earnings (accurate, from auto-created settlements)
+        const [settlementTotals, settlementMonth] = await Promise.all([
+            Settlement.aggregate([
+                { $match: { vendorId, status: { $in: ["pending", "processing", "paid"] } } },
+                { $group: { _id: null, netTotal: { $sum: "$vendorEarning" }, commissionTotal: { $sum: "$commissionAmount" }, grossTotal: { $sum: "$orderAmount" } } },
+            ]),
+            Settlement.aggregate([
+                { $match: { vendorId, status: { $in: ["pending", "processing", "paid"] }, createdAt: { $gte: thisMonthStart } } },
+                { $group: { _id: null, netTotal: { $sum: "$vendorEarning" }, commissionTotal: { $sum: "$commissionAmount" } } },
+            ]),
+        ]);
+
+        const st = settlementTotals[0] || { netTotal: 0, commissionTotal: 0, grossTotal: 0 };
+        const sm = settlementMonth[0] || { netTotal: 0, commissionTotal: 0 };
+
         // Growth percentage vs last month
         const growth = lm.total > 0 ? ((m.total - lm.total) / lm.total) * 100 : m.total > 0 ? 100 : 0;
 
         res.json({
             success: true,
             earnings: {
-                total: t.total,
+                grossTotal: t.total,
+                netTotal: st.netTotal,
+                commissionDeducted: st.commissionTotal,
+                commissionRate,
                 thisMonth: m.total,
+                thisMonthNet: sm.netTotal,
+                thisMonthCommission: sm.commissionTotal,
                 lastMonth: lm.total,
                 totalOrders: t.count,
                 monthOrders: m.count,
                 pendingAmount: p.total,
                 pendingOrders: p.count,
+                pendingSettlement: vendor?.pendingSettlement || 0,
                 growth: Math.round(growth * 10) / 10,
             },
             transactions: recentOrders.map(o => ({

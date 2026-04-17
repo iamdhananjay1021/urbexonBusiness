@@ -1,5 +1,6 @@
 import { getCache, setCache, delCacheByPrefix } from "../utils/Cache.js";
 import Category from "../models/Category.js";
+import Product from "../models/Product.js";
 import cloudinary, { uploadToCloudinary } from "../config/cloudinary.js";
 
 const optimizeUrl = (url, width = 400) => {
@@ -61,10 +62,51 @@ export const getSingleCategory = async (req, res) => {
     }
 };
 
+/* ── GET SUBCATEGORIES FOR A CATEGORY (public) ── */
+export const getCategorySubcategories = async (req, res) => {
+    try {
+        const { slug } = req.params;
+        const cacheKey = `categories:subcats:${slug}`;
+        const cached = await getCache(cacheKey);
+        if (cached) return res.json(cached);
+
+        const cat = await Category.findOne({ slug, isActive: true }).lean();
+        if (!cat) return res.status(404).json({ success: false, message: "Category not found" });
+
+        // Aggregate product-level subcategories (with counts + sample images)
+        const productSubcats = await Product.aggregate([
+            { $match: { category: cat.name, isActive: true, subcategory: { $nin: [null, ""] } } },
+            { $group: { _id: "$subcategory", count: { $sum: 1 }, image: { $first: "$images" } } },
+            { $sort: { count: -1 } },
+            { $limit: 20 },
+            { $project: { _id: 0, name: "$_id", count: 1, image: { $arrayElemAt: ["$image.url", 0] } } },
+        ]);
+
+        // Merge with Category model's predefined subcategories
+        const productSubcatMap = new Map(productSubcats.map(s => [s.name, s]));
+        const modelSubcats = Array.isArray(cat.subcategories) ? cat.subcategories : [];
+
+        // Start with product-matched subcats, then add any model-defined ones missing from products
+        const merged = [...productSubcats];
+        for (const name of modelSubcats) {
+            if (!productSubcatMap.has(name)) {
+                merged.push({ name, count: 0, image: null });
+            }
+        }
+
+        const result = { category: cat, subcategories: merged };
+        await setCache(cacheKey, result, 600);
+        res.json(result);
+    } catch (err) {
+        console.error("GET SUBCATEGORIES ERROR:", err);
+        res.status(500).json({ success: false, message: "Failed to fetch subcategories" });
+    }
+};
+
 /* ── CREATE CATEGORY (admin) ── */
 export const createCategory = async (req, res) => {
     try {
-        const { name, emoji, color, lightColor, isActive, order, type } = req.body;
+        const { name, emoji, color, lightColor, isActive, order, type, subcategories } = req.body;
 
         if (!name?.trim()) return res.status(400).json({ success: false, message: "Category name is required" });
 
@@ -78,6 +120,15 @@ export const createCategory = async (req, res) => {
             })()
             : { url: "", public_id: "" };
 
+        // Parse subcategories — accept JSON string or array
+        let parsedSubcats = [];
+        if (subcategories) {
+            try {
+                parsedSubcats = typeof subcategories === "string" ? JSON.parse(subcategories) : subcategories;
+            } catch { parsedSubcats = []; }
+        }
+        parsedSubcats = (Array.isArray(parsedSubcats) ? parsedSubcats : []).map(s => String(s).trim()).filter(Boolean);
+
         const category = await Category.create({
             name: name.trim(),
             emoji: emoji || "🏷️",
@@ -87,6 +138,7 @@ export const createCategory = async (req, res) => {
             order: Number(order) || 0,
             type: type || "ecommerce",
             image,
+            subcategories: parsedSubcats,
         });
 
         await delCacheByPrefix("categories:");
@@ -100,10 +152,10 @@ export const createCategory = async (req, res) => {
 /* ── UPDATE CATEGORY (admin) ── */
 export const updateCategory = async (req, res) => {
     try {
-        const cat = await Category.findById(req.params.id);
+        const cat = await Category.findOne({ slug: req.params.slug });
         if (!cat) return res.status(404).json({ success: false, message: "Category not found" });
 
-        const { name, emoji, color, lightColor, isActive, order, type } = req.body;
+        const { name, emoji, color, lightColor, isActive, order, type, subcategories } = req.body;
 
         if (name !== undefined) cat.name = name.trim();
         if (emoji !== undefined) cat.emoji = emoji;
@@ -112,6 +164,11 @@ export const updateCategory = async (req, res) => {
         if (isActive !== undefined) cat.isActive = isActive === "true" || isActive === true;
         if (order !== undefined) cat.order = Number(order) || 0;
         if (type !== undefined) cat.type = type;
+        if (subcategories !== undefined) {
+            let parsed = [];
+            try { parsed = typeof subcategories === "string" ? JSON.parse(subcategories) : subcategories; } catch { parsed = []; }
+            cat.subcategories = (Array.isArray(parsed) ? parsed : []).map(s => String(s).trim()).filter(Boolean);
+        }
 
         if (req.file) {
             await safeDestroy(cat.image?.public_id);
@@ -134,7 +191,7 @@ export const updateCategory = async (req, res) => {
 /* ── DELETE CATEGORY (admin) ── */
 export const deleteCategory = async (req, res) => {
     try {
-        const cat = await Category.findById(req.params.id);
+        const cat = await Category.findOne({ slug: req.params.slug });
         if (!cat) return res.status(404).json({ success: false, message: "Category not found" });
 
         await safeDestroy(cat.image?.public_id);

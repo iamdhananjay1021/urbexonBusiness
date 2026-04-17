@@ -5,8 +5,11 @@
 
 import Order from '../models/Order.js';
 import User from '../models/User.js';
+import Vendor from '../models/vendorModels/Vendor.js';
+import DeliveryBoy from '../models/deliveryModels/DeliveryBoy.js';
 import logger from '../utils/logger.js';
 import { sendEmail } from '../utils/emailService.js';
+import { adminDailySummaryEmail } from '../utils/emailTemplates.js';
 
 // ══════════════════════════════════════════════════════
 // 1️⃣ SEND PENDING ORDER EMAILS
@@ -26,6 +29,7 @@ export const sendPendingOrderEmails = async () => {
 
         let sent = 0;
         for (const order of orders) {
+            if (!order.userId?.email) continue;
             try {
                 await sendEmail({
                     to: order.userId.email,
@@ -79,6 +83,7 @@ export const sendDeliveryUpdates = async () => {
 
         let sent = 0;
         for (const order of orders) {
+            if (!order.userId?.email) continue;
             try {
                 const message = `Hi ${order.userId.name}, your order ${order.orderId} is out for delivery. Delivery boy will reach you soon. Track your order: https://urbexon.in/track/${order._id}`;
 
@@ -119,6 +124,56 @@ export const sendAbandonedCartReminders = async () => {
         return { remindersSent: 0 };
     } catch (err) {
         logger.error('Send Abandoned Cart Reminders Error:', err);
+        throw { message: err.message };
+    }
+};
+
+// ══════════════════════════════════════════════════════
+// 4️⃣ SEND ADMIN DAILY SUMMARY
+// ══════════════════════════════════════════════════════
+export const sendAdminDailySummary = async () => {
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (!adminEmail) {
+        logger.warn('⏭️  Admin daily summary skipped — ADMIN_EMAIL not set');
+        return { sent: false };
+    }
+
+    try {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const [orders, newUsers, vendors, riders] = await Promise.all([
+            Order.find({ createdAt: { $gte: todayStart } }).lean(),
+            User.countDocuments({ createdAt: { $gte: todayStart } }),
+            Vendor.countDocuments({ isApproved: true }),
+            DeliveryBoy.countDocuments({ isApproved: true }),
+        ]);
+
+        const totalRevenue = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+        const cancelled = orders.filter(o => o.orderStatus === 'CANCELLED').length;
+        const pending = orders.filter(o => ['PLACED', 'CONFIRMED'].includes(o.orderStatus)).length;
+
+        const stats = {
+            totalOrders: orders.length,
+            totalRevenue,
+            newUsers,
+            cancelledOrders: cancelled,
+            activeVendors: vendors,
+            activeRiders: riders,
+            pendingOrders: pending,
+        };
+
+        const html = adminDailySummaryEmail(stats);
+        await sendEmail({
+            to: adminEmail,
+            subject: `📊 Urbexon Daily Summary — ${todayStart.toLocaleDateString('en-IN')}`,
+            html,
+        });
+
+        logger.info('📊 Admin daily summary email sent');
+        return { sent: true, stats };
+    } catch (err) {
+        logger.error('Admin Daily Summary Error:', err);
         throw { message: err.message };
     }
 };

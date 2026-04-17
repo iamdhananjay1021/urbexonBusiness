@@ -10,6 +10,20 @@ import { Settlement } from "../../models/vendorModels/Settlement.js";
 const MIN_PAYOUT_VENDOR = 500;
 const MIN_PAYOUT_DELIVERY = 200;
 
+// Mask bank account number — show only last 4 digits
+const maskAccountNumber = (num) => {
+    if (!num || num.length <= 4) return num || "";
+    return "X".repeat(num.length - 4) + num.slice(-4);
+};
+
+const maskBankDetails = (bd) => {
+    if (!bd) return {};
+    return {
+        ...bd,
+        accountNumber: maskAccountNumber(bd.accountNumber),
+    };
+};
+
 // ══════════════════════════════════════════════════════════════
 // VENDOR — Request Payout
 // POST /api/vendor/payouts/request
@@ -50,10 +64,25 @@ export const vendorRequestPayout = async (req, res) => {
             return res.status(400).json({ success: false, message: `Insufficient balance. Available: ₹${available}` });
         }
 
+        // Idempotency: prevent duplicate pending payouts
+        const existingPayout = await Payout.findOne({
+            recipientId: vendor._id,
+            recipientType: "vendor",
+            status: { $in: ["requested", "approved", "processing"] },
+        });
+        if (existingPayout) {
+            return res.status(409).json({ success: false, message: "You already have a pending payout request. Wait for it to be processed or cancel it." });
+        }
+
         // Check bank details
         const bd = vendor.bankDetails || {};
         if (!bd.accountNumber && !bd.upiId) {
             return res.status(400).json({ success: false, message: "Please add bank details or UPI ID first" });
+        }
+
+        // Validate IFSC if bank account provided
+        if (bd.accountNumber && bd.ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bd.ifsc)) {
+            return res.status(400).json({ success: false, message: "Invalid IFSC code format" });
         }
 
         const payout = await Payout.create({
@@ -71,10 +100,42 @@ export const vendorRequestPayout = async (req, res) => {
             },
         });
 
-        res.json({ success: true, message: "Payout requested", payout });
+        res.json({ success: true, message: "Payout requested", payout: { ...payout.toObject(), bankDetails: maskBankDetails(payout.bankDetails) } });
     } catch (err) {
         console.error("[vendorRequestPayout]", err);
         res.status(500).json({ success: false, message: "Failed to request payout" });
+    }
+};
+
+// ══════════════════════════════════════════════════════════════
+// VENDOR — Cancel own payout (only if still "requested")
+// PATCH /api/vendor/payouts/:id/cancel
+// ══════════════════════════════════════════════════════════════
+export const vendorCancelPayout = async (req, res) => {
+    try {
+        const vendor = req.vendor;
+        if (!vendor) return res.status(404).json({ success: false, message: "Vendor not found" });
+
+        const payout = await Payout.findById(req.params.id);
+        if (!payout) return res.status(404).json({ success: false, message: "Payout not found" });
+
+        // Only the owner can cancel their own payout
+        if (payout.recipientId.toString() !== vendor._id.toString()) {
+            return res.status(403).json({ success: false, message: "Not authorized" });
+        }
+
+        if (payout.status !== "requested") {
+            return res.status(400).json({ success: false, message: `Cannot cancel — payout is already ${payout.status}` });
+        }
+
+        await Payout.findByIdAndUpdate(payout._id, {
+            $set: { status: "rejected", rejectedAt: new Date(), rejectionReason: "Cancelled by vendor" },
+        });
+
+        res.json({ success: true, message: "Payout cancelled" });
+    } catch (err) {
+        console.error("[vendorCancelPayout]", err);
+        res.status(500).json({ success: false, message: "Failed to cancel payout" });
     }
 };
 
@@ -117,7 +178,7 @@ export const vendorGetPayouts = async (req, res) => {
                 pendingPayout: totalPending,
                 available: totalEarned - totalWithdrawn - totalPending,
             },
-            payouts,
+            payouts: payouts.map(p => ({ ...p, bankDetails: maskBankDetails(p.bankDetails) })),
             minPayout: MIN_PAYOUT_VENDOR,
         });
     } catch (err) {
@@ -195,9 +256,24 @@ export const deliveryRequestPayout = async (req, res) => {
             return res.status(400).json({ success: false, message: `Insufficient balance. Available: ₹${available}` });
         }
 
+        // Idempotency: prevent duplicate pending payouts
+        const existingPayout = await Payout.findOne({
+            recipientId: rider._id,
+            recipientType: "delivery",
+            status: { $in: ["requested", "approved", "processing"] },
+        });
+        if (existingPayout) {
+            return res.status(409).json({ success: false, message: "You already have a pending payout request. Wait for it to be processed." });
+        }
+
         const bd = rider.bankDetails || {};
         if (!bd.accountNumber && !bd.upiId) {
             return res.status(400).json({ success: false, message: "Please add bank details or UPI ID first" });
+        }
+
+        // Validate IFSC if bank account provided
+        if (bd.accountNumber && bd.ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bd.ifsc)) {
+            return res.status(400).json({ success: false, message: "Invalid IFSC code format" });
         }
 
         const payout = await Payout.create({
@@ -215,7 +291,7 @@ export const deliveryRequestPayout = async (req, res) => {
             },
         });
 
-        res.json({ success: true, message: "Payout requested", payout });
+        res.json({ success: true, message: "Payout requested", payout: { ...payout.toObject(), bankDetails: maskBankDetails(payout.bankDetails) } });
     } catch (err) {
         console.error("[deliveryRequestPayout]", err);
         res.status(500).json({ success: false, message: "Failed to request payout" });
@@ -257,8 +333,8 @@ export const deliveryGetPayouts = async (req, res) => {
                 pendingPayout: totalPending,
                 available: (rider.totalEarnings || 0) - totalWithdrawn - totalPending,
             },
-            bankDetails: rider.bankDetails || {},
-            payouts,
+            bankDetails: maskBankDetails(rider.bankDetails || {}),
+            payouts: payouts.map(p => ({ ...p, bankDetails: maskBankDetails(p.bankDetails) })),
             minPayout: MIN_PAYOUT_DELIVERY,
         });
     } catch (err) {

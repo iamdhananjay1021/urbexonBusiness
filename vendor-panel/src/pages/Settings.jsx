@@ -301,7 +301,7 @@ const Settings = () => {
             {/* Current Plan Details (if active subscription) */}
             {sub && (
               <div style={{
-                display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
+                display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10,
                 marginBottom: 18,
               }}>
                 {[

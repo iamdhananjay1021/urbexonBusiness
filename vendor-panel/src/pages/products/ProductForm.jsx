@@ -3,8 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "../../api/axios";
 import { FaUpload, FaArrowLeft, FaTrash, FaBolt } from "react-icons/fa";
 
-const CATEGORIES = ["Food & Beverages", "Grocery", "Electronics", "Clothing", "Home & Kitchen", "Pharmacy", "Beauty", "Bakery", "Stationery", "Toys", "Other"];
-
 const Field = ({ label, required, children }) => (
   <div style={{ marginBottom: 16 }}>
     <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 7 }}>{label}{required && <span style={{ color: "#ef4444" }}> *</span>}</label>
@@ -22,17 +20,36 @@ const ProductForm = () => {
   const [error, setError] = useState("");
   const [images, setImages] = useState([]);
   const [existingImages, setExistingImages] = useState([]);
+  const [categoryList, setCategoryList] = useState([]);
+  const [subcategoryOptions, setSubcategoryOptions] = useState([]);
   const [form, setForm] = useState({
-    name: "", description: "", price: "", mrp: "", category: "", tags: "",
+    name: "", description: "", price: "", mrp: "", category: "", subcategory: "", tags: "",
     stock: "", prepTimeMinutes: "10", maxOrderQty: "10",
     isDeal: false, dealEndsAt: "",
   });
+
+  // Fetch dynamic categories (with subcategories)
+  useEffect(() => {
+    api.get("/categories", { params: { type: "urbexon_hour" } })
+      .then(({ data }) => {
+        const cats = Array.isArray(data) ? data : data.categories || [];
+        setCategoryList(cats.filter(c => c.isActive !== false));
+      })
+      .catch(() => { });
+  }, []);
+
+  // Update subcategory options when category changes
+  useEffect(() => {
+    if (!form.category) { setSubcategoryOptions([]); return; }
+    const cat = categoryList.find(c => c.name === form.category);
+    setSubcategoryOptions(Array.isArray(cat?.subcategories) ? cat.subcategories : []);
+  }, [form.category, categoryList]);
 
   useEffect(() => {
     if (!isEdit) return;
     setLoading(true);
     api.get(`/products/${id}`).then(({ data }) => {
-      setForm({ name: data.name || "", description: data.description || "", price: data.price || "", mrp: data.mrp || "", category: data.category || "", tags: (data.tags || []).join(", "), stock: data.stock || "", prepTimeMinutes: data.prepTimeMinutes || "10", maxOrderQty: data.maxOrderQty || "10", isDeal: !!data.isDeal, dealEndsAt: data.dealEndsAt ? new Date(data.dealEndsAt).toISOString().slice(0, 16) : "" });
+      setForm({ name: data.name || "", description: data.description || "", price: data.price || "", mrp: data.mrp || "", category: data.category || "", subcategory: data.subcategory || "", tags: (data.tags || []).join(", "), stock: data.stock || "", prepTimeMinutes: data.prepTimeMinutes || "10", maxOrderQty: data.maxOrderQty || "10", isDeal: !!data.isDeal, dealEndsAt: data.dealEndsAt ? new Date(data.dealEndsAt).toISOString().slice(0, 16) : "" });
       setExistingImages(data.images || []);
     }).catch(() => setError("Failed to load product")).finally(() => setLoading(false));
   }, [id]);
@@ -63,6 +80,15 @@ const ProductForm = () => {
 
   return (
     <div style={{ maxWidth: 700 }}>
+      <style>{`
+        .product-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .product-form-grid .full-width { grid-column: 1 / -1; }
+        .product-img-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px; }
+        @media (max-width: 640px) {
+          .product-form-grid { grid-template-columns: 1fr !important; }
+          .product-img-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
+      `}</style>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
         <button onClick={() => navigate("/products")} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#64748b" }}>
           <FaArrowLeft size={11} /> Back
@@ -77,11 +103,11 @@ const ProductForm = () => {
       {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", padding: "10px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 16 }}>{error}</div>}
 
       <form onSubmit={submit}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <div style={{ gridColumn: "1/-1" }}>
+        <div className="product-form-grid">
+          <div className="full-width">
             <Field label="Product Name" required><Inp name="name" value={form.name} onChange={onChange} placeholder="e.g. Fresh Samosa Plate" /></Field>
           </div>
-          <div style={{ gridColumn: "1/-1" }}>
+          <div className="full-width">
             <Field label="Description">
               <textarea name="description" value={form.description} onChange={onChange} rows={3} placeholder="Describe your product…" style={{ width: "100%", padding: "10px 13px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
             </Field>
@@ -89,8 +115,18 @@ const ProductForm = () => {
           <Field label="Category" required>
             <select name="category" value={form.category} onChange={onChange} style={{ width: "100%", padding: "10px 13px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box", background: "#fafafe" }}>
               <option value="">Select category</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              {categoryList.map(c => <option key={c._id} value={c.name}>{c.name}</option>)}
             </select>
+          </Field>
+          <Field label="Subcategory">
+            {subcategoryOptions.length > 0 ? (
+              <select name="subcategory" value={form.subcategory} onChange={onChange} style={{ width: "100%", padding: "10px 13px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box", background: "#fafafe" }}>
+                <option value="">Select subcategory</option>
+                {subcategoryOptions.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            ) : (
+              <Inp name="subcategory" value={form.subcategory} onChange={onChange} placeholder="e.g. Snacks, Beverages, Shirts" />
+            )}
           </Field>
           <Field label="Tags (comma separated)"><Inp name="tags" value={form.tags} onChange={onChange} placeholder="e.g. snacks, veg, spicy" /></Field>
           <Field label="Selling Price (₹)" required><Inp name="price" type="number" value={form.price} onChange={onChange} placeholder="99" /></Field>
@@ -123,7 +159,7 @@ const ProductForm = () => {
 
         {/* Images */}
         <Field label="Product Photos (max 4)">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 8 }}>
+          <div className="product-img-grid">
             {existingImages.map((img, i) => (
               <div key={i} style={{ position: "relative" }}>
                 <img src={img.url} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8 }} />

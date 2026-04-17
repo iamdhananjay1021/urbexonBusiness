@@ -15,6 +15,7 @@ import { sendEmail } from "../utils/emailService.js";
 import { getOrderStatusEmailTemplate } from "../utils/orderStatusEmail.js";
 import { adminOrderEmailHTML } from "../utils/adminOrderEmail.js";
 import { generateInvoiceBuffer } from "../utils/invoiceEmailHelper.js";
+import { vendorNewOrderEmail, deliveryAssignedEmail, adminNewOrderAlertEmail } from "../utils/emailTemplates.js";
 import { checkCODEligibility } from "./addressController.js";
 import { calculateOrderPricing, deductStock, restoreStock, markCouponUsed } from "../services/pricing.js";
 import { DELIVERY_CONFIG } from "../config/deliveryConfig.js";
@@ -25,6 +26,8 @@ import { sendNotification as sendToUser } from "../utils/notificationQueue.js";
 import { broadcastToUsers, broadcastAll } from "../utils/wsHub.js";
 import { startAssignment } from "../services/assignmentEngine.js";
 import { createNotification } from "./admin/notificationController.js";
+import { Settlement } from "../models/vendorModels/Settlement.js";
+import Vendor from "../models/vendorModels/Vendor.js";
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -230,7 +233,7 @@ export const createOrder = async (req, res) => {
                 const vendorIds = [...new Set(products.map(p => p.vendorId?.toString()).filter(Boolean))];
 
                 if (vendorIds.length > 0) {
-                    const vendors = await Vendor.find({ _id: { $in: vendorIds } }).select("userId").lean();
+                    const vendors = await Vendor.find({ _id: { $in: vendorIds } }).select("userId email businessName").lean();
                     const vendorUserIds = vendors.map(v => v.userId);
                     broadcastToUsers(vendorUserIds, "new_order", {
                         orderId: savedOrder._id,
@@ -242,6 +245,16 @@ export const createOrder = async (req, res) => {
                         type: finalDeliveryType,
                         at: new Date().toISOString(),
                     });
+
+                    // Send email to each vendor with their specific items
+                    for (const vendor of vendors) {
+                        if (!vendor.email) continue;
+                        const vendorProductIds = products.filter(p => p.vendorId?.toString() === vendor._id.toString()).map(p => p._id.toString());
+                        const vendorItems = formattedItems.filter(i => vendorProductIds.includes(i.productId?.toString()));
+                        if (vendorItems.length === 0) continue;
+                        const mailData = vendorNewOrderEmail(savedOrder, vendorItems, vendor.businessName || "Vendor");
+                        sendEmail({ to: vendor.email, subject: mailData.subject, html: mailData.html, label: "Vendor/NewOrder" });
+                    }
                 }
 
                 // 2. If Urbexon Hour order → notify NEARBY online delivery boys
@@ -370,6 +383,8 @@ export const getCheckoutPricing = async (req, res) => {
                 itemsTotal: pricing.itemsTotal,
                 deliveryCharge: pricing.deliveryCharge,
                 platformFee: pricing.platformFee,
+                couponDiscount: pricing.couponDiscount || 0,
+                coupon: pricing.coupon || null,
                 finalTotal: pricing.finalTotal,
                 deliveryType: pricing.deliveryType,
                 distanceKm: pricing.distanceKm,
@@ -516,13 +531,35 @@ export const updateOrderStatus = async (req, res) => {
         const tMap = { CONFIRMED: "confirmedAt", PACKED: "packedAt", READY_FOR_PICKUP: "readyForPickupAt", SHIPPED: "shippedAt", OUT_FOR_DELIVERY: "outForDeliveryAt", DELIVERED: "deliveredAt", CANCELLED: "cancelledAt" };
         if (tMap[status]) update[`statusTimeline.${tMap[status]}`] = new Date();
 
-        if (status === "DELIVERED") { update["payment.status"] = "PAID"; update["payment.paidAt"] = new Date(); }
+        if (status === "DELIVERED") {
+            update["payment.status"] = "PAID";
+            update["payment.paidAt"] = new Date();
+            update["delivery.status"] = "DELIVERED";
+        }
         if (status === "SHIPPED") update["shipping.status"] = "SHIPPED";
+
+        // Generate delivery OTP when marking OUT_FOR_DELIVERY
+        if (status === "OUT_FOR_DELIVERY") {
+            const otpCode = String(Math.floor(1000 + Math.random() * 9000));
+            update["deliveryOtp.code"] = otpCode;
+            update["deliveryOtp.expiresAt"] = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+            update["deliveryOtp.verified"] = false;
+            update["delivery.status"] = "OUT_FOR_DELIVERY";
+        }
+        if (status === "CONFIRMED") update["delivery.status"] = "PENDING";
+        if (status === "PACKED") update["delivery.status"] = "PENDING";
+        if (status === "READY_FOR_PICKUP") update["delivery.status"] = "PENDING";
 
         const order = await Order.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true });
         if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
-        if (status === "CANCELLED") await restoreStock(order.items);
+        if (status === "CANCELLED") {
+            await restoreStock(order.items);
+            // Cancel delivery assignment if any
+            if (order.delivery?.assignedTo) {
+                Order.updateOne({ _id: order._id }, { $set: { "delivery.status": "CANCELLED" } }).catch(() => { });
+            }
+        }
 
         // Auto-trigger assignment engine when order is READY_FOR_PICKUP with LOCAL_RIDER delivery
         if (status === "READY_FOR_PICKUP" && order.delivery?.provider === "LOCAL_RIDER" && !order.delivery?.assignedTo) {
@@ -545,6 +582,51 @@ export const updateOrderStatus = async (req, res) => {
         });
 
         res.json(order);
+
+        // ── Auto-create Settlement on DELIVERED ──
+        if (status === "DELIVERED") {
+            (async () => {
+                try {
+                    // Find vendor(s) for this order's products
+                    const productIds = order.items.map(i => i.productId);
+                    const products = await Product.find({ _id: { $in: productIds } }).select("vendorId").lean();
+                    const vendorIds = [...new Set(products.map(p => p.vendorId?.toString()).filter(Boolean))];
+
+                    for (const vid of vendorIds) {
+                        // Skip if settlement already exists for this order+vendor
+                        const exists = await Settlement.findOne({ orderId: order._id, vendorId: vid });
+                        if (exists) continue;
+
+                        const vendor = await Vendor.findById(vid).select("commissionRate pendingSettlement").lean();
+                        if (!vendor) continue;
+
+                        const commissionRate = vendor.commissionRate ?? 18;
+                        const orderAmount = order.totalAmount || 0;
+                        const commissionAmount = Math.round((orderAmount * commissionRate) / 100);
+                        const platformFee = order.platformFee || 0;
+                        const deliveryCharge = order.deliveryCharge || 0;
+                        const vendorEarning = Math.max(0, orderAmount - commissionAmount - platformFee);
+
+                        await Settlement.create({
+                            vendorId: vid,
+                            orderId: order._id,
+                            orderAmount,
+                            commissionRate,
+                            commissionAmount,
+                            deliveryCharge,
+                            platformFee,
+                            vendorEarning,
+                            status: "pending",
+                        });
+
+                        // Increment vendor's pendingSettlement counter
+                        await Vendor.findByIdAndUpdate(vid, { $inc: { pendingSettlement: vendorEarning, totalRevenue: orderAmount, totalOrders: 1 } });
+                    }
+                } catch (settleErr) {
+                    console.error("[Settlement] Auto-create failed for order", order._id, settleErr.message);
+                }
+            })();
+        }
 
         if (order.email && !order.email.includes("@placeholder.com")) {
             const sMail = getOrderStatusEmailTemplate({ customerName: order.customerName, orderId: order._id, status });
@@ -602,9 +684,10 @@ export const getAllOrders = async (req, res) => {
         if (req.query.status && req.query.status !== "ALL") filter.orderStatus = req.query.status;
         if (req.query.orderMode && req.query.orderMode !== "ALL") filter.orderMode = req.query.orderMode;
         if (req.query.search?.trim()) {
+            const esc = req.query.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             filter.$or = [
-                { customerName: { $regex: req.query.search.trim(), $options: "i" } },
-                { phone: { $regex: req.query.search.trim(), $options: "i" } },
+                { customerName: { $regex: esc, $options: "i" } },
+                { phone: { $regex: esc, $options: "i" } },
             ];
         }
 

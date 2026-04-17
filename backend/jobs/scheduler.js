@@ -19,6 +19,7 @@ import {
     sendPendingOrderEmails,
     sendDeliveryUpdates,
     sendAbandonedCartReminders,
+    sendAdminDailySummary,
 } from './emailJobs.js';
 
 import {
@@ -38,6 +39,11 @@ import {
     autoAssignDeliveryBoys,
     updateDeliveryStatus,
 } from './deliveryJobs.js';
+
+import {
+    checkNewDeals,
+    sendWishlistReminders,
+} from '../services/productReminders.js';
 
 // ══════════════════════════════════════════════════════
 // 🎯 JOB REGISTRY
@@ -138,6 +144,24 @@ const JOBS = [
         name: 'Update Delivery Status',
         schedule: '*/2 * * * *', // Every 2 minutes
         handler: updateDeliveryStatus,
+        enabled: true,
+    },
+    {
+        name: 'Check New Deal Alerts',
+        schedule: '0 */1 * * *', // Every hour
+        handler: checkNewDeals,
+        enabled: true,
+    },
+    {
+        name: 'Send Wishlist Reminders',
+        schedule: '0 10 * * *', // Daily at 10 AM
+        handler: sendWishlistReminders,
+        enabled: true,
+    },
+    {
+        name: 'Send Admin Daily Summary',
+        schedule: '0 21 * * *', // Daily at 9 PM IST
+        handler: sendAdminDailySummary,
         enabled: true,
     },
 ];

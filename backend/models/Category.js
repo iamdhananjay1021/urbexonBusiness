@@ -44,6 +44,10 @@ const categorySchema = new mongoose.Schema(
             default: "ecommerce",
             index: true,
         },
+        subcategories: {
+            type: [String],
+            default: [],
+        },
     },
     { timestamps: true }
 );

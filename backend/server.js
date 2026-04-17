@@ -42,6 +42,7 @@ import wishlistRoutes from "./routes/wishlistRoutes.js";
 import couponRoutes from "./routes/couponRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import stockNotificationRoutes from "./routes/stockNotificationRoutes.js";
+import userNotificationRoutes from "./routes/userNotificationRoutes.js";
 import schedulerRoutes from "./routes/schedulerRoutes.js";
 import { notFound, errorHandler } from "./middlewares/errorMiddleware.js";
 import scheduler from "./jobs/scheduler.js";
@@ -159,6 +160,7 @@ app.use("/api/wishlist", generalLimiter, wishlistRoutes);
 app.use("/api/coupons", generalLimiter, couponRoutes);
 app.use("/api", generalLimiter, notificationRoutes);
 app.use("/api/stock-notify", publicLimiter, stockNotificationRoutes);
+app.use("/api/user-notifications", generalLimiter, userNotificationRoutes);
 app.use("/api", generalLimiter, vendorRoutes);
 app.use("/api/delivery", generalLimiter, deliveryRoutes);
 app.use("/api/admin", adminLimiter, schedulerRoutes);
@@ -205,10 +207,13 @@ const server = httpServer.listen(PORT, "0.0.0.0", async () => {
     scheduleMidnightReset();
 });
 
-process.on("SIGTERM", async () => {
-    console.log("SIGTERM — shutting down gracefully");
-    scheduler.stop(); // Stop all scheduler jobs
+const gracefulShutdown = (signal) => {
+    console.log(`${signal} — shutting down gracefully`);
+    scheduler.stop();
     server.close(() => process.exit(0));
-});
-process.on("uncaughtException", (e) => { console.error("Uncaught:", e); process.exit(1); });
-process.on("unhandledRejection", (r) => { console.error("Unhandled:", r); process.exit(1); });
+    setTimeout(() => process.exit(1), 10000); // Force exit after 10s
+};
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("uncaughtException", (e) => { console.error("Uncaught:", e); gracefulShutdown("uncaughtException"); });
+process.on("unhandledRejection", (r) => { console.error("Unhandled Rejection:", r); });

@@ -44,6 +44,10 @@ export default function GlobalWebSocket() {
                         const msg = JSON.parse(e.data);
                         if (msg.type === "pong" || msg.type === "connected") return;
                         window.dispatchEvent(new CustomEvent("client:ws_message", { detail: msg }));
+                        // Forward notification-type messages for NotificationCenter
+                        if (msg.type === "notification") {
+                            window.dispatchEvent(new CustomEvent("ux-notification", { detail: msg.payload || msg }));
+                        }
                     } catch { /* ignore */ }
                 };
 

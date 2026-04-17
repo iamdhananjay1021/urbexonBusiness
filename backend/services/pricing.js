@@ -6,7 +6,7 @@
  * ✅ Single function used by both COD + Online flows
  */
 import Product from "../models/Product.js";
-import Coupon  from "../models/Coupon.js";
+import Coupon from "../models/Coupon.js";
 import {
     calcDeliveryCharge,
     calcFinalAmount,
@@ -46,21 +46,21 @@ export const validateAndPriceItems = async (frontendItems) => {
 
         formattedItems.push({
             productId: product._id,
-            name:      String(product.name).slice(0, 200),
-            price:     dbPrice,
-            mrp:       product.mrp ? Number(product.mrp) : null,
+            name: String(product.name).slice(0, 200),
+            price: dbPrice,
+            mrp: product.mrp ? Number(product.mrp) : null,
             qty,
             image: typeof item.image === "string"
                 ? item.image
                 : product.images?.[0]?.url || "",
             customization: {
-                text:     String(item.customization?.text     || "").trim().slice(0, 500),
+                text: String(item.customization?.text || "").trim().slice(0, 500),
                 imageUrl: String(item.customization?.imageUrl || "").trim().slice(0, 1000),
-                note:     String(item.customization?.note     || "").trim().slice(0, 1000),
+                note: String(item.customization?.note || "").trim().slice(0, 1000),
             },
             selectedSize: String(item.selectedSize || "").trim().slice(0, 50),
-            productType:  product.productType,
-            vendorId:     product.vendorId || null,
+            productType: product.productType,
+            vendorId: product.vendorId || null,
         });
     }
 
@@ -154,10 +154,20 @@ export const applyCoupon = async ({ couponId, couponCode, userId, itemsTotal, or
  */
 export const markCouponUsed = async (couponId, userId) => {
     if (!couponId || !userId) return;
-    await Coupon.findByIdAndUpdate(couponId, {
-        $inc:  { usedCount: 1 },
-        $push: { usedBy: { userId, at: new Date() } },
-    });
+    // Atomic: only increment if usage limit not yet reached AND user hasn't used it
+    const result = await Coupon.findOneAndUpdate(
+        {
+            _id: couponId,
+            $or: [{ usageLimit: null }, { $expr: { $lt: ["$usedCount", "$usageLimit"] } }],
+            "usedBy.userId": { $ne: userId },
+        },
+        {
+            $inc: { usedCount: 1 },
+            $push: { usedBy: { userId, at: new Date() } },
+        },
+        { new: true }
+    );
+    if (!result) console.warn(`[CouponUsed] Could not mark coupon ${couponId} as used for user ${userId}`);
 };
 
 /**
@@ -165,35 +175,35 @@ export const markCouponUsed = async (couponId, userId) => {
  */
 export const calculateOrderPricing = async (frontendItems, paymentMethod, options = {}) => {
     const { formattedItems, itemsTotal } = await validateAndPriceItems(frontendItems);
-    const deliveryType  = options.deliveryType || DELIVERY_TYPES.ECOMMERCE_STANDARD;
-    const distanceKm    = Number(options.distanceKm || 0);
+    const deliveryType = options.deliveryType || DELIVERY_TYPES.ECOMMERCE_STANDARD;
+    const distanceKm = Number(options.distanceKm || 0);
 
     const deliveryCharge = calcDeliveryCharge(itemsTotal, paymentMethod, { deliveryType, distanceKm });
 
     // Coupon
     const orderType = deliveryType === DELIVERY_TYPES.URBEXON_HOUR ? "urbexon_hour" : "ecommerce";
     const couponResult = await applyCoupon({
-        couponId:   options.couponId,
+        couponId: options.couponId,
         couponCode: options.couponCode,
-        userId:     options.userId,
+        userId: options.userId,
         itemsTotal,
         orderType,
     });
 
     const couponDiscount = couponResult?.discount || 0;
-    const finalTotal     = Math.max(0, calcFinalAmount(itemsTotal, deliveryCharge) - couponDiscount);
+    const finalTotal = Math.max(0, calcFinalAmount(itemsTotal, deliveryCharge) - couponDiscount);
 
     return {
         formattedItems,
         itemsTotal,
         deliveryCharge,
-        platformFee:     DELIVERY_CONFIG.PLATFORM_FEE,
+        platformFee: DELIVERY_CONFIG.PLATFORM_FEE,
         couponDiscount,
-        coupon:          couponResult,
+        coupon: couponResult,
         finalTotal,
         deliveryType,
         distanceKm,
-        deliveryETA:     getDeliveryETA({ pincode: options.pincode, paymentMethod, deliveryType }),
+        deliveryETA: getDeliveryETA({ pincode: options.pincode, paymentMethod, deliveryType }),
         deliveryProvider: getDeliveryProvider({ deliveryType, distanceKm }),
     };
 };

@@ -8,7 +8,7 @@
  *  - Success screen shows credentials clearly
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     FiUpload, FiX, FiCheck, FiAlertCircle,
@@ -17,11 +17,6 @@ import {
 import api from "../api/axios";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const CATEGORIES = [
-    "Food & Beverages", "Grocery", "Electronics", "Clothing",
-    "Home & Kitchen", "Pharmacy", "Beauty", "Bakery",
-    "Stationery", "Toys", "Other",
-];
 
 const STEPS = [
     { label: "Basic Info", icon: FiUser },
@@ -219,6 +214,17 @@ const VendorApply = () => {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState(false);
     const [submitted, setSubmitted] = useState(null);
+    const [categoryList, setCategoryList] = useState([]);
+
+    // Fetch dynamic categories
+    useEffect(() => {
+        api.get("/categories", { params: { type: "urbexon_hour" } })
+            .then(({ data }) => {
+                const cats = Array.isArray(data) ? data : data.categories || [];
+                setCategoryList(cats.filter(c => c.isActive !== false).map(c => c.name));
+            })
+            .catch(() => { });
+    }, []);
 
     // ── Field change ──────────────────────────────────────────────────────────
     const handleChange = (e) => {
@@ -521,7 +527,7 @@ const VendorApply = () => {
                                         <select name="shopCategory" value={form.shopCategory}
                                             onChange={handleChange} style={S.select}>
                                             <option value="">Select category</option>
-                                            {CATEGORIES.map(c => (
+                                            {categoryList.map(c => (
                                                 <option key={c} value={c}>{c}</option>
                                             ))}
                                         </select>

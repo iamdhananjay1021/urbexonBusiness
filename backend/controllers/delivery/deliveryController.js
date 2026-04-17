@@ -14,13 +14,22 @@ import Order from "../../models/Order.js";
 import { uploadToCloudinary } from "../../config/cloudinary.js";
 import { sendNotification as sendToUser } from "../../utils/notificationQueue.js";
 import { sendEmailBackground } from "../../utils/emailService.js";
+import { deliveryAssignedEmail } from "../../utils/emailTemplates.js";
 import { DELIVERY_CONFIG } from "../../config/deliveryConfig.js";
 import { getRedis, isRedisUp } from "../../config/redis.js";
 import { handleRiderAccept, handleRiderReject, handleRiderCancel } from "../../services/assignmentEngine.js";
 import { sendOrderStatusPush } from "../../services/fcmService.js";
 
 const genOtp = () => String(Math.floor(1000 + Math.random() * 9000));
-const DELIVERY_EARNING = 40; // ₹40 per delivery
+const DELIVERY_EARNING_BASE = 25;     // ₹25 base per delivery
+const DELIVERY_EARNING_PER_KM = 5;    // ₹5 per km
+const DELIVERY_EARNING_MIN = 25;      // minimum ₹25
+const DELIVERY_EARNING_MAX = 120;     // cap ₹120
+
+const calcDeliveryEarning = (distanceKm = 0) => {
+    const earning = DELIVERY_EARNING_BASE + (distanceKm * DELIVERY_EARNING_PER_KM);
+    return Math.min(Math.max(Math.round(earning), DELIVERY_EARNING_MIN), DELIVERY_EARNING_MAX);
+};
 
 // Haversine formula for distance in km
 const haversineKm = (lat1, lng1, lat2, lng2) => {
@@ -199,6 +208,12 @@ export const acceptOrder = async (req, res) => {
         }
 
         res.json({ success: true, order, message: "Order accepted" });
+
+        // Send delivery assignment email to rider (non-blocking)
+        if (db.email) {
+            const mailData = deliveryAssignedEmail(db.name, order);
+            sendEmailBackground({ to: db.email, subject: mailData.subject, html: mailData.html, label: "Delivery/Assigned" });
+        }
     } catch (err) {
         console.error("[acceptOrder]", err);
         res.status(500).json({ success: false, message: "Failed to accept order" });
@@ -283,14 +298,18 @@ export const markDelivered = async (req, res) => {
         }
         await order.save();
 
+        // Calculate distance-based earning
+        const distanceKm = order.delivery?.distanceKm || 0;
+        const earning = calcDeliveryEarning(distanceKm);
+
         // Update rider stats atomically (earnings + decrement activeOrders)
         await DeliveryBoy.findByIdAndUpdate(db._id, {
             $inc: {
                 todayDeliveries: 1, totalDeliveries: 1,
-                todayEarnings: DELIVERY_EARNING,
-                totalEarnings: DELIVERY_EARNING,
+                todayEarnings: earning,
+                totalEarnings: earning,
                 weekDeliveries: 1,
-                weekEarnings: DELIVERY_EARNING,
+                weekEarnings: earning,
                 activeOrders: -1,
             },
         });
@@ -308,7 +327,7 @@ export const markDelivered = async (req, res) => {
             });
         }
 
-        res.json({ success: true, message: "Order delivered successfully", earning: DELIVERY_EARNING });
+        res.json({ success: true, message: "Order delivered successfully", earning });
     } catch (err) {
         console.error("[markDelivered]", err);
         res.status(500).json({ success: false, message: "Failed to mark delivered" });
@@ -381,22 +400,22 @@ export const getDeliveryEarnings = async (req, res) => {
         }).sort({ createdAt: -1 }).lean();
 
         const thisWeek = deliveries.filter(o => new Date(o.createdAt) >= startOfWeek);
-        const weekEarnings = thisWeek.length * DELIVERY_EARNING;
+        const weekEarnings = thisWeek.reduce((sum, o) => sum + calcDeliveryEarning(o.delivery?.distanceKm || 0), 0);
 
         // Weekly breakdown (last 7 days)
         const breakdown = [];
         for (let i = 6; i >= 0; i--) {
             const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
             const next = new Date(d); next.setDate(next.getDate() + 1);
-            const count = deliveries.filter(o => {
+            const dayOrders = deliveries.filter(o => {
                 const t = new Date(o.createdAt);
                 return t >= d && t < next;
-            }).length;
+            });
             breakdown.push({
                 day: d.toLocaleDateString("en-IN", { weekday: "short" }),
                 date: d.toISOString().split("T")[0],
-                deliveries: count,
-                earnings: count * DELIVERY_EARNING,
+                deliveries: dayOrders.length,
+                earnings: dayOrders.reduce((sum, o) => sum + calcDeliveryEarning(o.delivery?.distanceKm || 0), 0),
             });
         }
 

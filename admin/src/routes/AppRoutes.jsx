@@ -33,6 +33,7 @@ const AdminLocalDelivery = lazy(() => import("../pages/AdminLocalDelivery"));
 const AdminCustomers = lazy(() => import("../pages/AdminCustomers"));
 const AdminRefundReturn = lazy(() => import("../pages/AdminRefundReturn"));
 const AdminCoupons = lazy(() => import("../pages/AdminCoupons"));
+const AdminMapDashboard = lazy(() => import("../pages/AdminMapDashboard"));
 
 const Loader = () => (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}>
@@ -68,7 +69,7 @@ const AppRoutes = () => (
                     {/* Categories */}
                     <Route path="categories" element={<AdminCategories />} />
                     <Route path="categories/new" element={<AdminAddCategory />} />
-                    <Route path="categories/:id/edit" element={<AdminEditCategory />} />
+                    <Route path="categories/:slug/edit" element={<AdminEditCategory />} />
 
                     {/* Vendors */}
                     <Route path="vendors" element={<AdminVendors />} />
@@ -88,6 +89,7 @@ const AppRoutes = () => (
                     {/* Operations */}
                     <Route path="pincodes" element={<AdminPincodes />} />
                     <Route path="local-delivery" element={<AdminLocalDelivery />} />
+                    <Route path="map" element={<AdminMapDashboard />} />
                 </Route>
             </Route>
 

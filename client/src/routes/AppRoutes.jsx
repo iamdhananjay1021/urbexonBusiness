@@ -39,7 +39,6 @@ const Wishlist = lazy(() => import("../pages/Wishlist"));
 const BecomeVendor = lazy(() => import("../pages/BecomeVendor"));
 const BecomeDelivery = lazy(() => import("../pages/BecomeDelivery"));
 const VendorStore = lazy(() => import("../pages/VendorStore"));
-
 const Loader = () => (
   <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f7f4ee" }}>
     <div style={{ width: 36, height: 36, border: "3px solid #e8e4d9", borderTop: "3px solid #c9a84c", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
@@ -49,21 +48,26 @@ const Loader = () => (
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
-  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [pathname]);
   return null;
 };
 
 const RequireAuth = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <Loader />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   return children;
 };
 
 const PublicOnly = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <Loader />;
-  if (user) return <Navigate to="/" replace />;
+  if (user) {
+    const from = location.state?.from || "/";
+    return <Navigate to={from} replace />;
+  }
   return children;
 };
 

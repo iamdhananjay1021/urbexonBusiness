@@ -153,7 +153,7 @@ const Layout = () => {
           </button>
 
           {/* Search */}
-          <div style={{ flex: 1, maxWidth: 480, position: "relative" }}>
+          <div className="topbar-search" style={{ flex: 1, maxWidth: 480, position: "relative" }}>
             <FiSearch size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
             <input
               type="text"
@@ -191,7 +191,7 @@ const Layout = () => {
               {showNotifs && (
                 <>
                   <div onClick={() => setShowNotifs(false)} style={{ position: "fixed", inset: 0, zIndex: 48 }} />
-                  <div style={{
+                  <div className="notif-dropdown" style={{
                     position: "absolute", right: 0, top: "calc(100% + 8px)",
                     width: 320, background: "#fff", border: "1px solid #e5e7eb",
                     borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
@@ -223,7 +223,7 @@ const Layout = () => {
             </div>
 
             {/* Profile */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div className="topbar-profile" style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{
                 width: 34, height: 34, borderRadius: "50%",
                 background: "linear-gradient(135deg, #7c3aed, #4f46e5)",
@@ -241,7 +241,7 @@ const Layout = () => {
         </header>
 
         {/* Content */}
-        <main style={{ flex: 1, padding: 24, overflowY: "auto", overflowX: "hidden", minHeight: 0 }}>
+        <main className="vendor-main-content" style={{ flex: 1, padding: 24, overflowY: "auto", overflowX: "hidden", minHeight: 0 }}>
           <Outlet />
         </main>
       </div>
@@ -250,6 +250,10 @@ const Layout = () => {
         @media (max-width: 768px) {
           .desktop-sidebar { display: none !important; }
           .mobile-menu-btn { display: block !important; }
+          .topbar-profile { display: none !important; }
+          .topbar-search { display: none !important; }
+          .vendor-main-content { padding: 12px !important; }
+          .notif-dropdown { width: calc(100vw - 24px) !important; right: -60px !important; max-width: 360px !important; }
         }
         * { box-sizing: border-box; }
         input:focus { border-color: #7c3aed !important; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }

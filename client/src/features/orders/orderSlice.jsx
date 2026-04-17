@@ -13,7 +13,8 @@ export const getMyOrders = createAsyncThunk(
                 error.response?.data?.message || "Failed to fetch orders"
             );
         }
-    }
+    },
+    { condition: (_, { getState }) => getState().orders.status !== "loading" }
 );
 
 const orderSlice = createSlice({
@@ -46,7 +47,7 @@ const orderSlice = createSlice({
             .addCase(getMyOrders.rejected, (state, action) => {
                 state.status = "failed";
                 state.error = action.payload;
-                state.orders = [];
+                // Don't wipe orders on transient failures — keep cached data
             });
     },
 });

@@ -74,6 +74,7 @@ const AdminVendorDetail = () => {
     const [vendor, setVendor] = useState(null);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(null);
+    const [approveCommission, setApproveCommission] = useState(18);
     const [error, setError] = useState("");
 
     useEffect(() => {
@@ -161,7 +162,12 @@ const AdminVendorDetail = () => {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
                 {(vendor.status === "pending" || vendor.status === "under_review") && (
                     <>
-                        <button onClick={() => handleAction("approve", { commissionRate: 18, plan: "starter" })} disabled={actionLoading === "approve"}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <label style={{ fontSize: 12, fontWeight: 600, color: T.muted }}>Commission %</label>
+                            <input type="number" min={0} max={50} value={approveCommission} onChange={e => setApproveCommission(Number(e.target.value))}
+                                style={{ width: 60, padding: "7px 8px", border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, textAlign: "center" }} />
+                        </div>
+                        <button onClick={() => handleAction("approve", { commissionRate: approveCommission, plan: "starter" })} disabled={actionLoading === "approve"}
                             style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", background: T.green, color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                             {actionLoading === "approve" ? <FiLoader size={13} style={{ animation: "avd-spin 0.8s linear infinite" }} /> : <FiCheckCircle size={13} />}
                             Approve Vendor

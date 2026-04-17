@@ -271,7 +271,7 @@ export const getProfile = async (req, res) => {
     try {
         const user = await User.findById(req.user._id).select("-password");
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
-        res.json(user);
+        res.json({ success: true, _id: user._id, name: user.name, email: user.email, phone: user.phone || "", role: user.role, addresses: user.addresses, location: user.location, createdAt: user.createdAt });
     } catch (err) {
         res.status(500).json({ success: false, message: "Failed to fetch profile" });
     }
@@ -352,6 +352,65 @@ export const saveLocation = async (req, res) => {
 };
 
 /* ═══════════════════════════════════════════════════
+   GOOGLE LOGIN / SIGNUP (Firebase ID Token)
+═══════════════════════════════════════════════════ */
+export const googleLogin = async (req, res) => {
+    try {
+        const { idToken, role } = req.body;
+        if (!idToken) return res.status(400).json({ success: false, message: "ID token is required" });
+
+        const { getFirebaseAdmin } = await import("../config/firebase.js");
+        const admin = getFirebaseAdmin();
+        let decoded;
+        try {
+            decoded = await admin.auth().verifyIdToken(idToken);
+        } catch {
+            return res.status(401).json({ success: false, message: "Invalid or expired Google token" });
+        }
+
+        const { email, name, uid, picture } = decoded;
+        if (!email) return res.status(400).json({ success: false, message: "Google account has no email" });
+
+        let user = await User.findOne({ email: sanitizeEmail(email) });
+
+        if (user) {
+            // Existing user — login
+            if (["admin", "owner"].includes(user.role))
+                return res.status(403).json({ success: false, message: "Admin accounts must login via the Admin Panel." });
+
+            // Link Google ID if not set
+            if (!user.googleId) {
+                user.googleId = uid;
+                user.isEmailVerified = true;
+                await user.save({ validateBeforeSave: false });
+            }
+
+            return res.json({ success: true, ...safeUserPayload(user, generateToken(user._id, user.role)) });
+        }
+
+        // New user — register
+        const assignedRole = PUBLIC_ROLES.includes(role) ? role : "user";
+        const randomPassword = crypto.randomBytes(32).toString("hex");
+        const hashedPassword = await bcrypt.hash(randomPassword, BCRYPT_ROUNDS);
+
+        user = await User.create({
+            name: sanitizeName(name || email.split("@")[0]),
+            email: sanitizeEmail(email),
+            password: hashedPassword,
+            phone: "",
+            role: assignedRole,
+            isEmailVerified: true,
+            googleId: uid,
+        });
+
+        return res.status(201).json({ success: true, ...safeUserPayload(user, generateToken(user._id, user.role)) });
+    } catch (err) {
+        console.error("[Auth] GOOGLE LOGIN ERROR:", err);
+        return res.status(500).json({ success: false, message: "Google sign-in failed. Please try again." });
+    }
+};
+
+/* ═══════════════════════════════════════════════════
    GET ALL USERS (ADMIN)
 ═══════════════════════════════════════════════════ */
 export const getAllUsers = async (req, res) => {
@@ -362,10 +421,11 @@ export const getAllUsers = async (req, res) => {
 
         const filter = {};
         if (req.query.search?.trim()) {
+            const esc = req.query.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             filter.$or = [
-                { name: { $regex: req.query.search.trim(), $options: "i" } },
-                { email: { $regex: req.query.search.trim(), $options: "i" } },
-                { phone: { $regex: req.query.search.trim(), $options: "i" } },
+                { name: { $regex: esc, $options: "i" } },
+                { email: { $regex: esc, $options: "i" } },
+                { phone: { $regex: esc, $options: "i" } },
             ];
         }
         if (req.query.role) filter.role = req.query.role;
@@ -606,7 +666,7 @@ export const refreshToken = async (req, res) => {
         const user = await User.findById(decoded.id).select("-password");
         if (!user) return res.status(401).json({ success: false, message: "User not found" });
 
-        return res.json({ success: true, token: generateToken(user._id, user.role), _id: user._id, name: user.name, email: user.email, role: user.role });
+        return res.json({ success: true, token: generateToken(user._id, user.role), _id: user._id, name: user.name, email: user.email, phone: user.phone || "", role: user.role });
 
     } catch (err) {
         console.error("[Auth] REFRESH ERROR:", err);

@@ -12,18 +12,23 @@ import {
   FiXCircle,
   FiGlobe
 } from "react-icons/fi";
-const CATEGORIES = [
-  "Food & Beverages", "Grocery", "Electronics", "Clothing",
-  "Home & Kitchen", "Pharmacy", "Beauty", "Bakery",
-  "Stationery", "Toys", "Sports", "Other",
-];
 
 const Profile = () => {
   const [vendor, setVendor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState({ text: "", type: "" });
+  const [categoryList, setCategoryList] = useState([]);
   const fileRef = useRef();
+
+  useEffect(() => {
+    api.get("/categories", { params: { type: "urbexon_hour" } })
+      .then(({ data }) => {
+        const cats = Array.isArray(data) ? data : data.categories || [];
+        setCategoryList(cats.filter(c => c.isActive !== false).map(c => c.name));
+      })
+      .catch(() => { });
+  }, []);
 
   useEffect(() => {
     api.get("/vendor/me")
@@ -158,6 +163,16 @@ const Profile = () => {
 
   return (
     <div style={{ maxWidth: 900 }}>
+      <style>{`
+        .profile-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 16px; }
+        .address-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 768px) {
+          .profile-grid { grid-template-columns: 1fr !important; }
+          .address-grid { grid-template-columns: 1fr !important; }
+          .info-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: "#111827", margin: 0 }}>Profile</h1>
         <p style={{ fontSize: 13, color: "#6b7280", marginTop: 3 }}>Manage your vendor profile and shop information</p>
@@ -173,7 +188,7 @@ const Profile = () => {
         }}>{msg.text}</div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 16, marginBottom: 16 }}>
+      <div className="profile-grid">
         {/* Profile Picture */}
         <Card title="Profile Picture">
           <div style={{ textAlign: "center" }}>
@@ -206,7 +221,7 @@ const Profile = () => {
 
         {/* Basic Info */}
         <Card title="Basic Information">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div className="info-grid">
             <Field label="Vendor Name">
               <ReadOnlyInput value={vendor.ownerName} />
             </Field>
@@ -226,7 +241,7 @@ const Profile = () => {
         </Card>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 16, marginBottom: 16 }}>
+      <div className="profile-grid">
         {/* Shop Status */}
         <Card title="Shop Status">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #f3f4f6" }}>
@@ -272,7 +287,7 @@ const Profile = () => {
               />
             </Field>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div className="info-grid">
             <Field label="Category">
               <select
                 value={vendor.shopCategory || ""}
@@ -285,7 +300,7 @@ const Profile = () => {
                 }}
               >
                 <option value="">Select category</option>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                {categoryList.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
             <Field label="Website">
@@ -322,7 +337,7 @@ const Profile = () => {
             </div>
           </Field>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+        <div className="address-grid">
           <Field label="City">
             <Input value={vendor.address?.city} onChange={v => setAddr("city", v)} placeholder="Mumbai" />
           </Field>

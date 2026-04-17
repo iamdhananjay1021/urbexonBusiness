@@ -4,7 +4,7 @@
  * ✅ PERCENT aur FLAT dono types
  * ✅ Usage tracking
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import api from "../api/adminApi";
 import { FiTag, FiPlus, FiEdit2, FiTrash2, FiToggleLeft, FiToggleRight, FiX, FiSave } from "react-icons/fi";
 
@@ -20,18 +20,28 @@ const AdminCoupons = () => {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
 
+  const searchTimer = useRef(null);
+
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get(`/coupons/admin?search=${search}&limit=50`);
+      const { data } = await api.get(`/coupons/admin?search=${encodeURIComponent(search)}&limit=50`);
       setCoupons(data.coupons || []);
     } catch (err) { console.error("Coupons load failed:", err); }
     finally { setLoading(false); }
   }, [search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => { load(); }, 300);
+    return () => clearTimeout(searchTimer.current);
+  }, [load]);
 
-  const openNew = () => setForm({ ...EMPTY });
-  const openEdit = (c) => setForm({ ...EMPTY, ...c, expiresAt: c.expiresAt ? c.expiresAt.slice(0, 10) : "" });
+  const openNew = () => { setError(""); setForm({ ...EMPTY }); };
+  const openEdit = (c) => {
+    setError("");
+    const { _id, code, description, discountType, discountValue, maxDiscount, minOrderValue, usageLimit, applicableTo, expiresAt, isActive } = c;
+    setForm({ ...EMPTY, _id, code, description, discountType, discountValue, maxDiscount, minOrderValue, usageLimit, applicableTo, expiresAt: expiresAt ? expiresAt.slice(0, 10) : "", isActive });
+  };
 
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 

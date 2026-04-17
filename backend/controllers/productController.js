@@ -14,6 +14,9 @@ import { getCache, setCache, delCacheByPrefix } from "../utils/Cache.js";
 import Product from "../models/Product.js";
 import { uploadToCloudinary } from "../config/cloudinary.js";
 import { sendRestockNotifications } from "./stockNotificationController.js";
+import { handlePriceChange, handleBackInStock } from "../services/productReminders.js";
+
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Category slug → regex matcher
 const slugToRegex = (slug) => {
@@ -29,11 +32,11 @@ export const getProducts = async (req, res) => {
     try {
         const {
             page = 1, limit = 20,
-            category, search, sort = "createdAt", order = "desc",
+            category, subcategory, search, sort = "createdAt", order = "desc",
             productType, vendorId, featured, minPrice, maxPrice, deal,
         } = req.query;
 
-        const cacheKey = `products:${JSON.stringify({ page, limit, category, search, sort, order, productType, vendorId, featured, minPrice, maxPrice, deal })}`;
+        const cacheKey = `products:${JSON.stringify({ page, limit, category, subcategory, search, sort, order, productType, vendorId, featured, minPrice, maxPrice, deal })}`;
         const cached = await getCache(cacheKey);
         if (cached) return res.json(cached);
 
@@ -56,13 +59,16 @@ export const getProducts = async (req, res) => {
             const rx = slugToRegex(category);
             if (rx) filter.category = rx;
         }
+        if (subcategory) {
+            filter.subcategory = { $regex: new RegExp(`^${subcategory.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}$`, "i") };
+        }
         if (minPrice || maxPrice) {
             filter.price = {};
             if (minPrice) filter.price.$gte = Number(minPrice);
             if (maxPrice) filter.price.$lte = Number(maxPrice);
         }
         if (search?.trim()) {
-            const rx = { $regex: search.trim(), $options: "i" };
+            const rx = { $regex: escapeRegex(search.trim()), $options: "i" };
             filter.$or = [
                 { name: rx }, { category: rx },
                 { brand: rx }, { tags: { $elemMatch: rx } },
@@ -167,7 +173,7 @@ export const getSuggestions = async (req, res) => {
     try {
         const { q, productType } = req.query;
         if (!q || q.trim().length < 2) return res.json([]);
-        const regex = { $regex: q.trim(), $options: "i" };
+        const regex = { $regex: escapeRegex(q.trim()), $options: "i" };
         const typeFilter = productType === "urbexon_hour" ? "urbexon_hour" : "ecommerce";
         const products = await Product.find({
             isActive: true, inStock: true, productType: typeFilter,
@@ -230,7 +236,7 @@ export const getUrbexonHourProducts = async (req, res) => {
         const filter = { productType: "urbexon_hour", isActive: true };
         if (vendorId) filter.vendorId = vendorId;
         if (category) { const rx = slugToRegex(category); if (rx) filter.category = rx; }
-        if (search) filter.name = { $regex: search, $options: "i" };
+        if (search) filter.name = { $regex: escapeRegex(search), $options: "i" };
 
         const skip = (Number(page) - 1) * Number(limit);
         const [products, total] = await Promise.all([
@@ -278,10 +284,10 @@ export const getUrbexonHourDeals = async (req, res) => {
             isDeal: true,
             inStock: true,
             stock: { $gt: 0 },
-            // Deal must not be expired
-            $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: now } }],
-            // Deal must have started or be starting
-            $or: [{ dealStartsAt: null }, { dealStartsAt: { $lte: now } }],
+            $and: [
+                { $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: now } }] },
+                { $or: [{ dealStartsAt: null }, { dealStartsAt: { $lte: now } }] },
+            ],
         };
 
         // Fetch deals with smart sorting:
@@ -412,13 +418,13 @@ export const adminGetAllProducts = async (req, res) => {
         const { page = 1, limit = 20, search, productType, category, inStock } = req.query;
         const filter = { isActive: { $ne: false } };
         if (productType) filter.productType = productType;
-        if (category) filter.category = { $regex: category, $options: "i" };
+        if (category) filter.category = { $regex: escapeRegex(category), $options: "i" };
         if (inStock === "true") filter.inStock = true;
         if (inStock === "false") filter.inStock = false;
         if (search) filter.$or = [
-            { name: { $regex: search, $options: "i" } },
-            { category: { $regex: search, $options: "i" } },
-            { sku: { $regex: search, $options: "i" } },
+            { name: { $regex: escapeRegex(search), $options: "i" } },
+            { category: { $regex: escapeRegex(search), $options: "i" } },
+            { sku: { $regex: escapeRegex(search), $options: "i" } },
         ];
 
         const skip = (Number(page) - 1) * Number(limit);
@@ -681,6 +687,7 @@ export const adminUpdateProduct = async (req, res) => {
         }
 
         const body = req.body;
+        const oldPrice = product.price; // Track for price drop detection
 
         // 🔁 Helpers
         const parseBool = (val) => val === "true" || val === true;
@@ -828,6 +835,12 @@ export const adminUpdateProduct = async (req, res) => {
         // 📧 Send restock notifications if product came back in stock
         if (wasOutOfStock && product.inStock) {
             sendRestockNotifications(product._id, product.name, product.slug);
+            handleBackInStock(product);
+        }
+
+        // 📉 Detect price drop and notify wishlist users
+        if (product.price !== oldPrice && product.price < oldPrice) {
+            handlePriceChange(product, oldPrice, product.price, req.user?._id);
         }
 
         // 🧹 Cache clear
@@ -944,7 +957,7 @@ export const vendorGetMyProducts = async (req, res) => {
     try {
         const { page = 1, limit = 20, search } = req.query;
         const filter = { vendorId: req.vendor._id };
-        if (search) filter.name = { $regex: search, $options: "i" };
+        if (search) filter.name = { $regex: escapeRegex(search), $options: "i" };
 
         const skip = (Number(page) - 1) * Number(limit);
         const [products, total] = await Promise.all([
@@ -968,6 +981,7 @@ export const vendorUpdateProduct = async (req, res) => {
         if (!product) return res.status(404).json({ success: false, message: "Product not found or not yours" });
 
         const body = req.body;
+        const oldPrice = product.price; // Track for price drop detection
         const fields = ["name", "description", "price", "mrp", "category", "prepTimeMinutes", "maxOrderQty"];
         for (const f of fields) {
             if (body[f] !== undefined) {
@@ -984,6 +998,7 @@ export const vendorUpdateProduct = async (req, res) => {
             // Send restock notifications if product came back in stock
             if (wasOutOfStock && product.inStock) {
                 sendRestockNotifications(product._id, product.name, product.slug);
+                handleBackInStock(product);
             }
         }
         if (body.isActive !== undefined)
@@ -1019,6 +1034,12 @@ export const vendorUpdateProduct = async (req, res) => {
         }
 
         await product.save();
+
+        // 📉 Detect price drop and notify wishlist users
+        if (product.price !== oldPrice && product.price < oldPrice) {
+            handlePriceChange(product, oldPrice, product.price, req.vendor?.userId);
+        }
+
         res.json({ success: true, product });
     } catch (err) {
         console.error("[vendorUpdateProduct]", err);

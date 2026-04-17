@@ -470,6 +470,14 @@ const AdminOrders = () => {
                 .ao-filter:hover { border-color: #93c5fd !important; color: #1d4ed8 !important; }
                 .ao-row { animation: ao-fadeUp .3s ease forwards; }
                 button:disabled { cursor: not-allowed; }
+                @media (max-width: 640px) {
+                    .ao-hdr-right { flex-wrap: wrap !important; justify-content: flex-end !important; }
+                    .ao-hdr-right > * { min-height: 36px; min-width: 36px; }
+                    .ao-progress-label { font-size: 10px !important; max-width: 64px !important; }
+                    .ao-filter { font-size: 12px !important; padding: 6px 10px !important; }
+                    .ao-ship-btn { min-height: 40px !important; padding: 8px 14px !important; font-size: 13px !important; }
+                    .ao-top-bar { flex-direction: column !important; gap: 8px !important; }
+                }
             `}</style>
 
             <Toast toast={toast} />
@@ -589,7 +597,7 @@ const AdminOrders = () => {
                                         </div>
                                     </div>
                                 </div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                                <div className="ao-hdr-right" style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                                     <StatusBadge status={order.orderStatus} />
                                     <span style={{ fontWeight: 800, fontSize: 14, color: T.green }}>₹{Number(order.totalAmount || 0).toLocaleString("en-IN")}</span>
                                     <button onClick={e => handleDownloadInvoice(order._id, e)} disabled={downloadingId === order._id}
@@ -699,7 +707,7 @@ const AdminOrders = () => {
                                                         <div style={{ width: 26, height: 26, borderRadius: "50%", background: done ? (active ? T.blue : T.blueMid) : T.borderLight, border: `2px solid ${done ? T.blue : T.border}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: active ? `0 0 0 3px ${T.blueBg}` : "none" }}>
                                                             {done ? <FiCheckCircle size={12} color={active ? "#fff" : T.blue} /> : <FiClock size={10} color={T.hint} />}
                                                         </div>
-                                                        <span style={{ fontSize: 8, fontWeight: 600, color: done ? T.blue : T.hint, textAlign: "center", maxWidth: 48, lineHeight: 1.3, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                                                        <span className="ao-progress-label" style={{ fontSize: 8, fontWeight: 600, color: done ? T.blue : T.hint, textAlign: "center", maxWidth: 48, lineHeight: 1.3, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                                                             {STATUS_CONFIG[step]?.label.split(" ")[0]}
                                                         </span>
                                                     </div>

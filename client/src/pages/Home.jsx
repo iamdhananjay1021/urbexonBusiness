@@ -11,8 +11,10 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import api from "../api/axios";
 import { fetchActiveBanners } from "../api/bannerApi";
 import { fetchActiveCategories } from "../api/categoryApi";
+import CategoryBrowser from "../components/CategoryBrowser";
 import { useCart } from "../hooks/useCart";
 import { useWishlist } from "../hooks/useWishlist";
+import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
 import { useAuth } from "../contexts/AuthContext";
 import {
     FaArrowRight, FaTruck, FaUndo, FaShieldAlt, FaHeadset,
@@ -35,7 +37,7 @@ const saveSearchTerm = (term) => {
 };
 
 /* ─── helpers ────────────────────────────────────────────── */
-const imgSrc = p => p?.images?.[0]?.url || "";
+const imgSrc = p => p?.images?.[0]?.url || (typeof p?.image === "string" ? p.image : p?.image?.url) || "";
 const fmt = n => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const disc = p => p.mrp && p.mrp > p.price ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
 
@@ -756,6 +758,7 @@ const Home = () => {
     const [nearestDealEnd, setNearestDealEnd] = useState(() => _homeCache?.nearestDealEnd || null);
     const [searchResults, setSearchResults] = useState([]);
     const [searching, setSearching] = useState(false);
+    const { recentlyViewed } = useRecentlyViewed();
 
     const heroTimer = useRef(null);
 
@@ -1067,34 +1070,11 @@ const Home = () => {
                 </div>
             </div>
 
-            {/* ════ CATEGORIES ══════════════════════════════ */}
+            {/* ════ CATEGORIES (Myntra-style browser) ══════════════════════════════ */}
             {(loading || categories.length > 0) && (
-                <div style={{ background: "#f5f7fa" }}>
+                <div style={{ background: "#fff" }}>
                     <div className="h-wrap">
-                        <div className="h-sec">
-                            <SecHead title="Shop by Category" />
-                            <div className="h-catgrid">
-                                {loading && categories.length === 0
-                                    ? Array(8).fill(0).map((_, i) => (
-                                        <div key={i} style={{ background: "#fff", borderRadius: 14, padding: "18px 10px", textAlign: "center" }}>
-                                            <div className="h-sk" style={{ width: 54, height: 54, borderRadius: "50%", margin: "0 auto 10px" }} />
-                                            <div className="h-sk" style={{ height: 11, width: "70%", margin: "0 auto" }} />
-                                        </div>
-                                    ))
-                                    : categories.map(cat => (
-                                        <div key={cat._id} className="h-catcard"
-                                            onClick={() => navigate(`/category/${cat.slug}`)}>
-                                            <div className="h-cat-icon" style={{ background: cat.lightColor || "#f3f4ff" }}>
-                                                {cat.image?.url
-                                                    ? <img src={cat.image.url} alt={cat.name} loading="lazy" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
-                                                    : <span>{cat.emoji || "🛍️"}</span>}
-                                            </div>
-                                            <span className="h-cat-nm">{cat.name}</span>
-                                        </div>
-                                    ))
-                                }
-                            </div>
-                        </div>
+                        <CategoryBrowser categories={categories} />
                     </div>
                 </div>
             )}
@@ -1224,6 +1204,22 @@ const Home = () => {
                             <SecHead title={`Based on "${forYouTerm}"`} sub="Products picked for you" to={`/?search=${encodeURIComponent(forYouTerm)}`} label="See all" />
                             <div className="h-hscroll">
                                 {forYouProducts.map(p => <PCard key={p._id} product={p} />)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ════ RECENTLY VIEWED ═══════════════════════════ */}
+            {recentlyViewed.length > 0 && (
+                <div style={{ background: "#fff" }}>
+                    <div className="h-wrap">
+                        <div className="h-sec">
+                            <SecHead title="Recently Viewed" sub="Continue where you left off" />
+                            <div className="h-hscroll">
+                                {recentlyViewed.slice(0, 12).map(p => (
+                                    <PCard key={p._id} product={p} />
+                                ))}
                             </div>
                         </div>
                     </div>

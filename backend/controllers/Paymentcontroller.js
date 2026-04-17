@@ -239,7 +239,8 @@ export const razorpayWebhook = async (req, res) => {
     try {
         const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
         if (!secret) {
-            console.warn("[Webhook] RAZORPAY_WEBHOOK_SECRET not set — skipping signature check");
+            console.error("[Webhook] RAZORPAY_WEBHOOK_SECRET not set — refusing to process");
+            return res.status(500).json({ success: false, message: "Webhook not configured" });
         } else {
             const receivedSig = req.headers["x-razorpay-signature"];
             // req.body is a Buffer from express.raw()
@@ -298,7 +299,8 @@ export const requestRefund = async (req, res) => {
         await order.save();
 
         res.json({ success: true, message: "Refund request submitted", refund: order.refund });
-        sendEmail({ to: process.env.ADMIN_EMAIL, subject: `💰 Refund Request #${order._id.toString().slice(-6).toUpperCase()} — ₹${order.totalAmount}`, html: `<p>Refund requested by <b>${order.customerName}</b>. Amount: ₹${order.totalAmount}</p>`, label: "Admin/RefundRequest" });
+        const safeName = (order.customerName || '').replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c]);
+        sendEmail({ to: process.env.ADMIN_EMAIL, subject: `💰 Refund Request #${order._id.toString().slice(-6).toUpperCase()} — ₹${order.totalAmount}`, html: `<p>Refund requested by <b>${safeName}</b>. Amount: ₹${order.totalAmount}</p>`, label: "Admin/RefundRequest" });
     } catch (err) {
         console.error("REQUEST REFUND:", err);
         res.status(500).json({ success: false, message: "Refund request failed" });

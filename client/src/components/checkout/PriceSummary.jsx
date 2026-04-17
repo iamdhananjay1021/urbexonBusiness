@@ -16,6 +16,8 @@ const PriceSummary = memo(({ pricing, paymentMethod, checkoutItems, pricingLoadi
         itemsTotal = 0,
         deliveryCharge = 0,
         platformFee = 0,
+        couponDiscount = 0,
+        coupon = null,
         finalTotal = 0,
         amountForFreeDelivery = 0,
         freeDeliveryThreshold = 499,
@@ -60,6 +62,12 @@ const PriceSummary = memo(({ pricing, paymentMethod, checkoutItems, pricingLoadi
                             <div className="ck-price-row">
                                 <span><FaShieldAlt size={11} /> Platform Fee</span>
                                 <span className="ck-price-val">₹{fmt(platformFee)}</span>
+                            </div>
+                        )}
+                        {couponDiscount > 0 && (
+                            <div className="ck-price-row" style={{ color: "#15803d" }}>
+                                <span><FaTag size={11} /> Coupon{coupon?.code ? ` (${coupon.code})` : ""}</span>
+                                <span className="ck-price-val">-₹{fmt(couponDiscount)}</span>
                             </div>
                         )}
                         <div className="ck-price-divider" />

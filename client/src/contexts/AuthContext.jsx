@@ -12,16 +12,20 @@ const requestLocation = () =>
             async ({ coords: { latitude, longitude } }) => {
                 try {
                     const res = await fetch(
-                        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
+                        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1&zoom=18`,
+                        { headers: { "Accept-Language": "en" } }
                     );
                     const data = await res.json();
-                    const city = data.address?.city || data.address?.town || data.address?.village || data.address?.county || "Unknown";
-                    const state = data.address?.state || "";
-                    resolve({ latitude, longitude, city, state });
+                    const a = data.address || {};
+                    const locality = a.suburb || a.neighbourhood || a.hamlet || a.village || a.town || a.city_district || "";
+                    const city = a.city || a.town || a.village || a.county || "Unknown";
+                    const state = a.state || "";
+                    const displayCity = locality ? `${locality}, ${city}` : city;
+                    resolve({ latitude, longitude, city: displayCity, state });
                 } catch { resolve(null); }
             },
             () => resolve(null),
-            { timeout: 5000 }
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
     });
 
@@ -31,24 +35,53 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [locationAsked, setLocationAsked] = useState(false);
 
-    /* ── Rehydrate on mount ── */
+    /* ── Rehydrate on mount + validate with server ── */
     useEffect(() => {
-        try {
-            const raw = localStorage.getItem("auth");
-            if (raw) {
+        let cancelled = false;
+        const rehydrate = async () => {
+            try {
+                const raw = localStorage.getItem("auth");
+                if (!raw) return;
                 const parsed = JSON.parse(raw);
-                if (parsed?.user && parsed?.token) {
-                    setUser(parsed.user);
-                    setToken(parsed.token);
-                } else {
+                if (!parsed?.user || !parsed?.token) {
                     localStorage.removeItem("auth");
+                    return;
                 }
+                // Set immediately for fast UI
+                setUser(parsed.user);
+                setToken(parsed.token);
+                // Validate with server & get fresh data
+                try {
+                    const { data } = await api.get("/auth/profile", {
+                        headers: { Authorization: `Bearer ${parsed.token}` },
+                    });
+                    if (!cancelled && data?._id) {
+                        const freshUser = {
+                            _id: data._id,
+                            name: data.name,
+                            email: data.email,
+                            phone: data.phone || "",
+                            role: data.role,
+                        };
+                        setUser(freshUser);
+                        localStorage.setItem("auth", JSON.stringify({ token: parsed.token, user: freshUser }));
+                    }
+                } catch {
+                    // Token invalid — clear auth
+                    if (!cancelled) {
+                        localStorage.removeItem("auth");
+                        setUser(null);
+                        setToken(null);
+                    }
+                }
+            } catch {
+                localStorage.removeItem("auth");
+            } finally {
+                if (!cancelled) setLoading(false);
             }
-        } catch {
-            localStorage.removeItem("auth");
-        } finally {
-            setLoading(false);
-        }
+        };
+        rehydrate();
+        return () => { cancelled = true; };
     }, []);
 
     /* ── Listen for token refresh events from axios interceptor ── */
@@ -56,13 +89,16 @@ export const AuthProvider = ({ children }) => {
         const handler = (e) => {
             const data = e.detail;
             if (data?.token) {
-                setToken(data.token);
-                setUser({
+                const refreshedUser = {
                     _id: data._id,
                     name: data.name,
                     email: data.email,
+                    phone: data.phone || "",
                     role: data.role,
-                });
+                };
+                setToken(data.token);
+                setUser(refreshedUser);
+                localStorage.setItem("auth", JSON.stringify({ token: data.token, user: refreshedUser }));
             }
         };
         window.addEventListener("auth:refreshed", handler);
@@ -85,6 +121,7 @@ export const AuthProvider = ({ children }) => {
                 _id: data._id,
                 name: data.name,
                 email: data.email,
+                phone: data.phone || "",
                 role: data.role,
             },
         };
@@ -119,9 +156,26 @@ export const AuthProvider = ({ children }) => {
         setLocationAsked(false);
     }, [user?._id]);
 
+    const updateUser = useCallback((data) => {
+        const updated = {
+            _id: data._id,
+            name: data.name,
+            email: data.email,
+            phone: data.phone || "",
+            role: data.role,
+        };
+        setUser(updated);
+        // Sync localStorage
+        try {
+            const stored = JSON.parse(localStorage.getItem("auth") || "{}");
+            stored.user = updated;
+            localStorage.setItem("auth", JSON.stringify(stored));
+        } catch { /* silent */ }
+    }, []);
+
     const ctxValue = useMemo(() => ({
-        user, token, login, loginWithData, register, logout, loading
-    }), [user, token, login, loginWithData, register, logout, loading]);
+        user, token, login, loginWithData, register, logout, updateUser, loading
+    }), [user, token, login, loginWithData, register, logout, updateUser, loading]);
 
     return (
         <AuthContext.Provider value={ctxValue}>

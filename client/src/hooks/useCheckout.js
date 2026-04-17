@@ -23,7 +23,7 @@ import {
 } from "../services/checkoutService";
 import { initiateOnlinePayment } from "../services/paymentService";
 
-export const useCheckout = (buyNowItem = null) => {
+export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { cartItems, clear } = useCart();
@@ -34,6 +34,9 @@ export const useCheckout = (buyNowItem = null) => {
     /* ── Steps ── */
     const [step, setStep] = useState(1);
     const [error, setError] = useState("");
+
+    /* ── Coupon (passed from Cart) ── */
+    const [coupon, setCoupon] = useState(couponFromCart); // { couponId, code, discount, ... }
 
     /* ── Contact ── */
     const [contact, setContact] = useState({
@@ -116,6 +119,8 @@ export const useCheckout = (buyNowItem = null) => {
                     deliveryType,
                     distanceKm: codDistance || 0,
                     pincode: selectedAddress?.pincode,
+                    ...(coupon?.couponId && { couponId: coupon.couponId }),
+                    ...(coupon?.code && { couponCode: coupon.code }),
                 });
                 setPricing(data);
             } catch {
@@ -124,7 +129,7 @@ export const useCheckout = (buyNowItem = null) => {
                 setPricingLoading(false);
             }
         }, 300);
-    }, [checkoutItems, paymentMethod, deliveryType, codDistance, selectedAddress?.pincode]);
+    }, [checkoutItems, paymentMethod, deliveryType, codDistance, selectedAddress?.pincode, coupon]);
 
     // Initial pricing fetch
     useEffect(() => {
@@ -275,6 +280,7 @@ export const useCheckout = (buyNowItem = null) => {
                 pincode: selectedAddress?.pincode,
                 deliveryType,
                 distanceKm: codDistance || 0,
+                coupon: coupon || null,
             });
 
             if (!buyNowItem) clear();
@@ -325,6 +331,7 @@ export const useCheckout = (buyNowItem = null) => {
                 },
                 deliveryType,
                 distanceKm: codDistance || 0,
+                coupon: coupon || null,
             });
         } catch (err) {
             setError(err.message || "Payment initialization failed.");
@@ -371,6 +378,7 @@ export const useCheckout = (buyNowItem = null) => {
         setDeliveryType,
         mobileSummaryOpen, setMobileSummaryOpen,
         checkoutItems,
+        coupon,
 
         // Actions
         handleContactContinue,

@@ -21,6 +21,9 @@ import {
     FaClock, FaStar, FaChevronRight, FaSearch, FaBell,
     FaPlus, FaMinus, FaTimes, FaTrash, FaFire,
 } from "react-icons/fa";
+import NearbyShops from "../components/NearbyShops";
+import CategoryBrowser from "../components/CategoryBrowser";
+import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
@@ -118,22 +121,13 @@ const calculateEstimatedSavings = (uhItems) => {
     }, 0);
 };
 
-const scrollToCart = () => {
-    const cartBtn = document.querySelector('.float-cart');
-    if (cartBtn) {
-        cartBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        // Add pulse animation
-        cartBtn.classList.add('cart-highlight');
-        setTimeout(() => cartBtn.classList.remove('cart-highlight'), 1500);
-    }
-};
-
 /* ── Main Page ────────────────────────────────────────── */
 const UrbexonHour = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { user } = useAuth();
     const { uhTotalQty, uhTotal, uhItems } = useCart();
+    const { recentlyViewed: uhRecentlyViewed } = useRecentlyViewed("urbexon_hour");
 
     /* ── State ── */
     const [pincode, setPincode] = useState("");
@@ -228,41 +222,6 @@ const UrbexonHour = () => {
             try { await api.post("/addresses/uh-pincode", pincodeData); } catch { /* silent */ }
         }
     }, [user]);
-
-    /* ── Track cart analytics (industry-level feature) ── */
-    const trackCartInteraction = useCallback((eventType, cartData) => {
-        // Send analytics to backend - valuable for business insights
-        const analyticsPayload = {
-            event: eventType, // 'view_cart', 'add_item', 'remove_item', 'checkout'
-            timestamp: new Date().toISOString(),
-            cartValue: cartData?.total || 0,
-            itemCount: cartData?.qty || 0,
-            itemsList: cartData?.items || [],
-            pincode: cartData?.pincode,
-            userId: cartData?.userId,
-        };
-        // This would typically be sent to your analytics service
-        // api.post('/analytics/cart-interaction', analyticsPayload).catch(() => {});
-    }, []);
-
-    /* ── Get cart summary for quick insights ── */
-    const getCartSummary = useCallback(() => {
-        if (!Array.isArray(uhItems) || uhItems.length === 0) return null;
-
-        const summary = {
-            totalItems: uhTotalQty,
-            totalAmount: uhTotal,
-            totalSavings: calculateEstimatedSavings(uhItems),
-            itemBreakdown: {
-                uniqueItems: uhItems.length,
-                averagePrice: Math.round(uhTotal / uhTotalQty),
-                maxPricedItem: Math.max(...uhItems.map(i => i.price || 0)),
-                minPricedItem: Math.min(...uhItems.map(i => i.price || 0)),
-            },
-            estimatedDelivery: calculateEstimatedDeliveryTime(pinData),
-        };
-        return summary;
-    }, [uhItems, uhTotalQty, uhTotal, pinData]);
 
     /* ── GPS Detection ── */
     const detectLocation = useCallback(async () => {
@@ -359,6 +318,7 @@ const UrbexonHour = () => {
         setProducts([]);
         setCategories([]);
         setActiveCategory(null);
+        setUhDeals([]);
     }, []);
 
     /* ── Waitlist ── */
@@ -545,53 +505,24 @@ const UrbexonHour = () => {
                     </div>
                 )}
 
-                {/* ── CATEGORY CHIPS (dynamic UH categories from backend) ── */}
+                {/* ── CATEGORY BROWSER (Myntra-style, UH categories) ── */}
                 {hasActiveService && !showPincodeEdit && (
                     <div className="section">
                         <div className="container">
-                            <div className="section-head">
-                                <span className="section-title">Shop by Category</span>
-                                {activeCategory && (
-                                    <button className="see-all-btn" onClick={() => setActiveCategory(null)}>
-                                        Clear filter
-                                    </button>
-                                )}
-                            </div>
-                            <div className="g-cat-grid">
-                                {apiCategories.length > 0 ? apiCategories.map((cat) => {
-                                    const catName = cat.name || cat;
-                                    const hasProducts = categories.includes(catName);
-                                    return (
-                                        <div
-                                            key={cat._id || catName}
-                                            className={`g-cat-item${activeCategory === catName ? " active" : ""}${!hasProducts ? " g-cat-dim" : ""}`}
-                                            onClick={() => hasProducts && setActiveCategory((prev) => prev === catName ? null : catName)}
-                                        >
-                                            {cat.image?.url ? (
-                                                <img src={cat.image.url} alt={catName} className="g-cat-img" loading="lazy" />
-                                            ) : (
-                                                <div className="g-cat-emoji">{cat.emoji || getCategoryEmoji(catName)}</div>
-                                            )}
-                                            <div className="g-cat-label">{catName}</div>
-                                        </div>
-                                    );
-                                }) : categories.map((cat) => (
-                                    <div
-                                        key={cat}
-                                        className={`g-cat-item${activeCategory === cat ? " active" : ""}`}
-                                        onClick={() => setActiveCategory((prev) => prev === cat ? null : cat)}
-                                    >
-                                        <div className="g-cat-emoji">{getCategoryEmoji(cat)}</div>
-                                        <div className="g-cat-label">{cat}</div>
-                                    </div>
-                                ))}
-                            </div>
+                            <CategoryBrowser
+                                categories={apiCategories}
+                                onCategorySelect={setActiveCategory}
+                                activeCategory={activeCategory}
+                                title="Shop by Category"
+                                subtitle={activeCategory ? `Showing: ${activeCategory}` : "Tap to filter by category"}
+                                type="urbexon_hour"
+                            />
                         </div>
                     </div>
                 )}
 
-                {/* ── UH FLASH DEALS (hide when searching) ── */}
-                {uhDeals.length > 0 && !searchQuery && (
+                {/* ── UH FLASH DEALS (hide when searching or no pincode) ── */}
+                {hasActiveService && uhDeals.length > 0 && !searchQuery && (
                     <div className="uh-deals-section">
                         <div className="container">
                             <div className="uh-deals-header">
@@ -656,6 +587,36 @@ const UrbexonHour = () => {
                             >
                                 <FaTimes size={12} /> Clear
                             </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── NEARBY STORES ── */}
+                {hasActiveService && !showPincodeEdit && !searchQuery && (
+                    <div className="container">
+                        <NearbyShops pincode={pincode} pincodeLabel={savedPincode?.area || savedPincode?.city || ''} maxResults={12} />
+                    </div>
+                )}
+
+                {/* ── RECENTLY VIEWED (UH only) ── */}
+                {hasActiveService && !showPincodeEdit && !searchQuery && uhRecentlyViewed.length > 0 && (
+                    <div className="container" style={{ paddingTop: 12, paddingBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                            <FaClock size={14} style={{ color: "#7c3aed" }} />
+                            <h3 style={{ fontSize: "clamp(14px,3vw,18px)", fontWeight: 800, margin: 0, color: "#1a1a2e" }}>
+                                Recently Viewed
+                            </h3>
+                            <span style={{ fontSize: 11, color: "#78788c" }}>· Continue where you left off</span>
+                        </div>
+                        <div style={{
+                            display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8,
+                            scrollbarWidth: "none", WebkitOverflowScrolling: "touch",
+                        }}>
+                            {uhRecentlyViewed.slice(0, 10).map(p => (
+                                <div key={p._id} style={{ minWidth: 150, maxWidth: 170, flexShrink: 0 }}>
+                                    <ProductCard product={p} />
+                                </div>
+                            ))}
                         </div>
                     </div>
                 )}

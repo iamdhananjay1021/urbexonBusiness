@@ -4,6 +4,7 @@ import api from "../api/axios";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../contexts/AuthContext";
 import RelatedProductsSlider from "../components/RelatedProductsSlider";
+import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
 import { imgUrl } from "../utils/imageUrl";
 import {
     FaStar, FaRegStar, FaShoppingCart, FaBolt,
@@ -139,6 +140,7 @@ const ProductDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { addItem, cartItems } = useCart();
+    const { trackView } = useRecentlyViewed();
     const { user } = useAuth();
 
     /* ── State ── */
@@ -229,6 +231,9 @@ const ProductDetails = () => {
 
                 const { data: prod } = await api.get(`/products/${id}`, { signal: ctrl.signal });
                 setProduct(prod);
+
+                // Track recently viewed
+                trackView(prod);
 
                 const { data: related } = await api.get(`/products/${prod._id}/related`, { signal: ctrl.signal });
                 setRelatedProducts(related);

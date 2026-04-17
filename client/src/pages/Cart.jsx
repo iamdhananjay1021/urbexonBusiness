@@ -150,7 +150,7 @@ const Cart = () => {
   const { delivery, platform, total } = useMemo(() => {
     const d = isUH ? 25 : (inStockPrice >= 499 ? 0 : 49);
     const p = 11;
-    return { delivery: d, platform: p, total: inStockPrice - discount + d + p };
+    return { delivery: d, platform: p, total: inStockPrice - discount + d + p, estimated: true };
   }, [inStockPrice, discount, isUH]);
 
   const applyCoupon = useCallback(async () => {
@@ -172,6 +172,13 @@ const Cart = () => {
 
   // Switch tab resets coupon
   const switchTab = (tab) => { setActiveTab(tab); removeCoupon(); };
+
+  // Reset coupon when cart total changes significantly (items added/removed)
+  useEffect(() => {
+    if (couponData && couponData.minOrderValue && inStockPrice < couponData.minOrderValue) {
+      removeCoupon();
+    }
+  }, [inStockPrice]); // eslint-disable-line
 
   if (!hasEc && !hasUh) {
     return (
@@ -318,7 +325,8 @@ const Cart = () => {
                   💡 Add {fmt(499 - inStockPrice)} more for FREE delivery!
                 </div>
               )}
-              <div className="sum-row total"><span>Total Amount</span><span>{fmt(total)}</span></div>
+              <div className="sum-row total"><span>Est. Total</span><span>{fmt(total)}</span></div>
+              <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>Final amount calculated at checkout</div>
               {discount > 0 && (
                 <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#15803d", fontWeight: 600, marginTop: 8, textAlign: "center" }}>
                   🎉 You saved {fmt(discount)}!

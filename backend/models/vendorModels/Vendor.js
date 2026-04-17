@@ -72,6 +72,12 @@ const vendorSchema = new mongoose.Schema(
             landmark: { type: String, trim: true },
         },
 
+        // ── Location (GeoJSON for nearby queries) ─────────────
+        location: {
+            type: { type: String, enum: ["Point"], default: "Point" },
+            coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
+        },
+
         // ── Service Area ─────────────────────────────────────
         servicePincodes: [{ type: String, trim: true }],
         deliveryRadius: { type: Number, default: 5 }, // km
@@ -160,6 +166,7 @@ vendorSchema.index({ userId: 1 });
 vendorSchema.index({ status: 1, isDeleted: 1 });
 vendorSchema.index({ servicePincodes: 1 });
 vendorSchema.index({ "subscription.expiryDate": 1 });
+vendorSchema.index({ location: "2dsphere" });
 
 // ── Virtual: subscription expired? ───────────────────────────
 vendorSchema.virtual("isSubscriptionExpired").get(function () {
@@ -194,6 +201,27 @@ vendorSchema.statics.findActiveForPincode = function (pincode) {
         "subscription.isActive": true,
         "subscription.expiryDate": { $gt: new Date() },
     }).select("shopName shopLogo shopCategory rating totalOrders preparationTime deliveryMode");
+};
+
+// ── Static: find nearby vendors by geo (maxDist in meters) ───
+vendorSchema.statics.findNearby = function (lng, lat, maxDistMeters = 10000, { category, limit = 30 } = {}) {
+    const filter = {
+        location: {
+            $nearSphere: {
+                $geometry: { type: "Point", coordinates: [lng, lat] },
+                $maxDistance: maxDistMeters,
+            },
+        },
+        status: "approved",
+        isOpen: true,
+        acceptingOrders: true,
+        isDeleted: false,
+        "location.coordinates": { $ne: [0, 0] },
+    };
+    if (category) filter.shopCategory = category;
+    return this.find(filter)
+        .limit(limit)
+        .select("shopName shopLogo shopCategory shopSlug rating ratingCount totalOrders preparationTime deliveryMode location address minOrderAmount freeDeliveryAbove");
 };
 
 const Vendor = mongoose.model("Vendor", vendorSchema);
