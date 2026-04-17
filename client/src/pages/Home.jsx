@@ -88,7 +88,7 @@ const CSS = `
 .h-hero-bg {
     position: absolute; inset: 0;
     width: 100%; height: 100%; object-fit: cover;
-    opacity: .15;
+    opacity: .08; filter: blur(2px);
 }
 
 .h-hero-in {
@@ -150,8 +150,10 @@ const CSS = `
 }
 .h-hero-img {
     width: clamp(260px, 35vw, 480px); height: clamp(260px, 35vw, 480px);
-    object-fit: cover; border-radius: 20px;
-    box-shadow: 0 20px 60px rgba(0,0,0,.25);
+    object-fit: contain; border-radius: 20px;
+    background: rgba(255,255,255,.92);
+    padding: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.18);
     animation: h-float 4s ease-in-out infinite;
 }
 .h-hero-img-placeholder {
@@ -1022,7 +1024,7 @@ const Home = () => {
                                         {slide.desc && <p className="h-hero-desc">{slide.desc}</p>}
                                         <div className="h-hero-btns">
                                             <button className="h-hero-btn-p"
-                                                onClick={() => navigate(slide.ctaLink || "/")}>
+                                                onClick={() => navigate(slide.link || slide.ctaLink || "/")}>
                                                 {slide.cta || "Shop Now"} <FaArrowRight size={12} />
                                             </button>
                                             {slide.secondary && (

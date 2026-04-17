@@ -16,13 +16,18 @@ const safeDestroy = async (publicId) => {
 /* ── GET ALL ACTIVE CATEGORIES (public) ── */
 export const getActiveCategories = async (req, res) => {
     try {
-        const cached = await getCache("categories:active");
+        const { type } = req.query;
+        const cacheKey = type ? `categories:active:${type}` : "categories:active";
+        const cached = await getCache(cacheKey);
         if (cached) return res.json(cached);
 
-        const categories = await Category.find({ isActive: true })
+        const filter = { isActive: true };
+        if (type) filter.type = type;
+
+        const categories = await Category.find(filter)
             .sort({ order: 1, name: 1 })
             .lean();
-        await setCache("categories:active", categories, 600); // 10 min
+        await setCache(cacheKey, categories, 600); // 10 min
         res.json(categories);
     } catch (err) {
         console.error("GET CATEGORIES ERROR:", err);
@@ -33,7 +38,10 @@ export const getActiveCategories = async (req, res) => {
 /* ── GET ALL CATEGORIES (admin) ── */
 export const getAllCategories = async (req, res) => {
     try {
-        const categories = await Category.find().sort({ order: 1, name: 1 }).lean();
+        const { type } = req.query;
+        const filter = {};
+        if (type) filter.type = type;
+        const categories = await Category.find(filter).sort({ order: 1, name: 1 }).lean();
         res.json(categories);
     } catch (err) {
         console.error("GET ALL CATEGORIES ERROR:", err);
@@ -56,11 +64,11 @@ export const getSingleCategory = async (req, res) => {
 /* ── CREATE CATEGORY (admin) ── */
 export const createCategory = async (req, res) => {
     try {
-        const { name, emoji, color, lightColor, isActive, order } = req.body;
+        const { name, emoji, color, lightColor, isActive, order, type } = req.body;
 
         if (!name?.trim()) return res.status(400).json({ success: false, message: "Category name is required" });
 
-        const existing = await Category.findOne({ name: name.trim() });
+        const existing = await Category.findOne({ name: name.trim(), type: type || "ecommerce" });
         if (existing) return res.status(400).json({ success: false, message: "Category already exists" });
 
         const image = req.file
@@ -77,6 +85,7 @@ export const createCategory = async (req, res) => {
             lightColor: lightColor || "#f0eefb",
             isActive: isActive === "true" || isActive === true,
             order: Number(order) || 0,
+            type: type || "ecommerce",
             image,
         });
 
@@ -94,7 +103,7 @@ export const updateCategory = async (req, res) => {
         const cat = await Category.findById(req.params.id);
         if (!cat) return res.status(404).json({ success: false, message: "Category not found" });
 
-        const { name, emoji, color, lightColor, isActive, order } = req.body;
+        const { name, emoji, color, lightColor, isActive, order, type } = req.body;
 
         if (name !== undefined) cat.name = name.trim();
         if (emoji !== undefined) cat.emoji = emoji;
@@ -102,6 +111,7 @@ export const updateCategory = async (req, res) => {
         if (lightColor !== undefined) cat.lightColor = lightColor;
         if (isActive !== undefined) cat.isActive = isActive === "true" || isActive === true;
         if (order !== undefined) cat.order = Number(order) || 0;
+        if (type !== undefined) cat.type = type;
 
         if (req.file) {
             await safeDestroy(cat.image?.public_id);

@@ -165,11 +165,12 @@ export const getHomepageProducts = async (req, res) => {
 ════════════════════════════════════════ */
 export const getSuggestions = async (req, res) => {
     try {
-        const { q } = req.query;
+        const { q, productType } = req.query;
         if (!q || q.trim().length < 2) return res.json([]);
         const regex = { $regex: q.trim(), $options: "i" };
+        const typeFilter = productType === "urbexon_hour" ? "urbexon_hour" : "ecommerce";
         const products = await Product.find({
-            isActive: true, inStock: true, productType: "ecommerce",
+            isActive: true, inStock: true, productType: typeFilter,
             $or: [{ name: regex }, { category: regex }, { brand: regex }],
         }).select("name category brand slug images price mrp").limit(8).lean();
         res.json(products);

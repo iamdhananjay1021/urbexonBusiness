@@ -10,7 +10,7 @@ export default function MainLayout() {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f7f4ee" }}>
-            {!isUrbexonHour && <Navbar />}
+            <Navbar />
             <main style={{ flex: 1 }}>
                 <Outlet />
             </main>

@@ -38,6 +38,12 @@ const categorySchema = new mongoose.Schema(
             type: Number,
             default: 0,
         },
+        type: {
+            type: String,
+            enum: ["ecommerce", "urbexon_hour"],
+            default: "ecommerce",
+            index: true,
+        },
     },
     { timestamps: true }
 );

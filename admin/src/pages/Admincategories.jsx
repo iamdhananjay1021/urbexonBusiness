@@ -125,7 +125,12 @@ const AdminCategories = () => {
 
                             {/* Info */}
                             <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-                                <p style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{cat.name}</p>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <p style={{ fontSize: 14, fontWeight: 600, color: "#1e293b", margin: 0 }}>{cat.name}</p>
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: cat.type === "urbexon_hour" ? "#fff7ed" : "#f0f9ff", color: cat.type === "urbexon_hour" ? "#c2410c" : "#1d4ed8", border: `1px solid ${cat.type === "urbexon_hour" ? "#fed7aa" : "#bfdbfe"}` }}>
+                                        {cat.type === "urbexon_hour" ? "⚡ UH" : "🛒 EC"}
+                                    </span>
+                                </div>
                                 <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>/{cat.slug}</p>
                             </div>
 

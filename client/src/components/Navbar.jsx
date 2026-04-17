@@ -354,27 +354,35 @@ const CSS = `
 .ux-burger span { display:block; height:2px; background:#374151; border-radius:2px; transition:all .25s; }
 
 /* ══ UH MODE ════════════════════════════════════════════ */
-.ux-navbar.ux-uh-mode { background: #1a1740; border-bottom-color: #2d2a5e; }
-.ux-navbar.ux-uh-mode .ux-logo-word { color: #fff; }
-.ux-navbar.ux-uh-mode .ux-logo-uh { color: #c9a84c; font-size: 22px; font-weight: 800; }
+.ux-navbar.ux-uh-mode { background: linear-gradient(135deg, #0f0d2e, #1a1740); border-bottom-color: #2d2a5e; box-shadow: 0 2px 20px rgba(0,0,0,.3); }
+.ux-navbar.ux-uh-mode .ux-logo-word { color: #c9a84c; }
+.ux-navbar.ux-uh-mode .ux-logo-uh { color: #fff; font-size: 22px; font-weight: 800; margin-left: 2px; }
 .ux-navbar.ux-uh-mode .ux-hour-pill { background: linear-gradient(135deg, #5b5bf6, #7c3aed); }
-.ux-navbar.ux-uh-mode .ux-srch { border-color: #3d3a6e; background: rgba(255,255,255,.08); }
-.ux-navbar.ux-uh-mode .ux-srch.foc { border-color: #c9a84c; background: rgba(255,255,255,.12); }
+.ux-navbar.ux-uh-mode .ux-srch { border-color: #3d3a6e; background: rgba(255,255,255,.06); }
+.ux-navbar.ux-uh-mode .ux-srch.foc { border-color: #c9a84c; background: rgba(255,255,255,.1); }
 .ux-navbar.ux-uh-mode .ux-srch-inp { color: #fff; }
-.ux-navbar.ux-uh-mode .ux-srch-inp::placeholder { color: rgba(255,255,255,.4); }
+.ux-navbar.ux-uh-mode .ux-srch-inp::placeholder { color: rgba(255,255,255,.35); }
 .ux-navbar.ux-uh-mode .ux-srch-btn { background: #c9a84c; }
 .ux-navbar.ux-uh-mode .ux-srch-btn:hover { background: #b8943e; }
-.ux-navbar.ux-uh-mode .ux-icon-btn-lbl { color: rgba(255,255,255,.7); }
+.ux-navbar.ux-uh-mode .ux-icon-btn { color: rgba(255,255,255,.8); }
+.ux-navbar.ux-uh-mode .ux-icon-btn:hover { background: rgba(255,255,255,.08); }
+.ux-navbar.ux-uh-mode .ux-icon-btn-lbl { color: rgba(255,255,255,.6); }
 .ux-navbar.ux-uh-mode .ux-vdiv { background: #3d3a6e; }
 .ux-navbar.ux-uh-mode .ux-login-btn { border-color: #c9a84c; color: #c9a84c; }
 .ux-navbar.ux-uh-mode .ux-login-btn:hover { background: #c9a84c; color: #1a1740; }
 .ux-navbar.ux-uh-mode .ux-register-btn { background: #c9a84c; color: #1a1740; }
 .ux-navbar.ux-uh-mode .ux-usr-btn:hover { background: rgba(255,255,255,.08); }
 .ux-navbar.ux-uh-mode .ux-usr-name { color: #fff; }
+.ux-navbar.ux-uh-mode .ux-usr-sub { color: rgba(255,255,255,.45); }
 .ux-navbar.ux-uh-mode .ux-catbar { display: none; }
-.ux-mnav.ux-uh-mode { background: #1a1740; border-bottom-color: #2d2a5e; }
-.ux-mnav.ux-uh-mode .ux-m-word { color: #fff; }
-.ux-mnav.ux-uh-mode .ux-m-uh { color: #c9a84c; font-size: 20px; font-weight: 800; }
+.ux-navbar.ux-uh-mode .ux-badge-red { display: none; }
+/* UH cart always visible in UH mode */
+.ux-uh-cart-always { display: flex; align-items: center; gap: 5px; padding: 7px 14px; background: linear-gradient(135deg, #c9a84c, #b8943e); border: none; border-radius: 8px; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; font-weight: 700; color: #fff; position: relative; transition: all .18s; flex-shrink: 0; }
+.ux-uh-cart-always:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.ux-uh-cart-always .ux-badge { background: #fff; color: #1a1740; border-color: #c9a84c; }
+.ux-mnav.ux-uh-mode { background: linear-gradient(135deg, #0f0d2e, #1a1740); border-bottom-color: #2d2a5e; }
+.ux-mnav.ux-uh-mode .ux-m-word { color: #c9a84c; }
+.ux-mnav.ux-uh-mode .ux-m-uh { color: #fff; font-size: 20px; font-weight: 800; }
 .ux-mnav.ux-uh-mode .ux-m-btn { color: rgba(255,255,255,.8); }
 
 /* ══ SUGGESTIONS DROPDOWN ═══════════════════════════════ */
@@ -493,15 +501,20 @@ const Navbar = () => {
         } catch { /* ignore */ }
         setSuggestions([]);
         setMobileOpen(false); setSearchOverlay(false);
-        navigate(`/?search=${encodeURIComponent(q.trim())}`);
-    }, [navigate]);
+        if (isUHMode) {
+            navigate(`/urbexon-hour?search=${encodeURIComponent(q.trim())}`);
+        } else {
+            navigate(`/?search=${encodeURIComponent(q.trim())}`);
+        }
+    }, [navigate, isUHMode]);
 
     /* ── Desktop search suggestions (debounced) ── */
     useEffect(() => {
         clearTimeout(suggestTimer.current);
         if (deskSearch.trim().length < 2) { setSuggestions([]); return; }
         suggestTimer.current = setTimeout(() => {
-            api.get(`/products/suggestions?q=${encodeURIComponent(deskSearch.trim())}`)
+            const typeParam = isUHMode ? "&productType=urbexon_hour" : "";
+            api.get(`/products/suggestions?q=${encodeURIComponent(deskSearch.trim())}${typeParam}`)
                 .then(r => setSuggestions(Array.isArray(r.data) ? r.data : []))
                 .catch(() => setSuggestions([]));
         }, 300);
@@ -511,7 +524,7 @@ const Navbar = () => {
     const isCatActive = useCallback(cat =>
         location.pathname === `/category/${cat}`, [location.pathname]);
 
-    const navbarHeight = `calc(68px + 41px)`;
+    const navbarHeight = isUHMode ? `68px` : `calc(68px + 41px)`;
     const mobileHeight = `58px`;
 
     return (
@@ -529,28 +542,48 @@ const Navbar = () => {
                 {/* ── MOBILE NAV ── */}
                 <nav className={`ux-mnav${isUHMode ? " ux-uh-mode" : ""}`} style={{ display: "none" }} id="ux-mob-nav">
                     <div className="ux-mnav-in">
-                        <button className="ux-m-logo" onClick={() => go("/")}>
-                            <span className="ux-m-word">Urbexon</span>
-                            {isUHMode && <span className="ux-m-uh">Hour</span>}
+                        <button className="ux-m-logo" onClick={() => go(isUHMode ? "/urbexon-hour" : "/")}>
+                            {isUHMode ? (
+                                <>
+                                    <FaBolt size={16} color="#c9a84c" />
+                                    <span className="ux-m-word">Urbexon</span>
+                                    <span className="ux-m-uh">Hour</span>
+                                </>
+                            ) : (
+                                <span className="ux-m-word">Urbexon</span>
+                            )}
                         </button>
                         <div className="ux-m-acts">
                             <button className="ux-m-btn" onClick={() => setSearchOverlay(true)}>
                                 <FaSearch size={16} />
                             </button>
-                            {uhCount > 0 && (
-                                <button className="ux-m-btn" style={{ color: "#ff4500" }} onClick={() => go("/uh-cart")}>
+                            {isUHMode ? (
+                                <button className="ux-m-btn" style={{ color: "#c9a84c" }} onClick={() => go("/uh-cart")}>
                                     <FaBolt size={16} />
-                                    <span className="ux-badge ux-badge-org" style={{ top: 3, right: 3 }}>
-                                        {uhCount > 9 ? "9+" : uhCount}
-                                    </span>
+                                    {uhCount > 0 && (
+                                        <span className="ux-badge" style={{ background: "#c9a84c", color: "#1a1740", top: 3, right: 3 }}>
+                                            {uhCount > 9 ? "9+" : uhCount}
+                                        </span>
+                                    )}
                                 </button>
+                            ) : (
+                                <>
+                                    {uhCount > 0 && (
+                                        <button className="ux-m-btn" style={{ color: "#ff4500" }} onClick={() => go("/uh-cart")}>
+                                            <FaBolt size={16} />
+                                            <span className="ux-badge ux-badge-org" style={{ top: 3, right: 3 }}>
+                                                {uhCount > 9 ? "9+" : uhCount}
+                                            </span>
+                                        </button>
+                                    )}
+                                    <button className="ux-m-btn" onClick={() => go("/cart")}>
+                                        <FaShoppingCart size={16} />
+                                        {ecommerceCount > 0 && (
+                                            <span className="ux-badge ux-badge-red">{ecommerceCount > 9 ? "9+" : ecommerceCount}</span>
+                                        )}
+                                    </button>
+                                </>
                             )}
-                            <button className="ux-m-btn" onClick={() => go("/cart")}>
-                                <FaShoppingCart size={16} />
-                                {ecommerceCount > 0 && (
-                                    <span className="ux-badge ux-badge-red">{ecommerceCount > 9 ? "9+" : ecommerceCount}</span>
-                                )}
-                            </button>
                             <button className="ux-m-btn" onClick={() => setMobileOpen(s => !s)}>
                                 <div className="ux-burger">
                                     <span style={{ transform: mobileOpen ? "translateY(6px) rotate(45deg)" : "none" }} />
@@ -567,14 +600,21 @@ const Navbar = () => {
                     <div className="ux-nav-row">
 
                         {/* Logo */}
-                        <button className="ux-logo-btn" onClick={() => go("/")}>
-                            <span className="ux-logo-word">Urbexon</span>
-                            {isUHMode && <span className="ux-logo-uh">Hour</span>}
+                        <button className="ux-logo-btn" onClick={() => go(isUHMode ? "/urbexon-hour" : "/")}>
+                            {isUHMode ? (
+                                <>
+                                    <FaBolt size={18} color="#c9a84c" />
+                                    <span className="ux-logo-word">Urbexon</span>
+                                    <span className="ux-logo-uh">Hour</span>
+                                </>
+                            ) : (
+                                <span className="ux-logo-word">Urbexon</span>
+                            )}
                         </button>
 
                         {/* Switch to Hour / Back to Store */}
                         <button className="ux-hour-pill" onClick={() => navigate(isUHMode ? "/" : "/urbexon-hour")}>
-                            <FaBolt size={12} />
+                            {isUHMode ? <FaShoppingCart size={11} /> : <FaBolt size={12} />}
                             <span className="ux-hp-label">{isUHMode ? "Back to Store" : "Switch to Hour"}</span>
                         </button>
 
@@ -591,7 +631,7 @@ const Navbar = () => {
                                     onChange={e => setDeskSearch(e.target.value)}
                                     onFocus={() => setSearchFocused(true)}
                                     onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-                                    placeholder="Search for products, brands and more..."
+                                    placeholder={isUHMode ? "Search Urbexon Hour products..." : "Search for products, brands and more..."}
                                 />
                                 {deskSearch && (
                                     <button type="button" onClick={() => { setDeskSearch(""); setSuggestions([]); }}
@@ -610,7 +650,7 @@ const Navbar = () => {
                                         <>
                                             <div className="ux-sugg-lbl">Suggestions</div>
                                             {suggestions.map(s => (
-                                                <div key={s._id} className="ux-sugg-item" onMouseDown={() => { navigate(`/products/${s.slug || s._id}`); setSuggestions([]); setDeskSearch(""); }}>
+                                                <div key={s._id} className="ux-sugg-item" onMouseDown={() => { navigate(isUHMode ? `/uh-product/${s.slug || s._id}` : `/products/${s.slug || s._id}`); setSuggestions([]); setDeskSearch(""); }}>
                                                     <img className="ux-sugg-img" src={s.images?.[0]?.url || "/placeholder.png"} alt="" onError={e => { e.target.src = "/placeholder.png"; }} />
                                                     <div className="ux-sugg-info">
                                                         <div className="ux-sugg-name">{s.name}</div>
@@ -638,30 +678,47 @@ const Navbar = () => {
                         <div className="ux-acts">
                             {isAuth ? (
                                 <>
-                                    {/* Wishlist */}
-                                    <button className="ux-icon-btn" onClick={() => go("/wishlist")}>
-                                        <FaHeart size={20} color="#374151" />
-                                        <span className="ux-icon-btn-lbl">Wishlist</span>
-                                    </button>
-
-                                    <div className="ux-vdiv" />
-
-                                    {/* UH Cart */}
-                                    {uhCount > 0 && (
-                                        <button className="ux-uh-cart" onClick={() => go("/uh-cart")}>
-                                            <FaBolt size={14} />
-                                            <span>{uhCount}</span>
+                                    {/* Wishlist — ecommerce only */}
+                                    {!isUHMode && (
+                                        <button className="ux-icon-btn" onClick={() => go("/wishlist")}>
+                                            <FaHeart size={20} color="#374151" />
+                                            <span className="ux-icon-btn-lbl">Wishlist</span>
                                         </button>
                                     )}
 
-                                    {/* Ecommerce Cart */}
-                                    <button className="ux-icon-btn" onClick={() => go("/cart")}>
-                                        <FaShoppingCart size={20} color="#374151" />
-                                        {ecommerceCount > 0 && (
-                                            <span className="ux-badge ux-badge-red">{ecommerceCount > 9 ? "9+" : ecommerceCount}</span>
-                                        )}
-                                        <span className="ux-icon-btn-lbl">Cart</span>
-                                    </button>
+                                    {!isUHMode && <div className="ux-vdiv" />}
+
+                                    {/* UH Cart — always visible in UH mode with gold style */}
+                                    {isUHMode ? (
+                                        <button className="ux-uh-cart-always" onClick={() => go("/uh-cart")}>
+                                            <FaBolt size={14} />
+                                            <span>Cart</span>
+                                            {uhCount > 0 && (
+                                                <span className="ux-badge" style={{ position: "static", border: "none", minWidth: 20, height: 20, borderRadius: 10 }}>
+                                                    {uhCount > 9 ? "9+" : uhCount}
+                                                </span>
+                                            )}
+                                        </button>
+                                    ) : (
+                                        <>
+                                            {/* UH Cart mini (ecommerce page) */}
+                                            {uhCount > 0 && (
+                                                <button className="ux-uh-cart" onClick={() => go("/uh-cart")}>
+                                                    <FaBolt size={14} />
+                                                    <span>{uhCount}</span>
+                                                </button>
+                                            )}
+
+                                            {/* Ecommerce Cart */}
+                                            <button className="ux-icon-btn" onClick={() => go("/cart")}>
+                                                <FaShoppingCart size={20} color="#374151" />
+                                                {ecommerceCount > 0 && (
+                                                    <span className="ux-badge ux-badge-red">{ecommerceCount > 9 ? "9+" : ecommerceCount}</span>
+                                                )}
+                                                <span className="ux-icon-btn-lbl">Cart</span>
+                                            </button>
+                                        </>
+                                    )}
 
                                     <div className="ux-vdiv" />
 
@@ -703,14 +760,26 @@ const Navbar = () => {
                                 </>
                             ) : (
                                 <>
-                                    {/* Cart even for guests */}
-                                    <button className="ux-icon-btn" onClick={() => go("/cart")}>
-                                        <FaShoppingCart size={20} color="#374151" />
-                                        {ecommerceCount > 0 && (
-                                            <span className="ux-badge ux-badge-red">{ecommerceCount > 9 ? "9+" : ecommerceCount}</span>
-                                        )}
-                                        <span className="ux-icon-btn-lbl">Cart</span>
-                                    </button>
+                                    {/* Guest cart — context-aware */}
+                                    {isUHMode ? (
+                                        <button className="ux-uh-cart-always" onClick={() => go("/uh-cart")}>
+                                            <FaBolt size={14} />
+                                            <span>Cart</span>
+                                            {uhCount > 0 && (
+                                                <span className="ux-badge" style={{ position: "static", border: "none", minWidth: 20, height: 20, borderRadius: 10 }}>
+                                                    {uhCount > 9 ? "9+" : uhCount}
+                                                </span>
+                                            )}
+                                        </button>
+                                    ) : (
+                                        <button className="ux-icon-btn" onClick={() => go("/cart")}>
+                                            <FaShoppingCart size={20} color="#374151" />
+                                            {ecommerceCount > 0 && (
+                                                <span className="ux-badge ux-badge-red">{ecommerceCount > 9 ? "9+" : ecommerceCount}</span>
+                                            )}
+                                            <span className="ux-icon-btn-lbl">Cart</span>
+                                        </button>
+                                    )}
                                     <div className="ux-vdiv" />
                                     <button className="ux-login-btn" onClick={() => go("/login")}>Login</button>
                                     <button className="ux-register-btn" onClick={() => go("/register")}>Register</button>
@@ -779,27 +848,54 @@ const Navbar = () => {
                 )}
 
                 <div>
-                    <div className="ux-mm-lbl">Shop by Category</div>
-                    {categories.map(cat => (
-                        <div key={cat._id} className="ux-mm-row"
-                            onClick={() => { setMobileOpen(false); navigate(`/category/${cat.slug}`); }}>
-                            <span>{cat.name}{cat.isHot && <span className="ux-hot" style={{ marginLeft: 8 }}>HOT</span>}</span>
-                            <FaChevronRight size={10} color="#9ca3af" />
-                        </div>
-                    ))}
-                    <div className="ux-mm-row" onClick={() => { setMobileOpen(false); navigate("/deals"); }}>
-                        <span>Deals <span className="ux-hot">HOT</span></span>
-                        <FaChevronRight size={10} color="#9ca3af" />
-                    </div>
+                    {isUHMode ? (
+                        <>
+                            <div className="ux-mm-lbl">Quick Links</div>
+                            <div className="ux-mm-row" onClick={() => go("/orders")}>
+                                <span><FaBox size={12} /> My Orders</span>
+                                <FaChevronRight size={10} color="#9ca3af" />
+                            </div>
+                            <div className="ux-mm-row" onClick={() => go("/profile")}>
+                                <span><FaUser size={12} /> My Profile</span>
+                                <FaChevronRight size={10} color="#9ca3af" />
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="ux-mm-lbl">Shop by Category</div>
+                            {categories.map(cat => (
+                                <div key={cat._id} className="ux-mm-row"
+                                    onClick={() => { setMobileOpen(false); navigate(`/category/${cat.slug}`); }}>
+                                    <span>{cat.name}{cat.isHot && <span className="ux-hot" style={{ marginLeft: 8 }}>HOT</span>}</span>
+                                    <FaChevronRight size={10} color="#9ca3af" />
+                                </div>
+                            ))}
+                            <div className="ux-mm-row" onClick={() => { setMobileOpen(false); navigate("/deals"); }}>
+                                <span>Deals <span className="ux-hot">HOT</span></span>
+                                <FaChevronRight size={10} color="#9ca3af" />
+                            </div>
+                        </>
+                    )}
                 </div>
 
-                <div className="ux-mm-uh" onClick={() => { setMobileOpen(false); navigate("/urbexon-hour"); }}>
-                    <FaBolt size={20} color="#fff" />
-                    <div>
-                        <div className="ux-mm-uh-nm">⚡ Urbexon Hour</div>
-                        <div className="ux-mm-uh-sub">Express delivery in 45–120 mins</div>
+                {isUHMode ? (
+                    <div className="ux-mm-uh" style={{ background: "linear-gradient(135deg, #5b5bf6, #7c3aed)" }}
+                        onClick={() => { setMobileOpen(false); navigate("/"); }}>
+                        <FaShoppingCart size={20} color="#fff" />
+                        <div>
+                            <div className="ux-mm-uh-nm">🛒 Back to Store</div>
+                            <div className="ux-mm-uh-sub">Browse ecommerce products</div>
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="ux-mm-uh" onClick={() => { setMobileOpen(false); navigate("/urbexon-hour"); }}>
+                        <FaBolt size={20} color="#fff" />
+                        <div>
+                            <div className="ux-mm-uh-nm">⚡ Urbexon Hour</div>
+                            <div className="ux-mm-uh-sub">Express delivery in 45–120 mins</div>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {mobileOpen && (
@@ -820,14 +916,19 @@ const Navbar = () => {
                                 type="text"
                                 value={searchVal}
                                 onChange={e => setSearchVal(e.target.value)}
-                                placeholder="Search for products, brands and more…"
+                                placeholder={isUHMode ? "Search Urbexon Hour products…" : "Search for products, brands and more…"}
                             />
                             <button type="button" className="ux-sov-close" onClick={() => setSearchOverlay(false)}>
                                 <FaTimes size={18} />
                             </button>
                         </form>
                         <div className="ux-sov-tags">
-                            {(recentSearches.length > 0 ? recentSearches.slice(0, 8) : ["Fashion", "Electronics", "Watches", "Footwear", "Home Decor", "Sports"]).map(t => (
+                            {(recentSearches.length > 0
+                                ? recentSearches.slice(0, 8)
+                                : isUHMode
+                                    ? ["Grocery", "Snacks", "Drinks", "Fresh", "Dairy", "Bakery"]
+                                    : ["Fashion", "Electronics", "Watches", "Footwear", "Home Decor", "Sports"]
+                            ).map(t => (
                                 <button key={t} className="ux-sov-tag" onClick={() => handleSearch(t)}>{t}</button>
                             ))}
                         </div>

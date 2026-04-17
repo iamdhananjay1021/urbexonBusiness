@@ -12,14 +12,14 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/axios";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../hooks/useCart";
 import {
     FaBolt, FaMapMarkerAlt, FaStore, FaShoppingCart,
     FaClock, FaStar, FaChevronRight, FaSearch, FaBell,
-    FaPlus, FaMinus, FaTimes, FaTrash, FaFire, FaArrowLeft,
+    FaPlus, FaMinus, FaTimes, FaTrash, FaFire,
 } from "react-icons/fa";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
@@ -131,6 +131,7 @@ const scrollToCart = () => {
 /* ── Main Page ────────────────────────────────────────── */
 const UrbexonHour = () => {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { user } = useAuth();
     const { uhTotalQty, uhTotal, uhItems } = useCart();
 
@@ -139,6 +140,7 @@ const UrbexonHour = () => {
     const [pinData, setPinData] = useState(null);
     const [products, setProducts] = useState([]);
     const [categories, setCategories] = useState([]);
+    const [apiCategories, setApiCategories] = useState([]);
     const [loading, setLoading] = useState(false);
     const [locationLoading, setLocationLoading] = useState(false);
     const [error, setError] = useState("");
@@ -154,9 +156,20 @@ const UrbexonHour = () => {
     });
     const [initialLoading, setInitialLoading] = useState(false);
     const [showPincodeEdit, setShowPincodeEdit] = useState(false);
-    const [searchQuery, setSearchQuery] = useState("");
+    const searchQuery = searchParams.get("search") || "";
+    const clearSearch = useCallback(() => {
+        setSearchParams(prev => { prev.delete("search"); return prev; }, { replace: true });
+    }, [setSearchParams]);
     const [uhDeals, setUhDeals] = useState([]);
     const [cartAnimating, setCartAnimating] = useState(false);
+
+    /* ── Fetch UH categories from API on mount ── */
+    useEffect(() => {
+        api.get("/categories", { params: { type: "urbexon_hour" } }).then(({ data }) => {
+            const cats = Array.isArray(data) ? data : data.categories || [];
+            setApiCategories(cats.filter(c => c.isActive !== false));
+        }).catch(() => { });
+    }, []);
 
     /* ── Trigger cart animation when items added ── */
     useEffect(() => {
@@ -250,14 +263,6 @@ const UrbexonHour = () => {
         };
         return summary;
     }, [uhItems, uhTotalQty, uhTotal, pinData]);
-
-    /* ── Navigate to main Urbexon store ── */
-    const handleNavigateToMainStore = useCallback(() => {
-        // Navigate to main Urbexon e-commerce store
-        navigate("/");
-        // Optional: Add analytics event for tracking
-        // trackCartInteraction('navigate_to_main_store', { from: 'urbexon_hour' });
-    }, [navigate]);
 
     /* ── GPS Detection ── */
     const detectLocation = useCallback(async () => {
@@ -409,77 +414,19 @@ const UrbexonHour = () => {
             <style>{PAGE_CSS}</style>
             <main>
 
-                {/* ── SAVED PINCODE BAR - HIDDEN (merged into navbar) ── */}
-                {false && (
-                    <div className="uh-pin-bar">
-                        <div className="container uh-pin-bar-inner">
-                            <div className="uh-pin-bar-left">
-                                <FaBolt size={14} className="uh-bolt" />
-                                <div>
-                                    <div className="uh-pin-bar-title">Urbexon Hour</div>
-                                    <div className="uh-pin-bar-sub">Express delivery in 45–120 mins</div>
-                                </div>
-                            </div>
-                            <div className="uh-pin-bar-right">
-                                <div className="uh-pin-bar-loc">
-                                    <FaMapMarkerAlt size={11} />
-                                    <span>
-                                        {savedPincode?.area || savedPincode?.city || pincode}
-                                        {savedPincode?.city && savedPincode?.area ? `, ${savedPincode.city}` : ""}
-                                    </span>
-                                </div>
-                                <button className="uh-change-btn" onClick={handleChangePincode}>
-                                    Change
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* ── COMPACT NAVBAR (Flipkart Minutes style) ── */}
+                {/* ── UH LOCATION BAR (below main navbar) ── */}
                 {(hasActiveService || showSkeleton) && !showPincodeEdit && (
-                    <div className="uh-navbar">
-                        <div className="container uh-navbar-inner">
-                            <div className="uh-navbar-brand" onClick={() => navigate("/urbexon-hour")}>
-                                <div className="uh-logo-mark"><FaBolt size={14} /></div>
-                                <div className="uh-navbar-title-full">
-                                    <div className="uh-navbar-main-full">Urbexon Hour</div>
-                                    <div className="uh-navbar-sub-full">45–120 min delivery</div>
-                                </div>
+                    <div className="uh-loc-bar">
+                        <div className="container uh-loc-bar-inner">
+                            <div className="uh-loc-bar-left">
+                                <FaBolt size={12} className="uh-loc-bolt" />
+                                <span className="uh-loc-bar-label">Delivering to</span>
+                                <span className="uh-loc-bar-area">{savedPincode?.area || savedPincode?.city || pincode}</span>
+                                <span className="uh-loc-bar-eta">• {deliveryEta.min}–{deliveryEta.max} min</span>
                             </div>
-
-                            <div className="uh-navbar-search-wrap">
-                                <div className="uh-navbar-search">
-                                    <FaSearch size={12} className="uh-navbar-search-ic" />
-                                    <input
-                                        className="uh-navbar-search-inp"
-                                        type="text"
-                                        placeholder="Search products, brands..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
-                                    />
-                                    {searchQuery && (
-                                        <button className="uh-navbar-search-clear" onClick={() => setSearchQuery("")} type="button">
-                                            <FaTimes size={10} />
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="uh-navbar-right">
-                                <button className="uh-loc-pill" onClick={handleChangePincode} title="Change location">
-                                    <FaMapMarkerAlt size={10} />
-                                    <span>{savedPincode?.area || savedPincode?.city || pincode || "Location"}</span>
-                                </button>
-                                <button className="uh-nav-icon-btn" onClick={handleNavigateToMainStore} title="Urbexon Store">
-                                    <FaStore size={14} />
-                                </button>
-                                <button className="uh-nav-icon-btn uh-avatar-btn"
-                                    onClick={() => navigate(user ? "/profile" : "/login")}>
-                                    <span>{user?.name?.charAt(0)?.toUpperCase() || "👤"}</span>
-                                </button>
-                            </div>
+                            <button className="uh-loc-bar-change" onClick={handleChangePincode}>
+                                Change
+                            </button>
                         </div>
                     </div>
                 )}
@@ -551,19 +498,22 @@ const UrbexonHour = () => {
                     </div>
                 )}
 
-                {/* ── TRUST STRIP ── */}
+                {/* ── TRUST STRIP (from delivery config) ── */}
                 {(hasActiveService || showSkeleton) && !showPincodeEdit && (
                     <div className="trust-strip">
                         <div className="container trust-inner">
                             {[
-                                { ic: "🏍️", t: "FAST DELIVERY" },
-                                { ic: "✅", t: "QUALITY CHECKED" },
-                                { ic: "🏪", t: "LOCAL VENDORS" },
-                                { ic: "🔒", t: "SECURE PAYMENTS" },
+                                { ic: "🏍️", t: "FAST DELIVERY", sub: deliveryEta ? `${deliveryEta.min}–${deliveryEta.max} min` : "45–120 min" },
+                                { ic: "✅", t: "QUALITY CHECKED", sub: "100% verified" },
+                                { ic: "🏪", t: "LOCAL VENDORS", sub: `${vendorGroups.length || "0"} stores` },
+                                { ic: "🔒", t: "SECURE PAYMENTS", sub: "Safe & encrypted" },
                             ].map((f) => (
                                 <div key={f.t} className="trust-item">
                                     <span className="trust-ic">{f.ic}</span>
-                                    <div className="trust-title">{f.t}</div>
+                                    <div>
+                                        <div className="trust-title">{f.t}</div>
+                                        <div className="trust-sub">{f.sub}</div>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -592,8 +542,8 @@ const UrbexonHour = () => {
                     </div>
                 )}
 
-                {/* ── CATEGORY CHIPS (hide when searching) ── */}
-                {categories.length > 0 && !searchQuery && (
+                {/* ── CATEGORY CHIPS (dynamic UH categories from backend) ── */}
+                {hasActiveService && !showPincodeEdit && (
                     <div className="section">
                         <div className="container">
                             <div className="section-head">
@@ -605,7 +555,24 @@ const UrbexonHour = () => {
                                 )}
                             </div>
                             <div className="g-cat-grid">
-                                {categories.map((cat) => (
+                                {apiCategories.length > 0 ? apiCategories.map((cat) => {
+                                    const catName = cat.name || cat;
+                                    const hasProducts = categories.includes(catName);
+                                    return (
+                                        <div
+                                            key={cat._id || catName}
+                                            className={`g-cat-item${activeCategory === catName ? " active" : ""}${!hasProducts ? " g-cat-dim" : ""}`}
+                                            onClick={() => hasProducts && setActiveCategory((prev) => prev === catName ? null : catName)}
+                                        >
+                                            {cat.image?.url ? (
+                                                <img src={cat.image.url} alt={catName} className="g-cat-img" loading="lazy" />
+                                            ) : (
+                                                <div className="g-cat-emoji">{cat.emoji || getCategoryEmoji(catName)}</div>
+                                            )}
+                                            <div className="g-cat-label">{catName}</div>
+                                        </div>
+                                    );
+                                }) : categories.map((cat) => (
                                     <div
                                         key={cat}
                                         className={`g-cat-item${activeCategory === cat ? " active" : ""}`}
@@ -638,23 +605,7 @@ const UrbexonHour = () => {
                                 </div>
                             </div>
                             <div className="uh-deals-scroll">
-                                {uhDeals.products?.map?.((p) => (
-                                    <div key={p._id} className="uh-deals-scroll-item">
-                                        <ProductCard product={p} />
-                                        {p.dealStatus && (
-                                            <div className={`uh-deal-badge ${p.dealStatus}`}>
-                                                {p.dealStatus === "ending-soon" ? "🔥 Ending Soon" : "⚡ Hot Deal"}
-                                            </div>
-                                        )}
-                                        {p.dealEndsAt && (() => {
-                                            const diff = new Date(p.dealEndsAt) - new Date();
-                                            if (diff <= 0) return null;
-                                            const h = Math.floor(diff / 3600000);
-                                            const m = Math.floor((diff % 3600000) / 60000);
-                                            return <div className="uh-deal-timer"><FaClock size={9} /> {h}h {m}m left</div>;
-                                        })()}
-                                    </div>
-                                )) || uhDeals.map?.((p) => (
+                                {uhDeals.map((p) => (
                                     <div key={p._id} className="uh-deals-scroll-item">
                                         <ProductCard product={p} />
                                         {p.dealEndsAt && (() => {
@@ -697,7 +648,7 @@ const UrbexonHour = () => {
                             </span>
                             <button
                                 className="search-clear-btn"
-                                onClick={() => setSearchQuery("")}
+                                onClick={clearSearch}
                                 title="Clear search"
                             >
                                 <FaTimes size={12} /> Clear
@@ -724,7 +675,7 @@ const UrbexonHour = () => {
                                     <button
                                         className="pin-btn"
                                         style={{ marginTop: 16 }}
-                                        onClick={() => { setActiveCategory(null); setSearchQuery(""); }}
+                                        onClick={() => { setActiveCategory(null); clearSearch(); }}
                                     >
                                         Show all products
                                     </button>
@@ -740,7 +691,7 @@ const UrbexonHour = () => {
                                         <div className="vendor-name">{group.vendorName}</div>
                                         <div className="vendor-meta">
                                             <FaStar size={10} className="star-ic" /> {(group.products[0]?.vendorId?.rating || 4.0).toFixed(1)} &bull;
-                                            <FaClock size={10} /> 45–90 min &bull; {group.products.length} items
+                                            <FaClock size={10} /> {deliveryEta.min}–{deliveryEta.max} min &bull; {group.products.length} items
                                         </div>
                                     </div>
                                 </div>
@@ -956,60 +907,20 @@ main{position:relative;z-index:1}
 .uh-loader{width:40px;height:40px;border:3px solid #e2e8f0;border-top:3px solid #3b82f6;border-radius:50%;animation:uhspin .8s linear infinite}
 @keyframes uhspin{to{transform:rotate(360deg)}}
 
-/* Saved pincode bar - Ultra Premium Header */
-.uh-pin-bar{background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0f172a 100%);color:#fff;position:sticky;top:0;z-index:20;border-bottom:none;box-shadow:0 6px 32px rgba(0,0,0,.2);backdrop-filter:blur(10px)}
-.uh-pin-bar-inner{display:flex;align-items:center;justify-content:space-between;padding:18px 0;gap:20px;flex-wrap:wrap}
-.uh-pin-bar-left{display:flex;align-items:center;gap:16px}
-.uh-bolt{color:#60a5fa;font-size:22px;animation:pulseIcon 2.5s ease-in-out infinite;filter:drop-shadow(0 4px 12px rgba(96,165,250,.3))}
-@keyframes pulseIcon{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.8;transform:scale(1.08)}}
-.uh-pin-bar-title{font-size:18px;font-weight:950;letter-spacing:-.8px;background:linear-gradient(135deg,#fff,#e0e7ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-family:'DM Sans'}
-.uh-pin-bar-sub{font-size:13px;color:rgba(255,255,255,.65);font-weight:600;letter-spacing:.4px;font-family:'DM Sans'}
-.uh-pin-bar-right{display:flex;align-items:center;gap:16px;flex-wrap:nowrap}
-.uh-pin-bar-loc{display:flex;align-items:center;gap:8px;font-size:12px;color:rgba(255,255,255,.9);background:rgba(59,130,246,.2);padding:10px 18px;border-radius:28px;border:1.5px solid rgba(59,130,246,.35);font-weight:700;transition:all .3s cubic-bezier(.34,.1,.68,1);letter-spacing:.2px;backdrop-filter:blur(4px)}
-.uh-pin-bar-loc:hover{background:rgba(59,130,246,.28);border-color:rgba(59,130,246,.5);transform:translateY(-2px);box-shadow:0 8px 24px rgba(59,130,246,.2)}
-.uh-change-btn{background:rgba(59,130,246,.22);border:1.5px solid rgba(59,130,246,.45);color:#60a5fa;padding:9px 20px;border-radius:24px;font-size:11px;font-weight:950;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .3s;white-space:nowrap;text-transform:uppercase;letter-spacing:.6px;backdrop-filter:blur(4px);box-shadow:0 4px 12px rgba(59,130,246,.15)}
-.uh-change-btn:hover{background:rgba(59,130,246,.32);border-color:rgba(59,130,246,.6);transform:translateY(-2px);box-shadow:0 10px 28px rgba(59,130,246,.35)}
-
-/* Search bar */
-.uh-search-bar{background:#fff;border-bottom:1px solid #e5e7eb;padding:14px 0;position:sticky;top:0;z-index:19;box-shadow:0 1px 3px rgba(0,0,0,.05)}
-.uh-search-wrap{position:relative;display:flex;align-items:center;width:100%;max-width:700px;margin:0 auto}
-.uh-search-ic{position:absolute;left:14px;color:#9ca3af;pointer-events:none;font-size:15px}
-.uh-search-inp{width:100%;padding:11px 14px 11px 40px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:'DM Sans',sans-serif;color:#1f2937;outline:none;transition:all .2s;background:#fff}
-.uh-search-inp:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1);background:#fff}
-.uh-search-inp::placeholder{color:#a1a1a1}
-.uh-search-clear{position:absolute;right:12px;background:none;border:none;color:#9ca3af;cursor:pointer;padding:5px;font-size:12px}
-.uh-search-clear:hover{color:#6b7280}
-
-/* COMPACT NAVBAR */
-.uh-navbar{background:#fff;position:sticky;top:0;z-index:30;box-shadow:0 1px 4px rgba(0,0,0,.08)}
-.uh-navbar-inner{display:flex;align-items:center;gap:10px;padding:10px 0;font-family:'DM Sans'}
-.uh-navbar-brand{display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0}
-.uh-logo-mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0}
-.uh-navbar-title-full{display:flex;flex-direction:column;line-height:1.1}
-.uh-navbar-main-full{font-size:14px;font-weight:800;color:#0f172a;letter-spacing:-.3px}
-.uh-navbar-sub-full{font-size:9px;font-weight:700;color:#3b82f6}
-.uh-navbar-search-wrap{flex:1;min-width:0;max-width:420px}
-.uh-navbar-search{position:relative;display:flex;align-items:center}
-.uh-navbar-search-ic{position:absolute;left:10px;color:#94a3b8;pointer-events:none}
-.uh-navbar-search-inp{width:100%;padding:8px 32px 8px 30px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-family:inherit;color:#0f172a;outline:none;background:#f8fafc;transition:border .2s}
-.uh-navbar-search-inp:focus{border-color:#3b82f6;background:#fff}
-.uh-navbar-search-inp::placeholder{color:#94a3b8;font-size:12px}
-.uh-navbar-search-clear{position:absolute;right:6px;background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px;display:flex;align-items:center}
-.uh-navbar-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.uh-loc-pill{display:flex;align-items:center;gap:4px;padding:6px 10px;background:#f0f9ff;border:1px solid #dbeafe;border-radius:8px;font-size:11px;font-weight:700;color:#1e40af;cursor:pointer;font-family:inherit;max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all .2s}
-.uh-loc-pill:hover{border-color:#3b82f6}
-.uh-loc-pill span{overflow:hidden;text-overflow:ellipsis}
-.uh-nav-icon-btn{width:34px;height:34px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#475569;transition:all .2s;font-size:13px}
-.uh-nav-icon-btn:hover{background:#f0f9ff;border-color:#3b82f6;color:#3b82f6}
-.uh-avatar-btn{background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;border:none;font-weight:800;font-size:13px}
-.uh-avatar-btn:hover{opacity:.9}
-@media(max-width:480px){
-  .uh-navbar-inner{gap:6px;padding:8px 0}
-  .uh-navbar-title-full{display:none}
-  .uh-logo-mark{width:32px;height:32px;border-radius:8px}
-  .uh-navbar-search-inp{font-size:11px;padding:7px 28px 7px 28px}
-  .uh-loc-pill{padding:5px 8px;font-size:10px;max-width:80px}
-  .uh-nav-icon-btn{width:30px;height:30px;font-size:12px}
+/* UH LOCATION BAR */
+.uh-loc-bar{background:#1a1740;border-bottom:1px solid #2d2a5e}
+.uh-loc-bar-inner{display:flex;align-items:center;justify-content:space-between;padding:8px 0}
+.uh-loc-bar-left{display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.85);font-weight:600}
+.uh-loc-bolt{color:#c9a84c}
+.uh-loc-bar-label{color:rgba(255,255,255,.5);font-size:12px}
+.uh-loc-bar-area{color:#fff;font-weight:700}
+.uh-loc-bar-eta{color:#c9a84c;font-weight:700;font-size:12px}
+.uh-loc-bar-change{background:none;border:1px solid rgba(201,168,76,.4);color:#c9a84c;padding:5px 14px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s}
+.uh-loc-bar-change:hover{background:rgba(201,168,76,.15);border-color:#c9a84c}
+@media(max-width:640px){
+  .uh-loc-bar-inner{padding:6px 0;gap:6px}
+  .uh-loc-bar-left{font-size:11px;gap:5px;flex-wrap:wrap}
+  .uh-loc-bar-change{padding:4px 10px;font-size:10px}
 }
 
 /* SKELETON */
@@ -1108,6 +1019,9 @@ main{position:relative;z-index:1}
 .g-cat-item{display:flex;flex-direction:column;align-items:center;gap:10px;cursor:pointer;position:relative;transition:transform .2s;border-radius:16px;padding:8px 4px}
 .g-cat-item:hover{transform:translateY(-4px)}
 .g-cat-emoji{width:clamp(56px,10vw,88px);height:clamp(56px,10vw,88px);background:#fff;border:2px solid #e5e7eb;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:clamp(24px,4vw,36px);transition:all .25s;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.g-cat-img{width:clamp(56px,10vw,88px);height:clamp(56px,10vw,88px);object-fit:cover;border-radius:16px;border:2px solid #e5e7eb;transition:all .25s;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.g-cat-item:hover .g-cat-img,.g-cat-item.active .g-cat-img{border-color:#3b82f6;box-shadow:0 4px 16px rgba(59,130,246,.15);transform:scale(1.08)}
+.g-cat-dim{opacity:.45;pointer-events:none}
 .g-cat-item:hover .g-cat-emoji,.g-cat-item.active .g-cat-emoji{border-color:#3b82f6;background:#eff6ff;box-shadow:0 4px 16px rgba(59,130,246,.15);transform:scale(1.08)}
 .g-cat-label{font-size:11px;font-weight:600;color:#475569;text-align:center;text-transform:capitalize;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;transition:color .2s}
 .g-cat-item:hover .g-cat-label,.g-cat-item.active .g-cat-label{color:#3b82f6;font-weight:700}
@@ -1119,10 +1033,10 @@ main{position:relative;z-index:1}
 
 /* SEARCH RESULTS BAR */
 .search-results-bar{background:linear-gradient(135deg,#eff6ff,#f0f9ff);border:1px solid #bfdbfe;border-bottom:2px solid #3b82f6;margin:12px 0;animation:slideDown .3s ease;position:relative;z-index:25}
-.search-results-inner{display:flex;align-items:center;gap:12px;padding:14px 16px;justify-content:space-between;flex-wrap:wrap}
-.search-results-inner>span{display:flex;align-items:center;gap:10px;font-size:13px;color:#1e40af;font-weight:500;flex:1}
+.search-results-inner{display:flex;align-items:center;gap:8px;padding:12px 16px}
+.search-results-inner>span{font-size:13px;color:#1e40af;font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .search-results-inner strong{color:#1e3a8a;font-weight:700}
-.search-clear-btn{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#dc2626;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:6px;transition:all .2s;white-space:nowrap}
+.search-clear-btn{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#dc2626;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;transition:all .2s;white-space:nowrap;flex-shrink:0}
 .search-clear-btn:hover{background:rgba(239,68,68,.2);border-color:rgba(239,68,68,.5)}
 @keyframes slideDown{from{opacity:0;transform:translateY(-8px);max-height:0}to{opacity:1;transform:translateY(0);max-height:60px}}
 

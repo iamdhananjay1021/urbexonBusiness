@@ -23,7 +23,7 @@ const Field = ({ label, hint, children }) => (
 
 const AdminAddCategory = () => {
     const navigate = useNavigate();
-    const [form, setForm] = useState({ name: "", emoji: "🏷️", color: "#1a1740", lightColor: "#f0eefb", isActive: true, order: 0 });
+    const [form, setForm] = useState({ name: "", emoji: "🏷️", color: "#1a1740", lightColor: "#f0eefb", isActive: true, order: 0, type: "ecommerce" });
     const [imageFile, setImageFile] = useState(null);
     const [preview, setPreview] = useState("");
     const [saving, setSaving] = useState(false);
@@ -56,6 +56,7 @@ const AdminAddCategory = () => {
             fd.append("lightColor", form.lightColor);
             fd.append("isActive", form.isActive);
             fd.append("order", form.order);
+            fd.append("type", form.type);
             if (imageFile) fd.append("image", imageFile);
             await createCategory(fd);
             navigate("/admin/categories");
@@ -159,7 +160,17 @@ const AdminAddCategory = () => {
                         )}
                     </Field>
 
-                    {/* Order + Active */}
+                    {/* Type + Order + Active */}
+                    <Field label="Category Type">
+                        <div style={{ display: "flex", gap: 10 }}>
+                            {[{ value: "ecommerce", label: "🛒 Ecommerce" }, { value: "urbexon_hour", label: "⚡ Urbexon Hour" }].map(opt => (
+                                <button key={opt.value} type="button" onClick={() => setForm(prev => ({ ...prev, type: opt.value }))}
+                                    style={{ flex: 1, padding: "10px 14px", border: `2px solid ${form.type === opt.value ? "#2563eb" : "#e2e8f0"}`, borderRadius: 8, background: form.type === opt.value ? "#eff6ff" : "#fff", cursor: "pointer", fontSize: 13, fontWeight: form.type === opt.value ? 700 : 500, color: form.type === opt.value ? "#2563eb" : "#64748b", fontFamily: "inherit", transition: "all 0.2s" }}>
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                    </Field>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                         <Field label="Display Order">
                             <input name="order" type="number" min="0" value={form.order} onChange={handleChange}
