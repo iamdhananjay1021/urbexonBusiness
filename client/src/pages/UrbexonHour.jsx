@@ -406,7 +406,10 @@ const UrbexonHour = () => {
     const deliveryEta = useMemo(() => calculateEstimatedDeliveryTime(pinData), [pinData]);
 
     const hasActiveService = pinData?.available && products.length > 0;
-    const showHero = !hasActiveService && !loading || showPincodeEdit;
+    // Only show pincode entry if:
+    // 1. No saved pincode (first visit), or
+    // 2. User explicitly clicks 'Change' (showPincodeEdit)
+    const showHero = (!savedPincode?.code && !hasActiveService && !loading) || showPincodeEdit;
     const showSkeleton = loading && savedPincode?.code && !showPincodeEdit;
 
     return (

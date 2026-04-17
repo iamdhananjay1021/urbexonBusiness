@@ -4,6 +4,7 @@
  * ✅ All API calls preserved + working
  * ✅ No static/dummy categories or nav data
  * ✅ Full sections: Hero, Categories, Featured, Flash Deals, Featured Sellers, Why Choose, UH Section, Footer CTA
+ * ✅ FIXED: Hero banner image now covers full section properly
  */
 import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
@@ -72,33 +73,69 @@ const CSS = `
    HERO
 ══════════════════════════════════════════ */
 .h-hero {
-    background: linear-gradient(135deg, #5b5bf6 0%, #7c3aed 100%);
-    overflow: hidden; position: relative;
+    overflow: hidden;
+    position: relative;
     min-height: 420px;
+    width: 100%;
 }
 @media(min-width:768px){ .h-hero { min-height: 520px; } }
 
+/* ── HERO SLIDE ── */
 .h-hero-slide {
-    display: none; position: absolute; inset: 0;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 420px;
+    display: none;
     align-items: center;
+    justify-content: flex-start;
+    overflow: hidden;
 }
-.h-hero-slide.on { display: flex; }
+.h-hero-slide.on {
+    display: flex;
+}
 
-/* Background image */
-.h-hero-bg {
-    position: absolute; inset: 0;
-    width: 100%; height: 100%; object-fit: cover;
-    opacity: .08; filter: blur(2px);
+/* ── BANNER BACKGROUND IMAGE ── */
+.h-hero-slide-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center center;
+    display: block;
+    z-index: 0;
+}
+
+/* ── DARK OVERLAY for text readability ── */
+.h-hero-slide-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        90deg,
+        rgba(0, 0, 0, 0.60) 0%,
+        rgba(0, 0, 0, 0.35) 50%,
+        rgba(0, 0, 0, 0.10) 100%
+    );
+    z-index: 1;
 }
 
 .h-hero-in {
-    max-width: 1280px; margin: 0 auto;
+    max-width: 1280px;
+    margin: 0 auto;
     padding: 60px clamp(20px,5vw,80px);
-    display: flex; align-items: center;
-    justify-content: space-between; gap: 40px;
-    position: relative; z-index: 2; width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 40px;
+    position: relative;
+    z-index: 2;
+    width: 100%;
     flex-wrap: wrap;
+    min-height: 420px;
 }
+@media(min-width:768px){ .h-hero-in { min-height: 520px; } }
 
 .h-hero-left { flex: 1; min-width: 0; animation: h-up .5s ease; }
 @media(max-width:767px){ .h-hero-left { min-width: 100%; } }
@@ -119,7 +156,7 @@ const CSS = `
 .h-hero-title em { color: #ffd60a; font-style: normal; display: block; }
 
 .h-hero-desc {
-    font-size: 15px; color: rgba(255,255,255,.75);
+    font-size: 15px; color: rgba(255,255,255,.85);
     line-height: 1.7; margin-bottom: 28px; max-width: 460px;
 }
 @media(max-width:600px){ .h-hero-desc { display: none; } }
@@ -133,17 +170,18 @@ const CSS = `
     font-size: 14px; font-weight: 800; cursor: pointer;
     display: flex; align-items: center; gap: 8px;
     transition: all .2s; font-family: 'Plus Jakarta Sans', sans-serif;
-    box-shadow: 0 4px 16px rgba(0,0,0,.15);
+    box-shadow: 0 4px 16px rgba(0,0,0,.2);
 }
-.h-hero-btn-p:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+.h-hero-btn-p:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 
 .h-hero-btn-s {
-    padding: 13px 24px; border: 1.5px solid rgba(255,255,255,.45);
-    background: transparent; color: #fff;
+    padding: 13px 24px; border: 1.5px solid rgba(255,255,255,.55);
+    background: rgba(255,255,255,.1); color: #fff;
     font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 10px;
     transition: all .2s; font-family: 'Plus Jakarta Sans', sans-serif;
+    backdrop-filter: blur(4px);
 }
-.h-hero-btn-s:hover { background: rgba(255,255,255,.12); }
+.h-hero-btn-s:hover { background: rgba(255,255,255,.2); }
 
 .h-hero-right {
     flex-shrink: 0; animation: h-up .5s ease .1s both;
@@ -170,12 +208,13 @@ const CSS = `
 }
 @media(max-width:480px){ .h-hero-stats { gap: 8px; margin-top: 20px; } .h-hero-stat { padding: 8px 12px; } .h-hero-stat-v { font-size: 15px; } }
 .h-hero-stat {
-    background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
     border-radius: 10px; padding: 10px 16px;
     display: flex; flex-direction: column;
+    backdrop-filter: blur(8px);
 }
 .h-hero-stat-v { font-size: 18px; font-weight: 800; color: #fff; }
-.h-hero-stat-l { font-size: 10px; color: rgba(255,255,255,.65); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.h-hero-stat-l { font-size: 10px; color: rgba(255,255,255,.7); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
 
 /* Nav arrows */
 .h-nav-btn {
@@ -197,7 +236,7 @@ const CSS = `
 }
 .h-dot {
     width: 7px; height: 7px; border-radius: 50%;
-    background: rgba(255,255,255,.35); border: none; cursor: pointer; padding: 0;
+    background: rgba(255,255,255,.4); border: none; cursor: pointer; padding: 0;
     transition: all .3s;
 }
 .h-dot.on { background: #fff; width: 24px; border-radius: 4px; }
@@ -370,154 +409,58 @@ const CSS = `
 .h-flash-banner::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    top: 0; left: 0; right: 0; bottom: 0;
     background: 
         radial-gradient(circle at 20% 50%, rgba(255,255,255,0.15) 0%, transparent 50%),
         radial-gradient(circle at 80% 80%, rgba(255,255,255,0.08) 0%, transparent 50%);
     pointer-events: none;
     border-radius: 20px;
 }
-.h-flash-left { 
-    display: flex; 
-    align-items: center; 
-    gap: 18px; 
-    position: relative; 
-    z-index: 2;
-}
+.h-flash-left { display: flex; align-items: center; gap: 18px; position: relative; z-index: 2; }
 .h-flash-icon { 
-    width: 56px; 
-    height: 56px; 
-    background: rgba(255,255,255,0.25);
-    backdrop-filter: blur(10px);
-    border: 2px solid rgba(255,255,255,0.3);
-    border-radius: 14px; 
-    display: flex; 
-    align-items: center; 
-    justify-content: center;
-    flex-shrink: 0;
-    animation: h-flash-pulse 2s ease-in-out infinite;
+    width: 56px; height: 56px; background: rgba(255,255,255,0.25);
+    backdrop-filter: blur(10px); border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 14px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; animation: h-flash-pulse 2s ease-in-out infinite;
 }
 @keyframes h-flash-pulse {
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.08); opacity: 0.9; }
 }
-.h-flash-title { 
-    font-size: 24px; 
-    font-weight: 900; 
-    color: #fff; 
-    margin-bottom: 4px; 
-    letter-spacing: -0.5px;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.15);
-}
-.h-flash-sub { 
-    font-size: 13px; 
-    color: rgba(255,255,255,0.9); 
-    font-weight: 500;
-    letter-spacing: 0.3px;
-}
+.h-flash-title { font-size: 24px; font-weight: 900; color: #fff; margin-bottom: 4px; letter-spacing: -0.5px; text-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.h-flash-sub { font-size: 13px; color: rgba(255,255,255,0.9); font-weight: 500; letter-spacing: 0.3px; }
 .h-flash-timer { 
-    display: flex; 
-    gap: 8px; 
-    align-items: center; 
-    flex-shrink: 0;
-    position: relative;
-    z-index: 2;
-    background: rgba(0,0,0,0.2);
-    backdrop-filter: blur(8px);
-    padding: 12px 18px;
-    border-radius: 14px;
-    border: 1px solid rgba(255,255,255,0.15);
+    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+    position: relative; z-index: 2;
+    background: rgba(0,0,0,0.2); backdrop-filter: blur(8px);
+    padding: 12px 18px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.15);
 }
 @media(max-width:768px){ 
-    .h-flash-banner { 
-        padding: 20px 24px; 
-        gap: 16px;
-        flex-wrap: wrap;
-    } 
-    .h-flash-title { 
-        font-size: 20px; 
-    } 
-    .h-flash-tv { 
-        font-size: 16px; 
-    } 
-    .h-flash-time-box { 
-        padding: 6px 10px; 
-        min-width: 40px; 
-    }
-    .h-flash-icon {
-        width: 48px;
-        height: 48px;
-    }
+    .h-flash-banner { padding: 20px 24px; gap: 16px; flex-wrap: wrap; } 
+    .h-flash-title { font-size: 20px; } 
+    .h-flash-tv { font-size: 16px; } 
+    .h-flash-time-box { padding: 6px 10px; min-width: 40px; }
+    .h-flash-icon { width: 48px; height: 48px; }
 }
 @media(max-width:480px){ 
-    .h-flash-banner { 
-        padding: 16px 18px; 
-        gap: 12px;
-        flex-direction: column;
-        align-items: stretch;
-    } 
-    .h-flash-left {
-        width: 100%;
-    }
-    .h-flash-title { 
-        font-size: 18px; 
-    } 
-    .h-flash-tv { 
-        font-size: 14px; 
-    } 
-    .h-flash-time-box { 
-        padding: 5px 8px; 
-        min-width: 36px; 
-    }
-    .h-flash-timer {
-        width: 100%;
-        justify-content: center;
-        padding: 10px 14px;
-    }
+    .h-flash-banner { padding: 16px 18px; gap: 12px; flex-direction: column; align-items: stretch; } 
+    .h-flash-left { width: 100%; }
+    .h-flash-title { font-size: 18px; } 
+    .h-flash-tv { font-size: 14px; } 
+    .h-flash-time-box { padding: 5px 8px; min-width: 36px; }
+    .h-flash-timer { width: 100%; justify-content: center; padding: 10px 14px; }
 }
 .h-flash-time-box {
-    background: rgba(0,0,0,0.3);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 10px;
-    padding: 7px 12px;
-    text-align: center;
-    min-width: 48px;
+    background: rgba(0,0,0,0.3); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.15); border-radius: 10px;
+    padding: 7px 12px; text-align: center; min-width: 48px;
     transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-.h-flash-time-box:hover {
-    background: rgba(0,0,0,0.4);
-    border-color: rgba(255,255,255,0.25);
-    transform: scale(1.05);
-}
-.h-flash-tv { 
-    font-size: 20px; 
-    font-weight: 900; 
-    color: #fff; 
-    line-height: 1; 
-    font-variant-numeric: tabular-nums;
-    text-shadow: 0 2px 6px rgba(0,0,0,0.2);
-}
-.h-flash-tl { 
-    font-size: 9px; 
-    color: rgba(255,255,255,0.7); 
-    margin-top: 2px;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-}
-.h-flash-colon { 
-    font-size: 22px; 
-    font-weight: 900; 
-    color: rgba(255,255,255,0.7);
-    animation: h-flash-blink 1s ease-in-out infinite;
-}
-@keyframes h-flash-blink {
-    0%, 49%, 100% { opacity: 1; }
-    50%, 99% { opacity: 0.4; }
-}
+.h-flash-time-box:hover { background: rgba(0,0,0,0.4); border-color: rgba(255,255,255,0.25); transform: scale(1.05); }
+.h-flash-tv { font-size: 20px; font-weight: 900; color: #fff; line-height: 1; font-variant-numeric: tabular-nums; text-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+.h-flash-tl { font-size: 9px; color: rgba(255,255,255,0.7); margin-top: 2px; font-weight: 600; letter-spacing: 0.3px; }
+.h-flash-colon { font-size: 22px; font-weight: 900; color: rgba(255,255,255,0.7); animation: h-flash-blink 1s ease-in-out infinite; }
+@keyframes h-flash-blink { 0%, 49%, 100% { opacity: 1; } 50%, 99% { opacity: 0.4; } }
 
 /* ══════════════════════════════════════════
    FEATURED SELLERS
@@ -539,8 +482,7 @@ const CSS = `
     width: 52px; height: 52px; border-radius: 12px; flex-shrink: 0;
     background: linear-gradient(135deg, #5b5bf6, #7c3aed);
     display: flex; align-items: center; justify-content: center;
-    font-size: 22px; font-weight: 800; color: #fff;
-    overflow: hidden;
+    font-size: 22px; font-weight: 800; color: #fff; overflow: hidden;
 }
 .h-seller-av img { width: 100%; height: 100%; object-fit: cover; }
 .h-seller-name { font-size: 14px; font-weight: 800; color: #111827; margin-bottom: 2px; }
@@ -553,8 +495,7 @@ const CSS = `
     width: 100%; padding: 9px; border: none;
     background: #5b5bf6; color: #fff; border-radius: 8px;
     font-size: 13px; font-weight: 700; cursor: pointer;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    transition: background .18s;
+    font-family: 'Plus Jakarta Sans', sans-serif; transition: background .18s;
 }
 .h-visit-btn:hover { background: #4949d6; }
 
@@ -583,7 +524,7 @@ const CSS = `
 .h-why-sub   { font-size: 12px; color: #6b7280; line-height: 1.5; }
 
 /* ══════════════════════════════════════════
-   URBEXON HOUR QUICK STRIP (Flipkart Minutes style)
+   URBEXON HOUR QUICK STRIP
 ══════════════════════════════════════════ */
 .h-uh-strip {
     background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
@@ -602,11 +543,7 @@ const CSS = `
     display: flex; align-items: center; gap: 16px;
     padding: 14px 0;
 }
-
-.h-uh-strip-logo {
-    flex-shrink: 0;
-}
-
+.h-uh-strip-logo { flex-shrink: 0; }
 .h-uh-strip-icon {
     width: 44px; height: 44px; border-radius: 12px;
     background: linear-gradient(135deg, #3b82f6, #2563eb);
@@ -614,36 +551,19 @@ const CSS = `
     color: #fbbf24; font-size: 20px;
     box-shadow: 0 4px 16px rgba(59,130,246,.35);
 }
-
-.h-uh-strip-info {
-    display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0;
-}
-
-.h-uh-strip-title {
-    font-size: 16px; color: #fff; letter-spacing: -.3px;
-    font-weight: 500;
-}
+.h-uh-strip-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.h-uh-strip-title { font-size: 16px; color: #fff; letter-spacing: -.3px; font-weight: 500; }
 .h-uh-strip-title strong { font-weight: 800; color: #60a5fa; }
-
-.h-uh-strip-sub {
-    font-size: 12px; color: rgba(255,255,255,.65); font-weight: 500;
-}
+.h-uh-strip-sub { font-size: 12px; color: rgba(255,255,255,.65); font-weight: 500; }
 .h-uh-strip-sub strong { color: #34d399; font-weight: 700; }
-
-.h-uh-strip-right {
-    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
-}
-
+.h-uh-strip-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .h-uh-strip-tag {
     background: rgba(59,130,246,.2); border: 1px solid rgba(59,130,246,.35);
     padding: 5px 12px; border-radius: 20px;
     font-size: 10px; font-weight: 800; color: #60a5fa;
     letter-spacing: .8px; white-space: nowrap;
 }
-
-.h-uh-strip-arrow {
-    color: rgba(255,255,255,.5); transition: transform .2s;
-}
+.h-uh-strip-arrow { color: rgba(255,255,255,.5); transition: transform .2s; }
 .h-uh-strip:hover .h-uh-strip-arrow { transform: translateX(3px); color: #fff; }
 
 @media(max-width:640px) {
@@ -657,10 +577,7 @@ const CSS = `
 /* ══════════════════════════════════════════
    NEWSLETTER
 ══════════════════════════════════════════ */
-.h-newsletter {
-    background: #111827; padding: 52px 0;
-    text-align: center;
-}
+.h-newsletter { background: #111827; padding: 52px 0; text-align: center; }
 .h-nl-icon { font-size: 32px; margin-bottom: 12px; }
 .h-nl-title { font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px; }
 .h-nl-sub   { font-size: 14px; color: #9ca3af; margin-bottom: 24px; }
@@ -756,11 +673,10 @@ const PCard = memo(({ product }) => {
 });
 PCard.displayName = "PCard";
 
-/* ─── Flash Deal Timer (uses deal expiry from backend) ────── */
+/* ─── Flash Deal Timer ────── */
 const FlashTimer = ({ endsAt }) => {
     const calcRemaining = useCallback(() => {
         if (!endsAt) {
-            // Fallback: end of today
             const now = new Date();
             const eod = new Date(now);
             eod.setHours(23, 59, 59, 999);
@@ -814,9 +730,9 @@ const WHY_FEATURES = [
     { icon: "🎧", label: "24/7 Support", sub: "Dedicated customer service", color: "#fdf4ff", iconColor: "#9333ea" },
 ];
 
-/* ─── Module-level cache to avoid re-fetch on route navigation ─── */
+/* ─── Module-level cache ─── */
 let _homeCache = null;
-const CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+const CACHE_TTL = 3 * 60 * 1000;
 
 /* ─── HOME ─────────────────────────────────────────────── */
 const Home = () => {
@@ -824,7 +740,6 @@ const Home = () => {
     const [searchParams] = useSearchParams();
     const searchQuery = searchParams.get("search") || "";
 
-    /* State — initialize from cache if available */
     const [heroIdx, setHeroIdx] = useState(0);
     const [slides, setSlides] = useState(() => _homeCache?.slides || []);
     const [categories, setCategories] = useState(() => _homeCache?.categories || []);
@@ -834,18 +749,17 @@ const Home = () => {
     const [vendors, setVendors] = useState(() => _homeCache?.vendors || []);
     const [loading, setLoading] = useState(() => !_homeCache || Date.now() - (_homeCache?._ts || 0) > CACHE_TTL);
     const [nlEmail, setNlEmail] = useState("");
-    const [nlStatus, setNlStatus] = useState(""); // "" | "sending" | "done" | "error"
+    const [nlStatus, setNlStatus] = useState("");
     const [stats, setStats] = useState(() => _homeCache?.stats || { products: 0, categories: 0 });
     const [forYouProducts, setForYouProducts] = useState([]);
     const [forYouTerm, setForYouTerm] = useState("");
     const [nearestDealEnd, setNearestDealEnd] = useState(() => _homeCache?.nearestDealEnd || null);
-
     const [searchResults, setSearchResults] = useState([]);
     const [searching, setSearching] = useState(false);
 
     const heroTimer = useRef(null);
 
-    /* ── Data fetch (skip if cache is fresh) ── */
+    /* ── Data fetch ── */
     useEffect(() => {
         if (_homeCache && Date.now() - _homeCache._ts < CACHE_TTL) {
             setLoading(false);
@@ -901,7 +815,7 @@ const Home = () => {
         return () => { cancelled = true; };
     }, []);
 
-    /* ── Load "For You" products from search history ── */
+    /* ── For You ── */
     useEffect(() => {
         const history = getSearchHistory();
         if (history.length === 0) return;
@@ -938,7 +852,7 @@ const Home = () => {
         return () => ctrl.abort();
     }, [searchQuery]);
 
-    /* ── Newsletter submit ── */
+    /* ── Newsletter ── */
     const handleNL = async e => {
         e.preventDefault();
         if (!nlEmail.trim()) return;
@@ -979,57 +893,71 @@ const Home = () => {
         </div>
     );
 
-    /* ── Derived: current slide ── */
-    const currSlide = slides[heroIdx] || null;
-
     return (
         <div className="h-root">
             <style>{CSS}</style>
 
             {/* ════ HERO ═══════════════════════════════════ */}
             {loading && slides.length === 0 ? (
-                /* Skeleton hero — instant paint while data loads */
-                <div className="h-hero" style={{ background: "linear-gradient(135deg, #5b5bf6, #7c3aed)", minHeight: 340 }}>
-                    <div className="h-hero-in" style={{ alignItems: "flex-start" }}>
-                        <div className="h-hero-left" style={{ animation: "none" }}>
-                            <div className="h-sk" style={{ width: 120, height: 20, borderRadius: 20, marginBottom: 16, background: "rgba(255,255,255,.15)" }} />
-                            <div className="h-sk" style={{ width: "80%", height: 36, borderRadius: 8, marginBottom: 10, background: "rgba(255,255,255,.12)" }} />
-                            <div className="h-sk" style={{ width: "50%", height: 36, borderRadius: 8, marginBottom: 20, background: "rgba(255,255,255,.12)" }} />
-                            <div className="h-sk" style={{ width: 160, height: 14, borderRadius: 6, marginBottom: 28, background: "rgba(255,255,255,.1)" }} />
-                            <div className="h-sk" style={{ width: 140, height: 44, borderRadius: 10, background: "rgba(255,255,255,.2)" }} />
-                        </div>
+                /* Skeleton hero */
+                <div style={{ background: "linear-gradient(135deg, #5b5bf6, #7c3aed)", minHeight: 340, position: "relative", overflow: "hidden" }}>
+                    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "60px clamp(20px,5vw,80px)" }}>
+                        <div className="h-sk" style={{ width: 120, height: 20, borderRadius: 20, marginBottom: 16, background: "rgba(255,255,255,.15)" }} />
+                        <div className="h-sk" style={{ width: "80%", height: 36, borderRadius: 8, marginBottom: 10, background: "rgba(255,255,255,.12)" }} />
+                        <div className="h-sk" style={{ width: "50%", height: 36, borderRadius: 8, marginBottom: 20, background: "rgba(255,255,255,.12)" }} />
+                        <div className="h-sk" style={{ width: 140, height: 44, borderRadius: 10, background: "rgba(255,255,255,.2)" }} />
                     </div>
                 </div>
             ) : slides.length > 0 ? (
-                <div className="h-hero" style={{
-                    background: currSlide?.bg || "linear-gradient(135deg, #5b5bf6, #7c3aed)",
-                }}>
+                /* ── BANNER SLIDES ── */
+                <div className="h-hero">
                     {slides.map((slide, i) => {
-                        const imgUrl = slide.image?.url || (typeof slide.image === "string" ? slide.image : null);
+                        const imgUrl =
+                            slide.image?.url ||
+                            (typeof slide.image === "string" ? slide.image : null) ||
+                            "/banner-fallback.jpg";
+
                         return (
-                            <div key={slide._id} className={`h-hero-slide ${i === heroIdx ? "on" : ""}`}
-                                style={{ background: slide.bg || "linear-gradient(135deg,#5b5bf6,#7c3aed)" }}>
-                                {imgUrl && <img className="h-hero-bg" src={imgUrl} alt="" loading={i === 0 ? "eager" : "lazy"} />}
+                            <div
+                                key={slide._id}
+                                className={`h-hero-slide${i === heroIdx ? " on" : ""}`}
+                            >
+                                {/* ── Full-cover background image ── */}
+                                <img
+                                    className="h-hero-slide-bg"
+                                    src={imgUrl}
+                                    alt={slide.title || "Banner"}
+                                    loading={i === 0 ? "eager" : "lazy"}
+                                />
+
+                                {/* ── Gradient overlay for left-side text readability ── */}
+                                <div className="h-hero-slide-overlay" />
+
+                                {/* ── Text content ── */}
                                 <div className="h-hero-in">
                                     <div className="h-hero-left">
                                         {slide.tag && (
-                                            <div className="h-hero-tag">
-                                                🔥 {slide.tag}
-                                            </div>
+                                            <div className="h-hero-tag">🔥 {slide.tag}</div>
                                         )}
                                         <h1 className="h-hero-title">
                                             {slide.title}
                                             {slide.highlight && <em>{slide.highlight}</em>}
                                         </h1>
-                                        {slide.desc && <p className="h-hero-desc">{slide.desc}</p>}
+                                        {slide.desc && (
+                                            <p className="h-hero-desc">{slide.desc}</p>
+                                        )}
                                         <div className="h-hero-btns">
-                                            <button className="h-hero-btn-p"
-                                                onClick={() => navigate(slide.link || slide.ctaLink || "/")}>
+                                            <button
+                                                className="h-hero-btn-p"
+                                                onClick={() => navigate(slide.link || slide.ctaLink || "/")}
+                                            >
                                                 {slide.cta || "Shop Now"} <FaArrowRight size={12} />
                                             </button>
                                             {slide.secondary && (
-                                                <button className="h-hero-btn-s"
-                                                    onClick={() => navigate(slide.secondaryLink || "/deals")}>
+                                                <button
+                                                    className="h-hero-btn-s"
+                                                    onClick={() => navigate(slide.secondaryLink || "/deals")}
+                                                >
                                                     {slide.secondary}
                                                 </button>
                                             )}
@@ -1040,63 +968,75 @@ const Home = () => {
                                                 <span className="h-hero-stat-l">Delivery</span>
                                             </div>
                                             <div className="h-hero-stat">
-                                                <span className="h-hero-stat-v">{stats.products ? `${stats.products.toLocaleString()}+` : '—'}</span>
+                                                <span className="h-hero-stat-v">
+                                                    {stats.products ? `${stats.products.toLocaleString()}+` : "—"}
+                                                </span>
                                                 <span className="h-hero-stat-l">Products</span>
                                             </div>
                                             <div className="h-hero-stat">
-                                                <span className="h-hero-stat-v">{stats.categories || '—'}</span>
+                                                <span className="h-hero-stat-v">{stats.categories || "—"}</span>
                                                 <span className="h-hero-stat-l">Categories</span>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div className="h-hero-right">
-                                        {imgUrl ? (
-                                            <img src={imgUrl} alt={slide.title} className="h-hero-img" />
-                                        ) : (
-                                            <div className="h-hero-img-placeholder">🛍️</div>
-                                        )}
                                     </div>
                                 </div>
                             </div>
                         );
                     })}
 
+                    {/* Arrows */}
                     {slides.length > 1 && (
                         <>
-                            <button className="h-nav-btn l" onClick={() => goHero(-1)}><FaChevronLeft size={14} /></button>
-                            <button className="h-nav-btn r" onClick={() => goHero(1)}><FaChevronRight size={14} /></button>
+                            <button className="h-nav-btn l" onClick={() => goHero(-1)}>
+                                <FaChevronLeft size={14} />
+                            </button>
+                            <button className="h-nav-btn r" onClick={() => goHero(1)}>
+                                <FaChevronRight size={14} />
+                            </button>
                             <div className="h-dots">
                                 {slides.map((_, i) => (
-                                    <button key={i} className={`h-dot${i === heroIdx ? " on" : ""}`}
-                                        onClick={() => { setHeroIdx(i); resetTimer(); }} />
+                                    <button
+                                        key={i}
+                                        className={`h-dot${i === heroIdx ? " on" : ""}`}
+                                        onClick={() => { setHeroIdx(i); resetTimer(); }}
+                                    />
                                 ))}
                             </div>
                         </>
                     )}
                 </div>
             ) : (
-                /* Minimal fallback hero if no banners loaded */
+                /* Fallback hero if no banners */
                 !loading && (
-                    <div className="h-hero">
-                        <div className="h-hero-slide on" style={{ background: "linear-gradient(135deg,#5b5bf6,#7c3aed)" }}>
+                    <div className="h-hero" style={{ background: "linear-gradient(135deg,#5b5bf6,#7c3aed)" }}>
+                        <div className="h-hero-slide on" style={{ position: "relative" }}>
                             <div className="h-hero-in">
                                 <div className="h-hero-left">
                                     <h1 className="h-hero-title">
                                         Welcome to Urbexon
                                         <em>Shop the Best Deals</em>
                                     </h1>
-                                    <p className="h-hero-desc">
-                                        Discover amazing products from verified sellers.
-                                    </p>
+                                    <p className="h-hero-desc">Discover amazing products from verified sellers.</p>
                                     <div className="h-hero-btns">
                                         <button className="h-hero-btn-p" onClick={() => navigate("/deals")}>
                                             Explore Deals <FaArrowRight size={12} />
                                         </button>
                                     </div>
                                     <div className="h-hero-stats">
-                                        <div className="h-hero-stat"><span className="h-hero-stat-v">Fast</span><span className="h-hero-stat-l">Delivery</span></div>
-                                        <div className="h-hero-stat"><span className="h-hero-stat-v">{stats.products ? `${stats.products.toLocaleString()}+` : '—'}</span><span className="h-hero-stat-l">Products</span></div>
-                                        <div className="h-hero-stat"><span className="h-hero-stat-v">{stats.categories || '—'}</span><span className="h-hero-stat-l">Categories</span></div>
+                                        <div className="h-hero-stat">
+                                            <span className="h-hero-stat-v">Fast</span>
+                                            <span className="h-hero-stat-l">Delivery</span>
+                                        </div>
+                                        <div className="h-hero-stat">
+                                            <span className="h-hero-stat-v">
+                                                {stats.products ? `${stats.products.toLocaleString()}+` : "—"}
+                                            </span>
+                                            <span className="h-hero-stat-l">Products</span>
+                                        </div>
+                                        <div className="h-hero-stat">
+                                            <span className="h-hero-stat-v">{stats.categories || "—"}</span>
+                                            <span className="h-hero-stat-l">Categories</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="h-hero-right">
@@ -1108,7 +1048,7 @@ const Home = () => {
                 )
             )}
 
-            {/* ════ URBEXON HOUR — Flipkart Minutes Style Quick Card ════ */}
+            {/* ════ URBEXON HOUR STRIP ════ */}
             <div className="h-uh-strip" onClick={() => navigate("/urbexon-hour")}>
                 <div className="h-wrap">
                     <div className="h-uh-strip-inner">
@@ -1144,8 +1084,7 @@ const Home = () => {
                                     : categories.map(cat => (
                                         <div key={cat._id} className="h-catcard"
                                             onClick={() => navigate(`/category/${cat.slug}`)}>
-                                            <div className="h-cat-icon"
-                                                style={{ background: cat.lightColor || "#f3f4ff" }}>
+                                            <div className="h-cat-icon" style={{ background: cat.lightColor || "#f3f4ff" }}>
                                                 {cat.image?.url
                                                     ? <img src={cat.image.url} alt={cat.name} loading="lazy" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
                                                     : <span>{cat.emoji || "🛍️"}</span>}
@@ -1165,7 +1104,6 @@ const Home = () => {
                 <div style={{ background: "#fff" }}>
                     <div className="h-wrap">
                         <div className="h-sec">
-                            {/* Flash banner */}
                             <div className="h-flash-banner">
                                 <div className="h-flash-left">
                                     <div className="h-flash-icon"><FaBolt size={22} color="#fff" /></div>
@@ -1176,7 +1114,6 @@ const Home = () => {
                                 </div>
                                 <FlashTimer endsAt={nearestDealEnd} />
                             </div>
-
                             <div style={{ marginTop: 20 }}>
                                 {loading ? (
                                     <div className="h-pgrid">{Array(4).fill(0).map((_, i) => <SkCard key={i} />)}</div>
@@ -1279,7 +1216,7 @@ const Home = () => {
                 </div>
             )}
 
-            {/* ════ FOR YOU (based on search history) ═══════════ */}
+            {/* ════ FOR YOU ═══════════════════════════════════ */}
             {forYouProducts.length > 0 && (
                 <div style={{ background: "#fff" }}>
                     <div className="h-wrap">
@@ -1293,7 +1230,7 @@ const Home = () => {
                 </div>
             )}
 
-            {/* ════ WHY CHOOSE URBEXON ════════════════════════ */}
+            {/* ════ WHY CHOOSE ════════════════════════════════ */}
             <div className="h-why">
                 <div className="h-wrap">
                     <div className="h-sec" style={{ textAlign: "center" }}>
@@ -1341,7 +1278,9 @@ const Home = () => {
                             </button>
                         </form>
                     )}
-                    {nlStatus === "error" && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 8 }}>Failed to subscribe. Try again.</p>}
+                    {nlStatus === "error" && (
+                        <p style={{ color: "#ef4444", fontSize: 12, marginTop: 8 }}>Failed to subscribe. Try again.</p>
+                    )}
                 </div>
             </div>
         </div>
