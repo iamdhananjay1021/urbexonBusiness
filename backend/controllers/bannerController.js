@@ -48,6 +48,9 @@ export const createBanner = async (req, res) => {
 
         if (!req.file) return res.status(400).json({ success: false, message: "Banner image is required" });
 
+        // Debug: log file info
+        console.log("[Banner] File received:", { path: req.file.path, filename: req.file.filename, size: req.file.size });
+
         const banner = await Banner.create({
             title: title?.trim() || "",
             subtitle: subtitle?.trim() || "",

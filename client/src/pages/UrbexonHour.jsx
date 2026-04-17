@@ -311,30 +311,29 @@ const UrbexonHour = () => {
             const { data } = await api.get(`/pincode/check/${pc}`);
             setPinData(data);
             if (data.available) {
-                const pRes = await api.get("/products", {
-                    params: { productType: "urbexon_hour", pincode: pc, limit: 60 },
-                });
-                const prods = pRes.data.products || pRes.data || [];
+                // Fetch products + deals in parallel
+                const [pRes, dRes] = await Promise.allSettled([
+                    api.get("/products", { params: { productType: "urbexon_hour", pincode: pc, limit: 60 } }),
+                    api.get("/products/urbexon-hour/deals", { params: { limit: 12 } }),
+                ]);
+
+                const prods = pRes.status === "fulfilled" ? (pRes.value.data.products || pRes.value.data || []) : [];
                 setProducts(prods);
 
                 const catSet = new Set();
                 prods.forEach((p) => { if (p.category) catSet.add(p.category); });
                 setCategories([...catSet]);
 
-                // Fetch UH deals separately
-                try {
-                    const dRes = await api.get("/products/urbexon-hour/deals", { params: { limit: 12 } });
-                    setUhDeals(dRes.data.products || []);
-                } catch { setUhDeals([]); }
+                setUhDeals(dRes.status === "fulfilled" ? (dRes.value.data.products || []) : []);
 
-                // Save pincode permanently
+                // Save pincode (fire-and-forget)
                 const pincodeData = { code: pc, area: data.area || null, city: data.city || null, state: data.state || null };
                 localStorage.setItem("uh_pincode", JSON.stringify(pincodeData));
                 setSavedPincode(pincodeData);
-                if (user) {
-                    try { await api.post("/addresses/uh-pincode", pincodeData); } catch { /* silent */ }
-                }
                 setShowPincodeEdit(false);
+                if (user) {
+                    api.post("/addresses/uh-pincode", pincodeData).catch(() => { });
+                }
             }
         } catch (err) {
             setError(err?.response?.data?.message || "Failed to check pincode. Please try again.");

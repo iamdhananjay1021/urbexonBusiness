@@ -9,7 +9,8 @@ import { useAuth } from "../contexts/AuthContext";
 import PageTransition from "../components/PageTransition";
 import MainLayout from "../layouts/MainLayout";
 import Login from "../pages/Login";
-import Home from "../pages/Home";
+
+const Home = lazy(() => import("../pages/Home"));
 
 const Register = lazy(() => import("../pages/Register"));
 const Cart = lazy(() => import("../pages/Cart"));

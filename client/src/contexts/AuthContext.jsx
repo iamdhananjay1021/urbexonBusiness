@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import api from "../api/axios";
 import { store } from "../app/store";
 import { clearCart } from "../features/cart/cartSlice";
@@ -26,9 +26,9 @@ const requestLocation = () =>
     });
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser]           = useState(null);
-    const [token, setToken]         = useState(null);
-    const [loading, setLoading]     = useState(true);
+    const [user, setUser] = useState(null);
+    const [token, setToken] = useState(null);
+    const [loading, setLoading] = useState(true);
     const [locationAsked, setLocationAsked] = useState(false);
 
     /* ── Rehydrate on mount ── */
@@ -58,10 +58,10 @@ export const AuthProvider = ({ children }) => {
             if (data?.token) {
                 setToken(data.token);
                 setUser({
-                    _id:   data._id,
-                    name:  data.name,
+                    _id: data._id,
+                    name: data.name,
                     email: data.email,
-                    role:  data.role,
+                    role: data.role,
                 });
             }
         };
@@ -82,10 +82,10 @@ export const AuthProvider = ({ children }) => {
         const authData = {
             token: data.token,
             user: {
-                _id:   data._id,
-                name:  data.name,
+                _id: data._id,
+                name: data.name,
                 email: data.email,
-                role:  data.role,
+                role: data.role,
             },
         };
         localStorage.setItem("auth", JSON.stringify(authData));
@@ -119,8 +119,12 @@ export const AuthProvider = ({ children }) => {
         setLocationAsked(false);
     }, [user?._id]);
 
+    const ctxValue = useMemo(() => ({
+        user, token, login, loginWithData, register, logout, loading
+    }), [user, token, login, loginWithData, register, logout, loading]);
+
     return (
-        <AuthContext.Provider value={{ user, token, login, loginWithData, register, logout, loading }}>
+        <AuthContext.Provider value={ctxValue}>
             {children}
         </AuthContext.Provider>
     );

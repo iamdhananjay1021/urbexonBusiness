@@ -222,6 +222,10 @@ const CSS = `
 }
 .h-view-all:hover { gap: 8px; }
 
+/* ── Section reveal animation ── */
+.h-sec { animation: h-reveal .45s ease both; }
+@keyframes h-reveal { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:none; } }
+
 /* ══════════════════════════════════════════
    CATEGORIES
 ══════════════════════════════════════════ */
@@ -808,35 +812,43 @@ const WHY_FEATURES = [
     { icon: "🎧", label: "24/7 Support", sub: "Dedicated customer service", color: "#fdf4ff", iconColor: "#9333ea" },
 ];
 
+/* ─── Module-level cache to avoid re-fetch on route navigation ─── */
+let _homeCache = null;
+const CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+
 /* ─── HOME ─────────────────────────────────────────────── */
 const Home = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const searchQuery = searchParams.get("search") || "";
 
-    /* State */
+    /* State — initialize from cache if available */
     const [heroIdx, setHeroIdx] = useState(0);
-    const [slides, setSlides] = useState([]);
-    const [categories, setCategories] = useState([]);
-    const [featured, setFeatured] = useState([]);
-    const [newArrivals, setNewArrivals] = useState([]);
-    const [deals, setDeals] = useState([]);
-    const [vendors, setVendors] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [slides, setSlides] = useState(() => _homeCache?.slides || []);
+    const [categories, setCategories] = useState(() => _homeCache?.categories || []);
+    const [featured, setFeatured] = useState(() => _homeCache?.featured || []);
+    const [newArrivals, setNewArrivals] = useState(() => _homeCache?.newArrivals || []);
+    const [deals, setDeals] = useState(() => _homeCache?.deals || []);
+    const [vendors, setVendors] = useState(() => _homeCache?.vendors || []);
+    const [loading, setLoading] = useState(() => !_homeCache || Date.now() - (_homeCache?._ts || 0) > CACHE_TTL);
     const [nlEmail, setNlEmail] = useState("");
     const [nlStatus, setNlStatus] = useState(""); // "" | "sending" | "done" | "error"
-    const [stats, setStats] = useState({ products: 0, categories: 0 });
+    const [stats, setStats] = useState(() => _homeCache?.stats || { products: 0, categories: 0 });
     const [forYouProducts, setForYouProducts] = useState([]);
     const [forYouTerm, setForYouTerm] = useState("");
-    const [nearestDealEnd, setNearestDealEnd] = useState(null);
+    const [nearestDealEnd, setNearestDealEnd] = useState(() => _homeCache?.nearestDealEnd || null);
 
     const [searchResults, setSearchResults] = useState([]);
     const [searching, setSearching] = useState(false);
 
     const heroTimer = useRef(null);
 
-    /* ── Data fetch ── */
+    /* ── Data fetch (skip if cache is fresh) ── */
     useEffect(() => {
+        if (_homeCache && Date.now() - _homeCache._ts < CACHE_TTL) {
+            setLoading(false);
+            return;
+        }
         let cancelled = false;
         setLoading(true);
         (async () => {
@@ -849,25 +861,37 @@ const Home = () => {
                 ]);
                 if (cancelled) return;
 
-                if (bannersRes.status === "fulfilled" && bannersRes.value?.data?.length)
-                    setSlides(bannersRes.value.data);
+                const cache = { _ts: Date.now() };
 
-                if (catsRes.status === "fulfilled" && catsRes.value?.data?.length)
-                    setCategories(catsRes.value.data);
+                if (bannersRes.status === "fulfilled" && bannersRes.value?.data?.length) {
+                    const s = bannersRes.value.data;
+                    setSlides(s); cache.slides = s;
+                }
+
+                if (catsRes.status === "fulfilled" && catsRes.value?.data?.length) {
+                    const c = catsRes.value.data;
+                    setCategories(c); cache.categories = c;
+                }
 
                 if (homeRes.status === "fulfilled") {
                     const d = homeRes.value.data;
-                    setFeatured(d.featured || []);
-                    setNewArrivals(d.newArrivals || []);
-                    setDeals(d.deals || []);
-                    if (d.stats) setStats(d.stats);
-                    // Find nearest deal expiry for flash timer
-                    const dealDates = (d.deals || []).map(p => p.dealEndsAt).filter(Boolean).map(d => new Date(d)).filter(d => d > new Date());
-                    if (dealDates.length > 0) setNearestDealEnd(new Date(Math.min(...dealDates)).toISOString());
+                    const f = d.featured || []; const na = d.newArrivals || []; const dl = d.deals || [];
+                    setFeatured(f); setNewArrivals(na); setDeals(dl);
+                    cache.featured = f; cache.newArrivals = na; cache.deals = dl;
+                    if (d.stats) { setStats(d.stats); cache.stats = d.stats; }
+                    const dealDates = dl.map(p => p.dealEndsAt).filter(Boolean).map(d => new Date(d)).filter(d => d > new Date());
+                    if (dealDates.length > 0) {
+                        const nd = new Date(Math.min(...dealDates)).toISOString();
+                        setNearestDealEnd(nd); cache.nearestDealEnd = nd;
+                    }
                 }
 
-                if (vendorsRes.status === "fulfilled")
-                    setVendors(vendorsRes.value?.data?.vendors || []);
+                if (vendorsRes.status === "fulfilled") {
+                    const v = vendorsRes.value?.data?.vendors || [];
+                    setVendors(v); cache.vendors = v;
+                }
+
+                _homeCache = cache;
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -961,7 +985,20 @@ const Home = () => {
             <style>{CSS}</style>
 
             {/* ════ HERO ═══════════════════════════════════ */}
-            {slides.length > 0 ? (
+            {loading && slides.length === 0 ? (
+                /* Skeleton hero — instant paint while data loads */
+                <div className="h-hero" style={{ background: "linear-gradient(135deg, #5b5bf6, #7c3aed)", minHeight: 340 }}>
+                    <div className="h-hero-in" style={{ alignItems: "flex-start" }}>
+                        <div className="h-hero-left" style={{ animation: "none" }}>
+                            <div className="h-sk" style={{ width: 120, height: 20, borderRadius: 20, marginBottom: 16, background: "rgba(255,255,255,.15)" }} />
+                            <div className="h-sk" style={{ width: "80%", height: 36, borderRadius: 8, marginBottom: 10, background: "rgba(255,255,255,.12)" }} />
+                            <div className="h-sk" style={{ width: "50%", height: 36, borderRadius: 8, marginBottom: 20, background: "rgba(255,255,255,.12)" }} />
+                            <div className="h-sk" style={{ width: 160, height: 14, borderRadius: 6, marginBottom: 28, background: "rgba(255,255,255,.1)" }} />
+                            <div className="h-sk" style={{ width: 140, height: 44, borderRadius: 10, background: "rgba(255,255,255,.2)" }} />
+                        </div>
+                    </div>
+                </div>
+            ) : slides.length > 0 ? (
                 <div className="h-hero" style={{
                     background: currSlide?.bg || "linear-gradient(135deg, #5b5bf6, #7c3aed)",
                 }}>
