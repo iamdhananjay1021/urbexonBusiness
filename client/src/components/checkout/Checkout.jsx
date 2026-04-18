@@ -28,7 +28,7 @@ import {
     FaPencilAlt, FaCreditCard, FaLock, FaRedo, FaMoneyBillWave,
     FaImage, FaSpinner, FaPlus, FaEdit, FaTrash,
     FaHome, FaBriefcase, FaBookmark, FaChevronDown, FaChevronUp,
-    FaStar,
+    FaStar, FaShoppingCart,
 } from "react-icons/fa";
 import { useCheckout } from "../../hooks/useCheckout";
 import PriceSummary from "./PriceSummary";
@@ -51,7 +51,20 @@ const STEPS = [
 const Checkout = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const buyNowItem = location.state?.buyNowItem || null;
+
+    // Restore buyNowItem: prefer location.state, fall back to sessionStorage
+    const buyNowItem = (() => {
+        if (location.state?.buyNowItem) return location.state.buyNowItem;
+        try {
+            const stored = sessionStorage.getItem("ux_buy_now_item");
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                sessionStorage.removeItem("ux_buy_now_item");
+                return parsed;
+            }
+        } catch { }
+        return null;
+    })();
     const couponFromCart = location.state?.coupon || null;
 
     const ck = useCheckout(buyNowItem, couponFromCart);
@@ -545,6 +558,21 @@ const Checkout = () => {
     .ck-desk-cta { display:none; }
     @media(min-width:768px){ .ck-desk-cta{ display:block; } }
     `;
+
+    // Guard: prevent empty-cart checkout
+    if (!checkoutItems || checkoutItems.length === 0) {
+        return (
+            <>
+                <style>{css}</style>
+                <div className="ck-page" style={{ alignItems: "center", justifyContent: "center", gap: 16, textAlign: "center", padding: 32 }}>
+                    <FaShoppingCart size={40} style={{ color: "#a8a29e" }} />
+                    <h2 style={{ fontFamily: "'DM Sans', sans-serif", color: "#1c1917" }}>Your cart is empty</h2>
+                    <p style={{ color: "#78716c", fontSize: 14 }}>Add items to your cart before checking out</p>
+                    <button onClick={() => navigate("/")} style={{ marginTop: 12, padding: "10px 28px", background: "#c8a96e", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: 14 }}>Continue Shopping</button>
+                </div>
+            </>
+        );
+    }
 
     return (
         <>

@@ -26,6 +26,7 @@ import {
     calculateSellerCommissions,
     autoGeneratePayouts,
     updateVendorRatings,
+    autoExpireSubscriptions,
 } from './sellerJobs.js';
 
 import {
@@ -108,6 +109,12 @@ const JOBS = [
         name: 'Update Vendor Ratings',
         schedule: '0 2 * * *', // Daily at 2 AM
         handler: updateVendorRatings,
+        enabled: true,
+    },
+    {
+        name: 'Auto-Expire Subscriptions',
+        schedule: '0 0 * * *', // Daily at midnight
+        handler: autoExpireSubscriptions,
         enabled: true,
     },
     {

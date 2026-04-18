@@ -11,6 +11,7 @@ import {
     getDeals,
     getUrbexonHourProducts,
     getUrbexonHourDeals,
+    getUrbexonHourHomepage,
     getProductBySlug,
     getRelatedProducts,
     getSuggestions,
@@ -85,6 +86,7 @@ router.get("/deals", getDeals);
 router.get("/suggestions", getSuggestions);
 router.get("/urbexon-hour", getUrbexonHourProducts);
 router.get("/urbexon-hour/deals", getUrbexonHourDeals);
+router.get("/urbexon-hour/homepage", getUrbexonHourHomepage);
 
 /* ── Admin Routes ────────────────────────────── */
 router.get(

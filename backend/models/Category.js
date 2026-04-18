@@ -48,6 +48,17 @@ const categorySchema = new mongoose.Schema(
             type: [String],
             default: [],
         },
+        // Category-based product highlight templates
+        // Defines which highlight fields are relevant for products in this category
+        highlightTemplate: {
+            type: [
+                {
+                    title: { type: String, required: true, trim: true },
+                    required: { type: Boolean, default: false },
+                },
+            ],
+            default: [],
+        },
     },
     { timestamps: true }
 );

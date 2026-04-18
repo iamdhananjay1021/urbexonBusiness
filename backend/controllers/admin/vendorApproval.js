@@ -180,6 +180,7 @@ export const activateVendorSubscription = async (req, res) => {
                         months: Number(months),
                         date: now,
                         reference: `ADMIN-${Date.now()}`,
+                        status: "success",
                     },
                 },
             },
@@ -199,6 +200,88 @@ export const activateVendorSubscription = async (req, res) => {
         res.json({ success: true, message: `${plan} plan activated for ${months} month(s)`, subscription: sub });
     } catch (err) {
         console.error("[activateSubscription]", err);
+        res.status(500).json({ success: false, message: "Failed" });
+    }
+};
+
+/* ── Deactivate subscription (admin) ───────────────────── */
+export const deactivateVendorSubscription = async (req, res) => {
+    try {
+        const { reason } = req.body;
+        const vendor = await Vendor.findById(req.params.id);
+        if (!vendor) return res.status(404).json({ success: false, message: "Vendor not found" });
+
+        const sub = await Subscription.findOne({ vendorId: vendor._id });
+        if (!sub) return res.status(404).json({ success: false, message: "No subscription found" });
+
+        sub.status = "cancelled";
+        sub.expiryDate = new Date(); // expire immediately
+        await sub.save();
+
+        vendor.subscription = {
+            ...vendor.subscription,
+            isActive: false,
+            expiryDate: new Date(),
+        };
+        await vendor.save();
+
+        res.json({
+            success: true,
+            message: `Subscription deactivated${reason ? ": " + reason : ""}`,
+            subscription: sub.toObject(),
+        });
+    } catch (err) {
+        console.error("[deactivateSubscription]", err);
+        res.status(500).json({ success: false, message: "Failed" });
+    }
+};
+
+/* ── Get all subscriptions (admin overview) ────────────── */
+export const adminGetAllSubscriptions = async (req, res) => {
+    try {
+        const { status, plan, page = 1, limit = 20, search } = req.query;
+        const filter = {};
+        if (status && status !== "all") filter.status = status;
+        if (plan && plan !== "all") filter.plan = plan;
+
+        const skip = (Number(page) - 1) * Number(limit);
+        const [subs, total] = await Promise.all([
+            Subscription.find(filter)
+                .populate({ path: "vendorId", select: "shopName ownerName email phone status commissionRate" })
+                .sort({ updatedAt: -1 })
+                .skip(skip)
+                .limit(Number(limit))
+                .lean(),
+            Subscription.countDocuments(filter),
+        ]);
+
+        // Filter by search after populate (search vendor name)
+        let filtered = subs;
+        if (search) {
+            const re = new RegExp(search, "i");
+            filtered = subs.filter(s =>
+                re.test(s.vendorId?.shopName) || re.test(s.vendorId?.ownerName) || re.test(s.vendorId?.email)
+            );
+        }
+
+        // Summary counts
+        const [activeCount, expiredCount, pendingCount, cancelledCount] = await Promise.all([
+            Subscription.countDocuments({ status: "active" }),
+            Subscription.countDocuments({ status: "expired" }),
+            Subscription.countDocuments({ status: { $in: ["pending", "pending_payment", "inactive"] } }),
+            Subscription.countDocuments({ status: "cancelled" }),
+        ]);
+
+        res.json({
+            success: true,
+            subscriptions: filtered,
+            total,
+            page: Number(page),
+            totalPages: Math.ceil(total / Number(limit)),
+            summary: { active: activeCount, expired: expiredCount, pending: pendingCount, cancelled: cancelledCount },
+        });
+    } catch (err) {
+        console.error("[adminGetAllSubscriptions]", err);
         res.status(500).json({ success: false, message: "Failed" });
     }
 };

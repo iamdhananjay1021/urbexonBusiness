@@ -23,11 +23,15 @@ import {
 } from "react-icons/fa";
 import NearbyShops from "../components/NearbyShops";
 import CategoryBrowser from "../components/CategoryBrowser";
+import UHBannerCarousel from "../components/uh/UHBannerCarousel";
+import UHCategoryStrip from "../components/uh/UHCategoryStrip";
+import UHProductSection from "../components/uh/UHProductSection";
+import UHMidBanner from "../components/uh/UHMidBanner";
 import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
-/* ── Product Card (Flipkart Minutes style: qty controls) ── */
+/* ── Product Card (Zepto/Blinkit premium style) ── */
 const ProductCard = memo(({ product }) => {
     const { addItem, isInUHCart, uhItems, increment, decrement, removeItem } = useCart();
     const inCart = isInUHCart(product._id);
@@ -44,7 +48,6 @@ const ProductCard = memo(({ product }) => {
         e.stopPropagation();
         if (!inCart) {
             addItem({ ...product, productType: "urbexon_hour" });
-            // Trigger haptic feedback if available
             if (navigator.vibrate) navigator.vibrate(10);
         }
     }, [inCart, product, addItem]);
@@ -56,19 +59,25 @@ const ProductCard = memo(({ product }) => {
     return (
         <div className="pc" onClick={handleCardClick} role="link">
             <div className="pc-img-wrap">
-                {discount > 0 && <span className="pc-disc">{discount}% OFF</span>}
+                {discount > 0 && <span className="pc-disc">{discount}%<br />OFF</span>}
                 {product.tag && <span className="pc-tag">{product.tag}</span>}
+                {product.rating >= 4 && (
+                    <span className="pc-rating-badge">
+                        <FaStar size={8} /> {product.rating.toFixed(1)}
+                    </span>
+                )}
                 <img
                     src={product.images?.[0]?.url || product.image?.url || product.image || "/placeholder.png"}
                     alt={product.name} className="pc-img" loading="lazy"
                     onError={(e) => { e.target.src = "/placeholder.png"; }}
                 />
+                {!product.inStock && <div className="pc-oos-overlay">Out of Stock</div>}
             </div>
             <div className="pc-body">
                 {product.brand && <div className="pc-brand">{product.brand}</div>}
                 <div className="pc-name">{product.name}</div>
                 {product.prepTimeMinutes && (
-                    <div className="pc-prep"><FaClock size={9} /> {product.prepTimeMinutes} min prep</div>
+                    <div className="pc-prep"><FaClock size={9} /> {product.prepTimeMinutes} min</div>
                 )}
                 <div className="pc-price-row">
                     <span className="pc-price">{fmt(product.price)}</span>
@@ -78,11 +87,10 @@ const ProductCard = memo(({ product }) => {
                     {discount > 0 && <span className="pc-disc-text">{discount}% off</span>}
                 </div>
 
-                {/* Flipkart Minutes style: ADD / qty stepper */}
-                {!inCart ? (
-                    <button className="pc-add" onClick={handleAdd}>
-                        <FaPlus size={10} /> ADD
-                    </button>
+                {product.inStock === false ? (
+                    <button className="pc-add pc-add-oos" disabled>Out of Stock</button>
+                ) : !inCart ? (
+                    <button className="pc-add" onClick={handleAdd}>ADD</button>
                 ) : (
                     <div className="pc-qty-stepper">
                         <button onClick={(e) => {
@@ -156,6 +164,9 @@ const UrbexonHour = () => {
     }, [setSearchParams]);
     const [uhDeals, setUhDeals] = useState([]);
     const [cartAnimating, setCartAnimating] = useState(false);
+    const [heroBanners, setHeroBanners] = useState([]);
+    const [midBanners, setMidBanners] = useState([]);
+    const [homepageData, setHomepageData] = useState(null);
 
     /* ── Fetch UH categories from API on mount ── */
     useEffect(() => {
@@ -163,6 +174,19 @@ const UrbexonHour = () => {
             const cats = Array.isArray(data) ? data : data.categories || [];
             setApiCategories(cats.filter(c => c.isActive !== false));
         }).catch(() => { });
+    }, []);
+
+    /* ── Fetch banners & homepage data on mount ── */
+    useEffect(() => {
+        api.get("/banners", { params: { type: "urbexon_hour", placement: "hero" } })
+            .then(({ data }) => setHeroBanners(Array.isArray(data) ? data : []))
+            .catch(() => { });
+        api.get("/banners", { params: { type: "urbexon_hour", placement: "mid" } })
+            .then(({ data }) => setMidBanners(Array.isArray(data) ? data : []))
+            .catch(() => { });
+        api.get("/products/urbexon-hour/homepage")
+            .then(({ data }) => setHomepageData(data))
+            .catch(() => { });
     }, []);
 
     /* ── Trigger cart animation when items added ── */
@@ -461,18 +485,20 @@ const UrbexonHour = () => {
                     </div>
                 )}
 
-                {/* ── TRUST STRIP (from delivery config) ── */}
+                {/* ── TRUST STRIP (Premium glassmorphism) ── */}
                 {(hasActiveService || showSkeleton) && !showPincodeEdit && (
                     <div className="trust-strip">
                         <div className="container trust-inner">
                             {[
-                                { ic: "🏍️", t: "FAST DELIVERY", sub: deliveryEta ? `${deliveryEta.min}–${deliveryEta.max} min` : "45–120 min" },
-                                { ic: "✅", t: "QUALITY CHECKED", sub: "100% verified" },
-                                { ic: "🏪", t: "LOCAL VENDORS", sub: `${vendorGroups.length || "0"} stores` },
-                                { ic: "🔒", t: "SECURE PAYMENTS", sub: "Safe & encrypted" },
-                            ].map((f) => (
-                                <div key={f.t} className="trust-item">
-                                    <span className="trust-ic">{f.ic}</span>
+                                { ic: "🚀", t: "EXPRESS DELIVERY", sub: deliveryEta ? `${deliveryEta.min}–${deliveryEta.max} min` : "45–120 min", accent: "#3b82f6" },
+                                { ic: "✅", t: "QUALITY CHECKED", sub: "100% verified products", accent: "#10b981" },
+                                { ic: "🏪", t: "LOCAL VENDORS", sub: `${homepageData?.stats?.totalVendors || vendorGroups.length || "0"} verified stores`, accent: "#8b5cf6" },
+                                { ic: "🔒", t: "SECURE PAYMENTS", sub: "256-bit encrypted", accent: "#f59e0b" },
+                            ].map((f, i) => (
+                                <div key={f.t} className="trust-item" style={{ animationDelay: `${i * 80}ms` }}>
+                                    <div className="trust-ic-wrap" style={{ background: `${f.accent}15`, border: `1.5px solid ${f.accent}25` }}>
+                                        <span className="trust-ic">{f.ic}</span>
+                                    </div>
                                     <div>
                                         <div className="trust-title">{f.t}</div>
                                         <div className="trust-sub">{f.sub}</div>
@@ -505,8 +531,157 @@ const UrbexonHour = () => {
                     </div>
                 )}
 
-                {/* ── CATEGORY BROWSER (Myntra-style, UH categories) ── */}
-                {hasActiveService && !showPincodeEdit && (
+                {/* ═══ ZEPTO-STYLE HOMEPAGE SECTIONS ═══ */}
+                {hasActiveService && !showPincodeEdit && !searchQuery && !activeCategory && (
+                    <>
+                        {/* ── DELIVERY PROMISE BAR ── */}
+                        <div className="uh-promise-bar">
+                            <div className="container uh-promise-inner">
+                                <div className="uh-promise-item">
+                                    <span className="uh-promise-ic">⚡</span>
+                                    <span>Superfast {deliveryEta.min}-{deliveryEta.max} min delivery</span>
+                                </div>
+                                <div className="uh-promise-dot" />
+                                <div className="uh-promise-item">
+                                    <span className="uh-promise-ic">🎯</span>
+                                    <span>{homepageData?.stats?.totalProducts || products.length}+ products available</span>
+                                </div>
+                                <div className="uh-promise-dot" />
+                                <div className="uh-promise-item">
+                                    <span className="uh-promise-ic">💸</span>
+                                    <span>Best prices guaranteed</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* ── HERO BANNER CAROUSEL ── */}
+                        {heroBanners.length > 0 && (
+                            <div className="container" style={{ paddingTop: 20, paddingBottom: 0 }}>
+                                <UHBannerCarousel banners={heroBanners} />
+                            </div>
+                        )}
+
+                        {/* ── CATEGORY STRIP (horizontal scroll pills) ── */}
+                        <div className="container" style={{ paddingTop: 20 }}>
+                            <UHCategoryStrip
+                                categories={apiCategories}
+                                activeCategory={activeCategory}
+                                onSelect={setActiveCategory}
+                            />
+                        </div>
+
+                        {/* ── BEST SELLERS ── */}
+                        {homepageData?.bestSellers?.length > 0 && (
+                            <div className="container">
+                                <UHProductSection
+                                    title="Best Sellers"
+                                    subtitle="Most popular in your area"
+                                    icon="🔥"
+                                    products={homepageData.bestSellers}
+                                    renderCard={(p) => <ProductCard product={p} />}
+                                />
+                            </div>
+                        )}
+
+                        {/* ── TRENDING NOW ── */}
+                        {homepageData?.trending?.length > 0 && (
+                            <div className="container">
+                                <UHProductSection
+                                    title="Trending Now"
+                                    subtitle="What everyone is buying"
+                                    icon="📈"
+                                    products={homepageData.trending}
+                                    renderCard={(p) => <ProductCard product={p} />}
+                                />
+                            </div>
+                        )}
+
+                        {/* ── TOP DEALS ── */}
+                        {homepageData?.topDeals?.length > 0 && (
+                            <div className="container">
+                                <UHProductSection
+                                    title="Top Deals"
+                                    subtitle="Grab before they expire"
+                                    icon="💰"
+                                    products={homepageData.topDeals}
+                                    renderCard={(p) => <ProductCard product={p} />}
+                                />
+                            </div>
+                        )}
+
+                        {/* ── MID-PAGE BANNERS ── */}
+                        {midBanners.length > 0 && (
+                            <div className="container" style={{ paddingTop: 12, paddingBottom: 12 }}>
+                                <UHMidBanner banners={midBanners} />
+                            </div>
+                        )}
+
+                        {/* ── BUDGET PICKS ── */}
+                        {homepageData?.budgetPicks?.length > 0 && (
+                            <div className="container">
+                                <UHProductSection
+                                    title="Budget Picks"
+                                    subtitle="Best deals under ₹500"
+                                    icon="🏷️"
+                                    products={homepageData.budgetPicks}
+                                    renderCard={(p) => <ProductCard product={p} />}
+                                />
+                            </div>
+                        )}
+
+                        {/* ── RECOMMENDED ── */}
+                        {homepageData?.recommended?.length > 0 && (
+                            <div className="container">
+                                <UHProductSection
+                                    title="Fresh Arrivals"
+                                    subtitle="Just landed on the platform"
+                                    icon="✨"
+                                    products={homepageData.recommended}
+                                    renderCard={(p) => <ProductCard product={p} />}
+                                />
+                            </div>
+                        )}
+
+                        {/* ── CATEGORY-BASED SECTIONS ── */}
+                        {homepageData?.categorySections && Object.entries(homepageData.categorySections).map(([catName, prods]) => (
+                            prods.length >= 3 && (
+                                <div className="container" key={catName}>
+                                    <UHProductSection
+                                        title={catName}
+                                        subtitle={`${prods.length} products`}
+                                        icon={getCategoryEmoji(catName)}
+                                        products={prods}
+                                        renderCard={(p) => <ProductCard product={p} />}
+                                    />
+                                </div>
+                            )
+                        ))}
+
+                        {/* ── WHY CHOOSE US ── */}
+                        <div className="uh-why-section">
+                            <div className="container">
+                                <h3 className="uh-why-title">Why shop on Urbexon Hour?</h3>
+                                <div className="uh-why-grid">
+                                    {[
+                                        { ic: "🏪", title: "Support Local", desc: "Every order helps local vendors & small businesses grow" },
+                                        { ic: "🕐", title: "Superfast Delivery", desc: `Get your order in ${deliveryEta.min}-${deliveryEta.max} minutes flat` },
+                                        { ic: "🛡️", title: "Quality Promise", desc: "Every product is quality checked before dispatch" },
+                                        { ic: "💯", title: "Best Prices", desc: "We match prices so you always get the best deal" },
+                                    ].map(item => (
+                                        <div key={item.title} className="uh-why-card">
+                                            <span className="uh-why-ic">{item.ic}</span>
+                                            <h4 className="uh-why-card-title">{item.title}</h4>
+                                            <p className="uh-why-card-desc">{item.desc}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {/* ── CATEGORY BROWSER (Myntra-style, UH categories) — shown when search/filter active ── */}
+                {hasActiveService && !showPincodeEdit && (searchQuery || activeCategory) && (
                     <div className="section">
                         <div className="container">
                             <CategoryBrowser
@@ -621,8 +796,8 @@ const UrbexonHour = () => {
                     </div>
                 )}
 
-                {/* ── PRODUCTS BY VENDOR ── */}
-                {pinData?.available && (
+                {/* ── PRODUCTS BY VENDOR (shown when filtering/searching) ── */}
+                {pinData?.available && (searchQuery || activeCategory) && (
                     <div className="container">
                         {filteredProducts.length === 0 && !loading && (
                             <div className="empty-state">
@@ -635,15 +810,13 @@ const UrbexonHour = () => {
                                             : "No products available in your area yet"}
                                 </div>
                                 <div className="empty-sub">We are expanding fast. Check back soon!</div>
-                                {(activeCategory || searchQuery) && (
-                                    <button
-                                        className="pin-btn"
-                                        style={{ marginTop: 16 }}
-                                        onClick={() => { setActiveCategory(null); clearSearch(); }}
-                                    >
-                                        Show all products
-                                    </button>
-                                )}
+                                <button
+                                    className="pin-btn"
+                                    style={{ marginTop: 16 }}
+                                    onClick={() => { setActiveCategory(null); clearSearch(); }}
+                                >
+                                    Show all products
+                                </button>
                             </div>
                         )}
 
@@ -861,9 +1034,9 @@ const getCategoryEmoji = (cat) => {
 const PAGE_CSS = `
 /* fonts loaded from index.html */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:#fafbfc}
+body{background:#f5f6fa}
 main{position:relative;z-index:1}
-.uh-root{min-height:100vh;background:#fafbfc;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;color:#1a202c;position:relative;overflow-x:hidden}
+.uh-root{min-height:100vh;background:#f5f6fa;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1a202c;position:relative;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 .container{max-width:1280px;margin:0 auto;padding:0 clamp(16px,4vw,48px)}
 
 /* Initial loading */
@@ -872,19 +1045,34 @@ main{position:relative;z-index:1}
 @keyframes uhspin{to{transform:rotate(360deg)}}
 
 /* UH LOCATION BAR */
-.uh-loc-bar{background:#1a1740;border-bottom:1px solid #2d2a5e}
-.uh-loc-bar-inner{display:flex;align-items:center;justify-content:space-between;padding:8px 0}
-.uh-loc-bar-left{display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.85);font-weight:600}
-.uh-loc-bolt{color:#c9a84c}
+.uh-loc-bar{background:linear-gradient(135deg,#1a1740 0%,#2d1b69 100%);border-bottom:1px solid rgba(201,168,76,.15);backdrop-filter:blur(10px)}
+.uh-loc-bar-inner{display:flex;align-items:center;justify-content:space-between;padding:10px 0}
+.uh-loc-bar-left{display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,.85);font-weight:600}
+.uh-loc-bolt{color:#c9a84c;filter:drop-shadow(0 0 4px rgba(201,168,76,.4))}
 .uh-loc-bar-label{color:rgba(255,255,255,.5);font-size:12px}
 .uh-loc-bar-area{color:#fff;font-weight:700}
 .uh-loc-bar-eta{color:#c9a84c;font-weight:700;font-size:12px}
-.uh-loc-bar-change{background:none;border:1px solid rgba(201,168,76,.4);color:#c9a84c;padding:5px 14px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s}
-.uh-loc-bar-change:hover{background:rgba(201,168,76,.15);border-color:#c9a84c}
+.uh-loc-bar-change{background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);color:#c9a84c;padding:6px 16px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s}
+.uh-loc-bar-change:hover{background:rgba(201,168,76,.2);border-color:#c9a84c;transform:scale(1.02)}
 @media(max-width:640px){
-  .uh-loc-bar-inner{padding:6px 0;gap:6px}
+  .uh-loc-bar-inner{padding:8px 0;gap:6px}
   .uh-loc-bar-left{font-size:11px;gap:5px;flex-wrap:wrap}
-  .uh-loc-bar-change{padding:4px 10px;font-size:10px}
+  .uh-loc-bar-change{padding:4px 12px;font-size:10px}
+}
+
+/* ── DELIVERY PROMISE BAR ── */
+.uh-promise-bar{background:linear-gradient(90deg,#0f172a,#1e293b);border-bottom:1px solid rgba(59,130,246,.15)}
+.uh-promise-inner{display:flex;align-items:center;justify-content:center;gap:20px;padding:10px 0;flex-wrap:wrap}
+.uh-promise-item{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:rgba(255,255,255,.85);letter-spacing:.2px}
+.uh-promise-ic{font-size:14px;filter:drop-shadow(0 0 3px rgba(255,255,255,.2))}
+.uh-promise-dot{width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.2)}
+@media(max-width:640px){
+  .uh-promise-inner{gap:8px;padding:8px 0}
+  .uh-promise-item{font-size:10px;gap:4px}
+  .uh-promise-dot{display:none}
+  .uh-promise-inner{flex-direction:row;overflow-x:auto;justify-content:flex-start;scrollbar-width:none}
+  .uh-promise-inner::-webkit-scrollbar{display:none}
+  .uh-promise-item{white-space:nowrap;flex-shrink:0}
 }
 
 /* SKELETON */
@@ -895,7 +1083,7 @@ main{position:relative;z-index:1}
 .uh-sk-section{margin-bottom:16px}
 .uh-sk-line-lg{width:140px;height:18px;border-radius:6px;background:linear-gradient(90deg,#eee 25%,#e0e0e0 50%,#eee 75%);background-size:200% 100%;animation:uhsk 1.2s infinite}
 .uh-sk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
-.uh-sk-card{border-radius:12px;border:1px solid #f0f0f0;overflow:hidden;background:#fff}
+.uh-sk-card{border-radius:14px;border:1px solid #f0f0f0;overflow:hidden;background:#fff}
 .uh-sk-card-img{aspect-ratio:1;background:linear-gradient(90deg,#eee 25%,#e0e0e0 50%,#eee 75%);background-size:200% 100%;animation:uhsk 1.2s infinite}
 .uh-sk-card-body{padding:12px;display:flex;flex-direction:column;gap:8px}
 .uh-sk-line{height:10px;border-radius:4px;background:linear-gradient(90deg,#eee 25%,#e0e0e0 50%,#eee 75%);background-size:200% 100%;animation:uhsk 1.2s infinite}
@@ -921,10 +1109,10 @@ main{position:relative;z-index:1}
 .pin-row{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap}
 .pin-inp-wrap{flex:1;min-width:200px;position:relative;display:flex;align-items:center}
 .pin-search-ic{position:absolute;left:14px;color:rgba(0,0,0,.3);pointer-events:none;font-size:14px}
-.pin-inp{width:100%;padding:13px 14px 13px 40px;background:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;letter-spacing:1.5px;color:#1f2937;outline:none;box-shadow:0 4px 16px rgba(0,0,0,.15);font-family:'DM Sans',sans-serif;transition:all .2s}
-.pin-inp:focus{box-shadow:0 8px 24px rgba(0,0,0,.2)}
+.pin-inp{width:100%;padding:13px 14px 13px 40px;background:#fff;border:none;border-radius:12px;font-size:15px;font-weight:600;letter-spacing:1.5px;color:#1f2937;outline:none;box-shadow:0 4px 20px rgba(0,0,0,.12);font-family:'DM Sans',sans-serif;transition:all .2s}
+.pin-inp:focus{box-shadow:0 8px 32px rgba(0,0,0,.18)}
 .pin-inp::placeholder{color:#a1a1a1;letter-spacing:0;font-weight:400;font-size:13px}
-.pin-btn{padding:13px 28px;background:linear-gradient(135deg,#3b82f6,#2563eb);border:none;border-radius:10px;color:#fff;font-weight:800;font-size:13px;cursor:pointer;box-shadow:0 4px 16px rgba(59,130,246,.3);transition:all .2s;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:'DM Sans',sans-serif;letter-spacing:.3px}
+.pin-btn{padding:13px 28px;background:linear-gradient(135deg,#3b82f6,#2563eb);border:none;border-radius:12px;color:#fff;font-weight:800;font-size:13px;cursor:pointer;box-shadow:0 4px 16px rgba(59,130,246,.3);transition:all .2s;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:'DM Sans',sans-serif;letter-spacing:.3px}
 .pin-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(59,130,246,.4)}
 .pin-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
 .detect-btn{background:none;border:none;color:rgba(255,255,255,.75);font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-weight:600;transition:all .15s;border-radius:8px}
@@ -934,40 +1122,52 @@ main{position:relative;z-index:1}
 .spin{width:14px;height:14px;display:inline-block;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 
-/* TRUST STRIP - Premium */
-.trust-strip{background:linear-gradient(135deg,#f8fafc,#f0f9ff);border-bottom:1px solid #e0e7ff;border-top:1px solid #e0e7ff}
+/* ── TRUST STRIP - Premium Glassmorphism ── */
+.trust-strip{background:linear-gradient(135deg,#ffffff,#f8fafc);border-bottom:1px solid #e8ecf1;border-top:1px solid #e8ecf1;box-shadow:0 2px 12px rgba(0,0,0,.03)}
 .trust-inner{display:grid;grid-template-columns:repeat(4,1fr);gap:0;width:100%;overflow:hidden}
-.trust-item{display:flex;align-items:center;gap:clamp(12px,2vw,16px);padding:clamp(16px,3vw,26px) clamp(18px,3vw,28px);border-right:1px solid #e0e7ff;position:relative;transition:all .25s;min-width:0}
+.trust-item{display:flex;align-items:center;gap:clamp(10px,1.5vw,14px);padding:clamp(16px,2.5vw,22px) clamp(14px,2vw,24px);border-right:1px solid #e8ecf1;position:relative;transition:all .3s;min-width:0;animation:trustSlideIn .5s cubic-bezier(.34,.1,.68,1) backwards}
 .trust-item:last-child{border-right:none}
-.trust-item:hover{background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(99,102,241,.05));transform:translateY(-1px)}
-.trust-ic{font-size:clamp(24px,3.5vw,38px);flex-shrink:0;animation:slideInTrust .6s cubic-bezier(.34,.1,.68,1) backwards;filter:drop-shadow(0 2px 4px rgba(0,0,0,.05))}
-.trust-title{font-size:clamp(11px,2.5vw,13px);font-weight:900;color:#0f172a;letter-spacing:.5px;text-transform:uppercase;font-family:'DM Sans';white-space:normal;word-break:break-word}
-.trust-sub{font-size:clamp(10px,2vw,12px);color:#64748b;margin-top:2px;line-height:1.3;font-weight:500;white-space:normal;word-break:break-word}
-.trust-item:nth-child(1) .trust-ic{animation-delay:0ms}
-.trust-item:nth-child(2) .trust-ic{animation-delay:80ms}
-.trust-item:nth-child(3) .trust-ic{animation-delay:160ms}
-.trust-item:nth-child(4) .trust-ic{animation-delay:240ms}
-@keyframes slideInTrust{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.trust-item:hover{background:linear-gradient(135deg,rgba(59,130,246,.04),rgba(139,92,246,.03))}
+.trust-ic-wrap{width:clamp(36px,4vw,44px);height:clamp(36px,4vw,44px);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .3s}
+.trust-item:hover .trust-ic-wrap{transform:scale(1.08)}
+.trust-ic{font-size:clamp(18px,2.5vw,22px);filter:drop-shadow(0 1px 3px rgba(0,0,0,.08))}
+.trust-title{font-size:clamp(10px,1.8vw,11.5px);font-weight:800;color:#0f172a;letter-spacing:.6px;text-transform:uppercase;font-family:'DM Sans';white-space:nowrap}
+.trust-sub{font-size:clamp(10px,1.5vw,11.5px);color:#64748b;margin-top:2px;line-height:1.3;font-weight:500;white-space:nowrap}
+@keyframes trustSlideIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:1024px){
   .trust-inner{grid-template-columns:repeat(4,1fr)}
-  .trust-item{padding:clamp(14px,2.5vw,22px) clamp(14px,2.5vw,24px)}
+  .trust-item{padding:14px 12px;gap:10px}
 }
 @media(max-width:768px){
   .trust-inner{grid-template-columns:repeat(2,1fr)}
-  .trust-item{border-right:none;border-bottom:1px solid #e0e7ff;padding:12px 16px;min-width:0}
-  .trust-item:nth-child(odd){border-right:1px solid #e0e7ff}
+  .trust-item{border-right:none;border-bottom:1px solid #e8ecf1;padding:12px 14px;min-width:0}
+  .trust-item:nth-child(odd){border-right:1px solid #e8ecf1}
   .trust-item:nth-child(3),.trust-item:nth-child(4){border-bottom:none}
-  .trust-sub{display:none}
-  .trust-title{font-size:clamp(11px,3vw,12px)}
-  .trust-ic{font-size:clamp(22px,4vw,30px)}
+  .trust-title{font-size:10px}
+  .trust-sub{font-size:10px}
 }
 @media(max-width:480px){
   .trust-inner{grid-template-columns:repeat(2,1fr)}
-  .trust-item{padding:10px 12px;gap:8px}
-  .trust-title{font-size:10px}
+  .trust-item{padding:10px 10px;gap:8px}
+  .trust-title{font-size:9px;letter-spacing:.3px}
   .trust-sub{display:none}
-  .trust-ic{font-size:20px}
+  .trust-ic-wrap{width:32px;height:32px;border-radius:8px}
+  .trust-ic{font-size:16px}
 }
+
+/* ── WHY CHOOSE US ── */
+.uh-why-section{background:linear-gradient(135deg,#f8fafc,#eef2ff);padding:40px 0;margin:8px 0}
+.uh-why-title{font-size:clamp(18px,3.5vw,24px);font-weight:800;color:#0f172a;text-align:center;margin-bottom:28px;letter-spacing:-.3px}
+.uh-why-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.uh-why-card{background:#fff;border:1px solid #e8ecf1;border-radius:16px;padding:24px 18px;text-align:center;transition:all .3s;cursor:default;position:relative;overflow:hidden}
+.uh-why-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#3b82f6,#8b5cf6);opacity:0;transition:opacity .3s}
+.uh-why-card:hover{transform:translateY(-4px);box-shadow:0 8px 32px rgba(0,0,0,.08);border-color:#c7d2fe}
+.uh-why-card:hover::before{opacity:1}
+.uh-why-ic{font-size:32px;display:block;margin-bottom:12px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.08))}
+.uh-why-card-title{font-size:14px;font-weight:800;color:#0f172a;margin-bottom:6px;letter-spacing:-.2px}
+.uh-why-card-desc{font-size:12px;color:#64748b;line-height:1.5;font-weight:500}
+@media(max-width:768px){.uh-why-grid{grid-template-columns:repeat(2,1fr);gap:12px}.uh-why-card{padding:18px 14px}}
+@media(max-width:480px){.uh-why-grid{grid-template-columns:1fr 1fr;gap:10px}.uh-why-card{padding:16px 12px}.uh-why-ic{font-size:26px;margin-bottom:8px}.uh-why-card-title{font-size:12px}.uh-why-card-desc{font-size:11px}}
 
 /* SECTIONS */
 .section{background:#fff;margin:16px 0;padding:clamp(24px,4vw,40px) 0;border-bottom:1px solid #f0f0f0}
@@ -1016,9 +1216,9 @@ main{position:relative;z-index:1}
 .uh-deals-scroll::-webkit-scrollbar-track{background:#f3f4f6;border-radius:6px}
 .uh-deals-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:6px}
 .uh-deals-scroll::-webkit-scrollbar-thumb:hover{background:#9ca3af}
-.uh-deals-scroll-item{min-width:200px;max-width:220px;flex-shrink:0;scroll-snap-align:start;background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;overflow:hidden;transition:all .25s;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.uh-deals-scroll-item{min-width:200px;max-width:220px;flex-shrink:0;scroll-snap-align:start;background:#fff;border:1.5px solid #e5e7eb;border-radius:14px;overflow:hidden;transition:all .25s;box-shadow:0 2px 8px rgba(0,0,0,.04)}
 .uh-deals-scroll-item:hover{border-color:#ff6b35;box-shadow:0 6px 20px rgba(255,107,53,.12);transform:translateY(-3px)}
-.uh-deals-scroll-item .pc{padding:0}
+.uh-deals-scroll-item .pc{padding:0;border:none;box-shadow:none}
 .uh-deals-scroll-item .pc-img-wrap{border-radius:0}
 .uh-deal-timer{display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 12px;background:#fff7ed;border-top:1px solid #fed7aa;font-size:11px;font-weight:700;color:#ea580c;letter-spacing:.2px}
 .uh-deal-badge{padding:8px 10px;background:#fff3cd;border-top:1px solid #ffe69c;font-size:11px;font-weight:700;text-align:center;color:#856404}
@@ -1026,9 +1226,9 @@ main{position:relative;z-index:1}
 @media(max-width:640px){.uh-deals-scroll-item{min-width:180px;max-width:200px}}
 
 /* VENDOR BLOCK */
-.vendor-block{background:#fff;border-radius:14px;border:1px solid #e5e7eb;margin:16px 0;overflow:visible;transition:all .25s;box-shadow:0 2px 8px rgba(0,0,0,.04)}
-.vendor-block:hover{border-color:#e0e7ff;box-shadow:0 4px 16px rgba(0,0,0,.06)}
-.vendor-header{display:flex;align-items:center;gap:14px;padding:16px 20px;border-bottom:1px solid #f3f4f6;background:#fafbfc;transition:background .2s}
+.vendor-block{background:#fff;border-radius:16px;border:1px solid #e8ecf1;margin:16px 0;overflow:visible;transition:all .25s;box-shadow:0 2px 12px rgba(0,0,0,.04)}
+.vendor-block:hover{border-color:#c7d2fe;box-shadow:0 8px 32px rgba(0,0,0,.06)}
+.vendor-header{display:flex;align-items:center;gap:14px;padding:16px 20px;border-bottom:1px solid #f0f2f5;background:linear-gradient(135deg,#fafbfc,#f8fafc);transition:background .2s;border-radius:16px 16px 0 0}
 .vendor-avatar{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#dbeafe,#eff6ff);color:#1e40af;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px}
 .vendor-info{flex:1}
 .vendor-name{font-size:14px;font-weight:800;color:#1f2937;letter-spacing:-.2px}
@@ -1040,92 +1240,95 @@ main{position:relative;z-index:1}
 @media(max-width:768px){.prod-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;padding:16px}}
 @media(max-width:480px){.prod-grid{grid-template-columns:repeat(2,1fr);gap:10px;padding:12px}}
 
-/* PRODUCT CARD */
-.pc{background:#fff;padding:0;cursor:pointer;border-radius:12px;transition:all .25s;border:1px solid transparent;height:100%;display:flex;flex-direction:column;overflow:hidden}
-.pc:hover{background:#fff;border-color:#e5e7eb;box-shadow:0 4px 16px rgba(0,0,0,.08);transform:translateY(-2px)}
-.pc-img-wrap{position:relative;aspect-ratio:1;background:linear-gradient(135deg,#f8fafc,#f0f9ff);border-radius:0;overflow:hidden;border:none;flex-shrink:0}
-.pc-img{width:100%;height:100%;object-fit:cover;transition:transform .3s}
-.pc:hover .pc-img{transform:scale(1.05)}
-.pc-disc{position:absolute;top:10px;left:10px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:10px;font-weight:800;padding:4px 8px;border-radius:6px;letter-spacing:.4px;box-shadow:0 2px 8px rgba(239,68,68,.25)}
-.pc-tag{position:absolute;top:10px;right:10px;background:#f97316;color:#fff;font-size:10px;font-weight:700;padding:4px 8px;border-radius:6px;animation:pulse 2s ease-in-out infinite}
+/* ── PRODUCT CARD (Premium Zepto/Blinkit style) ── */
+.pc{background:#fff;padding:0;cursor:pointer;border-radius:14px;transition:all .3s cubic-bezier(.34,.1,.68,1);border:1px solid #edf0f4;height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.03)}
+.pc:hover{border-color:#d4dae4;box-shadow:0 8px 32px rgba(0,0,0,.08);transform:translateY(-4px)}
+.pc-img-wrap{position:relative;aspect-ratio:1;background:linear-gradient(135deg,#f8f9fc,#f0f4f8);border-radius:0;overflow:hidden;border:none;flex-shrink:0}
+.pc-img{width:100%;height:100%;object-fit:cover;transition:transform .4s cubic-bezier(.34,.1,.68,1)}
+.pc:hover .pc-img{transform:scale(1.06)}
+.pc-disc{position:absolute;top:0;left:0;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:10px;font-weight:800;padding:6px 10px;border-radius:0 0 10px 0;letter-spacing:.3px;line-height:1.2;text-align:center;z-index:2}
+.pc-tag{position:absolute;top:8px;right:8px;background:linear-gradient(135deg,#f97316,#fb923c);color:#fff;font-size:9px;font-weight:700;padding:4px 8px;border-radius:6px;animation:pulse 2s ease-in-out infinite;z-index:2;box-shadow:0 2px 8px rgba(249,115,22,.3)}
+.pc-rating-badge{position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);color:#fff;font-size:10px;font-weight:700;padding:3px 7px;border-radius:6px;display:flex;align-items:center;gap:3px;z-index:2}
+.pc-rating-badge svg{color:#fbbf24}
+.pc-oos-overlay{position:absolute;inset:0;background:rgba(255,255,255,.7);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#6b7280;z-index:3}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
-.pc-body{padding:12px;display:flex;flex-direction:column;gap:4px;flex:1}
-.pc-brand{font-size:10px;font-weight:800;color:#6366f1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
-.pc-name{font-size:13px;font-weight:700;color:#1f2937;margin-bottom:4px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.pc-prep{display:flex;align-items:center;gap:5px;font-size:11px;color:#9ca3af;margin-bottom:4px;font-weight:500}
-.pc-price-row{display:flex;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap}
-.pc-price{font-size:15px;font-weight:800;color:#1f2937}
-.pc-mrp{font-size:12px;color:#9ca3af;text-decoration:line-through;font-weight:500}
-.pc-disc-text{font-size:12px;font-weight:700;color:#16a34a;background:#dcfce7;padding:2px 6px;border-radius:4px}
+.pc-body{padding:12px;display:flex;flex-direction:column;gap:3px;flex:1}
+.pc-brand{font-size:10px;font-weight:700;color:#8b5cf6;text-transform:uppercase;letter-spacing:.5px;margin-bottom:1px}
+.pc-name{font-size:13px;font-weight:600;color:#1e293b;margin-bottom:2px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pc-prep{display:flex;align-items:center;gap:4px;font-size:10px;color:#94a3b8;margin-bottom:2px;font-weight:500}
+.pc-price-row{display:flex;align-items:baseline;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.pc-price{font-size:16px;font-weight:900;color:#0f172a;letter-spacing:-.3px}
+.pc-mrp{font-size:11px;color:#94a3b8;text-decoration:line-through;font-weight:500}
+.pc-disc-text{font-size:10px;font-weight:700;color:#16a34a;background:linear-gradient(135deg,#dcfce7,#bbf7d0);padding:2px 6px;border-radius:4px}
 
-/* ADD button */
-.pc-add{width:100%;padding:10px;background:#fff;border:1.5px solid #3b82f6;color:#3b82f6;font-weight:700;font-size:13px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .25s cubic-bezier(.34,.1,.68,1);font-family:'DM Sans',sans-serif;letter-spacing:.2px;margin-top:auto;position:relative;overflow:hidden}
-.pc-add::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:rgba(255,255,255,.5);transition:left .4s ease}
-.pc-add:hover{background:#3b82f6;color:#fff;box-shadow:0 4px 12px rgba(59,130,246,.25);transform:scale(1.02)}
-.pc-add:active{transform:scale(0.98)}
+/* ADD button (Blinkit green-accent style) */
+.pc-add{width:100%;padding:9px 12px;background:#fff;border:1.5px solid #22c55e;color:#16a34a;font-weight:800;font-size:13px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;transition:all .2s cubic-bezier(.34,.1,.68,1);font-family:'DM Sans',sans-serif;letter-spacing:.3px;margin-top:auto;text-transform:uppercase}
+.pc-add:hover{background:#22c55e;color:#fff;box-shadow:0 4px 16px rgba(34,197,94,.25);transform:scale(1.02)}
+.pc-add:active{transform:scale(0.97)}
+.pc-add-oos{border-color:#d1d5db;color:#9ca3af;cursor:not-allowed;font-size:11px;text-transform:none}
+.pc-add-oos:hover{background:#fff;color:#9ca3af;box-shadow:none;transform:none}
 
-/* QTY Stepper (Modern style) */
-.pc-qty-stepper{display:flex;align-items:center;justify-content:space-between;border:1.5px solid #3b82f6;border-radius:8px;overflow:hidden;background:#fff;margin-top:auto;transition:all .15s}
-.pc-qty-stepper:hover{box-shadow:0 2px 8px rgba(59,130,246,.12)}
-.pc-qty-stepper button{width:32px;height:32px;border:none;background:transparent;color:#3b82f6;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s cubic-bezier(.34,.1,.68,1);font-size:12px;font-weight:700;position:relative}
-.pc-qty-stepper button:hover{background:#eff6ff;transform:scale(1.1)}
-.pc-qty-stepper button:active{transform:scale(0.95)}
-.pc-qty-stepper span{flex:1;text-align:center;font-size:14px;font-weight:800;color:#3b82f6;transition:all .15s;user-select:none}
-.pc-qty-stepper:hover span{font-weight:900}
+/* QTY Stepper (Blinkit style) */
+.pc-qty-stepper{display:flex;align-items:center;justify-content:space-between;border:1.5px solid #22c55e;border-radius:8px;overflow:hidden;background:#22c55e;margin-top:auto;transition:all .15s}
+.pc-qty-stepper:hover{box-shadow:0 4px 16px rgba(34,197,94,.2)}
+.pc-qty-stepper button{width:34px;height:34px;border:none;background:transparent;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s cubic-bezier(.34,.1,.68,1);font-size:12px;font-weight:700}
+.pc-qty-stepper button:hover{background:rgba(255,255,255,.15)}
+.pc-qty-stepper button:active{transform:scale(0.9)}
+.pc-qty-stepper span{flex:1;text-align:center;font-size:15px;font-weight:900;color:#fff;user-select:none}
 
 /* STATES */
 .empty-state{padding:clamp(40px,8vw,80px) 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px}
 .empty-ic{color:#d1d5db;font-size:48px}
 .empty-title{font-size:18px;font-weight:800;color:#1f2937}
 .empty-sub{font-size:14px;color:#6b7280;max-width:380px}
-.state-card{background:#fff;border:1.5px solid #e5e7eb;border-radius:14px;padding:clamp(40px,6vw,60px) 32px;text-align:center;margin:24px 0;display:flex;flex-direction:column;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.state-card{background:#fff;border:1.5px solid #e5e7eb;border-radius:16px;padding:clamp(40px,6vw,60px) 32px;text-align:center;margin:24px 0;display:flex;flex-direction:column;align-items:center;box-shadow:0 4px 16px rgba(0,0,0,.04)}
 .state-title{font-size:20px;font-weight:800;color:#1f2937;margin-bottom:10px;letter-spacing:-.3px}
 .state-sub{font-size:14px;color:#6b7280;margin-bottom:24px;line-height:1.6}
 .waitlist-row{display:flex;gap:12px;width:100%;max-width:480px;flex-wrap:wrap}
-.waitlist-inp{flex:1;min-width:200px;padding:12px 16px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;color:#1f2937;outline:none;font-family:'DM Sans',sans-serif;transition:all .2s}
+.waitlist-inp{flex:1;min-width:200px;padding:12px 16px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;color:#1f2937;outline:none;font-family:'DM Sans',sans-serif;transition:all .2s}
 .waitlist-inp:focus{border-color:#3b82f6;background:#fff;box-shadow:0 0 0 3px rgba(59,130,246,.1)}
-.waitlist-btn{padding:12px 20px;background:linear-gradient(135deg,#3b82f6,#2563eb);border:none;border-radius:8px;color:#fff;font-weight:800;font-size:13px;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif;transition:all .2s;box-shadow:0 2px 8px rgba(59,130,246,.2);letter-spacing:.2px}
+.waitlist-btn{padding:12px 20px;background:linear-gradient(135deg,#3b82f6,#2563eb);border:none;border-radius:10px;color:#fff;font-weight:800;font-size:13px;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif;transition:all .2s;box-shadow:0 2px 8px rgba(59,130,246,.2);letter-spacing:.2px}
 .waitlist-btn:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(59,130,246,.3)}
-.wl-success{background:#dcfce7;border:1.5px solid #86efac;border-radius:10px;color:#15803d;font-weight:700;font-size:14px;text-align:center;padding:18px 20px;margin:20px 0;letter-spacing:.2px}
+.wl-success{background:#dcfce7;border:1.5px solid #86efac;border-radius:12px;color:#15803d;font-weight:700;font-size:14px;text-align:center;padding:18px 20px;margin:20px 0;letter-spacing:.2px}
 
-/* FLOATING CART */
-.float-cart{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:12px 18px;border-radius:50px;font-family:'DM Sans',sans-serif;font-weight:700;box-shadow:0 8px 32px rgba(59,130,246,.35);z-index:50;white-space:nowrap;animation:floatIn .3s ease;transition:all .25s cubic-bezier(.34,.1,.68,1);max-width:calc(100vw - 32px);pointer-events:auto}
-.float-cart:hover{transform:translateX(-50%) translateY(-4px);box-shadow:0 12px 40px rgba(59,130,246,.4)}
+/* FLOATING CART (Premium glassmorphism) */
+.float-cart{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:12px 20px;border-radius:50px;font-family:'DM Sans',sans-serif;font-weight:700;box-shadow:0 8px 32px rgba(34,197,94,.35),0 2px 8px rgba(0,0,0,.1);z-index:50;white-space:nowrap;animation:floatIn .3s ease;transition:all .25s cubic-bezier(.34,.1,.68,1);max-width:calc(100vw - 32px);pointer-events:auto;backdrop-filter:blur(4px)}
+.float-cart:hover{transform:translateX(-50%) translateY(-4px);box-shadow:0 12px 40px rgba(34,197,94,.4),0 4px 12px rgba(0,0,0,.1)}
 .float-cart:active{transform:translateX(-50%) translateY(-2px)}
 .float-cart.cart-pulse{animation:cartPulse .6s cubic-bezier(.34,.1,.68,1)}
 @keyframes cartPulse{0%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.08)}100%{transform:translateX(-50%) scale(1)}}
 
 .float-cart-icon-badge{position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.cart-badge{position:absolute;top:-8px;right:-8px;background:#ff3b30;color:#fff;font-size:10px;font-weight:900;padding:2px 6px;border-radius:12px;min-width:20px;text-align:center;border:2px solid rgba(59,130,246)}
-.float-cart-content{display:flex;flex-direction:column;gap:2px;min-width:60px}
-.cart-qty-text{font-size:13px;font-weight:800;letter-spacing:-.3px}
-.cart-amount-text{font-size:14px;font-weight:950;background:linear-gradient(90deg,#fff,#e0e7ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.cart-badge{position:absolute;top:-8px;right:-8px;background:#fff;color:#16a34a;font-size:10px;font-weight:900;padding:2px 6px;border-radius:12px;min-width:20px;text-align:center;border:2px solid #16a34a;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+.float-cart-content{display:flex;flex-direction:column;gap:1px;min-width:60px}
+.cart-qty-text{font-size:12px;font-weight:700;opacity:.9}
+.cart-amount-text{font-size:15px;font-weight:900;letter-spacing:-.3px}
 
-.float-cart-meta{display:flex;flex-direction:column;gap:2px;font-size:10px;opacity:.85}
-.cart-savings{background:rgba(34,197,94,.2);padding:2px 6px;border-radius:4px;font-weight:800;color:#dcfce7}
-.cart-delivery{background:rgba(59,130,246,.2);padding:2px 6px;border-radius:4px;font-weight:700;color:#bfdbfe}
+.float-cart-meta{display:flex;flex-direction:column;gap:2px;font-size:10px;opacity:.9}
+.cart-savings{background:rgba(255,255,255,.2);padding:2px 6px;border-radius:4px;font-weight:700}
+.cart-delivery{background:rgba(255,255,255,.15);padding:2px 6px;border-radius:4px;font-weight:700}
 
-.cart-chevron{opacity:.7;transition:transform .25s}
-.float-cart:hover .cart-chevron{transform:translateX(2px)}
+.cart-chevron{opacity:.8;transition:transform .25s}
+.float-cart:hover .cart-chevron{transform:translateX(3px)}
 
 @keyframes floatIn{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 
 @media(max-width:768px){
-  .float-cart{gap:10px;padding:11px 14px}
-  .cart-amount-text{font-size:13px}
+  .float-cart{gap:10px;padding:11px 16px}
+  .cart-amount-text{font-size:14px}
   .float-cart-meta{gap:1px;font-size:9px}
 }
 @media(max-width:480px){
-  .float-cart{gap:8px;padding:10px 12px;font-size:12px;bottom:16px;border-radius:40px}
+  .float-cart{gap:8px;padding:10px 14px;font-size:12px;bottom:16px;border-radius:40px}
   .float-cart-content{min-width:50px}
-  .cart-qty-text{font-size:12px}
+  .cart-qty-text{font-size:11px}
   .cart-amount-text{font-size:13px}
   .float-cart-meta{display:none}
   .cart-badge{font-size:9px;padding:1px 4px}
 }
 
 /* FOOTER */
-.footer{background:linear-gradient(135deg,#111827,#1f2937);border-top:2px solid rgba(59,130,246,.1);margin-top:60px;position:relative;z-index:20;padding-bottom:100px}
+.footer{background:linear-gradient(135deg,#0f172a,#1e293b);border-top:2px solid rgba(59,130,246,.1);margin-top:60px;position:relative;z-index:20;padding-bottom:100px}
 .footer-main{padding:48px clamp(16px,4vw,48px)}
 
 /* Footer Top - Brand & Newsletter */

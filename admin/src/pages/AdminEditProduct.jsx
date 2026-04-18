@@ -161,6 +161,7 @@ const AdminEditProduct = () => {
     const [selSizes, setSelSizes] = useState([]);
     const [sizeStockMap, setSizeStockMap] = useState({});
     const [hls, setHls] = useState([{ key: "", value: "" }]);
+    const [hlTemplate, setHlTemplate] = useState([]);
     const [categories, setCategories] = useState([]);
 
     useEffect(() => {
@@ -172,6 +173,14 @@ const AdminEditProduct = () => {
 
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3000); };
     const clrErr = (name) => { setFErrs(p => { const n = { ...p }; delete n[name]; return n; }); setTopErr(""); };
+
+    // Fetch highlight template when category changes
+    useEffect(() => {
+        if (!form.category) { setHlTemplate([]); return; }
+        api.get(`/categories/highlight-template?category=${encodeURIComponent(form.category)}`)
+            .then(res => setHlTemplate(res.data?.highlightTemplate || []))
+            .catch(() => setHlTemplate([]));
+    }, [form.category]);
 
     /* Fetch product */
     useEffect(() => {
@@ -362,6 +371,7 @@ const AdminEditProduct = () => {
                 const obj = {};
                 validHls.forEach(h => { obj[h.key.trim()] = h.value.trim(); });
                 formData.append("highlights", JSON.stringify(obj));
+                formData.append("highlightsArray", JSON.stringify(validHls.map(h => ({ title: h.key.trim(), value: h.value.trim() }))));
             }
 
             await api.put(`/products/admin/${id}`, formData, {
@@ -710,7 +720,7 @@ const AdminEditProduct = () => {
                                                 className="ep-inp ep-sel"
                                                 style={{ flex: "0 0 148px", padding: "9px 32px 9px 10px" }}>
                                                 <option value="">Select key</option>
-                                                {HIGHLIGHT_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
+                                                {(hlTemplate.length ? hlTemplate.map(t => t.title) : HIGHLIGHT_KEYS).map(k => <option key={k} value={k}>{k}</option>)}
                                             </select>
                                             <input value={h.value} onChange={e => updateHL(i, "value", e.target.value)}
                                                 placeholder="Value…"

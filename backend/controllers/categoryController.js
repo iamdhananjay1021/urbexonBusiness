@@ -139,6 +139,11 @@ export const createCategory = async (req, res) => {
             type: type || "ecommerce",
             image,
             subcategories: parsedSubcats,
+            highlightTemplate: (() => {
+                const ht = req.body.highlightTemplate;
+                if (!ht) return [];
+                try { const arr = typeof ht === "string" ? JSON.parse(ht) : ht; return Array.isArray(arr) ? arr : []; } catch { return []; }
+            })(),
         });
 
         await delCacheByPrefix("categories:");
@@ -168,6 +173,15 @@ export const updateCategory = async (req, res) => {
             let parsed = [];
             try { parsed = typeof subcategories === "string" ? JSON.parse(subcategories) : subcategories; } catch { parsed = []; }
             cat.subcategories = (Array.isArray(parsed) ? parsed : []).map(s => String(s).trim()).filter(Boolean);
+        }
+
+        // Highlight template
+        const ht = req.body.highlightTemplate;
+        if (ht !== undefined) {
+            try {
+                const arr = typeof ht === "string" ? JSON.parse(ht) : ht;
+                cat.highlightTemplate = Array.isArray(arr) ? arr : [];
+            } catch { cat.highlightTemplate = []; }
         }
 
         if (req.file) {
@@ -202,5 +216,21 @@ export const deleteCategory = async (req, res) => {
     } catch (err) {
         console.error("DELETE CATEGORY ERROR:", err);
         res.status(500).json({ success: false, message: "Failed to delete category" });
+    }
+};
+
+/* ── GET HIGHLIGHT TEMPLATE FOR CATEGORY ── */
+export const getCategoryHighlightTemplate = async (req, res) => {
+    try {
+        const { name } = req.query; // category name
+        if (!name) return res.status(400).json({ success: false, message: "Category name required" });
+
+        const cat = await Category.findOne({ name }).select("highlightTemplate name").lean();
+        if (!cat) return res.json({ highlightTemplate: [] });
+
+        res.json({ highlightTemplate: cat.highlightTemplate || [] });
+    } catch (err) {
+        console.error("GET HIGHLIGHT TEMPLATE ERROR:", err);
+        res.status(500).json({ success: false, message: "Failed to fetch highlight template" });
     }
 };

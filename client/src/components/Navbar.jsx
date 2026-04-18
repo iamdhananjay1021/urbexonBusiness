@@ -11,10 +11,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
     FaSearch, FaShoppingCart, FaTimes, FaUser, FaBox,
     FaSignOutAlt, FaStore, FaChevronDown, FaBolt,
-    FaHeart, FaChevronRight,
+    FaHeart, FaChevronRight, FaMapMarkerAlt,
 } from "react-icons/fa";
 import { useSelector } from "react-redux";
 import { useAuth } from "../contexts/AuthContext";
+import { useLocation2 } from "../contexts/LocationContext";
+import LocationModal from "./LocationModal";
 import { fetchActiveCategories } from "../api/categoryApi";
 import api from "../api/axios";
 import NotificationCenter from "./NotificationCenter";
@@ -39,7 +41,7 @@ const getMenuItems = (user) => {
 
 /* ─── CSS ───────────────────────────────────────────────── */
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
 
 :where(.ux-nav), :where(.ux-nav) *, :where(.ux-nav) *::before, :where(.ux-nav) *::after {
     box-sizing: border-box; margin: 0; padding: 0;
@@ -52,11 +54,11 @@ const CSS = `
 /* ══ MAIN NAVBAR ════════════════════════════════════════ */
 .ux-navbar {
     background: #fff;
-    border-bottom: 1px solid #e8edf2;
-    box-shadow: 0 1px 0 rgba(0,0,0,.04);
+    border-bottom: 1px solid #eef0f4;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
     transition: box-shadow .25s;
 }
-.ux-navbar.sc { box-shadow: 0 2px 20px rgba(0,0,0,.08); }
+.ux-navbar.sc { box-shadow: 0 2px 24px rgba(0,0,0,.08); }
 
 .ux-nav-row {
     max-width: 1400px; margin: 0 auto;
@@ -67,28 +69,46 @@ const CSS = `
 
 /* Logo */
 .ux-logo-btn {
-    display: flex; align-items: center; gap: 2px;
+    display: flex; align-items: center; gap: 0;
     background: none; border: none; cursor: pointer;
     padding: 0; flex-shrink: 0; text-decoration: none;
 }
+.ux-logo-mark {
+    width: 32px; height: 32px; border-radius: 10px;
+    background: #111827;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 16px; font-weight: 900; color: #fff;
+    letter-spacing: -.5px; flex-shrink: 0;
+    margin-right: 6px;
+    transition: all .2s;
+}
+.ux-logo-btn:hover .ux-logo-mark { transform: scale(1.05); }
 .ux-logo-word {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 22px; font-weight: 800;
-    color: #5b5bf6; letter-spacing: -.5px;
+    font-size: 22px; font-weight: 900;
+    color: #111827; letter-spacing: -.7px;
     line-height: 1;
+}
+.ux-logo-uh {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 22px; font-weight: 900;
+    color: #c9a84c; letter-spacing: -.5px;
+    margin-left: 5px;
 }
 
 /* Switch to Hour pill */
 .ux-hour-pill {
     display: flex; align-items: center; gap: 6px;
-    padding: 6px 12px;
-    background: linear-gradient(135deg, #ff6b35, #ff4500);
-    border: none; border-radius: 20px; cursor: pointer;
+    padding: 7px 14px;
+    background: linear-gradient(135deg, #111827, #1e293b);
+    border: 1px solid #374151; border-radius: 20px; cursor: pointer;
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 12px; font-weight: 700; color: #fff;
+    font-size: 12px; font-weight: 700; color: #c9a84c;
     white-space: nowrap; transition: all .2s; flex-shrink: 0;
 }
-.ux-hour-pill:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.ux-hour-pill:hover { background: linear-gradient(135deg, #1e293b, #374151); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+.ux-hour-pill .ux-hp-bolt { color: #c9a84c; }
 @media(max-width:640px){ .ux-hour-pill span.ux-hp-label { display: none; } }
 @media(max-width:1024px){
     .ux-icon-btn-lbl { display: none; }
@@ -100,11 +120,11 @@ const CSS = `
 .ux-srch {
     flex: 1; max-width: 680px;
     display: flex; height: 44px;
-    border: 2px solid #e8edf2; border-radius: 8px;
-    overflow: hidden; transition: border-color .2s;
-    background: #f8fafc;
+    border: 1.5px solid #e5e7eb; border-radius: 10px;
+    overflow: hidden; transition: all .2s;
+    background: #f9fafb;
 }
-.ux-srch.foc { border-color: #5b5bf6; background: #fff; }
+.ux-srch.foc { border-color: #111827; background: #fff; box-shadow: 0 0 0 3px rgba(17,24,39,.06); }
 .ux-srch-inp {
     flex: 1; padding: 0 14px;
     background: transparent; border: none; outline: none;
@@ -113,11 +133,11 @@ const CSS = `
 }
 .ux-srch-inp::placeholder { color: #9ca3af; }
 .ux-srch-btn {
-    padding: 0 18px; background: #5b5bf6; border: none; cursor: pointer;
+    padding: 0 18px; background: #111827; border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: background .18s; flex-shrink: 0;
 }
-.ux-srch-btn:hover { background: #4949d6; }
+.ux-srch-btn:hover { background: #374151; }
 
 /* Right actions */
 .ux-acts { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; }
@@ -134,22 +154,22 @@ const CSS = `
 /* Login btn */
 .ux-login-btn {
     padding: 8px 20px;
-    background: none; border: 1.5px solid #5b5bf6;
+    background: none; border: 1.5px solid #111827;
     border-radius: 8px; cursor: pointer;
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 13px; font-weight: 700; color: #5b5bf6;
+    font-size: 13px; font-weight: 700; color: #111827;
     transition: all .18s; white-space: nowrap;
 }
-.ux-login-btn:hover { background: #5b5bf6; color: #fff; }
+.ux-login-btn:hover { background: #111827; color: #fff; }
 .ux-register-btn {
     padding: 8px 20px;
-    background: #5b5bf6; border: none;
+    background: #111827; border: 1.5px solid #111827;
     border-radius: 8px; cursor: pointer;
     font-family: 'Plus Jakarta Sans', sans-serif;
     font-size: 13px; font-weight: 700; color: #fff;
     transition: all .18s; white-space: nowrap;
 }
-.ux-register-btn:hover { background: #4949d6; }
+.ux-register-btn:hover { background: #374151; border-color: #374151; }
 
 /* Cart badge */
 .ux-badge {
@@ -161,22 +181,22 @@ const CSS = `
     font-family: 'Plus Jakarta Sans', sans-serif;
 }
 .ux-badge-red  { background: #ef4444; color: #fff; }
-.ux-badge-org  { background: #ff4500; color: #fff; }
+.ux-badge-org  { background: #c9a84c; color: #fff; }
 
 /* UH cart special button */
 .ux-uh-cart {
     display: flex; align-items: center; gap: 5px;
     padding: 7px 10px;
-    background: #fff5f0; border: 1.5px solid #ffcfbd;
+    background: #fefce8; border: 1.5px solid #fde68a;
     border-radius: 8px; cursor: pointer;
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 12px; font-weight: 700; color: #ff4500;
+    font-size: 12px; font-weight: 700; color: #92400e;
     position: relative; transition: all .18s; flex-shrink: 0;
 }
-.ux-uh-cart:hover { background: #ffe8de; }
+.ux-uh-cart:hover { background: #fef9c3; border-color: #fcd34d; }
 
 /* Divider */
-.ux-vdiv { width: 1px; height: 28px; background: #e8edf2; flex-shrink: 0; }
+.ux-vdiv { width: 1px; height: 28px; background: #e5e7eb; flex-shrink: 0; }
 
 /* User dropdown */
 .ux-usr-wrap { position: relative; }
@@ -189,7 +209,7 @@ const CSS = `
 .ux-usr-btn:hover { background: #f3f4f6; }
 .ux-usr-av {
     width: 34px; height: 34px; border-radius: 50%;
-    background: linear-gradient(135deg, #5b5bf6, #7c3aed);
+    background: linear-gradient(135deg, #111827, #374151);
     display: flex; align-items: center; justify-content: center;
     font-size: 13px; font-weight: 800; color: #fff; flex-shrink: 0;
 }
@@ -198,24 +218,24 @@ const CSS = `
 
 .ux-ddrop {
     position: absolute; right: 0; top: calc(100% + 8px);
-    background: #fff; border-radius: 12px;
-    box-shadow: 0 8px 40px rgba(0,0,0,.12);
-    min-width: 220px; overflow: hidden; z-index: 1000;
-    border: 1px solid #f0f0f0;
+    background: #fff; border-radius: 14px;
+    box-shadow: 0 12px 48px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.04);
+    min-width: 230px; overflow: hidden; z-index: 1000;
+    border: none;
     animation: ux-dd .18s ease;
 }
 .ux-ddrop-hd {
-    padding: 14px 16px; display: flex; align-items: center; gap: 10px;
-    background: linear-gradient(135deg, #5b5bf6, #7c3aed);
+    padding: 16px 18px; display: flex; align-items: center; gap: 12px;
+    background: linear-gradient(135deg, #111827, #1e293b);
 }
 .ux-ddrop-av {
-    width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
-    background: rgba(255,255,255,.2); color: #fff;
+    width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+    background: rgba(255,255,255,.12); color: #fff;
     display: flex; align-items: center; justify-content: center;
     font-size: 15px; font-weight: 800;
 }
-.ux-ddrop-nm { font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; }
-.ux-ddrop-em { font-size: 11px; color: rgba(255,255,255,.65); }
+.ux-ddrop-nm { font-size: 14px; font-weight: 700; color: #fff; white-space: nowrap; }
+.ux-ddrop-em { font-size: 11px; color: rgba(255,255,255,.55); }
 .ux-dmi {
     display: flex; align-items: center; gap: 10px;
     padding: 11px 16px; background: none; border: none;
@@ -224,13 +244,13 @@ const CSS = `
     font-size: 13px; font-weight: 500; color: #374151;
     transition: background .12s;
 }
-.ux-dmi:hover { background: #f8fafc; color: #5b5bf6; }
+.ux-dmi:hover { background: #f8fafc; color: #111827; }
 .ux-dmi-ic {
     width: 28px; height: 28px; border-radius: 7px;
     background: #f3f4f6; display: flex; align-items: center;
     justify-content: center; color: #6b7280; flex-shrink: 0;
 }
-.ux-dmi:hover .ux-dmi-ic { background: #ede9fe; color: #5b5bf6; }
+.ux-dmi:hover .ux-dmi-ic { background: #e5e7eb; color: #111827; }
 .ux-dmi-out { color: #ef4444; }
 .ux-dmi-out:hover { background: #fef2f2; color: #dc2626; }
 .ux-dmi-out .ux-dmi-ic { background: #fef2f2; color: #ef4444; }
@@ -240,7 +260,7 @@ const CSS = `
 .ux-catbar {
     background: #fff;
     border-top: 1px solid #f0f2f5;
-    border-bottom: 1px solid #e8edf2;
+    border-bottom: 1px solid #eef0f4;
 }
 .ux-catbar-in {
     max-width: 1400px; margin: 0 auto;
@@ -257,8 +277,8 @@ const CSS = `
     border-bottom: 2.5px solid transparent;
     transition: all .18s;
 }
-.ux-catbtn:hover { color: #5b5bf6; background: #f5f5ff; }
-.ux-catbtn.act { color: #5b5bf6; font-weight: 700; border-bottom-color: #5b5bf6; }
+.ux-catbtn:hover { color: #111827; background: #f9fafb; }
+.ux-catbtn.act { color: #111827; font-weight: 700; border-bottom-color: #111827; }
 .ux-hot {
     background: #ef4444; color: #fff;
     font-size: 8px; font-weight: 800; padding: 1px 5px;
@@ -269,8 +289,8 @@ const CSS = `
 /* ══ MOBILE NAV ════════════════════════════════════════ */
 .ux-mnav {
     background: #fff;
-    border-bottom: 1px solid #e8edf2;
-    box-shadow: 0 1px 8px rgba(0,0,0,.06);
+    border-bottom: 1px solid #eef0f4;
+    box-shadow: 0 1px 8px rgba(0,0,0,.05);
 }
 .ux-mnav-in {
     max-width: 1400px; margin: 0 auto;
@@ -281,9 +301,22 @@ const CSS = `
     display: flex; align-items: center;
     background: none; border: none; cursor: pointer; flex-shrink: 0;
 }
+.ux-m-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: #111827;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 14px; font-weight: 900; color: #fff;
+    margin-right: 5px; flex-shrink: 0;
+}
 .ux-m-word {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 20px; font-weight: 800; color: #5b5bf6; letter-spacing: -.5px;
+    font-size: 19px; font-weight: 900; color: #111827; letter-spacing: -.5px;
+}
+.ux-m-uh-text {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 19px; font-weight: 900; color: #c9a84c;
+    margin-left: 4px; letter-spacing: -.3px;
 }
 .ux-m-acts { margin-left: auto; display: flex; align-items: center; gap: 0; }
 .ux-m-btn {
@@ -303,31 +336,31 @@ const CSS = `
 }
 .ux-mmenu.on { transform: none; }
 .ux-mm-head {
-    background: linear-gradient(135deg, #5b5bf6, #7c3aed);
+    background: linear-gradient(135deg, #111827, #1e293b);
     padding: 56px 18px 18px;
 }
 .ux-mm-av-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 .ux-mm-av {
     width: 44px; height: 44px; border-radius: 50%;
-    background: rgba(255,255,255,.2);
+    background: rgba(255,255,255,.1);
     display: flex; align-items: center; justify-content: center;
     font-size: 18px; font-weight: 800; color: #fff;
 }
 .ux-mm-nm { font-size: 15px; font-weight: 700; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; }
-.ux-mm-em { font-size: 11px; color: rgba(255,255,255,.65); font-family: 'Plus Jakarta Sans', sans-serif; }
+.ux-mm-em { font-size: 11px; color: rgba(255,255,255,.5); font-family: 'Plus Jakarta Sans', sans-serif; }
 .ux-mm-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .ux-mm-chip {
     display: flex; align-items: center; gap: 6px;
-    padding: 7px 14px; background: rgba(255,255,255,.15);
-    border: 1px solid rgba(255,255,255,.25); border-radius: 20px;
+    padding: 7px 14px; background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.15); border-radius: 20px;
     color: #fff; font-size: 12px; font-weight: 600; cursor: pointer;
     font-family: 'Plus Jakarta Sans', sans-serif; transition: background .15s;
 }
-.ux-mm-chip:hover { background: rgba(255,255,255,.25); }
-.ux-mm-chip-out { background: rgba(239,68,68,.2); border-color: rgba(239,68,68,.4); color: #fca5a5; }
+.ux-mm-chip:hover { background: rgba(255,255,255,.15); }
+.ux-mm-chip-out { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.3); color: #fca5a5; }
 .ux-mm-auth { padding: 14px 16px; display: flex; gap: 10px; }
-.ux-mm-sin { flex:1; padding:10px; border:1.5px solid #5b5bf6; background:transparent; color:#5b5bf6; font-weight:700; font-size:13px; border-radius:8px; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; }
-.ux-mm-reg { flex:1; padding:10px; border:none; background:#5b5bf6; color:#fff; font-weight:700; font-size:13px; border-radius:8px; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; }
+.ux-mm-sin { flex:1; padding:10px; border:1.5px solid #111827; background:transparent; color:#111827; font-weight:700; font-size:13px; border-radius:8px; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; }
+.ux-mm-reg { flex:1; padding:10px; border:none; background:#111827; color:#fff; font-weight:700; font-size:13px; border-radius:8px; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; }
 .ux-mm-lbl { padding:12px 16px 4px; font-size:9px; font-weight:800; color:#9ca3af; letter-spacing:2.5px; text-transform:uppercase; font-family:'Plus Jakarta Sans',sans-serif; }
 .ux-mm-row {
     padding: 14px 16px; font-size: 14px; font-weight: 500; color: #374151;
@@ -335,68 +368,105 @@ const CSS = `
     display: flex; align-items: center; justify-content: space-between;
     transition: background .12s; font-family: 'Plus Jakarta Sans', sans-serif;
 }
-.ux-mm-row:hover { background: #f8fafc; color: #5b5bf6; }
+.ux-mm-row:hover { background: #f8fafc; color: #111827; }
 .ux-mm-uh {
     margin: 14px 16px; padding: 14px 16px;
-    background: linear-gradient(135deg, #ff6b35, #ff4500);
+    background: linear-gradient(135deg, #111827, #1e293b);
     border-radius: 12px; cursor: pointer;
-    display: flex; align-items: center; gap: 12px; transition: opacity .18s;
+    display: flex; align-items: center; gap: 12px; transition: all .18s;
+    border: 1px solid #374151;
 }
-.ux-mm-uh:hover { opacity: .9; }
+.ux-mm-uh:hover { background: linear-gradient(135deg, #1e293b, #374151); }
 .ux-mm-uh-nm { font-size: 14px; font-weight: 700; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; }
-.ux-mm-uh-sub { font-size: 11px; color: rgba(255,255,255,.75); font-family: 'Plus Jakarta Sans', sans-serif; }
+.ux-mm-uh-sub { font-size: 11px; color: rgba(255,255,255,.55); font-family: 'Plus Jakarta Sans', sans-serif; }
 
 /* ══ SEARCH OVERLAY ════════════════════════════════════ */
 .ux-sov { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:700; backdrop-filter:blur(4px); }
 .ux-sov-box { background:#fff; padding:16px; box-shadow:0 4px 24px rgba(0,0,0,.1); }
-.ux-sov-form { display:flex; align-items:stretch; max-width:700px; margin:0 auto; border:2px solid #5b5bf6; border-radius:10px; overflow:hidden; height:48px; background:#fff; }
+.ux-sov-form { display:flex; align-items:stretch; max-width:700px; margin:0 auto; border:2px solid #111827; border-radius:10px; overflow:hidden; height:48px; background:#fff; }
 .ux-sov-inp { flex:1; padding:0 16px; font-size:15px; color:#111827; border:none; outline:none; font-family:'Plus Jakarta Sans',sans-serif; }
 .ux-sov-close { padding:0 14px; background:none; border:none; cursor:pointer; color:#6b7280; display:flex; align-items:center; }
 .ux-sov-tags { display:flex; gap:8px; flex-wrap:wrap; max-width:700px; margin:12px auto 0; }
 .ux-sov-tag { background:#f3f4f6; border:none; padding:6px 14px; border-radius:20px; font-size:12px; font-weight:600; color:#374151; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; transition:all .15s; }
-.ux-sov-tag:hover { background:#5b5bf6; color:#fff; }
+.ux-sov-tag:hover { background:#111827; color:#fff; }
 
 .ux-burger { display:flex; flex-direction:column; gap:4px; width:18px; }
 .ux-burger span { display:block; height:2px; background:#374151; border-radius:2px; transition:all .25s; }
 
 /* ══ UH MODE ════════════════════════════════════════════ */
-.ux-navbar.ux-uh-mode { background: linear-gradient(135deg, #0f0d2e, #1a1740); border-bottom-color: #2d2a5e; box-shadow: 0 2px 20px rgba(0,0,0,.3); }
-.ux-navbar.ux-uh-mode .ux-logo-word { color: #c9a84c; }
-.ux-navbar.ux-uh-mode .ux-logo-uh { color: #fff; font-size: 22px; font-weight: 800; margin-left: 2px; }
-.ux-navbar.ux-uh-mode .ux-hour-pill { background: linear-gradient(135deg, #5b5bf6, #7c3aed); }
-.ux-navbar.ux-uh-mode .ux-srch { border-color: #3d3a6e; background: rgba(255,255,255,.06); }
-.ux-navbar.ux-uh-mode .ux-srch.foc { border-color: #c9a84c; background: rgba(255,255,255,.1); }
+.ux-navbar.ux-uh-mode { background: linear-gradient(135deg, #0a0a0a, #111827); border-bottom-color: #1e293b; box-shadow: 0 2px 20px rgba(0,0,0,.3); }
+.ux-navbar.ux-uh-mode .ux-logo-mark { background: #c9a84c; color: #111827; }
+.ux-navbar.ux-uh-mode .ux-logo-word { color: #fff; }
+.ux-navbar.ux-uh-mode .ux-logo-uh { color: #c9a84c; }
+.ux-navbar.ux-uh-mode .ux-hour-pill { background: linear-gradient(135deg, #fff, #f8fafc); border-color: #e5e7eb; color: #111827; }
+.ux-navbar.ux-uh-mode .ux-hour-pill:hover { background: #fff; }
+.ux-navbar.ux-uh-mode .ux-srch { border-color: #374151; background: rgba(255,255,255,.06); }
+.ux-navbar.ux-uh-mode .ux-srch.foc { border-color: #c9a84c; background: rgba(255,255,255,.1); box-shadow: 0 0 0 3px rgba(201,168,76,.1); }
 .ux-navbar.ux-uh-mode .ux-srch-inp { color: #fff; }
 .ux-navbar.ux-uh-mode .ux-srch-inp::placeholder { color: rgba(255,255,255,.35); }
 .ux-navbar.ux-uh-mode .ux-srch-btn { background: #c9a84c; }
 .ux-navbar.ux-uh-mode .ux-srch-btn:hover { background: #b8943e; }
 .ux-navbar.ux-uh-mode .ux-icon-btn { color: rgba(255,255,255,.8); }
 .ux-navbar.ux-uh-mode .ux-icon-btn:hover { background: rgba(255,255,255,.08); }
-.ux-navbar.ux-uh-mode .ux-icon-btn-lbl { color: rgba(255,255,255,.6); }
-.ux-navbar.ux-uh-mode .ux-vdiv { background: #3d3a6e; }
+.ux-navbar.ux-uh-mode .ux-icon-btn-lbl { color: rgba(255,255,255,.5); }
+.ux-navbar.ux-uh-mode .ux-vdiv { background: #374151; }
 .ux-navbar.ux-uh-mode .ux-login-btn { border-color: #c9a84c; color: #c9a84c; }
-.ux-navbar.ux-uh-mode .ux-login-btn:hover { background: #c9a84c; color: #1a1740; }
-.ux-navbar.ux-uh-mode .ux-register-btn { background: #c9a84c; color: #1a1740; }
+.ux-navbar.ux-uh-mode .ux-login-btn:hover { background: #c9a84c; color: #111827; }
+.ux-navbar.ux-uh-mode .ux-register-btn { background: #c9a84c; color: #111827; border-color: #c9a84c; }
+.ux-navbar.ux-uh-mode .ux-register-btn:hover { background: #b8943e; border-color: #b8943e; }
 .ux-navbar.ux-uh-mode .ux-usr-btn:hover { background: rgba(255,255,255,.08); }
 .ux-navbar.ux-uh-mode .ux-usr-name { color: #fff; }
-.ux-navbar.ux-uh-mode .ux-usr-sub { color: rgba(255,255,255,.45); }
+.ux-navbar.ux-uh-mode .ux-usr-sub { color: rgba(255,255,255,.4); }
+.ux-navbar.ux-uh-mode .ux-usr-av { background: linear-gradient(135deg, #c9a84c, #b8943e); color: #111827; }
 .ux-navbar.ux-uh-mode .ux-catbar { display: none; }
 .ux-navbar.ux-uh-mode .ux-badge-red { display: none; }
 /* UH cart always visible in UH mode */
-.ux-uh-cart-always { display: flex; align-items: center; gap: 5px; padding: 7px 14px; background: linear-gradient(135deg, #c9a84c, #b8943e); border: none; border-radius: 8px; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; font-weight: 700; color: #fff; position: relative; transition: all .18s; flex-shrink: 0; }
-.ux-uh-cart-always:hover { filter: brightness(1.1); transform: translateY(-1px); }
-.ux-uh-cart-always .ux-badge { background: #fff; color: #1a1740; border-color: #c9a84c; }
-.ux-mnav.ux-uh-mode { background: linear-gradient(135deg, #0f0d2e, #1a1740); border-bottom-color: #2d2a5e; }
-.ux-mnav.ux-uh-mode .ux-m-word { color: #c9a84c; }
-.ux-mnav.ux-uh-mode .ux-m-uh { color: #fff; font-size: 20px; font-weight: 800; }
+.ux-uh-cart-always { display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, #c9a84c, #b8943e); border: none; border-radius: 8px; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; font-weight: 700; color: #111827; position: relative; transition: all .18s; flex-shrink: 0; }
+.ux-uh-cart-always:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(201,168,76,.25); }
+.ux-uh-cart-always .ux-badge { background: #111827; color: #c9a84c; border-color: #c9a84c; }
+.ux-mnav.ux-uh-mode { background: linear-gradient(135deg, #0a0a0a, #111827); border-bottom-color: #1e293b; }
+.ux-mnav.ux-uh-mode .ux-m-mark { background: #c9a84c; color: #111827; }
+.ux-mnav.ux-uh-mode .ux-m-word { color: #fff; }
+.ux-mnav.ux-uh-mode .ux-m-uh-text { color: #c9a84c; }
 .ux-mnav.ux-uh-mode .ux-m-btn { color: rgba(255,255,255,.8); }
 
 /* ══ SUGGESTIONS DROPDOWN ═══════════════════════════════ */
-.ux-sugg { position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid #e8edf2; border-top:none; border-radius:0 0 8px 8px; box-shadow:0 8px 24px rgba(0,0,0,.1); z-index:100; max-height:360px; overflow-y:auto; }
+
+/* ═ LOCATION SELECTOR ═══════════════════════════════════ */
+.ux-loc-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px; background: none; border: 1.5px solid #e5e7eb;
+    border-radius: 8px; cursor: pointer; max-width: 200px;
+    font-family: 'Plus Jakarta Sans', sans-serif; transition: all .18s;
+    flex-shrink: 0;
+}
+.ux-loc-btn:hover { border-color: #111827; background: #f9fafb; }
+.ux-loc-icon { color: #111827; flex-shrink: 0; }
+.ux-loc-text { min-width: 0; text-align: left; }
+.ux-loc-label { font-size: 9px; font-weight: 700; color: #9ca3af; letter-spacing: .5px; text-transform: uppercase; line-height: 1; }
+.ux-loc-city { font-size: 12px; font-weight: 600; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+.ux-navbar.ux-uh-mode .ux-loc-btn { border-color: #374151; }
+.ux-navbar.ux-uh-mode .ux-loc-btn:hover { border-color: #c9a84c; background: rgba(255,255,255,.05); }
+.ux-navbar.ux-uh-mode .ux-loc-icon { color: #c9a84c; }
+.ux-navbar.ux-uh-mode .ux-loc-label { color: rgba(255,255,255,.4); }
+.ux-navbar.ux-uh-mode .ux-loc-city { color: rgba(255,255,255,.85); }
+/* Mobile location */
+.ux-m-loc-btn {
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 8px; background: none; border: 1px solid #e5e7eb;
+    border-radius: 6px; cursor: pointer; flex: 1; min-width: 0;
+    font-family: 'Plus Jakarta Sans', sans-serif; transition: all .18s;
+}
+.ux-m-loc-btn:hover { border-color: #111827; }
+.ux-m-loc-city { font-size: 11px; font-weight: 600; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ux-mnav.ux-uh-mode .ux-m-loc-btn { border-color: #374151; }
+.ux-mnav.ux-uh-mode .ux-m-loc-city { color: rgba(255,255,255,.85); }
+
+.ux-sugg { position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid #e5e7eb; border-top:none; border-radius:0 0 10px 10px; box-shadow:0 8px 32px rgba(0,0,0,.1); z-index:100; max-height:360px; overflow-y:auto; }
 .ux-sugg-item { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; transition:background .12s; border-bottom:1px solid #f5f5f5; }
 .ux-sugg-item:hover { background:#f8fafc; }
 .ux-sugg-item:last-child { border-bottom:none; }
-.ux-sugg-img { width:36px; height:36px; border-radius:6px; object-fit:cover; background:#f3f4f6; flex-shrink:0; }
+.ux-sugg-img { width:36px; height:36px; border-radius:8px; object-fit:cover; background:#f3f4f6; flex-shrink:0; }
 .ux-sugg-info { flex:1; min-width:0; }
 .ux-sugg-name { font-size:13px; font-weight:600; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ux-sugg-meta { font-size:11px; color:#6b7280; }
@@ -408,6 +478,7 @@ const Navbar = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { user, logout } = useAuth();
+    const { locationData, modalOpen: locModalOpen, setModalOpen: setLocModalOpen } = useLocation2();
     const isAuth = Boolean(user);
     const menuItems = getMenuItems(user);
 
@@ -551,13 +622,25 @@ const Navbar = () => {
                         <button className="ux-m-logo" onClick={() => go(isUHMode ? "/urbexon-hour" : "/")}>
                             {isUHMode ? (
                                 <>
-                                    <FaBolt size={16} color="#c9a84c" />
-                                    <span className="ux-m-word">Urbexon</span>
-                                    <span className="ux-m-uh">Hour</span>
+                                    <span className="ux-m-mark">U</span>
+                                    <span className="ux-m-word">rbexon</span>
+                                    <span className="ux-m-uh-text">Hour</span>
                                 </>
                             ) : (
-                                <span className="ux-m-word">Urbexon</span>
+                                <>
+                                    <span className="ux-m-mark">U</span>
+                                    <span className="ux-m-word">rbexon</span>
+                                </>
                             )}
+                        </button>
+
+                        {/* Mobile location */}
+                        <button className="ux-m-loc-btn" onClick={() => setLocModalOpen(true)}>
+                            <FaMapMarkerAlt size={11} style={{ color: isUHMode ? "#c9a84c" : "#111827", flexShrink: 0 }} />
+                            <span className="ux-m-loc-city">
+                                {locationData?.city || locationData?.label || "Location"}
+                            </span>
+                            <FaChevronDown size={7} style={{ color: "#9ca3af", flexShrink: 0 }} />
                         </button>
                         <div className="ux-m-acts">
                             <button className="ux-m-btn" onClick={() => setSearchOverlay(true)}>
@@ -609,19 +692,35 @@ const Navbar = () => {
                         <button className="ux-logo-btn" onClick={() => go(isUHMode ? "/urbexon-hour" : "/")}>
                             {isUHMode ? (
                                 <>
-                                    <FaBolt size={18} color="#c9a84c" />
-                                    <span className="ux-logo-word">Urbexon</span>
+                                    <span className="ux-logo-mark">U</span>
+                                    <span className="ux-logo-word">rbexon</span>
                                     <span className="ux-logo-uh">Hour</span>
                                 </>
                             ) : (
-                                <span className="ux-logo-word">Urbexon</span>
+                                <>
+                                    <span className="ux-logo-mark">U</span>
+                                    <span className="ux-logo-word">rbexon</span>
+                                </>
                             )}
+                        </button>
+
+                        {/* Location selector */}
+                        <button className="ux-loc-btn" onClick={() => setLocModalOpen(true)}>
+                            <FaMapMarkerAlt size={14} className="ux-loc-icon" />
+                            <div className="ux-loc-text">
+                                <div className="ux-loc-label">Deliver to</div>
+                                <div className="ux-loc-city">
+                                    {locationData?.label || "Select location"}
+                                    {locationData?.pincode ? ` · ${locationData.pincode}` : ""}
+                                </div>
+                            </div>
+                            <FaChevronDown size={8} style={{ color: "#9ca3af", flexShrink: 0 }} />
                         </button>
 
                         {/* Switch to Hour / Back to Store */}
                         <button className="ux-hour-pill" onClick={() => navigate(isUHMode ? "/" : "/urbexon-hour")}>
-                            {isUHMode ? <FaShoppingCart size={11} /> : <FaBolt size={12} />}
-                            <span className="ux-hp-label">{isUHMode ? "Back to Store" : "Switch to Hour"}</span>
+                            {isUHMode ? <FaShoppingCart size={11} /> : <FaBolt size={12} className="ux-hp-bolt" />}
+                            <span className="ux-hp-label">{isUHMode ? "Back to Store" : "Urbexon Hour"}</span>
                         </button>
 
                         {/* Search */}
@@ -888,19 +987,19 @@ const Navbar = () => {
                 </div>
 
                 {isUHMode ? (
-                    <div className="ux-mm-uh" style={{ background: "linear-gradient(135deg, #5b5bf6, #7c3aed)" }}
+                    <div className="ux-mm-uh"
                         onClick={() => { setMobileOpen(false); navigate("/"); }}>
                         <FaShoppingCart size={20} color="#fff" />
                         <div>
-                            <div className="ux-mm-uh-nm">🛒 Back to Store</div>
+                            <div className="ux-mm-uh-nm">Back to Store</div>
                             <div className="ux-mm-uh-sub">Browse ecommerce products</div>
                         </div>
                     </div>
                 ) : (
                     <div className="ux-mm-uh" onClick={() => { setMobileOpen(false); navigate("/urbexon-hour"); }}>
-                        <FaBolt size={20} color="#fff" />
+                        <FaBolt size={20} color="#c9a84c" />
                         <div>
-                            <div className="ux-mm-uh-nm">⚡ Urbexon Hour</div>
+                            <div className="ux-mm-uh-nm">Urbexon Hour</div>
                             <div className="ux-mm-uh-sub">Express delivery in 45–120 mins</div>
                         </div>
                     </div>
@@ -954,6 +1053,9 @@ const Navbar = () => {
                     #ux-spacer-desk { display:none!important; }
                 }
             `}</style>
+
+            {/* Location Modal */}
+            {locModalOpen && <LocationModal onClose={() => setLocModalOpen(false)} />}
         </>
     );
 };

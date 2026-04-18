@@ -10,410 +10,412 @@ import api from "../api/axios";
 import { useCart } from "../hooks/useCart";
 import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
 import {
-    FaArrowLeft, FaPlus, FaMinus, FaTrash, FaShoppingCart,
-    FaClock, FaStar, FaChevronRight, FaShareAlt, FaStore,
-    FaShieldAlt, FaTruck, FaUndo, FaBolt, FaChevronLeft,
-    FaChevronDown, FaChevronUp, FaLink, FaMapMarkerAlt,
+  FaArrowLeft, FaPlus, FaMinus, FaTrash, FaShoppingCart,
+  FaClock, FaStar, FaChevronRight, FaShareAlt, FaStore,
+  FaShieldAlt, FaTruck, FaUndo, FaBolt, FaChevronLeft,
+  FaChevronDown, FaChevronUp, FaLink, FaMapMarkerAlt,
 } from "react-icons/fa";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
 /* ── Suggested Product Card ── */
 const SuggestedCard = ({ product, onNavigate }) => {
-    const { addItem, isInUHCart, uhItems, increment, decrement, removeItem } = useCart();
-    const inCart = isInUHCart(product._id);
-    const cartItem = uhItems.find((i) => i._id === product._id);
-    const qty = cartItem?.quantity || 0;
-    const discount = product.mrp && product.mrp > product.price
-        ? Math.round(((product.mrp - product.price) / product.mrp) * 100) : 0;
+  const { addItem, isInUHCart, uhItems, increment, decrement, removeItem } = useCart();
+  const inCart = isInUHCart(product._id);
+  const cartItem = uhItems.find((i) => i._id === product._id);
+  const qty = cartItem?.quantity || 0;
+  const discount = product.mrp && product.mrp > product.price
+    ? Math.round(((product.mrp - product.price) / product.mrp) * 100) : 0;
 
-    return (
-        <div className="uhd-sug-card" onClick={() => onNavigate(product)}>
-            <div className="uhd-sug-img-wrap">
-                {discount > 0 && <span className="uhd-sug-disc">{discount}%</span>}
-                <img
-                    src={product.images?.[0]?.url || product.image?.url || "/placeholder.png"}
-                    alt={product.name} loading="lazy"
-                    onError={(e) => { e.target.src = "/placeholder.png"; }}
-                />
-            </div>
-            <div className="uhd-sug-body">
-                <div className="uhd-sug-name">{product.name}</div>
-                {product.prepTimeMinutes && (
-                    <div className="uhd-sug-prep"><FaClock size={8} /> {product.prepTimeMinutes} min</div>
-                )}
-                <div className="uhd-sug-price-row">
-                    <span className="uhd-sug-price">{fmt(product.price)}</span>
-                    {product.mrp > product.price && <span className="uhd-sug-mrp">{fmt(product.mrp)}</span>}
-                </div>
-                {!inCart ? (
-                    <button className="uhd-sug-add" onClick={(e) => {
-                        e.stopPropagation();
-                        addItem({ ...product, productType: "urbexon_hour" });
-                        if (navigator.vibrate) navigator.vibrate(10);
-                    }}><FaPlus size={9} /> ADD</button>
-                ) : (
-                    <div className="uhd-sug-stepper" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => qty <= 1 ? removeItem(product._id, "urbexon_hour") : decrement(product._id, "urbexon_hour")}>
-                            {qty <= 1 ? <FaTrash size={8} /> : <FaMinus size={8} />}
-                        </button>
-                        <span>{qty}</span>
-                        <button onClick={() => increment(product._id, "urbexon_hour")}><FaPlus size={8} /></button>
-                    </div>
-                )}
-            </div>
+  return (
+    <div className="uhd-sug-card" onClick={() => onNavigate(product)}>
+      <div className="uhd-sug-img-wrap">
+        {discount > 0 && <span className="uhd-sug-disc">{discount}%</span>}
+        <img
+          src={product.images?.[0]?.url || product.image?.url || "/placeholder.png"}
+          alt={product.name} loading="lazy"
+          onError={(e) => { e.target.src = "/placeholder.png"; }}
+        />
+      </div>
+      <div className="uhd-sug-body">
+        <div className="uhd-sug-name">{product.name}</div>
+        {product.prepTimeMinutes && (
+          <div className="uhd-sug-prep"><FaClock size={8} /> {product.prepTimeMinutes} min</div>
+        )}
+        <div className="uhd-sug-price-row">
+          <span className="uhd-sug-price">{fmt(product.price)}</span>
+          {product.mrp > product.price && <span className="uhd-sug-mrp">{fmt(product.mrp)}</span>}
         </div>
-    );
+        {!inCart ? (
+          <button className="uhd-sug-add" onClick={(e) => {
+            e.stopPropagation();
+            addItem({ ...product, productType: "urbexon_hour" });
+            if (navigator.vibrate) navigator.vibrate(10);
+          }}><FaPlus size={9} /> ADD</button>
+        ) : (
+          <div className="uhd-sug-stepper" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => qty <= 1 ? removeItem(product._id, "urbexon_hour") : decrement(product._id, "urbexon_hour")}>
+              {qty <= 1 ? <FaTrash size={8} /> : <FaMinus size={8} />}
+            </button>
+            <span>{qty}</span>
+            <button onClick={() => increment(product._id, "urbexon_hour")}><FaPlus size={8} /></button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 /* ── Main Component ── */
 const UHProductDetail = () => {
-    const { id } = useParams();
-    const navigate = useNavigate();
-    const { addItem, isInUHCart, uhItems, increment, decrement, removeItem, uhTotalQty, uhTotal } = useCart();
-    const { trackView } = useRecentlyViewed("urbexon_hour");
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { addItem, isInUHCart, uhItems, increment, decrement, removeItem, uhTotalQty, uhTotal } = useCart();
+  const { trackView } = useRecentlyViewed("urbexon_hour");
 
-    const [product, setProduct] = useState(null);
-    const [related, setRelated] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [imgIdx, setImgIdx] = useState(0);
-    const [showFullDesc, setShowFullDesc] = useState(false);
-    const [copied, setCopied] = useState(false);
+  const [product, setProduct] = useState(null);
+  const [related, setRelated] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [imgIdx, setImgIdx] = useState(0);
+  const [showFullDesc, setShowFullDesc] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-    const inCart = product ? isInUHCart(product._id) : false;
-    const cartItem = product ? uhItems.find((i) => i._id === product._id) : null;
-    const qty = cartItem?.quantity || 0;
+  const inCart = product ? isInUHCart(product._id) : false;
+  const cartItem = product ? uhItems.find((i) => i._id === product._id) : null;
+  const qty = cartItem?.quantity || 0;
 
-    const discount = useMemo(() => {
-        if (!product?.mrp || product.mrp <= product.price) return 0;
-        return Math.round(((product.mrp - product.price) / product.mrp) * 100);
-    }, [product]);
+  const discount = useMemo(() => {
+    if (!product?.mrp || product.mrp <= product.price) return 0;
+    return Math.round(((product.mrp - product.price) / product.mrp) * 100);
+  }, [product]);
 
-    const images = useMemo(() => {
-        if (!product) return [];
-        const imgs = product.images?.length ? product.images : (product.image ? [product.image] : []);
-        return imgs.length ? imgs : [{ url: "/placeholder.png" }];
-    }, [product]);
+  const images = useMemo(() => {
+    if (!product) return [];
+    const imgs = product.images?.length ? product.images : (product.image ? [product.image] : []);
+    return imgs.length ? imgs : [{ url: "/placeholder.png" }];
+  }, [product]);
 
-    useEffect(() => {
-        let cancelled = false;
-        const load = async () => {
-            setLoading(true);
-            setImgIdx(0);
-            setShowFullDesc(false);
-            try {
-                const { data } = await api.get(`/products/${id}`);
-                if (!cancelled) { setProduct(data); trackView(data); }
-                try {
-                    const r = await api.get(`/products/${data._id || id}/related`);
-                    if (!cancelled) setRelated(Array.isArray(r.data) ? r.data : r.data.products || []);
-                } catch { if (!cancelled) setRelated([]); }
-            } catch { if (!cancelled) setProduct(null); }
-            finally { if (!cancelled) setLoading(false); }
-        };
-        if (id) load();
-        return () => { cancelled = true; };
-    }, [id]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      setImgIdx(0);
+      setShowFullDesc(false);
+      try {
+        const { data } = await api.get(`/products/${id}`);
+        if (!cancelled) { setProduct(data); trackView(data); }
+        try {
+          const r = await api.get(`/products/${data._id || id}/related`);
+          if (!cancelled) setRelated(Array.isArray(r.data) ? r.data : r.data.products || []);
+        } catch { if (!cancelled) setRelated([]); }
+      } catch { if (!cancelled) setProduct(null); }
+      finally { if (!cancelled) setLoading(false); }
+    };
+    if (id) load();
+    return () => { cancelled = true; };
+  }, [id]);
 
-    const handleAdd = useCallback(() => {
-        if (!product) return;
-        addItem({ ...product, productType: "urbexon_hour" });
-        if (navigator.vibrate) navigator.vibrate(10);
-    }, [product, addItem]);
+  const handleAdd = useCallback(() => {
+    if (!product) return;
+    addItem({ ...product, productType: "urbexon_hour" });
+    if (navigator.vibrate) navigator.vibrate(10);
+  }, [product, addItem]);
 
-    const handleShare = useCallback(async () => {
-        const url = window.location.href;
-        if (navigator.share) {
-            try { await navigator.share({ title: product?.name, url }); } catch { }
-        } else {
-            try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { }
-        }
-    }, [product]);
+  const handleShare = useCallback(async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try { await navigator.share({ title: product?.name, url }); } catch { }
+    } else {
+      try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { }
+    }
+  }, [product]);
 
-    const navigateToProduct = useCallback((p) => {
-        navigate(`/uh-product/${p.slug || p._id}`);
-    }, [navigate]);
+  const navigateToProduct = useCallback((p) => {
+    navigate(`/uh-product/${p.slug || p._id}`);
+  }, [navigate]);
 
-    if (loading) return (
-        <div className="uhd-root"><style>{CSS}</style>
-            <div className="uhd-loading"><div className="uhd-spinner" /><p>Loading product…</p></div>
-        </div>
-    );
+  if (loading) return (
+    <div className="uhd-root"><style>{CSS}</style>
+      <div className="uhd-loading"><div className="uhd-spinner" /><p>Loading product…</p></div>
+    </div>
+  );
 
-    if (!product) return (
-        <div className="uhd-root"><style>{CSS}</style>
-            <div className="uhd-not-found">
-                <div style={{ fontSize: 48 }}>😕</div>
-                <h2>Product not found</h2>
-                <button className="uhd-back-btn" onClick={() => navigate("/urbexon-hour")}>
-                    <FaArrowLeft size={12} /> Back to Urbexon Hour
-                </button>
-            </div>
-        </div>
-    );
+  if (!product) return (
+    <div className="uhd-root"><style>{CSS}</style>
+      <div className="uhd-not-found">
+        <div style={{ fontSize: 48 }}>😕</div>
+        <h2>Product not found</h2>
+        <button className="uhd-back-btn" onClick={() => navigate("/urbexon-hour")}>
+          <FaArrowLeft size={12} /> Back to Urbexon Hour
+        </button>
+      </div>
+    </div>
+  );
 
-    const highlights = product.highlights ? Object.entries(
-        product.highlights instanceof Map ? Object.fromEntries(product.highlights) : product.highlights
+  const highlights = product.highlightsArray?.length
+    ? product.highlightsArray.map(h => [h.title, h.value])
+    : product.highlights ? Object.entries(
+      product.highlights instanceof Map ? Object.fromEntries(product.highlights) : product.highlights
     ) : [];
 
-    return (
-        <div className="uhd-root">
-            <style>{CSS}</style>
+  return (
+    <div className="uhd-root">
+      <style>{CSS}</style>
 
-            {/* ── Top Nav ── */}
-            <div className="uhd-topnav">
-                <button className="uhd-nav-btn" onClick={() => navigate(-1)}><FaArrowLeft size={16} /></button>
-                <div className="uhd-nav-title">
-                    <FaBolt size={13} className="uhd-bolt" />
-                    <span>Urbexon Hour</span>
+      {/* ── Top Nav ── */}
+      <div className="uhd-topnav">
+        <button className="uhd-nav-btn" onClick={() => navigate(-1)}><FaArrowLeft size={16} /></button>
+        <div className="uhd-nav-title">
+          <FaBolt size={13} className="uhd-bolt" />
+          <span>Urbexon Hour</span>
+        </div>
+        <div className="uhd-nav-right">
+          <button className="uhd-nav-btn" onClick={handleShare} title={copied ? "Link copied!" : "Share"}>
+            {copied ? <FaLink size={14} /> : <FaShareAlt size={14} />}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Main Layout: 2-col on desktop ── */}
+      <div className="uhd-layout">
+
+        {/* ── LEFT: Gallery ── */}
+        <div className="uhd-left">
+          <div className="uhd-gallery-sticky">
+            <div className="uhd-gallery-main">
+              {images.map((img, i) => (
+                <div key={i} className="uhd-gallery-slide"
+                  style={{ display: i === imgIdx ? "flex" : "none" }}>
+                  <img src={img.url || img} alt={product.name}
+                    onError={(e) => { e.target.src = "/placeholder.png"; }} />
                 </div>
-                <div className="uhd-nav-right">
-                    <button className="uhd-nav-btn" onClick={handleShare} title={copied ? "Link copied!" : "Share"}>
-                        {copied ? <FaLink size={14} /> : <FaShareAlt size={14} />}
-                    </button>
-                </div>
+              ))}
+              {images.length > 1 && (
+                <>
+                  <button className="uhd-gallery-arr left"
+                    onClick={() => setImgIdx(i => i > 0 ? i - 1 : images.length - 1)}>
+                    <FaChevronLeft size={13} />
+                  </button>
+                  <button className="uhd-gallery-arr right"
+                    onClick={() => setImgIdx(i => i < images.length - 1 ? i + 1 : 0)}>
+                    <FaChevronRight size={13} />
+                  </button>
+                </>
+              )}
+              {discount > 0 && <span className="uhd-disc-badge">{discount}% OFF</span>}
             </div>
 
-            {/* ── Main Layout: 2-col on desktop ── */}
-            <div className="uhd-layout">
-
-                {/* ── LEFT: Gallery ── */}
-                <div className="uhd-left">
-                    <div className="uhd-gallery-sticky">
-                        <div className="uhd-gallery-main">
-                            {images.map((img, i) => (
-                                <div key={i} className="uhd-gallery-slide"
-                                    style={{ display: i === imgIdx ? "flex" : "none" }}>
-                                    <img src={img.url || img} alt={product.name}
-                                        onError={(e) => { e.target.src = "/placeholder.png"; }} />
-                                </div>
-                            ))}
-                            {images.length > 1 && (
-                                <>
-                                    <button className="uhd-gallery-arr left"
-                                        onClick={() => setImgIdx(i => i > 0 ? i - 1 : images.length - 1)}>
-                                        <FaChevronLeft size={13} />
-                                    </button>
-                                    <button className="uhd-gallery-arr right"
-                                        onClick={() => setImgIdx(i => i < images.length - 1 ? i + 1 : 0)}>
-                                        <FaChevronRight size={13} />
-                                    </button>
-                                </>
-                            )}
-                            {discount > 0 && <span className="uhd-disc-badge">{discount}% OFF</span>}
-                        </div>
-
-                        {/* Dots */}
-                        {images.length > 1 && (
-                            <div className="uhd-gallery-dots">
-                                {images.map((_, i) => (
-                                    <button key={i} className={`uhd-dot ${i === imgIdx ? "active" : ""}`}
-                                        onClick={() => setImgIdx(i)} />
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Thumbnails */}
-                        {images.length > 1 && (
-                            <div className="uhd-thumbs">
-                                {images.map((img, i) => (
-                                    <button key={i} className={`uhd-thumb ${i === imgIdx ? "active" : ""}`}
-                                        onClick={() => setImgIdx(i)}>
-                                        <img src={img.url || img} alt=""
-                                            onError={(e) => { e.target.src = "/placeholder.png"; }} />
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* ── RIGHT: Product Info ── */}
-                <div className="uhd-right">
-
-                    {/* Brand + Category */}
-                    {(product.brand || product.category) && (
-                        <div className="uhd-meta-row">
-                            {product.brand && <span className="uhd-brand">{product.brand}</span>}
-                            {product.category && <span className="uhd-cat">{product.category}</span>}
-                        </div>
-                    )}
-
-                    {/* Name */}
-                    <h1 className="uhd-name">{product.name}</h1>
-
-                    {/* Rating + Prep + Vendor */}
-                    <div className="uhd-sub-row">
-                        {product.rating > 0 && (
-                            <div className="uhd-rating">
-                                <FaStar size={11} className="uhd-star" />
-                                <span>{product.rating.toFixed(1)}</span>
-                                {product.numReviews > 0 && <span className="uhd-reviews">({product.numReviews})</span>}
-                            </div>
-                        )}
-                        {product.prepTimeMinutes && (
-                            <div className="uhd-prep-tag"><FaClock size={11} /> {product.prepTimeMinutes} min prep</div>
-                        )}
-                        {product.vendorId?.shopName && (
-                            <div className="uhd-vendor-tag"><FaStore size={10} /> {product.vendorId.shopName}</div>
-                        )}
-                    </div>
-
-                    {/* India Location */}
-                    <div className="uhd-location-tag">
-                        <FaMapMarkerAlt size={11} /> India — Express delivery available
-                    </div>
-
-                    {/* Price */}
-                    <div className="uhd-price-block">
-                        <span className="uhd-price">{fmt(product.price)}</span>
-                        {product.mrp > product.price && (
-                            <>
-                                <span className="uhd-mrp">{fmt(product.mrp)}</span>
-                                <span className="uhd-save">Save {fmt(product.mrp - product.price)}</span>
-                            </>
-                        )}
-                    </div>
-
-                    {/* Inclusive of taxes */}
-                    <p className="uhd-tax-note">Inclusive of all taxes (GST)</p>
-
-                    {/* Delivery badge */}
-                    <div className="uhd-delivery-badge">
-                        <FaTruck size={13} />
-                        <span>Express delivery in <strong>45–120 min</strong></span>
-                    </div>
-
-                    {/* ── CTA: Desktop ── */}
-                    <div className="uhd-cta-desktop">
-                        {!inCart ? (
-                            <button className="uhd-cta-add" onClick={handleAdd}>
-                                <FaShoppingCart size={16} /> Add to Cart
-                            </button>
-                        ) : (
-                            <div className="uhd-cta-row">
-                                <div className="uhd-cta-stepper">
-                                    <button onClick={() => qty <= 1 ? removeItem(product._id, "urbexon_hour") : decrement(product._id, "urbexon_hour")}>
-                                        {qty <= 1 ? <FaTrash size={12} /> : <FaMinus size={12} />}
-                                    </button>
-                                    <span>{qty}</span>
-                                    <button onClick={() => increment(product._id, "urbexon_hour")}><FaPlus size={12} /></button>
-                                </div>
-                                {uhTotalQty > 0 && (
-                                    <button className="uhd-cta-checkout" onClick={() => navigate("/uh-cart")}>
-                                        {uhTotalQty} item{uhTotalQty > 1 ? "s" : ""} · {fmt(uhTotal)} <FaChevronRight size={10} />
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Description */}
-                    {product.description && (
-                        <div className="uhd-section">
-                            <h3 className="uhd-section-title">About this product</h3>
-                            <div className={`uhd-desc-text ${showFullDesc ? "expanded" : ""}`}>
-                                {product.description}
-                            </div>
-                            {product.description.length > 200 && (
-                                <button className="uhd-desc-toggle" onClick={() => setShowFullDesc(v => !v)}>
-                                    {showFullDesc ? <><FaChevronUp size={10} /> Show less</> : <><FaChevronDown size={10} /> Read more</>}
-                                </button>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Specifications */}
-                    {highlights.length > 0 && (
-                        <div className="uhd-section">
-                            <h3 className="uhd-section-title">Specifications</h3>
-                            <div className="uhd-specs-grid">
-                                {highlights.map(([k, v]) => (
-                                    <div key={k} className="uhd-spec-item">
-                                        <span className="uhd-spec-key">{k}</span>
-                                        <span className="uhd-spec-val">{v}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Product Details */}
-                    <div className="uhd-details-grid">
-                        {product.weight && <div className="uhd-detail-item"><span className="uhd-detail-key">Weight</span><span className="uhd-detail-val">{product.weight}</span></div>}
-                        {product.material && <div className="uhd-detail-item"><span className="uhd-detail-key">Material</span><span className="uhd-detail-val">{product.material}</span></div>}
-                        {product.origin && <div className="uhd-detail-item"><span className="uhd-detail-key">Origin</span><span className="uhd-detail-val">{product.origin}</span></div>}
-                        {product.sku && <div className="uhd-detail-item"><span className="uhd-detail-key">SKU</span><span className="uhd-detail-val">{product.sku}</span></div>}
-                        {product.maxOrderQty && <div className="uhd-detail-item"><span className="uhd-detail-key">Max Order</span><span className="uhd-detail-val">{product.maxOrderQty} units</span></div>}
-                        {product.returnPolicy && <div className="uhd-detail-item"><span className="uhd-detail-key">Returns</span><span className="uhd-detail-val">{product.returnPolicy}</span></div>}
-                    </div>
-
-                    {/* Trust badges */}
-                    <div className="uhd-trust">
-                        <div className="uhd-trust-item">
-                            <FaShieldAlt size={20} className="uhd-trust-ic" />
-                            <div><strong>Quality Assured</strong><span>Checked before dispatch</span></div>
-                        </div>
-                        <div className="uhd-trust-item">
-                            <FaTruck size={20} className="uhd-trust-ic" />
-                            <div><strong>Express Delivery</strong><span>45–120 mins</span></div>
-                        </div>
-                        <div className="uhd-trust-item">
-                            <FaUndo size={20} className="uhd-trust-ic" />
-                            <div><strong>Easy Returns</strong><span>{product.returnPolicy || "7 days return"}</span></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* ── Suggested Products ── */}
-            {related.length > 0 && (
-                <div className="uhd-suggested">
-                    <div className="uhd-sug-header">
-                        <h3 className="uhd-section-title">You might also like</h3>
-                        <span className="uhd-sug-count">{related.length} items</span>
-                    </div>
-                    <div className="uhd-sug-scroll">
-                        {related.map((p) => (
-                            <SuggestedCard key={p._id} product={p} onNavigate={navigateToProduct} />
-                        ))}
-                    </div>
-                </div>
+            {/* Dots */}
+            {images.length > 1 && (
+              <div className="uhd-gallery-dots">
+                {images.map((_, i) => (
+                  <button key={i} className={`uhd-dot ${i === imgIdx ? "active" : ""}`}
+                    onClick={() => setImgIdx(i)} />
+                ))}
+              </div>
             )}
 
-            <div style={{ height: 90 }} />
-
-            {/* ── Sticky Bottom Bar (mobile only) ── */}
-            <div className="uhd-bottom-bar">
-                <div className="uhd-bottom-inner">
-                    <div className="uhd-bottom-price">
-                        <span className="uhd-bottom-amount">{fmt(product.price)}</span>
-                        {product.mrp > product.price && <span className="uhd-bottom-mrp">{fmt(product.mrp)}</span>}
-                    </div>
-                    {!inCart ? (
-                        <button className="uhd-bottom-add" onClick={handleAdd}>
-                            <FaShoppingCart size={14} /> Add to Cart
-                        </button>
-                    ) : (
-                        <div className="uhd-bottom-stepper-wrap">
-                            <div className="uhd-bottom-stepper">
-                                <button onClick={() => qty <= 1 ? removeItem(product._id, "urbexon_hour") : decrement(product._id, "urbexon_hour")}>
-                                    {qty <= 1 ? <FaTrash size={11} /> : <FaMinus size={11} />}
-                                </button>
-                                <span>{qty}</span>
-                                <button onClick={() => increment(product._id, "urbexon_hour")}><FaPlus size={11} /></button>
-                            </div>
-                            {uhTotalQty > 0 && (
-                                <button className="uhd-bottom-checkout" onClick={() => navigate("/uh-cart")}>
-                                    {uhTotalQty} item{uhTotalQty > 1 ? "s" : ""} · {fmt(uhTotal)} <FaChevronRight size={10} />
-                                </button>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </div>
+            {/* Thumbnails */}
+            {images.length > 1 && (
+              <div className="uhd-thumbs">
+                {images.map((img, i) => (
+                  <button key={i} className={`uhd-thumb ${i === imgIdx ? "active" : ""}`}
+                    onClick={() => setImgIdx(i)}>
+                    <img src={img.url || img} alt=""
+                      onError={(e) => { e.target.src = "/placeholder.png"; }} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-    );
+
+        {/* ── RIGHT: Product Info ── */}
+        <div className="uhd-right">
+
+          {/* Brand + Category */}
+          {(product.brand || product.category) && (
+            <div className="uhd-meta-row">
+              {product.brand && <span className="uhd-brand">{product.brand}</span>}
+              {product.category && <span className="uhd-cat">{product.category}</span>}
+            </div>
+          )}
+
+          {/* Name */}
+          <h1 className="uhd-name">{product.name}</h1>
+
+          {/* Rating + Prep + Vendor */}
+          <div className="uhd-sub-row">
+            {product.rating > 0 && (
+              <div className="uhd-rating">
+                <FaStar size={11} className="uhd-star" />
+                <span>{product.rating.toFixed(1)}</span>
+                {product.numReviews > 0 && <span className="uhd-reviews">({product.numReviews})</span>}
+              </div>
+            )}
+            {product.prepTimeMinutes && (
+              <div className="uhd-prep-tag"><FaClock size={11} /> {product.prepTimeMinutes} min prep</div>
+            )}
+            {product.vendorId?.shopName && (
+              <div className="uhd-vendor-tag"><FaStore size={10} /> {product.vendorId.shopName}</div>
+            )}
+          </div>
+
+          {/* India Location */}
+          <div className="uhd-location-tag">
+            <FaMapMarkerAlt size={11} /> India — Express delivery available
+          </div>
+
+          {/* Price */}
+          <div className="uhd-price-block">
+            <span className="uhd-price">{fmt(product.price)}</span>
+            {product.mrp > product.price && (
+              <>
+                <span className="uhd-mrp">{fmt(product.mrp)}</span>
+                <span className="uhd-save">Save {fmt(product.mrp - product.price)}</span>
+              </>
+            )}
+          </div>
+
+          {/* Inclusive of taxes */}
+          <p className="uhd-tax-note">Inclusive of all taxes (GST)</p>
+
+          {/* Delivery badge */}
+          <div className="uhd-delivery-badge">
+            <FaTruck size={13} />
+            <span>Express delivery in <strong>45–120 min</strong></span>
+          </div>
+
+          {/* ── CTA: Desktop ── */}
+          <div className="uhd-cta-desktop">
+            {!inCart ? (
+              <button className="uhd-cta-add" onClick={handleAdd}>
+                <FaShoppingCart size={16} /> Add to Cart
+              </button>
+            ) : (
+              <div className="uhd-cta-row">
+                <div className="uhd-cta-stepper">
+                  <button onClick={() => qty <= 1 ? removeItem(product._id, "urbexon_hour") : decrement(product._id, "urbexon_hour")}>
+                    {qty <= 1 ? <FaTrash size={12} /> : <FaMinus size={12} />}
+                  </button>
+                  <span>{qty}</span>
+                  <button onClick={() => increment(product._id, "urbexon_hour")}><FaPlus size={12} /></button>
+                </div>
+                {uhTotalQty > 0 && (
+                  <button className="uhd-cta-checkout" onClick={() => navigate("/uh-cart")}>
+                    {uhTotalQty} item{uhTotalQty > 1 ? "s" : ""} · {fmt(uhTotal)} <FaChevronRight size={10} />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Description */}
+          {product.description && (
+            <div className="uhd-section">
+              <h3 className="uhd-section-title">About this product</h3>
+              <div className={`uhd-desc-text ${showFullDesc ? "expanded" : ""}`}>
+                {product.description}
+              </div>
+              {product.description.length > 200 && (
+                <button className="uhd-desc-toggle" onClick={() => setShowFullDesc(v => !v)}>
+                  {showFullDesc ? <><FaChevronUp size={10} /> Show less</> : <><FaChevronDown size={10} /> Read more</>}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Specifications */}
+          {highlights.length > 0 && (
+            <div className="uhd-section">
+              <h3 className="uhd-section-title">Specifications</h3>
+              <div className="uhd-specs-grid">
+                {highlights.map(([k, v]) => (
+                  <div key={k} className="uhd-spec-item">
+                    <span className="uhd-spec-key">{k}</span>
+                    <span className="uhd-spec-val">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Product Details */}
+          <div className="uhd-details-grid">
+            {product.weight && <div className="uhd-detail-item"><span className="uhd-detail-key">Weight</span><span className="uhd-detail-val">{product.weight}</span></div>}
+            {product.material && <div className="uhd-detail-item"><span className="uhd-detail-key">Material</span><span className="uhd-detail-val">{product.material}</span></div>}
+            {product.origin && <div className="uhd-detail-item"><span className="uhd-detail-key">Origin</span><span className="uhd-detail-val">{product.origin}</span></div>}
+            {product.sku && <div className="uhd-detail-item"><span className="uhd-detail-key">SKU</span><span className="uhd-detail-val">{product.sku}</span></div>}
+            {product.maxOrderQty && <div className="uhd-detail-item"><span className="uhd-detail-key">Max Order</span><span className="uhd-detail-val">{product.maxOrderQty} units</span></div>}
+            {product.returnPolicy && <div className="uhd-detail-item"><span className="uhd-detail-key">Returns</span><span className="uhd-detail-val">{product.returnPolicy}</span></div>}
+          </div>
+
+          {/* Trust badges */}
+          <div className="uhd-trust">
+            <div className="uhd-trust-item">
+              <FaShieldAlt size={20} className="uhd-trust-ic" />
+              <div><strong>Quality Assured</strong><span>Checked before dispatch</span></div>
+            </div>
+            <div className="uhd-trust-item">
+              <FaTruck size={20} className="uhd-trust-ic" />
+              <div><strong>Express Delivery</strong><span>45–120 mins</span></div>
+            </div>
+            <div className="uhd-trust-item">
+              <FaUndo size={20} className="uhd-trust-ic" />
+              <div><strong>Easy Returns</strong><span>{product.returnPolicy || "7 days return"}</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Suggested Products ── */}
+      {related.length > 0 && (
+        <div className="uhd-suggested">
+          <div className="uhd-sug-header">
+            <h3 className="uhd-section-title">You might also like</h3>
+            <span className="uhd-sug-count">{related.length} items</span>
+          </div>
+          <div className="uhd-sug-scroll">
+            {related.map((p) => (
+              <SuggestedCard key={p._id} product={p} onNavigate={navigateToProduct} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ height: 90 }} />
+
+      {/* ── Sticky Bottom Bar (mobile only) ── */}
+      <div className="uhd-bottom-bar">
+        <div className="uhd-bottom-inner">
+          <div className="uhd-bottom-price">
+            <span className="uhd-bottom-amount">{fmt(product.price)}</span>
+            {product.mrp > product.price && <span className="uhd-bottom-mrp">{fmt(product.mrp)}</span>}
+          </div>
+          {!inCart ? (
+            <button className="uhd-bottom-add" onClick={handleAdd}>
+              <FaShoppingCart size={14} /> Add to Cart
+            </button>
+          ) : (
+            <div className="uhd-bottom-stepper-wrap">
+              <div className="uhd-bottom-stepper">
+                <button onClick={() => qty <= 1 ? removeItem(product._id, "urbexon_hour") : decrement(product._id, "urbexon_hour")}>
+                  {qty <= 1 ? <FaTrash size={11} /> : <FaMinus size={11} />}
+                </button>
+                <span>{qty}</span>
+                <button onClick={() => increment(product._id, "urbexon_hour")}><FaPlus size={11} /></button>
+              </div>
+              {uhTotalQty > 0 && (
+                <button className="uhd-bottom-checkout" onClick={() => navigate("/uh-cart")}>
+                  {uhTotalQty} item{uhTotalQty > 1 ? "s" : ""} · {fmt(uhTotal)} <FaChevronRight size={10} />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 /* ══════════════════════════════════════════

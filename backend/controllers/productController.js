@@ -255,6 +255,105 @@ export const getUrbexonHourProducts = async (req, res) => {
 };
 
 /* ════════════════════════════════════════
+   PUBLIC — Urbexon Hour Homepage Data (single-call)
+════════════════════════════════════════ */
+export const getUrbexonHourHomepage = async (req, res) => {
+    try {
+        const CACHE_KEY = "uh:homepage";
+        const cached = await getCache(CACHE_KEY);
+        if (cached) return res.json(cached);
+
+        const base = { isActive: true, productType: "urbexon_hour" };
+        const selectFields = "name slug price mrp images category rating numReviews isFeatured brand inStock stock vendorId isDeal dealEndsAt tag prepTimeMinutes";
+
+        const [bestSellers, recommended, topDeals, trending, budgetPicks, categories, totalProducts, totalVendors] = await Promise.all([
+            // Best sellers — featured or high-rated
+            Product.find({ ...base, $or: [{ isFeatured: true }, { rating: { $gte: 4 } }] })
+                .populate("vendorId", "shopName shopLogo")
+                .select(selectFields)
+                .sort({ rating: -1, numReviews: -1, createdAt: -1 })
+                .limit(14)
+                .lean(),
+
+            // New arrivals
+            Product.find(base)
+                .populate("vendorId", "shopName shopLogo")
+                .select(selectFields)
+                .sort({ createdAt: -1 })
+                .limit(14)
+                .lean(),
+
+            // Active deals
+            Product.find({
+                ...base,
+                isDeal: true,
+                $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: new Date() } }],
+            })
+                .populate("vendorId", "shopName shopLogo")
+                .select(selectFields)
+                .sort({ createdAt: -1 })
+                .limit(14)
+                .lean(),
+
+            // Trending — most reviewed / highest engagement
+            Product.find({ ...base, numReviews: { $gte: 1 } })
+                .populate("vendorId", "shopName shopLogo")
+                .select(selectFields)
+                .sort({ numReviews: -1, rating: -1 })
+                .limit(14)
+                .lean(),
+
+            // Budget picks — cheapest products
+            Product.find({ ...base, price: { $lte: 500 } })
+                .populate("vendorId", "shopName shopLogo")
+                .select(selectFields)
+                .sort({ price: 1 })
+                .limit(14)
+                .lean(),
+
+            // Category stats
+            Product.aggregate([
+                { $match: base },
+                { $group: { _id: "$category", count: { $sum: 1 } } },
+                { $sort: { count: -1 } },
+                { $limit: 20 },
+            ]),
+
+            // Total active UH products count
+            Product.countDocuments(base),
+
+            // Total distinct vendors
+            Product.distinct("vendorId", base).then(ids => ids.length),
+        ]);
+
+        // Group recommended by category for section display
+        const byCategory = {};
+        recommended.forEach(p => {
+            if (!p.category) return;
+            if (!byCategory[p.category]) byCategory[p.category] = [];
+            if (byCategory[p.category].length < 8) byCategory[p.category].push(p);
+        });
+
+        const result = {
+            bestSellers,
+            recommended,
+            topDeals,
+            trending,
+            budgetPicks,
+            categorySections: byCategory,
+            categoryStats: categories,
+            stats: { totalProducts, totalVendors },
+        };
+
+        await setCache(CACHE_KEY, result, 180);
+        res.json(result);
+    } catch (err) {
+        console.error("[getUrbexonHourHomepage]", err);
+        res.status(500).json({ success: false, message: "Failed to fetch UH homepage data" });
+    }
+};
+
+/* ════════════════════════════════════════
    PUBLIC — Urbexon Hour Flash Deals (BACKEND-MANAGED)
    ─────────────────────────────────────
    • Smart deal rotation & prioritization
@@ -462,6 +561,7 @@ export const adminCreateProduct = async (req, res) => {
 
         body.sizes = safeParse(body.sizes, []);
         body.highlights = safeParse(body.highlights, {});
+        body.highlightsArray = safeParse(body.highlightsArray, []);
         body.customizationConfig = safeParse(body.customizationConfig, null);
 
         /* ───────────────
@@ -624,6 +724,7 @@ export const adminCreateProduct = async (req, res) => {
             tags,
             sizes,
             highlights: body.highlights || {},
+            highlightsArray: Array.isArray(body.highlightsArray) ? body.highlightsArray : [],
 
             images,
 
@@ -765,6 +866,22 @@ export const adminUpdateProduct = async (req, res) => {
                     product.customizationConfig = raw;
                 }
             } catch { /* ignore bad JSON */ }
+        }
+
+        // Highlights (Map — legacy)
+        if (body.highlights !== undefined) {
+            try {
+                const raw = typeof body.highlights === 'string' ? JSON.parse(body.highlights) : body.highlights;
+                if (raw && typeof raw === 'object') product.highlights = raw;
+            } catch { /* ignore */ }
+        }
+
+        // Highlights Array (structured)
+        if (body.highlightsArray !== undefined) {
+            try {
+                const raw = typeof body.highlightsArray === 'string' ? JSON.parse(body.highlightsArray) : body.highlightsArray;
+                product.highlightsArray = Array.isArray(raw) ? raw : [];
+            } catch { product.highlightsArray = []; }
         }
 
         // 📅 Deal handling
@@ -924,16 +1041,26 @@ export const vendorCreateProduct = async (req, res) => {
         }
 
         const stock = Number(body.stock) || 0;
+
+        // Parse highlightsArray
+        let highlightsArray = [];
+        try {
+            const raw = typeof body.highlightsArray === 'string' ? JSON.parse(body.highlightsArray) : body.highlightsArray;
+            highlightsArray = Array.isArray(raw) ? raw : [];
+        } catch { highlightsArray = []; }
+
         const product = await Product.create({
             name: body.name.trim(),
             description: body.description?.trim() || "",
             price: Number(body.price),
             mrp: body.mrp ? Number(body.mrp) : null,
             category: body.category,
+            subcategory: body.subcategory || "",
             tags: body.tags ? body.tags.split(",").map(t => t.trim()).filter(Boolean) : [],
             images,
             stock,
             inStock: stock > 0,
+            highlightsArray,
             prepTimeMinutes: Number(body.prepTimeMinutes) || 10,
             maxOrderQty: Number(body.maxOrderQty) || 10,
             productType: "urbexon_hour",
@@ -1005,6 +1132,17 @@ export const vendorUpdateProduct = async (req, res) => {
             product.isActive = body.isActive === "true" || body.isActive === true;
         if (body.tags)
             product.tags = body.tags.split(",").map(t => t.trim()).filter(Boolean);
+
+        // Subcategory
+        if (body.subcategory !== undefined) product.subcategory = body.subcategory;
+
+        // Highlights Array (structured)
+        if (body.highlightsArray !== undefined) {
+            try {
+                const raw = typeof body.highlightsArray === 'string' ? JSON.parse(body.highlightsArray) : body.highlightsArray;
+                product.highlightsArray = Array.isArray(raw) ? raw : [];
+            } catch { product.highlightsArray = []; }
+        }
 
         // Deal fields
         if (body.isDeal !== undefined) {

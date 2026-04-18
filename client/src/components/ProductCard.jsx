@@ -53,7 +53,11 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow }) => {
         e.stopPropagation();
         if (isOutOfStock) return;
         if (onBuyNow) onBuyNow(product);
-        else navigate("/checkout", { state: { buyNowItem: { ...product, quantity: 1 } } });
+        else {
+            const buyNowItem = { ...product, quantity: 1 };
+            try { sessionStorage.setItem("ux_buy_now_item", JSON.stringify(buyNowItem)); } catch { }
+            navigate("/checkout", { state: { buyNowItem } });
+        }
     }, [isOutOfStock, onBuyNow, product, navigate]);
 
     const handleWishlist = useCallback((e) => {

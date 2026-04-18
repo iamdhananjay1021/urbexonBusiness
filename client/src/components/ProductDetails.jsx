@@ -192,11 +192,15 @@ const ProductDetails = () => {
     })), [reviews]);
 
     const highlightEntries = useMemo(() => {
+        // Prefer structured highlightsArray, fallback to legacy highlights Map
+        if (product?.highlightsArray?.length) {
+            return product.highlightsArray.map(h => [h.title, h.value]);
+        }
         if (!product?.highlights) return [];
         return product.highlights instanceof Map
             ? [...product.highlights.entries()]
             : Object.entries(product.highlights);
-    }, [product?.highlights]);
+    }, [product?.highlights, product?.highlightsArray]);
 
     const allImages = useMemo(() => product?.images?.length ? product.images : [], [product?.images]);
 
@@ -299,9 +303,10 @@ const ProductDetails = () => {
 
     const handleBuyNow = useCallback(() => {
         if (normalizedSizes.length > 0 && !selectedSize) return alert("Please select a size!");
-        navigate("/checkout", {
-            state: { buyNowItem: { ...product, quantity: 1, selectedSize, customization: getCustomization() } },
-        });
+        const buyNowItem = { ...product, quantity: 1, selectedSize, customization: getCustomization() };
+        // Persist to sessionStorage so it survives login redirect
+        try { sessionStorage.setItem("ux_buy_now_item", JSON.stringify(buyNowItem)); } catch { }
+        navigate("/checkout", { state: { buyNowItem } });
     }, [product, selectedSize, normalizedSizes, navigate, getCustomization]);
 
     const handleNotifyMe = useCallback(async () => {

@@ -22,7 +22,7 @@ const Field = ({ label, hint, children }) => (
 const AdminEditBanner = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const [form, setForm] = useState({ title: "", subtitle: "", link: "", isActive: true, order: 0 });
+    const [form, setForm] = useState({ title: "", subtitle: "", link: "", isActive: true, order: 0, type: "ecommerce", placement: "hero" });
     const [currentImage, setCurrentImage] = useState("");
     const [imageFile, setImageFile] = useState(null);
     const [preview, setPreview] = useState("");
@@ -36,7 +36,7 @@ const AdminEditBanner = () => {
                 const { data } = await fetchAllBanners();
                 const banner = data.find(b => b._id === id);
                 if (!banner) { navigate("/admin/banners"); return; }
-                setForm({ title: banner.title || "", subtitle: banner.subtitle || "", link: banner.link || "", isActive: banner.isActive, order: banner.order || 0 });
+                setForm({ title: banner.title || "", subtitle: banner.subtitle || "", link: banner.link || "", isActive: banner.isActive, order: banner.order || 0, type: banner.type || "ecommerce", placement: banner.placement || "hero" });
                 setCurrentImage(banner.image?.url || "");
             } catch {
                 setError("Failed to load banner");
@@ -71,6 +71,8 @@ const AdminEditBanner = () => {
             fd.append("link", form.link.trim());
             fd.append("isActive", form.isActive);
             fd.append("order", form.order);
+            fd.append("type", form.type);
+            fd.append("placement", form.placement);
             if (imageFile) fd.append("image", imageFile);
             await updateBanner(id, fd);
             navigate("/admin/banners");
@@ -148,6 +150,30 @@ const AdminEditBanner = () => {
                         <input name="link" value={form.link} onChange={handleChange} placeholder="e.g. /category/mens-fashion"
                             style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
                     </Field>
+
+                    {/* Type & Placement */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                        <Field label="Banner Type">
+                            <div style={{ display: "flex", gap: 8 }}>
+                                {[{ value: "ecommerce", label: "🛒 Ecommerce" }, { value: "urbexon_hour", label: "⚡ Urbexon Hour" }].map(opt => (
+                                    <button key={opt.value} type="button" onClick={() => setForm(prev => ({ ...prev, type: opt.value }))}
+                                        style={{ flex: 1, padding: "9px 10px", border: `2px solid ${form.type === opt.value ? "#2563eb" : "#e2e8f0"}`, borderRadius: 8, background: form.type === opt.value ? "#eff6ff" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: form.type === opt.value ? 700 : 500, color: form.type === opt.value ? "#2563eb" : "#64748b", fontFamily: "inherit", transition: "all 0.2s" }}>
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </Field>
+                        <Field label="Placement">
+                            <div style={{ display: "flex", gap: 8 }}>
+                                {[{ value: "hero", label: "🖼️ Hero" }, { value: "mid", label: "📰 Mid-Page" }].map(opt => (
+                                    <button key={opt.value} type="button" onClick={() => setForm(prev => ({ ...prev, placement: opt.value }))}
+                                        style={{ flex: 1, padding: "9px 10px", border: `2px solid ${form.placement === opt.value ? "#2563eb" : "#e2e8f0"}`, borderRadius: 8, background: form.placement === opt.value ? "#eff6ff" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: form.placement === opt.value ? 700 : 500, color: form.placement === opt.value ? "#2563eb" : "#64748b", fontFamily: "inherit", transition: "all 0.2s" }}>
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </Field>
+                    </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                         <Field label="Display Order">

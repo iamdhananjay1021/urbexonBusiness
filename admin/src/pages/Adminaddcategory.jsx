@@ -26,6 +26,8 @@ const AdminAddCategory = () => {
     const [form, setForm] = useState({ name: "", emoji: "🏷️", color: "#1a1740", lightColor: "#f0eefb", isActive: true, order: 0, type: "ecommerce" });
     const [subcategories, setSubcategories] = useState([]);
     const [subInput, setSubInput] = useState("");
+    const [highlightFields, setHighlightFields] = useState([]); // [{ title, required }]
+    const [hlInput, setHlInput] = useState("");
     const [imageFile, setImageFile] = useState(null);
     const [preview, setPreview] = useState("");
     const [saving, setSaving] = useState(false);
@@ -60,6 +62,7 @@ const AdminAddCategory = () => {
             fd.append("order", form.order);
             fd.append("type", form.type);
             fd.append("subcategories", JSON.stringify(subcategories));
+            fd.append("highlightTemplate", JSON.stringify(highlightFields));
             if (imageFile) fd.append("image", imageFile);
             await createCategory(fd);
             navigate("/admin/categories");
@@ -202,6 +205,44 @@ const AdminAddCategory = () => {
                             onFocus={e => e.target.style.borderColor = "#93c5fd"}
                             onBlur={e => e.target.style.borderColor = "#e2e8f0"}
                         />
+                    </Field>
+
+                    {/* Highlight Template */}
+                    <Field label="Product Highlight Fields" hint="(template for products in this category)">
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: highlightFields.length ? 10 : 0 }}>
+                            {highlightFields.map((hl, i) => (
+                                <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: hl.required ? "#fef3c7" : "#f0fdf4", border: `1px solid ${hl.required ? "#fbbf24" : "#86efac"}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 600, color: hl.required ? "#92400e" : "#166534" }}>
+                                    {hl.title}
+                                    {hl.required && <span style={{ fontSize: 9, background: "#fbbf24", color: "#78350f", padding: "1px 5px", borderRadius: 4, fontWeight: 800 }}>REQ</span>}
+                                    <button type="button" onClick={() => {
+                                        const next = [...highlightFields];
+                                        next[i] = { ...next[i], required: !next[i].required };
+                                        setHighlightFields(next);
+                                    }} title="Toggle required" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#94a3b8", padding: 0 }}>⚙</button>
+                                    <button type="button" onClick={() => setHighlightFields(prev => prev.filter((_, j) => j !== i))}
+                                        style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, display: "flex", fontSize: 14, lineHeight: 1 }}>×</button>
+                                </span>
+                            ))}
+                        </div>
+                        <input
+                            value={hlInput}
+                            onChange={e => setHlInput(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    const val = hlInput.trim();
+                                    if (val && !highlightFields.some(h => h.title === val)) {
+                                        setHighlightFields(prev => [...prev, { title: val, required: false }]);
+                                    }
+                                    setHlInput("");
+                                }
+                            }}
+                            placeholder="e.g. Weight, Brand, Expiry Date (press Enter)"
+                            style={inputStyle}
+                            onFocus={e => e.target.style.borderColor = "#93c5fd"}
+                            onBlur={e => e.target.style.borderColor = "#e2e8f0"}
+                        />
+                        <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>These fields will auto-load when vendors add products in this category. Click ⚙ to toggle required.</p>
                     </Field>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>

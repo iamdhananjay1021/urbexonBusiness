@@ -29,6 +29,16 @@ const bannerSchema = new mongoose.Schema(
             type: Number,
             default: 0,
         },
+        type: {
+            type: String,
+            enum: ["ecommerce", "urbexon_hour"],
+            default: "ecommerce",
+        },
+        placement: {
+            type: String,
+            enum: ["hero", "mid"],
+            default: "hero",
+        },
     },
     { timestamps: true }
 );

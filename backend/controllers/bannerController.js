@@ -16,13 +16,19 @@ const safeDestroy = async (publicId) => {
 /* ── GET ALL ACTIVE BANNERS (public) ── */
 export const getActiveBanners = async (req, res) => {
     try {
-        const cached = await getCache("banners:active");
+        const { type, placement } = req.query;
+        const cacheKey = `banners:active:${type || "all"}:${placement || "all"}`;
+        const cached = await getCache(cacheKey);
         if (cached) return res.json(cached);
 
-        const banners = await Banner.find({ isActive: true })
+        const filter = { isActive: true };
+        if (type) filter.type = type;
+        if (placement) filter.placement = placement;
+
+        const banners = await Banner.find(filter)
             .sort({ order: 1, createdAt: -1 })
             .lean();
-        await setCache("banners:active", banners, 600); // 10 min
+        await setCache(cacheKey, banners, 600); // 10 min
         res.json(banners);
     } catch (err) {
         console.error("GET BANNERS ERROR:", err);
@@ -44,7 +50,7 @@ export const getAllBanners = async (req, res) => {
 /* ── CREATE BANNER (admin) ── */
 export const createBanner = async (req, res) => {
     try {
-        const { title, subtitle, link, isActive, order } = req.body;
+        const { title, subtitle, link, isActive, order, type, placement } = req.body;
 
         if (!req.file) return res.status(400).json({ success: false, message: "Banner image is required" });
 
@@ -56,6 +62,8 @@ export const createBanner = async (req, res) => {
             link: link?.trim() || "",
             isActive: isActive === "true" || isActive === true,
             order: Number(order) || 0,
+            type: type || "ecommerce",
+            placement: placement || "hero",
             image: {
                 url: optimizeUrl(result.secure_url),
                 public_id: result.public_id,
@@ -76,13 +84,15 @@ export const updateBanner = async (req, res) => {
         const banner = await Banner.findById(req.params.id);
         if (!banner) return res.status(404).json({ success: false, message: "Banner not found" });
 
-        const { title, subtitle, link, isActive, order } = req.body;
+        const { title, subtitle, link, isActive, order, type, placement } = req.body;
 
         if (title !== undefined) banner.title = title.trim();
         if (subtitle !== undefined) banner.subtitle = subtitle.trim();
         if (link !== undefined) banner.link = link.trim();
         if (isActive !== undefined) banner.isActive = isActive === "true" || isActive === true;
         if (order !== undefined) banner.order = Number(order) || 0;
+        if (type !== undefined) banner.type = type;
+        if (placement !== undefined) banner.placement = placement;
 
         // Replace image if new one uploaded
         if (req.file) {

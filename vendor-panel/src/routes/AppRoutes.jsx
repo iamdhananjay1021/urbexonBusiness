@@ -19,6 +19,7 @@ const Orders = lazy(() => import("../pages/Orders"));
 const Earnings = lazy(() => import("../pages/Earnings"));
 const Profile = lazy(() => import("../pages/Profile"));
 const Settings = lazy(() => import("../pages/Settings"));
+const Subscription = lazy(() => import("../pages/Subscription"));
 
 const Loader = () => (
   <div style={{
@@ -84,6 +85,7 @@ const AppRoutes = () => (
         <Route path="products/:id/edit" element={<ApprovedRoute><ProductForm /></ApprovedRoute>} />
         <Route path="orders" element={<ApprovedRoute><Orders /></ApprovedRoute>} />
         <Route path="earnings" element={<ApprovedRoute><Earnings /></ApprovedRoute>} />
+        <Route path="subscription" element={<ApprovedRoute><Subscription /></ApprovedRoute>} />
         <Route path="profile" element={<Profile />} />
         <Route path="settings" element={<Settings />} />
       </Route>

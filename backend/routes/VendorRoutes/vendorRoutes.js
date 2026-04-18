@@ -29,13 +29,19 @@ import { registerVendor, getVendorStatus } from "../../controllers/vendor/vendor
 import { getFeaturedVendors, getVendorStore, getNearbyVendors } from "../../controllers/vendor/vendorPublic.js";
 import { getMyProfile, updateMyProfile, toggleShopOpen, updateLocation } from "../../controllers/vendor/venderProfile.js";
 import { getEarnings, getWeeklyEarnings, getSubscription, requestPlanChange, cancelPlanChangeRequest } from "../../controllers/vendor/vendorEarnings.js";
+import {
+    getSubscriptionPlans, createSubscriptionOrder,
+    verifySubscriptionPayment, handleSubscriptionPaymentFailure,
+    getSubscriptionPaymentHistory,
+} from "../../controllers/vendor/vendorSubscriptionPayment.js";
 import { getVendorOrders, updateOrderStatus } from "../../controllers/vendor/vendorOrders.js";
 import {
     getAllVendors, getVendorDetail,
     approveVendor, rejectVendor, suspendVendor,
     updateCommission, deleteVendor,
     getAllDeliveryBoys, updateDeliveryBoyStatus, getOnlineRiders,
-    activateVendorSubscription, updateDeliveryDocStatus,
+    activateVendorSubscription, deactivateVendorSubscription,
+    adminGetAllSubscriptions, updateDeliveryDocStatus,
 } from "../../controllers/admin/vendorApproval.js";
 import {
     getAllPincodes, createPincode, updatePincode,
@@ -118,6 +124,13 @@ router.get("/vendor/earnings/weekly", protectVendor, requireApprovedVendor, getW
 router.get("/vendor/subscription", protectVendor, getSubscription);
 router.post("/vendor/subscription/request-change", protectVendor, requireApprovedVendor, requestPlanChange);
 router.post("/vendor/subscription/cancel-request", protectVendor, requireApprovedVendor, cancelPlanChangeRequest);
+
+// ── Vendor Subscription Payment (Razorpay) ────────────────────────────────
+router.get("/vendor/subscription/plans", protectVendor, getSubscriptionPlans);
+router.post("/vendor/subscription/create-order", protectVendor, requireApprovedVendor, createSubscriptionOrder);
+router.post("/vendor/subscription/verify-payment", protectVendor, requireApprovedVendor, verifySubscriptionPayment);
+router.post("/vendor/subscription/payment-failed", protectVendor, requireApprovedVendor, handleSubscriptionPaymentFailure);
+router.get("/vendor/subscription/payment-history", protectVendor, getSubscriptionPaymentHistory);
 // ── Vendor Payouts ────────────────────────────────────────────────────────
 router.get("/vendor/payouts", protectVendor, requireApprovedVendor, vendorGetPayouts);
 router.post("/vendor/payouts/request", protectVendor, requireApprovedVendor, vendorRequestPayout);
@@ -135,6 +148,8 @@ router.patch("/admin/vendors/:id/suspend", protect, adminOnly, suspendVendor);
 router.patch("/admin/vendors/:id/commission", protect, adminOnly, updateCommission);
 router.delete("/admin/vendors/:id", protect, adminOnly, deleteVendor);
 router.post("/admin/vendors/:id/subscription", protect, adminOnly, activateVendorSubscription);
+router.patch("/admin/vendors/:id/subscription/deactivate", protect, adminOnly, deactivateVendorSubscription);
+router.get("/admin/subscriptions", protect, adminOnly, adminGetAllSubscriptions);
 
 // ── Admin: Pincodes ───────────────────────────────────────────────────────────
 router.get("/admin/pincodes", protect, adminOnly, getAllPincodes);

@@ -211,6 +211,7 @@ const AdminAddProduct = () => {
     const [selSizes, setSelSizes] = useState([]);
     const [sizeStockMap, setSizeStockMap] = useState({});
     const [hls, setHls] = useState([{ key: "", value: "" }]);
+    const [hlTemplate, setHlTemplate] = useState([]);
     const [tab, setTab] = useState("basic");
     const [categories, setCategories] = useState([]);
 
@@ -220,6 +221,20 @@ const AdminAddProduct = () => {
             setCategories(cats);
         }).catch(() => { });
     }, []);
+
+    // Fetch highlight template when category changes
+    useEffect(() => {
+        if (!form.category) { setHlTemplate([]); return; }
+        api.get(`/categories/highlight-template?category=${encodeURIComponent(form.category)}`)
+            .then(res => {
+                const tmpl = res.data?.highlightTemplate || [];
+                setHlTemplate(tmpl);
+                if (tmpl.length) {
+                    setHls(tmpl.map(t => ({ key: t.title, value: "" })));
+                }
+            })
+            .catch(() => setHlTemplate([]));
+    }, [form.category]);
 
     const showToast = useCallback((type, msg) => {
         setToast({ type, msg });
@@ -388,6 +403,7 @@ const AdminAddProduct = () => {
                 const obj = {};
                 validHls.forEach(h => { obj[h.key.trim()] = h.value.trim(); });
                 fd.append("highlights", JSON.stringify(obj));
+                fd.append("highlightsArray", JSON.stringify(validHls.map(h => ({ title: h.key.trim(), value: h.value.trim() }))));
             }
 
             const response = await api.post("/products/admin", fd);
@@ -759,7 +775,7 @@ const AdminAddProduct = () => {
                                                         className="ap-inp ap-sel"
                                                         style={{ flex: "0 0 148px", padding: "9px 32px 9px 10px" }}>
                                                         <option value="">Select key</option>
-                                                        {HIGHLIGHT_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
+                                                        {(hlTemplate.length ? hlTemplate.map(t => t.title) : HIGHLIGHT_KEYS).map(k => <option key={k} value={k}>{k}</option>)}
                                                     </select>
                                                     <input value={h.value} onChange={e => updateHL(i, "value", e.target.value)}
                                                         placeholder="Value…"

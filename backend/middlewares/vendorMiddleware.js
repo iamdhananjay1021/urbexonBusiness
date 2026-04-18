@@ -62,10 +62,21 @@ export const requireApprovedVendor = (req, res, next) => {
 export const requireActiveSubscription = async (req, res, next) => {
     try {
         const sub = await Subscription.findOne({ vendorId: req.vendor._id }).lean();
-        if (!sub || sub.status !== "active")
-            return res.status(403).json({ success: false, message: "Your subscription is not active. Please contact admin.", subscriptionRequired: true });
+        if (!sub || !["active"].includes(sub.status))
+            return res.status(403).json({
+                success: false,
+                message: "Your subscription is not active. Please activate a plan to continue.",
+                subscriptionRequired: true,
+                subscriptionStatus: sub?.status || "none",
+            });
         if (sub.expiryDate && new Date() > new Date(sub.expiryDate))
-            return res.status(403).json({ success: false, message: "Subscription expired. Please renew to continue.", subscriptionExpired: true });
+            return res.status(403).json({
+                success: false,
+                message: "Subscription expired. Please renew to continue.",
+                subscriptionExpired: true,
+                subscriptionStatus: "expired",
+                expiryDate: sub.expiryDate,
+            });
         req.subscription = sub;
         next();
     } catch (err) {

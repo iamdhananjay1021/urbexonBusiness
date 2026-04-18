@@ -2,6 +2,9 @@
  * Subscription.js
  * Monthly fee based model - no commission
  * Vendor pays flat monthly fee to list on Urbexon Hour
+ *
+ * States: inactive → pending → active → expired / cancelled
+ * Activation ONLY via verified payment or admin manual override
  */
 import mongoose from "mongoose";
 
@@ -15,13 +18,13 @@ const subscriptionSchema = new mongoose.Schema({
     },
 
     // Plan details
-    monthlyFee: { type: Number, required: true },  // ₹ per month
-    maxProducts: { type: Number, default: 50 },     // product listing limit
+    monthlyFee: { type: Number, required: true },
+    maxProducts: { type: Number, default: 50 },
 
     status: {
         type: String,
-        enum: ["active", "expired", "cancelled", "pending_payment"],
-        default: "pending_payment",
+        enum: ["inactive", "pending", "active", "expired", "cancelled", "pending_payment"],
+        default: "inactive",
         index: true,
     },
 
@@ -36,8 +39,20 @@ const subscriptionSchema = new mongoose.Schema({
         date: { type: Date, default: Date.now },
         method: { type: String, enum: ["razorpay", "manual", "free_trial"] },
         reference: { type: String },
+        razorpayOrderId: { type: String, default: null },
+        razorpayPaymentId: { type: String, default: null },
         months: { type: Number, default: 1 },
+        status: { type: String, enum: ["success", "failed", "pending"], default: "pending" },
     }],
+
+    // Pending Razorpay order (for in-progress payments)
+    pendingPayment: {
+        razorpayOrderId: { type: String, default: null },
+        plan: { type: String, default: null },
+        months: { type: Number, default: null },
+        amount: { type: Number, default: null },
+        createdAt: { type: Date, default: null },
+    },
 
     // Plan change request (vendor self-service)
     requestedPlan: { type: String, enum: ["starter", "basic", "standard", "premium", null], default: null },

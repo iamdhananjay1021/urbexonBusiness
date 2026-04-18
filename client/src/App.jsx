@@ -5,6 +5,7 @@ import { BrowserRouter as Router } from "react-router-dom";
 import { Suspense, lazy, useEffect, useState } from "react";
 
 import { AuthProvider } from "./contexts/AuthContext";
+import { LocationProvider } from "./contexts/LocationContext";
 
 const AppRoutes = lazy(() => import("./routes/AppRoutes"));
 
@@ -29,9 +30,11 @@ export default function App() {
     <ErrorBoundary>
       <Router>
         <AuthProvider>
-          <GlobalWebSocket />
-          <AppRoutes />
-          <Toast toast={toast} />
+          <LocationProvider>
+            <GlobalWebSocket />
+            <AppRoutes />
+            <Toast toast={toast} />
+          </LocationProvider>
         </AuthProvider>
       </Router>
     </ErrorBoundary>

@@ -58,6 +58,16 @@ const productSchema = new mongoose.Schema({
         extraPrice: { type: Number, default: 0, min: 0 },
     },
     highlights: { type: Map, of: String, default: {} },
+    // Structured highlights array: [{ title: "Weight", value: "1kg" }]
+    highlightsArray: {
+        type: [
+            {
+                title: { type: String, required: true, trim: true },
+                value: { type: String, required: true, trim: true },
+            },
+        ],
+        default: [],
+    },
 
     // ── Images ────────────────────────────────────────────
     images: { type: [imageSchema], default: [] },

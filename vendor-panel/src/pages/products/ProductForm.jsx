@@ -27,6 +27,9 @@ const ProductForm = () => {
     stock: "", prepTimeMinutes: "10", maxOrderQty: "10",
     isDeal: false, dealEndsAt: "",
   });
+  const [highlights, setHighlights] = useState([]); // [{ title, value }]
+  const [highlightTemplate, setHighlightTemplate] = useState([]); // from category
+  const [customHighlight, setCustomHighlight] = useState({ title: "", value: "" });
 
   // Fetch dynamic categories (with subcategories)
   useEffect(() => {
@@ -40,9 +43,21 @@ const ProductForm = () => {
 
   // Update subcategory options when category changes
   useEffect(() => {
-    if (!form.category) { setSubcategoryOptions([]); return; }
+    if (!form.category) { setSubcategoryOptions([]); setHighlightTemplate([]); return; }
     const cat = categoryList.find(c => c.name === form.category);
     setSubcategoryOptions(Array.isArray(cat?.subcategories) ? cat.subcategories : []);
+
+    // Fetch highlight template for this category
+    api.get("/categories/highlight-template", { params: { name: form.category } })
+      .then(({ data }) => {
+        const tmpl = data.highlightTemplate || [];
+        setHighlightTemplate(tmpl);
+        // Pre-populate highlights with template titles if not already set
+        if (tmpl.length > 0 && highlights.length === 0) {
+          setHighlights(tmpl.map(t => ({ title: t.title, value: "" })));
+        }
+      })
+      .catch(() => setHighlightTemplate([]));
   }, [form.category, categoryList]);
 
   useEffect(() => {
@@ -51,6 +66,9 @@ const ProductForm = () => {
     api.get(`/products/${id}`).then(({ data }) => {
       setForm({ name: data.name || "", description: data.description || "", price: data.price || "", mrp: data.mrp || "", category: data.category || "", subcategory: data.subcategory || "", tags: (data.tags || []).join(", "), stock: data.stock || "", prepTimeMinutes: data.prepTimeMinutes || "10", maxOrderQty: data.maxOrderQty || "10", isDeal: !!data.isDeal, dealEndsAt: data.dealEndsAt ? new Date(data.dealEndsAt).toISOString().slice(0, 16) : "" });
       setExistingImages(data.images || []);
+      if (Array.isArray(data.highlightsArray) && data.highlightsArray.length > 0) {
+        setHighlights(data.highlightsArray);
+      }
     }).catch(() => setError("Failed to load product")).finally(() => setLoading(false));
   }, [id]);
 
@@ -68,6 +86,9 @@ const ProductForm = () => {
       setSaving(true); setError("");
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      // Add structured highlights
+      const validHighlights = highlights.filter(h => h.title.trim() && h.value.trim());
+      fd.append("highlightsArray", JSON.stringify(validHighlights));
       images.forEach(img => fd.append("images", img.file));
       if (isEdit) await api.put(`/products/vendor/${id}`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       else await api.post("/products/vendor", fd, { headers: { "Content-Type": "multipart/form-data" } });
@@ -134,6 +155,73 @@ const ProductForm = () => {
           <Field label="Available Stock" required><Inp name="stock" type="number" value={form.stock} onChange={onChange} placeholder="50" /></Field>
           <Field label="Max Order Qty"><Inp name="maxOrderQty" type="number" value={form.maxOrderQty} onChange={onChange} /></Field>
           <Field label="Prep Time (mins)"><Inp name="prepTimeMinutes" type="number" value={form.prepTimeMinutes} onChange={onChange} /></Field>
+        </div>
+
+        {/* Product Highlights */}
+        <div style={{ background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", marginTop: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            ✨ Product Highlights
+            <span style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>
+              {highlightTemplate.length > 0 ? "(auto-loaded for this category)" : "(add details about your product)"}
+            </span>
+          </div>
+
+          {highlights.map((h, i) => {
+            const isRequired = highlightTemplate.find(t => t.title === h.title)?.required;
+            return (
+              <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+                <Inp
+                  value={h.title}
+                  onChange={e => {
+                    const next = [...highlights];
+                    next[i] = { ...next[i], title: e.target.value };
+                    setHighlights(next);
+                  }}
+                  placeholder="e.g. Weight"
+                  style={{ flex: "0 0 35%", fontSize: 12, padding: "8px 10px" }}
+                  readOnly={highlightTemplate.some(t => t.title === h.title)}
+                />
+                <Inp
+                  value={h.value}
+                  onChange={e => {
+                    const next = [...highlights];
+                    next[i] = { ...next[i], value: e.target.value };
+                    setHighlights(next);
+                  }}
+                  placeholder="e.g. 1kg"
+                  style={{ flex: 1, fontSize: 12, padding: "8px 10px", borderColor: isRequired && !h.value.trim() ? "#fca5a5" : undefined }}
+                />
+                <button type="button" onClick={() => setHighlights(p => p.filter((_, j) => j !== i))}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 4 }}>
+                  <FaTrash size={11} />
+                </button>
+              </div>
+            );
+          })}
+
+          {/* Add custom highlight */}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+            <Inp
+              value={customHighlight.title}
+              onChange={e => setCustomHighlight(p => ({ ...p, title: e.target.value }))}
+              placeholder="Add highlight name…"
+              style={{ flex: "0 0 35%", fontSize: 12, padding: "8px 10px" }}
+            />
+            <Inp
+              value={customHighlight.value}
+              onChange={e => setCustomHighlight(p => ({ ...p, value: e.target.value }))}
+              placeholder="Value"
+              style={{ flex: 1, fontSize: 12, padding: "8px 10px" }}
+            />
+            <button type="button" onClick={() => {
+              if (customHighlight.title.trim() && customHighlight.value.trim()) {
+                setHighlights(p => [...p, { title: customHighlight.title.trim(), value: customHighlight.value.trim() }]);
+                setCustomHighlight({ title: "", value: "" });
+              }
+            }} style={{ background: "#1a1740", color: "#c9a84c", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+              + Add
+            </button>
+          </div>
         </div>
 
         {/* Deal toggle */}

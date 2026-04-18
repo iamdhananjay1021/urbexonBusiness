@@ -8,6 +8,7 @@ import {
    createCategory,
    updateCategory,
    deleteCategory,
+   getCategoryHighlightTemplate,
 } from "../controllers/categoryController.js";
 import { protect, adminOnly } from "../middlewares/authMiddleware.js";
 
@@ -31,6 +32,7 @@ router.get("/", getActiveCategories);
    ADMIN ROUTES — specific pehle, dynamic baad mein
 ───────────────────────────────────────────── */
 router.get("/admin/all", protect, adminOnly, getAllCategories);  // ✅ specific pehle
+router.get("/highlight-template", getCategoryHighlightTemplate);  // public — vendors/admin use it
 
 router.post("/", protect, adminOnly, upload.single("image"), createCategory);
 router.put("/:slug", protect, adminOnly, upload.single("image"), updateCategory);

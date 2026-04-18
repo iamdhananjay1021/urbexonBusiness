@@ -6,6 +6,7 @@
 import Vendor from '../models/vendorModels/Vendor.js';
 import Order from '../models/Order.js';
 import Review from '../models/Review.js';
+import Subscription from '../models/vendorModels/Subscription.js';
 import { Settlement } from '../models/vendorModels/Settlement.js';
 import logger from '../utils/logger.js';
 
@@ -177,6 +178,71 @@ export const updateVendorRatings = async () => {
         return { ratingsUpdated: updated };
     } catch (err) {
         logger.error('Update Vendor Ratings Error:', err);
+        throw { message: err.message };
+    }
+};
+
+// ══════════════════════════════════════════════════════
+// 4️⃣ AUTO-EXPIRE SUBSCRIPTIONS
+// ══════════════════════════════════════════════════════
+export const autoExpireSubscriptions = async () => {
+    try {
+        const now = new Date();
+
+        // Find active subscriptions that have expired
+        const expired = await Subscription.find({
+            status: "active",
+            expiryDate: { $lte: now },
+        });
+
+        if (expired.length === 0) {
+            return { expiredCount: 0 };
+        }
+
+        let count = 0;
+        for (const sub of expired) {
+            try {
+                sub.status = "expired";
+                await sub.save();
+
+                // Sync vendor embedded subscription
+                await Vendor.findByIdAndUpdate(sub.vendorId, {
+                    "subscription.isActive": false,
+                });
+
+                logger.info(`⏰ Subscription expired for vendor ${sub.vendorId} (plan: ${sub.plan})`);
+                count++;
+            } catch (err) {
+                logger.warn(`Failed to expire subscription for vendor ${sub.vendorId}: ${err.message}`);
+            }
+        }
+
+        // Also expire trials
+        const expiredTrials = await Subscription.find({
+            isTrialActive: true,
+            trialEndsAt: { $lte: now },
+        });
+
+        for (const sub of expiredTrials) {
+            try {
+                sub.isTrialActive = false;
+                if (sub.status === "active" && sub.expiryDate <= now) {
+                    sub.status = "expired";
+                    await Vendor.findByIdAndUpdate(sub.vendorId, {
+                        "subscription.isActive": false,
+                    });
+                }
+                await sub.save();
+                logger.info(`⏰ Trial expired for vendor ${sub.vendorId}`);
+            } catch (err) {
+                logger.warn(`Failed to expire trial for vendor ${sub.vendorId}`);
+            }
+        }
+
+        logger.info(`⏰ Auto-expired ${count} subscriptions, ${expiredTrials.length} trials`);
+        return { expiredCount: count, trialsExpired: expiredTrials.length };
+    } catch (err) {
+        logger.error('Auto-Expire Subscriptions Error:', err);
         throw { message: err.message };
     }
 };
