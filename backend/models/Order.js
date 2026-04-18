@@ -282,13 +282,33 @@ export const generateInvoiceNumber = async () => {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, "0");
-    const counterId = `INV-${year}-${month}`;
+    const prefix = `INV-${year}-${month}`;
+    const counterId = prefix;
+
+    // Sync counter with actual max invoice number in DB (first call / drift protection)
+    const Order = mongoose.model("Order");
+    const latest = await Order.findOne(
+        { invoiceNumber: { $regex: `^${prefix}-` } },
+        { invoiceNumber: 1 },
+        { sort: { invoiceNumber: -1 } }
+    ).lean();
+
+    if (latest) {
+        const existingSeq = parseInt(latest.invoiceNumber.split("-").pop(), 10) || 0;
+        // Ensure counter is at least as high as existing max (no upsert — only update existing)
+        await InvoiceCounter.updateOne(
+            { _id: counterId, seq: { $lt: existingSeq } },
+            { $set: { seq: existingSeq } }
+        );
+    }
+
+    // Atomic increment
     const counter = await InvoiceCounter.findOneAndUpdate(
         { _id: counterId },
         { $inc: { seq: 1 } },
         { upsert: true, new: true }
     );
-    return `INV-${year}-${month}-${String(counter.seq).padStart(5, "0")}`;
+    return `${prefix}-${String(counter.seq).padStart(5, "0")}`;
 };
 
 export default mongoose.model("Order", orderSchema);
