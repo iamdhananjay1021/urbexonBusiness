@@ -8,7 +8,7 @@ const AuthContext = createContext(null);
 const STORAGE_KEY = "deliveryAuth";
 
 export const AuthProvider = ({ children }) => {
-  const [rider, setRider]   = useState(null);
+  const [rider, setRider] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,13 +28,13 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
     if (!["delivery_boy"].includes(data.role)) throw new Error("Not a delivery partner account");
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ token: data.token, user: data }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ token: data.token, rider: { _id: data._id, name: data.name, email: data.email, phone: data.phone, role: data.role } }));
     api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
     // Fetch delivery profile
     try {
       const { data: status } = await api.get("/delivery/status");
-      setRider(status.rider || data);
-    } catch { setRider(data); }
+      setRider(status.rider || { _id: data._id, name: data.name, email: data.email, phone: data.phone, role: data.role });
+    } catch { setRider({ _id: data._id, name: data.name, email: data.email, phone: data.phone, role: data.role }); }
     return data;
   };
 

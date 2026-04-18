@@ -9,7 +9,7 @@ const walkInItemSchema = new mongoose.Schema({
 
 const walkInOrderSchema = new mongoose.Schema(
     {
-        billNumber: { type: String, unique: true },
+        billNumber: { type: String, unique: true, sparse: true },
         customerName: { type: String, default: "Walk-in Customer", trim: true },
         phone: { type: String, default: "" },
         items: [walkInItemSchema],

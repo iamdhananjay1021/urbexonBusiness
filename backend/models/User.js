@@ -56,7 +56,7 @@ const userSchema = new mongoose.Schema(
         },
 
         // ── Google OAuth ──
-        googleId: { type: String, default: null, sparse: true },
+        googleId: { type: String, default: null, unique: true, sparse: true },
 
         // ── ROLES: user | vendor | delivery_boy | admin | owner ──
         role: {
@@ -99,6 +99,10 @@ const userSchema = new mongoose.Schema(
         // ── Password Reset ──
         passwordResetToken: { type: String, default: undefined, select: false },
         passwordResetExpires: { type: Date, default: undefined, select: false },
+
+        // ── Block ──
+        isBlocked: { type: Boolean, default: false },
+        blockedAt: { type: Date, default: null },
     },
     { timestamps: true }
 );

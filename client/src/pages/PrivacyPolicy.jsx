@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import SEO from "../components/SEO";
 
 export default function PrivacyPolicy() {
     useEffect(() => {
@@ -7,6 +8,7 @@ export default function PrivacyPolicy() {
 
     return (
         <div className="min-h-screen bg-[#fdf8f3]">
+            <SEO title="Privacy Policy" description="Read Urbexon's privacy policy. Learn how we collect, use, and protect your personal information." path="/privacy-policy" />
             {/* Header */}
             <div className="bg-white border-b border-stone-100 py-12">
                 <div className="max-w-3xl mx-auto px-6 text-center">

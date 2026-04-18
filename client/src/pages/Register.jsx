@@ -4,6 +4,7 @@ import {
     FaUser, FaEnvelope, FaLock, FaEye, FaEyeSlash,
     FaPhone, FaStore, FaMotorcycle, FaArrowLeft
 } from "react-icons/fa";
+import SEO from "../components/SEO";
 import api from "../api/axios";
 import { useAuth } from "../contexts/AuthContext";
 import { getFirebaseAuth, isFirebaseConfigured } from "../config/firebase";
@@ -214,6 +215,7 @@ const Register = () => {
 
     return (
         <div className="rg-root">
+            <SEO title="Create Account" description="Create your Urbexon account and start shopping." path="/register" noindex />
             <style>{S}</style>
             <div className="rg-card">
                 <div className="rg-top">

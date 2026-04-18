@@ -28,6 +28,13 @@ const STYLES = `
     .ac-badge-delivery { background: #fffbeb; color: #d97706; }
     .ac-verified { color: #22c55e; font-size: 11px; font-weight: 700; }
     .ac-unverified { color: #94a3b8; font-size: 11px; }
+    .ac-action-btn { padding: 5px 12px; border-radius: 6px; border: 1px solid #e2e8f0; background: #fff; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.15s; }
+    .ac-action-btn:hover { background: #f1f5f9; }
+    .ac-action-btn.block { color: #dc2626; border-color: #fecaca; }
+    .ac-action-btn.block:hover { background: #fef2f2; }
+    .ac-action-btn.unblock { color: #16a34a; border-color: #bbf7d0; }
+    .ac-action-btn.unblock:hover { background: #f0fdf4; }
+    .ac-blocked-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; background: #fef2f2; color: #dc2626; margin-left: 6px; }
     .ac-empty { padding: 60px; text-align: center; color: #94a3b8; font-size: 14px; }
     .ac-pagination { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b; }
     .ac-page-btns { display: flex; gap: 6px; }
@@ -101,6 +108,16 @@ const AdminCustomers = ({ defaultRole = "user" }) => {
     useEffect(() => { fetchUsers(); }, [fetchUsers]);
     useEffect(() => { fetchStats(); }, [fetchStats]);
     useEffect(() => { setPage(1); }, [activeRole, search]);
+
+    const toggleBlock = async (userId, currentlyBlocked) => {
+        if (!window.confirm(`${currentlyBlocked ? "Unblock" : "Block"} this user?`)) return;
+        try {
+            const { data } = await api.patch(`/auth/users/${userId}/toggle-block`);
+            setUsers(prev => prev.map(u => u._id === userId ? { ...u, isBlocked: data.isBlocked } : u));
+        } catch (e) {
+            alert(e.response?.data?.message || "Action failed");
+        }
+    };
 
     const roleBadgeClass = (role) => {
         if (role === "vendor") return "ac-badge-vendor";
@@ -177,6 +194,7 @@ const AdminCustomers = ({ defaultRole = "user" }) => {
                                 <th>Role</th>
                                 <th>Verified</th>
                                 <th>Joined</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -185,7 +203,7 @@ const AdminCustomers = ({ defaultRole = "user" }) => {
                                     <td>
                                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                             <div className="ac-avatar">{u.name?.[0]?.toUpperCase()}</div>
-                                            <span style={{ fontWeight: 600 }}>{u.name}</span>
+                                            <span style={{ fontWeight: 600 }}>{u.name}{u.isBlocked && <span className="ac-blocked-badge">Blocked</span>}</span>
                                         </div>
                                     </td>
                                     <td style={{ color: "#64748b" }}>{u.email}</td>
@@ -202,6 +220,14 @@ const AdminCustomers = ({ defaultRole = "user" }) => {
                                     </td>
                                     <td style={{ color: "#64748b" }}>
                                         {u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                                    </td>
+                                    <td>
+                                        <button
+                                            className={`ac-action-btn ${u.isBlocked ? "unblock" : "block"}`}
+                                            onClick={() => toggleBlock(u._id, u.isBlocked)}
+                                        >
+                                            {u.isBlocked ? "Unblock" : "Block"}
+                                        </button>
                                     </td>
                                 </tr>
                             ))}

@@ -95,7 +95,7 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
             .update(`${razorpay_order_id}|${razorpay_payment_id}`)
             .digest("hex");
 
-        if (expectedSig !== razorpay_signature)
+        if (!razorpay_signature || !crypto.timingSafeEqual(Buffer.from(expectedSig, "hex"), Buffer.from(razorpay_signature, "hex")))
             return res.status(400).json({ message: "Payment verification failed", success: false });
 
         // ✅ Step 2: Validate customer data
@@ -249,7 +249,7 @@ export const razorpayWebhook = async (req, res) => {
                 .createHmac("sha256", secret)
                 .update(rawBody)
                 .digest("hex");
-            if (expectedSig !== receivedSig)
+            if (!receivedSig || !crypto.timingSafeEqual(Buffer.from(expectedSig, "hex"), Buffer.from(receivedSig, "hex")))
                 return res.status(400).json({ success: false, message: "Invalid webhook signature" });
         }
 

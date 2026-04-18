@@ -1,17 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import api from "../api/axios";
+import SEO from "../components/SEO";
 
 export default function ContactUs() {
     const [form, setForm] = useState({ name: "", email: "", phone: "", subject: "", message: "" });
     const [status, setStatus] = useState(null); // null | "loading" | "success" | "error"
-
-    // ✅ SEO — dynamic title & meta
-    useEffect(() => {
-        document.title = "Contact Us | Urbexon – Get in Touch with Our Team";
-        const desc = document.querySelector('meta[name="description"]');
-        if (desc) desc.setAttribute("content",
-            "Contact Urbexon in Noida. Call +91 88084 85840, email support@urbexon.com, or visit us at our location in Noida, UP."
-        );
-    }, []);
 
     const handleChange = (e) => {
         setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -25,12 +18,8 @@ export default function ContactUs() {
         setStatus("loading");
 
         try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/contact`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(form),
-            });
-            if (res.ok) {
+            const res = await api.post("/contact", form);
+            if (res.data) {
                 setStatus("success");
                 setForm({ name: "", email: "", phone: "", subject: "", message: "" });
             } else {
@@ -43,6 +32,7 @@ export default function ContactUs() {
 
     return (
         <div className="min-h-screen bg-[#fdf8f3]">
+            <SEO title="Contact Us" description="Contact Urbexon in Noida. Call +91 88084 85840 or email support@urbexon.in. We're here to help!" path="/contact" />
             {/* Header */}
             <div className="bg-white border-b border-amber-100 py-12">
                 <div className="max-w-5xl mx-auto px-6 text-center">

@@ -349,7 +349,7 @@ const AdminLocalDelivery = () => {
                         <FiClock size={14} /> Awaiting Assignment ({unassigned.length})
                     </h3>
                     <div style={{ display: "grid", gap: 10 }}>
-                        {unassigned.map((o, i) => <OrderCard key={o._id} o={o} i={i} onAssign={setModal} />)}
+                        {unassigned.map((o, i) => <OrderCard key={o._id} o={o} i={i} onAssign={setModal} onRefresh={load} />)}
                     </div>
                 </div>
             )}
@@ -361,7 +361,7 @@ const AdminLocalDelivery = () => {
                         <FiCheckCircle size={14} /> Assigned ({assigned.length})
                     </h3>
                     <div style={{ display: "grid", gap: 10 }}>
-                        {assigned.map((o, i) => <OrderCard key={o._id} o={o} i={i} onAssign={setModal} />)}
+                        {assigned.map((o, i) => <OrderCard key={o._id} o={o} i={i} onAssign={setModal} onRefresh={load} />)}
                     </div>
                 </div>
             )}
@@ -370,7 +370,7 @@ const AdminLocalDelivery = () => {
 };
 
 /* ── Order Card ── */
-const OrderCard = ({ o, i, onAssign }) => {
+const OrderCard = ({ o, i, onAssign, onRefresh }) => {
     const st = STATUS_COLORS[o.orderStatus] || STATUS_COLORS.PLACED;
     const hasRider = o.delivery?.assignedTo || o.delivery?.riderName;
 

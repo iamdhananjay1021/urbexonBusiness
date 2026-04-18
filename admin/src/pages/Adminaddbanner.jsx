@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createBanner } from "../api/bannerApi";
-import { FiArrowLeft, FiUpload, FiX } from "react-icons/fi";
+import { FiArrowLeft, FiUpload, FiX, FiLink, FiType } from "react-icons/fi";
 
 const inputStyle = {
     width: "100%", padding: "10px 14px",
@@ -19,9 +19,28 @@ const Field = ({ label, hint, children }) => (
     </div>
 );
 
+const LINK_TYPES = [
+    { value: "none", label: "No Link", icon: "—" },
+    { value: "route", label: "Internal Route", icon: "🔗" },
+    { value: "product", label: "Product Page", icon: "📦" },
+    { value: "category", label: "Category Page", icon: "📂" },
+    { value: "external", label: "External URL", icon: "🌐" },
+];
+
+const LINK_HINTS = {
+    none: "",
+    route: "e.g. /deals, /urbexon-hour, /category/fashion",
+    product: "e.g. /product/6639abc123",
+    category: "e.g. /category/electronics",
+    external: "e.g. https://example.com/promo",
+};
+
 const AdminAddBanner = () => {
     const navigate = useNavigate();
-    const [form, setForm] = useState({ title: "", subtitle: "", link: "", isActive: true, order: 0, type: "ecommerce", placement: "hero" });
+    const [form, setForm] = useState({
+        title: "", subtitle: "", description: "", link: "", linkType: "none", buttonText: "",
+        isActive: true, order: 0, type: "ecommerce", placement: "hero", startDate: "", endDate: "",
+    });
     const [imageFile, setImageFile] = useState(null);
     const [preview, setPreview] = useState("");
     const [saving, setSaving] = useState(false);
@@ -51,11 +70,16 @@ const AdminAddBanner = () => {
             const fd = new FormData();
             fd.append("title", form.title.trim());
             fd.append("subtitle", form.subtitle.trim());
+            fd.append("description", form.description.trim());
             fd.append("link", form.link.trim());
+            fd.append("linkType", form.linkType);
+            fd.append("buttonText", form.buttonText.trim());
             fd.append("isActive", form.isActive);
             fd.append("order", form.order);
             fd.append("type", form.type);
             fd.append("placement", form.placement);
+            if (form.startDate) fd.append("startDate", form.startDate);
+            if (form.endDate) fd.append("endDate", form.endDate);
             fd.append("image", imageFile);
             await createBanner(fd);
             navigate("/admin/banners");
@@ -114,22 +138,50 @@ const AdminAddBanner = () => {
                     </Field>
 
                     {/* Title */}
-                    <Field label="Title" hint="(optional)">
-                        <input name="title" value={form.title} onChange={handleChange} placeholder="e.g. Shop The Trend"
+                    <Field label="Title" hint="(optional — shown as main heading)">
+                        <input name="title" value={form.title} onChange={handleChange} placeholder="e.g. Summer Sale — Up to 70% Off"
                             style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
                     </Field>
 
                     {/* Subtitle */}
-                    <Field label="Subtitle" hint="(optional)">
-                        <input name="subtitle" value={form.subtitle} onChange={handleChange} placeholder="e.g. Live The Trend."
+                    <Field label="Subtitle" hint="(optional — shown below title)">
+                        <input name="subtitle" value={form.subtitle} onChange={handleChange} placeholder="e.g. Limited time offer on fashion & electronics"
                             style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
                     </Field>
 
-                    {/* Link */}
-                    <Field label="Link URL" hint="(optional)">
-                        <input name="link" value={form.link} onChange={handleChange} placeholder="e.g. /category/mens-fashion"
-                            style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                    {/* Description */}
+                    <Field label="Description" hint="(optional — additional detail text)">
+                        <textarea name="description" value={form.description} onChange={handleChange} placeholder="Detailed description shown on hover or expanded view..."
+                            rows={2} style={{ ...inputStyle, resize: "vertical" }} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
                     </Field>
+
+                    {/* Link Type */}
+                    <Field label="Click Action" hint="(what happens when user clicks)">
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {LINK_TYPES.map(lt => (
+                                <button key={lt.value} type="button" onClick={() => setForm(prev => ({ ...prev, linkType: lt.value, link: lt.value === "none" ? "" : prev.link }))}
+                                    style={{ padding: "7px 12px", border: `2px solid ${form.linkType === lt.value ? "#2563eb" : "#e2e8f0"}`, borderRadius: 8, background: form.linkType === lt.value ? "#eff6ff" : "#fff", cursor: "pointer", fontSize: 11, fontWeight: form.linkType === lt.value ? 700 : 500, color: form.linkType === lt.value ? "#2563eb" : "#64748b", fontFamily: "inherit", transition: "all 0.2s" }}>
+                                    {lt.icon} {lt.label}
+                                </button>
+                            ))}
+                        </div>
+                    </Field>
+
+                    {/* Link URL (shown when linkType != none) */}
+                    {form.linkType !== "none" && (
+                        <Field label="Link URL" hint={`(${LINK_HINTS[form.linkType]})`}>
+                            <input name="link" value={form.link} onChange={handleChange} placeholder={LINK_HINTS[form.linkType]}
+                                style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                        </Field>
+                    )}
+
+                    {/* Button Text (shown when linkType != none) */}
+                    {form.linkType !== "none" && (
+                        <Field label="Button Text" hint="(CTA label, e.g. 'Shop Now', 'View Deals')">
+                            <input name="buttonText" value={form.buttonText} onChange={handleChange} placeholder="e.g. Shop Now"
+                                style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                        </Field>
+                    )}
 
                     {/* Type & Placement */}
                     <div className="bnr-grid2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -152,6 +204,18 @@ const AdminAddBanner = () => {
                                     </button>
                                 ))}
                             </div>
+                        </Field>
+                    </div>
+
+                    {/* Schedule (Start & End Date) */}
+                    <div className="bnr-grid2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                        <Field label="Start Date" hint="(optional — leave empty for immediate)">
+                            <input name="startDate" type="datetime-local" value={form.startDate} onChange={handleChange}
+                                style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                        </Field>
+                        <Field label="End Date" hint="(optional — leave empty for no expiry)">
+                            <input name="endDate" type="datetime-local" value={form.endDate} onChange={handleChange}
+                                style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
                         </Field>
                     </div>
 

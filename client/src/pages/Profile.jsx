@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../api/axios";
+import SEO from "../components/SEO";
 import {
     FaUser, FaEnvelope, FaBox, FaArrowRight,
     FaMapMarkerAlt, FaSignOutAlt, FaEdit, FaSave,
@@ -154,6 +155,7 @@ const Profile = () => {
 
     return (
         <>
+            <SEO title="My Profile" noindex />
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
@@ -438,7 +440,7 @@ const Profile = () => {
                                                 <div style={{ flex: 1 }}>
                                                     <p style={{ fontSize: 13, fontWeight: 700, color: "var(--pf-navy)", marginBottom: 4 }}>{addr.name}</p>
                                                     <p style={{ fontSize: 12, color: "var(--pf-muted)", lineHeight: 1.6 }}>
-                                                        {addr.line1}{addr.line2 ? `, ${addr.line2}` : ""}<br />
+                                                        {addr.house}{addr.area ? `, ${addr.area}` : ""}{addr.landmark ? `, ${addr.landmark}` : ""}<br />
                                                         {addr.city}, {addr.state} — {addr.pincode}<br />
                                                         📞 {addr.phone}
                                                     </p>

@@ -73,7 +73,10 @@ const ActiveOrders = () => {
     try {
       const { data } = await api.get("/delivery/orders");
       setOrders(data.orders || []);
-    } catch { }
+    } catch (err) {
+      console.error("[ActiveOrders]", err.message);
+      setOrders([]);
+    }
     finally { setLoading(false); }
   }, []);
 

@@ -9,6 +9,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { useState, useMemo, useCallback, useEffect } from "react";
+import SEO from "../components/SEO";
 import {
   selectEcommerceItems,
   selectUHItems,
@@ -200,6 +201,7 @@ const Cart = () => {
 
   return (
     <div className="cart-root">
+      <SEO title="Cart" noindex />
       <style>{CSS}</style>
 
       <div className="cart-inner">

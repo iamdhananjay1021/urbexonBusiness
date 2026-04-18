@@ -6,7 +6,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { FaMotorcycle, FaEye, FaEyeSlash, FaPhone, FaBook } from "react-icons/fa";
+import { FaMotorcycle, FaEye, FaEyeSlash } from "react-icons/fa";
 
 const CSS = `
 *{box-sizing:border-box}
@@ -70,7 +70,7 @@ const Login = () => {
           <input className="dl-inp" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="aapka@email.com" required />
           <label className="dl-label">Password</label>
           <div className="dl-pw">
-            <input className="dl-inp" type={show ? "text" : "password"} value={pass} onChange={e => setPass(e.target.value)} required style={{ paddingRight: 40 }} />
+            <input className="dl-inp" type={show ? "text" : "password"} value={pass} onChange={e => setPass(e.target.value)} required minLength={8} placeholder="Min. 8 characters" style={{ paddingRight: 40 }} />
             <button type="button" className="dl-pw-btn" onClick={() => setShow(s => !s)}>
               {show ? <FaEyeSlash size={14} /> : <FaEye size={14} />}
             </button>
@@ -87,14 +87,10 @@ const Login = () => {
         {/* Registration & Training Section */}
         <div className="dl-section">
           <div className="dl-section-title">🚀 Join Our Network</div>
-          <a href="/register" className="dl-action-btn">
+          <Link to="/register" className="dl-action-btn">
             <FaMotorcycle size={14} />
             Register as New Partner
-          </a>
-          <a href="/training" className="dl-action-btn">
-            <FaBook size={14} />
-            Training & Guidelines
-          </a>
+          </Link>
         </div>
 
         {/* Help Section */}

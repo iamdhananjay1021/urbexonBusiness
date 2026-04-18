@@ -119,7 +119,7 @@ const AppRoutes = () => (
   <Suspense fallback={<Loader />}>
     <Routes>
       <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-      <Route path="/register" element={<Register />} />
+      <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
       <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />
       <Route path="/reset-password/:token" element={<PublicOnly><ResetPassword /></PublicOnly>} />
       <Route path="/dashboard" element={<Protected><PrivateLayout><Dashboard /></PrivateLayout></Protected>} />

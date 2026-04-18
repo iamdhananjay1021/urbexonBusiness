@@ -1,10 +1,12 @@
 import { useNavigate } from "react-router-dom";
 import { FaArrowLeft, FaHome, FaSearch } from "react-icons/fa";
+import SEO from "../components/SEO";
 
 const NotFound = () => {
     const navigate = useNavigate();
     return (
         <div style={{ minHeight: "100vh", background: "#f7f4ee", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans',sans-serif", padding: "40px 20px", textAlign: "center" }}>
+            <SEO title="Page Not Found" description="The page you're looking for doesn't exist." noindex />
             <style>{`@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');`}</style>
             <div>
                 <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "clamp(6rem,20vw,10rem)", fontWeight: 700, color: "#e8e4d9", lineHeight: 1, margin: "0 0 8px" }}>404</p>

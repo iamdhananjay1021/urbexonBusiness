@@ -223,6 +223,9 @@ export const login = async (req, res) => {
         if (["admin", "owner"].includes(user.role))
             return res.status(403).json({ success: false, message: "Admin accounts must login via the Admin Panel." });
 
+        if (user.isBlocked)
+            return res.status(403).json({ success: false, message: "Your account has been blocked. Please contact support." });
+
         if (!user.isEmailVerified) {
             const otp = generateOtp();
             user.emailOtp = otp; user.emailOtpExpires = Date.now() + OTP_EXPIRY_MS; user.emailOtpAttempts = 0;
@@ -438,6 +441,25 @@ export const getAllUsers = async (req, res) => {
         res.json({ users, total, page, totalPages: Math.ceil(total / limit), limit });
     } catch (err) {
         res.status(500).json({ success: false, message: "Failed to fetch users" });
+    }
+};
+
+/* ═══════════════════════════════════════════════════
+   BLOCK / UNBLOCK USER (ADMIN)
+═══════════════════════════════════════════════════ */
+export const toggleBlockUser = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+        if (user.role === "admin" || user.role === "owner") return res.status(403).json({ success: false, message: "Cannot block admin/owner accounts" });
+
+        user.isBlocked = !user.isBlocked;
+        user.blockedAt = user.isBlocked ? new Date() : null;
+        await user.save({ validateBeforeSave: false });
+
+        res.json({ success: true, message: `User ${user.isBlocked ? "blocked" : "unblocked"} successfully`, isBlocked: user.isBlocked });
+    } catch (err) {
+        res.status(500).json({ success: false, message: "Failed to update user status" });
     }
 };
 

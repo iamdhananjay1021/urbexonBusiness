@@ -99,6 +99,9 @@ export const useUHCheckout = () => {
         }, 300);
     }, [checkoutItems, paymentMethod, selectedAddress?.pincode]);
 
+    // Cleanup debounce on unmount
+    useEffect(() => () => clearTimeout(pricingDebounce.current), []);
+
     useEffect(() => {
         if (checkoutItems?.length > 0) refreshPricing("RAZORPAY");
     }, []); // eslint-disable-line

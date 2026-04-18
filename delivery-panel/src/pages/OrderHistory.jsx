@@ -15,7 +15,10 @@ const OrderHistory = () => {
         try {
             const { data } = await api.get("/delivery/orders");
             setOrders((data.orders || []).filter(o => o.orderStatus === "DELIVERED"));
-        } catch { }
+        } catch (err) {
+            console.error("[OrderHistory]", err.message);
+            setOrders([]);
+        }
         finally { setLoading(false); }
     }, []);
 

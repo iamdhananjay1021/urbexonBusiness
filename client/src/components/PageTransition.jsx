@@ -54,6 +54,7 @@ const PageTransition = ({ children }) => {
 
             timerRef.current = setTimeout(() => {
                 setDisplayed(pendingRef.current); // ← swap yahan hota hai
+                window.scrollTo({ top: 0, left: 0, behavior: "instant" });
                 setStage("enter");                // Stage 3: ENTER
             }, IDLE_MS);
 

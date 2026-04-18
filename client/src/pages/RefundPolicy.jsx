@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import SEO from "../components/SEO";
 
 export default function RefundPolicy() {
     useEffect(() => {
@@ -7,6 +8,7 @@ export default function RefundPolicy() {
 
     return (
         <div className="min-h-screen bg-[#f5f7fa]">
+            <SEO title="Cancellation & Refund Policy" description="Urbexon cancellation and refund policy. Easy returns and hassle-free refunds." path="/refund-policy" />
 
             {/* Header */}
             <div className="bg-white border-b border-stone-100 py-12">

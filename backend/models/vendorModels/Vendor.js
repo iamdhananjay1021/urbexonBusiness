@@ -104,7 +104,7 @@ const vendorSchema = new mongoose.Schema(
         approvedAt: { type: Date, default: null },
         approvedBy: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: "Admin",
+            ref: "User",
             default: null,
         },
 

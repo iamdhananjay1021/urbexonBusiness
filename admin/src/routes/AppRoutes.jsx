@@ -34,6 +34,8 @@ const AdminCustomers = lazy(() => import("../pages/AdminCustomers"));
 const AdminRefundReturn = lazy(() => import("../pages/AdminRefundReturn"));
 const AdminCoupons = lazy(() => import("../pages/AdminCoupons"));
 const AdminMapDashboard = lazy(() => import("../pages/AdminMapDashboard"));
+const AdminDeliverySettings = lazy(() => import("../pages/AdminDeliverySettings"));
+const SchedulerDashboard = lazy(() => import("../pages/SchedulerDashboard"));
 
 const Loader = () => (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}>
@@ -89,7 +91,9 @@ const AppRoutes = () => (
                     {/* Operations */}
                     <Route path="pincodes" element={<AdminPincodes />} />
                     <Route path="local-delivery" element={<AdminLocalDelivery />} />
+                    <Route path="delivery-settings" element={<AdminDeliverySettings />} />
                     <Route path="map" element={<AdminMapDashboard />} />
+                    <Route path="scheduler" element={<SchedulerDashboard />} />
                 </Route>
             </Route>
 

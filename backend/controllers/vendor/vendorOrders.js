@@ -4,6 +4,7 @@
  */
 import Order from "../../models/Order.js";
 import Product from "../../models/Product.js";
+import { restoreStock } from "../../services/pricing.js";
 import { sendNotification as sendToUser } from "../../utils/notificationQueue.js";
 import { publishToUser } from "../../utils/realtimeHub.js";
 import { startAssignment } from "../../services/assignmentEngine.js";
@@ -21,9 +22,10 @@ export const getVendorOrders = async (req, res) => {
         const filter = { "items.productId": { $in: productIds } };
         if (status) filter.orderStatus = status;
         if (search) {
+            const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             filter.$or = [
-                { invoiceNumber: { $regex: search, $options: "i" } },
-                { customerName: { $regex: search, $options: "i" } },
+                { invoiceNumber: { $regex: escaped, $options: "i" } },
+                { customerName: { $regex: escaped, $options: "i" } },
             ];
         }
 
@@ -102,6 +104,14 @@ export const updateOrderStatus = async (req, res) => {
         }
 
         await order.save();
+
+        // Restore stock on vendor cancel
+        if (status === "CANCELLED") {
+            await restoreStock(order.items);
+            if (order.delivery?.assignedTo) {
+                Order.updateOne({ _id: order._id }, { $set: { "delivery.status": "CANCELLED" } }).catch(() => { });
+            }
+        }
 
         // Trigger assignment engine on READY_FOR_PICKUP for UH local delivery
         if (status === "READY_FOR_PICKUP" && order.delivery?.provider === "LOCAL_RIDER" && !order.delivery?.assignedTo) {

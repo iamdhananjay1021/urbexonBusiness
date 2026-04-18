@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import axios from "axios";
-
-const API = import.meta.env.VITE_API_URL || "https://api.urbexon.in/api";
+import api from "../api/axios";
+import SEO from "../components/SEO";
 
 const VerifyInvoice = () => {
     const { invoiceNumber } = useParams();
@@ -13,10 +12,10 @@ const VerifyInvoice = () => {
     useEffect(() => {
         const verify = async () => {
             try {
-                const res = await axios.get(`${API}/invoice/${invoiceNumber}/verify`);
+                const res = await api.get(`/invoice/${invoiceNumber}/verify`);
                 setData(res.data);
-            } catch {
-                setError("Verification server error. Please try again.");
+            } catch (err) {
+                setError(err.response?.data?.message || "Verification server error. Please try again.");
             } finally {
                 setLoading(false);
             }
@@ -39,6 +38,7 @@ const VerifyInvoice = () => {
             className="min-h-screen bg-stone-100 flex flex-col items-center justify-center px-4 py-12"
             style={{ fontFamily: "'DM Sans', sans-serif" }}
         >
+            <SEO title="Verify Invoice" description="Verify your Urbexon order invoice authenticity online." path="/verify-invoice" noindex />
             <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');`}</style>
 
             {/* Logo */}

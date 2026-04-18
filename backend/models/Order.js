@@ -50,7 +50,7 @@ const orderSchema = new mongoose.Schema(
         /* ── ORDER ITEMS ── */
         items: [
             {
-                productId: mongoose.Schema.Types.ObjectId,
+                productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
                 name: String,
                 price: Number,
                 qty: Number,
@@ -270,17 +270,25 @@ orderSchema.index({ "delivery.status": 1 });
 /* ─────────────────────────────────────────────
    INVOICE NUMBER GENERATOR
    Format: INV-2026-03-00001
-   Auto-increments per month, resets each month
+   Uses atomic findOneAndUpdate counter to avoid race conditions
 ───────────────────────────────────────────── */
+const counterSchema = new mongoose.Schema({
+    _id: String,
+    seq: { type: Number, default: 0 },
+});
+const InvoiceCounter = mongoose.model("InvoiceCounter", counterSchema);
+
 export const generateInvoiceNumber = async () => {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, "0");
-    const startOfMonth = new Date(year, now.getMonth(), 1);
-    const count = await mongoose.model("Order").countDocuments({
-        createdAt: { $gte: startOfMonth },
-    });
-    return `INV-${year}-${month}-${String(count + 1).padStart(5, "0")}`;
+    const counterId = `INV-${year}-${month}`;
+    const counter = await InvoiceCounter.findOneAndUpdate(
+        { _id: counterId },
+        { $inc: { seq: 1 } },
+        { upsert: true, new: true }
+    );
+    return `INV-${year}-${month}-${String(counter.seq).padStart(5, "0")}`;
 };
 
 export default mongoose.model("Order", orderSchema);

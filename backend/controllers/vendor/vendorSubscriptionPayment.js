@@ -155,7 +155,7 @@ export const verifySubscriptionPayment = async (req, res) => {
             .update(`${razorpay_order_id}|${razorpay_payment_id}`)
             .digest("hex");
 
-        if (expectedSig !== razorpay_signature) {
+        if (!crypto.timingSafeEqual(Buffer.from(expectedSig, "hex"), Buffer.from(razorpay_signature, "hex"))) {
             // Log failed attempt
             await logPaymentAttempt(vendorId, razorpay_order_id, razorpay_payment_id, "failed", "Signature verification failed");
             return res.status(400).json({

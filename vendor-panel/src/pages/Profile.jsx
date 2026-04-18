@@ -62,7 +62,10 @@ const Profile = () => {
     try {
       const { data } = await api.put("/vendor/me", fd, { headers: { "Content-Type": "multipart/form-data" } });
       setVendor(data.vendor);
-    } catch { }
+    } catch (err) {
+      setMsg({ text: err.response?.data?.message || "Failed to upload photo", type: "error" });
+      setTimeout(() => setMsg({ text: "", type: "" }), 3000);
+    }
   };
 
   const set = (key, val) => setVendor(prev => ({ ...prev, [key]: val }));

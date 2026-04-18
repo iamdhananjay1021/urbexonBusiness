@@ -11,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../api/axios";
 import { FaStore, FaUser, FaBuilding, FaUniversity, FaMapMarkerAlt, FaUpload, FaCheckCircle, FaClock, FaTimes, FaArrowRight } from "react-icons/fa";
+import SEO from "../components/SEO";
 
 const CSS = `
 *{box-sizing:border-box}
@@ -170,6 +171,7 @@ const BecomeVendor = () => {
 
   return (
     <div className="bv-root">
+      <SEO title="Become a Vendor" description="Start selling on Urbexon. Register as a vendor partner and reach lakhs of customers across India." path="/become-vendor" />
       <style>{CSS}</style>
       <div className="bv-hero">
         <div className="bv-badge"><FaStore size={11} />Vendor Partner Program</div>

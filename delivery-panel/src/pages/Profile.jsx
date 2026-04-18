@@ -41,7 +41,9 @@ const Profile = () => {
         const bd = data.rider.bankDetails || {};
         setBankForm({ accountHolder: bd.accountHolder || "", accountNumber: bd.accountNumber || "", ifsc: bd.ifsc || "", bankName: bd.bankName || "", branch: bd.branch || "", upiId: bd.upiId || "" });
       }
-    } catch { }
+    } catch (err) {
+      console.error("[Profile]", err.message);
+    }
     finally { setLoading(false); }
   }, []);
 

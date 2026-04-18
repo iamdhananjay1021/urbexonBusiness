@@ -7,6 +7,7 @@ import { getMyOrders } from "../features/orders/orderSlice";
 import { FaBoxOpen, FaSync, FaShoppingBag, FaArrowRight, FaCheckCircle, FaFileInvoice, FaFilter, FaTimes, FaBolt } from "react-icons/fa";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../api/axios";
+import SEO from "../components/SEO";
 
 const STATUS_CONFIG = {
     PLACED: { label: "Order Placed", color: "text-yellow-600", bg: "bg-yellow-50", border: "border-yellow-200", dot: "bg-yellow-400" },
@@ -120,6 +121,7 @@ const MyOrders = () => {
 
     return (
         <div className="min-h-screen" style={{ background: "#f1f3f6", fontFamily: "'DM Sans', sans-serif" }}>
+            <SEO title="My Orders" noindex />
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
                 .mo-root { padding: 24px 16px; }

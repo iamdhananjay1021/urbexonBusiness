@@ -12,6 +12,7 @@ import { useOrderRealtime } from "../hooks/useOrderRealtime";
 import { useAuth } from "../contexts/AuthContext";
 import { useParams, Link } from "react-router-dom";
 import api from "../api/axios";
+import SEO from "../components/SEO";
 import {
     FaArrowLeft, FaBoxOpen, FaMapMarkerAlt, FaPhone, FaUser,
     FaShoppingBag, FaTimesCircle, FaGift, FaUndo, FaInfoCircle,
@@ -149,6 +150,10 @@ const OrderDetails = () => {
     const [refundReason, setRefundReason] = useState("");
     const [requestingRefund, setRequestingRefund] = useState(false);
     const [refundError, setRefundError] = useState("");
+    const [showReturnForm, setShowReturnForm] = useState(false);
+    const [returnReason, setReturnReason] = useState("");
+    const [requestingReturn, setRequestingReturn] = useState(false);
+    const [returnError, setReturnError] = useState("");
     const [downloadingInvoice, setDownloadingInvoice] = useState(false);
     const [riderLocation, setRiderLocation] = useState(null);
     const [deliveryStatus, setDeliveryStatus] = useState(null);
@@ -181,6 +186,7 @@ const OrderDetails = () => {
 
     const handleCancel = async () => { try { setCancelling(true); setCancelError(""); const { data } = await api.patch(`/orders/${id}/cancel`); setOrder(data.order); setConfirmCancel(false); } catch (e) { setCancelError(e.response?.data?.message || "Failed to cancel"); } finally { setCancelling(false); } };
     const handleRefund = async () => { try { setRequestingRefund(true); setRefundError(""); const { data } = await api.post(`/payment/refund/${id}`, { reason: refundReason || "Requested by customer" }); setOrder(p => ({ ...p, refund: data.refund })); setShowRefundForm(false); } catch (e) { setRefundError(e.response?.data?.message || "Refund failed"); } finally { setRequestingRefund(false); } };
+    const handleReturnRequest = async () => { try { setRequestingReturn(true); setReturnError(""); const { data } = await api.put(`/orders/${id}/return/request`, { reason: returnReason }); setOrder(p => ({ ...p, return: data.return, orderStatus: "RETURN_REQUESTED" })); setShowReturnForm(false); } catch (e) { setReturnError(e.response?.data?.message || "Return request failed"); } finally { setRequestingReturn(false); } };
     const handleDownload = async () => {
         try { setDownloadingInvoice(true); const res = await api.get(`/invoice/${id}/download`, { responseType: "blob" }); const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" })); const a = document.createElement("a"); a.href = url; a.setAttribute("download", order?.invoiceNumber ? `${order.invoiceNumber}.pdf` : `Urbexon_Invoice_${id.slice(-8).toUpperCase()}.pdf`); document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url); }
         catch (e) { alert(e.response?.status === 403 ? "Access denied." : e.response?.status === 404 ? "Invoice not found." : "Download failed."); }
@@ -218,6 +224,7 @@ const OrderDetails = () => {
     const isPaid = order.payment?.status === "PAID";
     const refund = order.refund?.status && order.refund.status !== "NONE" ? REFUND_CFG[order.refund.status] : null;
     const canRefund = isCancelled && isRazorpay && isPaid && !refund;
+    const canReturn = isDelivered && (!order.return?.status || order.return.status === "NONE");
     const hasShipping = !!order.shipping?.awbCode;
     const showInvoice = isDelivered || (isPaid && !isCancelled);
     const itemsTotal = order.items.reduce((s, i) => s + i.price * i.qty, 0);
@@ -237,6 +244,7 @@ const OrderDetails = () => {
 
     return (
         <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Inter','DM Sans',-apple-system,sans-serif", color: C.text }}>
+            <SEO title="Order Details" noindex />
             <style>{`
                 @keyframes od-spin{to{transform:rotate(360deg)}}.od-spin{animation:od-spin .8s linear infinite}
                 @keyframes od-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -519,6 +527,30 @@ const OrderDetails = () => {
                             {order.return.requestedAt && <Row label="Requested" value={fmtDate(order.return.requestedAt)} />}
                             {order.return.refundAmount && <Row label="Refund" value={`₹${inr(order.return.refundAmount)}`} bold color={C.green} />}
                             {order.return.adminNote && <p style={{ fontSize: 12, color: C.muted, background: C.bg, padding: "8px 12px", borderRadius: 8, marginTop: 8, lineHeight: 1.4 }}>Admin: {order.return.adminNote}</p>}
+                        </Card>
+                    </div>
+                )}
+
+                {/* Cancel */}
+                {canReturn && (
+                    <div className="od-f" style={{ animationDelay: "170ms", marginBottom: 14 }}>
+                        <Card accent={C.amberMid}>
+                            <Heading icon={FaUndo} color={C.amber}>Request Return</Heading>
+                            <p style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.4, margin: 0, marginBottom: 12 }}>
+                                You can request a return within 7 days of delivery.
+                            </p>
+                            {returnError && <p style={{ color: C.red, fontSize: 12, background: C.redBg, padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>{returnError}</p>}
+                            {showReturnForm ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                    <textarea value={returnReason} onChange={e => setReturnReason(e.target.value)} placeholder="Why do you want to return? (required)" rows={3} style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box", color: C.text }} />
+                                    <div style={{ display: "flex", gap: 8 }}>
+                                        <button onClick={handleReturnRequest} disabled={requestingReturn || !returnReason.trim()} className="od-btn" style={{ flex: 1, padding: 11, background: C.amber, color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit", opacity: !returnReason.trim() ? 0.5 : 1 }}>{requestingReturn ? "Submitting…" : "Submit Return"}</button>
+                                        <button onClick={() => { setShowReturnForm(false); setReturnError(""); }} className="od-btn" style={{ padding: "11px 16px", background: C.bg, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>Cancel</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button onClick={() => setShowReturnForm(true)} className="od-btn" style={{ width: "100%", padding: 11, background: "transparent", border: `1.5px solid ${C.amberMid}`, color: C.amber, borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}><FaUndo size={10} style={{ marginRight: 6 }} />Request Return</button>
+                            )}
                         </Card>
                     </div>
                 )}

@@ -3,5 +3,5 @@
 // ═══════════════════════════════════════════════════
 import api from "./axios";
 
-// Public — active banners only (for Home.jsx hero slider)
-export const fetchActiveBanners = () => api.get("/banners");
+// Public — active ecommerce banners only (for Home.jsx hero slider)
+export const fetchActiveBanners = () => api.get("/banners", { params: { type: "ecommerce" } });

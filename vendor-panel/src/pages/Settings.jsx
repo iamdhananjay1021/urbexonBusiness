@@ -5,6 +5,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
+import { useAuth } from "../contexts/AuthContext";
 import {
   FiLock, FiAlertTriangle, FiKey, FiLogOut,
   FiCheckCircle, FiClock, FiAlertCircle, FiPackage, FiCalendar, FiCreditCard,
@@ -77,11 +78,11 @@ const Settings = () => {
 
   const changePassword = async () => {
     if (!pwForm.current || !pwForm.newPw) return setPwMsg({ text: "All fields required", type: "error" });
-    if (pwForm.newPw.length < 6) return setPwMsg({ text: "Password must be at least 6 characters", type: "error" });
+    if (pwForm.newPw.length < 8) return setPwMsg({ text: "Password must be at least 8 characters", type: "error" });
     if (pwForm.newPw !== pwForm.confirm) return setPwMsg({ text: "Passwords do not match", type: "error" });
     try {
       setPwLoading(true);
-      await api.patch("/auth/change-password", { currentPassword: pwForm.current, newPassword: pwForm.newPw });
+      await api.put("/auth/change-password", { currentPassword: pwForm.current, newPassword: pwForm.newPw });
       setPwMsg({ text: "Password changed successfully!", type: "success" });
       setPwForm({ current: "", newPw: "", confirm: "" });
       setTimeout(() => setPwModal(false), 1500);
@@ -90,8 +91,10 @@ const Settings = () => {
     } finally { setPwLoading(false); }
   };
 
+  const { logout } = useAuth();
+
   const handleLogout = () => {
-    localStorage.removeItem("vendorAuth");
+    logout();
     navigate("/login");
   };
 

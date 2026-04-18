@@ -37,6 +37,9 @@ const UHMidBanner = memo(({ banners = [] }) => {
                         <div className="uhmb-text">
                             {b.title && <h4 className="uhmb-title">{b.title}</h4>}
                             {b.subtitle && <p className="uhmb-sub">{b.subtitle}</p>}
+                            {b.link && b.buttonText && (
+                                <span className="uhmb-cta">{b.buttonText}</span>
+                            )}
                         </div>
                     )}
                 </div>
@@ -57,6 +60,7 @@ const CSS = `
 .uhmb-text{position:absolute;bottom:0;left:0;right:0;padding:16px 20px;background:linear-gradient(transparent,rgba(0,0,0,.5));pointer-events:none}
 .uhmb-title{color:#fff;font-size:clamp(13px,2.2vw,18px);font-weight:800;margin:0 0 2px;line-height:1.2;letter-spacing:-.2px}
 .uhmb-sub{color:rgba(255,255,255,.85);font-size:clamp(10px,1.5vw,12px);margin:0;font-weight:500}
+.uhmb-cta{display:inline-block;margin-top:8px;padding:5px 14px;background:#fff;color:#0f172a;font-size:11px;font-weight:700;border-radius:6px;pointer-events:auto;transition:all .2s}
 @media(max-width:640px){
   .uhmb-dual{grid-template-columns:1fr}
   .uhmb-img{aspect-ratio:2.8/1}

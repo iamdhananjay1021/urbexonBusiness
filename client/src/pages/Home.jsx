@@ -8,6 +8,7 @@
  */
 import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import SEO from "../components/SEO";
 import api from "../api/axios";
 import { fetchActiveBanners } from "../api/bannerApi";
 import { fetchActiveCategories } from "../api/categoryApi";
@@ -898,6 +899,7 @@ const Home = () => {
 
     return (
         <div className="h-root">
+            <SEO title="Premium Online Shopping" description="Shop at Urbexon for the best deals on fashion, electronics, home essentials, and more. Fast delivery across India." path="/" />
             <style>{CSS}</style>
 
             {/* ════ HERO ═══════════════════════════════════ */}
@@ -946,15 +948,22 @@ const Home = () => {
                                             {slide.title}
                                             {slide.highlight && <em>{slide.highlight}</em>}
                                         </h1>
-                                        {slide.desc && (
-                                            <p className="h-hero-desc">{slide.desc}</p>
+                                        {slide.subtitle && (
+                                            <p className="h-hero-desc" style={{ fontSize: "clamp(13px,1.8vw,17px)", opacity: 0.92, marginBottom: 4 }}>{slide.subtitle}</p>
+                                        )}
+                                        {(slide.desc || slide.description) && (
+                                            <p className="h-hero-desc">{slide.desc || slide.description}</p>
                                         )}
                                         <div className="h-hero-btns">
                                             <button
                                                 className="h-hero-btn-p"
-                                                onClick={() => navigate(slide.link || slide.ctaLink || "/")}
+                                                onClick={() => {
+                                                    const target = slide.link || slide.ctaLink || "/";
+                                                    if (target.startsWith("http")) window.open(target, "_blank", "noopener");
+                                                    else navigate(target);
+                                                }}
                                             >
-                                                {slide.cta || "Shop Now"} <FaArrowRight size={12} />
+                                                {slide.buttonText || slide.cta || "Shop Now"} <FaArrowRight size={12} />
                                             </button>
                                             {slide.secondary && (
                                                 <button

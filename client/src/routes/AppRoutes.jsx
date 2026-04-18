@@ -78,10 +78,10 @@ const AppRoutes = () => (
       <Routes>
         {/* Public only */}
         <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password/:token" element={<ResetPassword />} />
-        <Route path="/order-success/:id" element={<OrderSuccess />} />
+        <Route path="/order-success/:id" element={<RequireAuth><OrderSuccess /></RequireAuth>} />
 
         {/* Standalone pages (no MainLayout) */}
         <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />

@@ -69,7 +69,10 @@ export const adminGetCoupons = async (req, res) => {
     try {
         const { page = 1, limit = 20, search } = req.query;
         const filter = {};
-        if (search) filter.code = { $regex: search.trim(), $options: "i" };
+        if (search) {
+            const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            filter.code = { $regex: escaped, $options: "i" };
+        }
         const skip = (Number(page) - 1) * Number(limit);
         const [coupons, total] = await Promise.all([
             Coupon.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)).lean(),

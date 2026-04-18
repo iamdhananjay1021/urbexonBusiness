@@ -34,7 +34,7 @@ const AdminResetPassword = () => {
         try {
             setLoading(true);
             setError("");
-            await api.post(`/auth/reset-password/${token}`, { password });
+            await api.post(`/auth/admin/reset-password/${token}`, { password });
             setSuccess(true);
             setTimeout(() => navigate("/admin/login"), 3000);
         } catch (err) {

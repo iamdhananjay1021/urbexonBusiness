@@ -7,7 +7,7 @@ const subscriptionPlanSchema = new mongoose.Schema(
     {
         name: {
             type: String,
-            enum: ["starter", "growth", "pro"],
+            enum: ["starter", "basic", "standard", "premium"],
             unique: true,
             required: true,
         },
@@ -36,7 +36,7 @@ const subscriptionTxSchema = new mongoose.Schema(
         },
         plan: {
             type: String,
-            enum: ["starter", "growth", "pro"],
+            enum: ["starter", "basic", "standard", "premium"],
             required: true,
         },
         amount: { type: Number, required: true },

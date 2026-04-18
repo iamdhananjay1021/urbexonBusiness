@@ -65,8 +65,6 @@ const Earnings = () => {
     }
   };
 
-  useEffect(() => { load(); }, [load]);
-
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200 }}>
       <div style={{ width: 24, height: 24, border: `3px solid ${G.green100}`, borderTopColor: G.brand, borderRadius: "50%", animation: "spin .8s linear infinite" }} />

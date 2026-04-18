@@ -294,7 +294,7 @@ const Dashboard = () => {
                     <FiAlertCircle size={18} color="#f59e0b" />
                     <span style={{ color: "#78350f" }}>
                         Subscription inactive.{" "}
-                        <a href="/settings" style={{ color: "#111827", fontWeight: 700 }}>Renew now</a>
+                        <Link to="/subscription" style={{ color: "#111827", fontWeight: 700 }}>Renew now</Link>
                         {" "}to keep receiving orders.
                     </span>
                 </div>

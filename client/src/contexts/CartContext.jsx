@@ -5,8 +5,12 @@ export const CartContext = createContext(null);
 export const CartProvider = ({ children }) => {
     const [cartItems, setCartItems] = useState(() => {
         // 🔥 LOAD FROM LOCALSTORAGE
-        const saved = localStorage.getItem("cartItems");
-        return saved ? JSON.parse(saved) : [];
+        try {
+            const saved = localStorage.getItem("cartItems");
+            return saved ? JSON.parse(saved) : [];
+        } catch {
+            return [];
+        }
     });
 
     // 🔥 PERSIST CART

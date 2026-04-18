@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import SEO from "../components/SEO";
 import api from "../api/axios";
 import ProductCardUnified from "../components/ProductCardUnified";
 import { FaFire } from "react-icons/fa";
@@ -29,6 +30,16 @@ const useCountdown = (dealEndsAt) => {
 /* ════════════════════════════════════
    DEAL PRODUCT CARD WRAPPER
 ════════════════════════════════════ */
+const DealCountdownDisplay = ({ countdown }) => (
+    <div style={{ display: "flex", gap: 6, justifyContent: "center", marginTop: 6 }}>
+        {[[countdown.d, "D"], [countdown.h, "H"], [countdown.m, "M"], [countdown.s, "S"]].map(([v, l]) => (
+            <span key={l} style={{ background: "#fef3c7", color: "#92400e", fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 4, minWidth: 28, textAlign: "center" }}>
+                {String(v).padStart(2, "0")}{l}
+            </span>
+        ))}
+    </div>
+);
+
 const DealProductCard = ({ product }) => {
     const countdown = useCountdown(product.dealEndsAt);
     const countdownJSX = countdown ? <DealCountdownDisplay countdown={countdown} /> : null;
@@ -82,6 +93,7 @@ const Deals = () => {
 
     return (
         <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif", minHeight: "100vh", background: "#faf9f7" }}>
+            <SEO title="Deals & Offers" description="Grab the hottest deals and limited-time offers on Urbexon. Save big on fashion, electronics, and more." path="/deals" />
             <style>{`@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
             {/* Header Banner */}

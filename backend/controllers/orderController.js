@@ -527,6 +527,27 @@ export const updateOrderStatus = async (req, res) => {
         if (!valid.includes(status))
             return res.status(400).json({ success: false, message: "Invalid status" });
 
+        // Status transition validation
+        const TRANSITIONS = {
+            PLACED: ["CONFIRMED", "CANCELLED"],
+            CONFIRMED: ["PACKED", "CANCELLED"],
+            PACKED: ["READY_FOR_PICKUP", "CANCELLED"],
+            READY_FOR_PICKUP: ["SHIPPED", "OUT_FOR_DELIVERY", "CANCELLED"],
+            SHIPPED: ["OUT_FOR_DELIVERY", "CANCELLED"],
+            OUT_FOR_DELIVERY: ["DELIVERED", "CANCELLED"],
+            DELIVERED: ["RETURN_REQUESTED"],
+            CANCELLED: [],
+        };
+        const currentOrder = await Order.findById(req.params.id).select("orderStatus orderMode").lean();
+        if (!currentOrder) return res.status(404).json({ success: false, message: "Order not found" });
+        const allowed = TRANSITIONS[currentOrder.orderStatus] || [];
+        if (!allowed.includes(status))
+            return res.status(400).json({ success: false, message: `Cannot transition from ${currentOrder.orderStatus} to ${status}` });
+
+        // Block SHIPPED for UH (local delivery) orders
+        if (status === "SHIPPED" && currentOrder.orderMode === "URBEXON_HOUR")
+            return res.status(400).json({ success: false, message: "UH orders use local delivery, SHIPPED status is not applicable" });
+
         const update = { orderStatus: status };
         const tMap = { CONFIRMED: "confirmedAt", PACKED: "packedAt", READY_FOR_PICKUP: "readyForPickupAt", SHIPPED: "shippedAt", OUT_FOR_DELIVERY: "outForDeliveryAt", DELIVERED: "deliveredAt", CANCELLED: "cancelledAt" };
         if (tMap[status]) update[`statusTimeline.${tMap[status]}`] = new Date();
@@ -600,12 +621,16 @@ export const updateOrderStatus = async (req, res) => {
                         const vendor = await Vendor.findById(vid).select("commissionRate pendingSettlement").lean();
                         if (!vendor) continue;
 
+                        // Calculate this vendor's portion of the order (not full totalAmount)
+                        const vendorProductIdStrs = products.filter(p => p.vendorId?.toString() === vid).map(p => p._id.toString());
+                        const vendorItems = order.items.filter(i => vendorProductIdStrs.includes(i.productId?.toString()));
+                        const orderAmount = vendorItems.reduce((sum, i) => sum + (Number(i.price) * Number(i.qty)), 0);
+
                         const commissionRate = vendor.commissionRate ?? 18;
-                        const orderAmount = order.totalAmount || 0;
                         const commissionAmount = Math.round((orderAmount * commissionRate) / 100);
                         const platformFee = order.platformFee || 0;
                         const deliveryCharge = order.deliveryCharge || 0;
-                        const vendorEarning = Math.max(0, orderAmount - commissionAmount - platformFee);
+                        const vendorEarning = Math.max(0, orderAmount - commissionAmount);
 
                         await Settlement.create({
                             vendorId: vid,
@@ -825,7 +850,7 @@ export const requestRefund = async (req, res) => {
         await order.save();
 
         res.json({ success: true, message: "Refund request submitted", refund: order.refund });
-        sendEmail({ to: process.env.ADMIN_EMAIL, subject: `💰 Refund Request #${order._id.toString().slice(-6).toUpperCase()} — ₹${order.totalAmount}`, html: `<p>Refund requested by ${order.customerName}. Amount: ₹${order.totalAmount}</p>`, label: "Admin/RefundRequest" });
+        sendEmail({ to: process.env.ADMIN_EMAIL, subject: `💰 Refund Request #${order._id.toString().slice(-6).toUpperCase()} — ₹${order.totalAmount}`, html: `<p>Refund requested by ${(order.customerName || "").replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]))}. Amount: ₹${order.totalAmount}</p>`, label: "Admin/RefundRequest" });
     } catch (err) {
         console.error("REQUEST REFUND:", err);
         res.status(500).json({ success: false, message: "Failed to submit refund request" });
@@ -911,6 +936,50 @@ export const getFlaggedOrders = async (req, res) => {
         res.json(orders);
     } catch {
         res.status(500).json({ success: false, message: "Failed" });
+    }
+};
+
+/* ══════════════════════════════════════════════
+   RETURN — REQUEST (USER)
+   PUT /api/orders/:id/return/request
+   body: { reason, images? }
+══════════════════════════════════════════════ */
+export const requestReturn = async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+        if (order.user.toString() !== req.user._id.toString()) return res.status(403).json({ success: false, message: "Not authorized" });
+        if (order.orderStatus !== "DELIVERED") return res.status(400).json({ success: false, message: "Only delivered orders can be returned" });
+        if (order.return?.status && order.return.status !== "NONE") return res.status(400).json({ success: false, message: `Return already ${order.return.status.toLowerCase()}` });
+
+        // Check return window (default 7 days)
+        const deliveredAt = order.statusTimeline?.deliveredAt;
+        const returnDays = 7;
+        if (deliveredAt && Date.now() - new Date(deliveredAt).getTime() > returnDays * 24 * 60 * 60 * 1000) {
+            return res.status(400).json({ success: false, message: `Return window of ${returnDays} days has expired` });
+        }
+
+        const reason = (req.body.reason || "").trim().slice(0, 500);
+        if (!reason) return res.status(400).json({ success: false, message: "Return reason is required" });
+
+        order.return = {
+            status: "REQUESTED",
+            requested: true,
+            reason,
+            images: Array.isArray(req.body.images) ? req.body.images.slice(0, 5) : [],
+            requestedAt: new Date(),
+            deadlineAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        };
+        order.orderStatus = "RETURN_REQUESTED";
+        order.statusTimeline = { ...order.statusTimeline, returnRequestedAt: new Date() };
+        order.markModified("return");
+        order.markModified("statusTimeline");
+        await order.save();
+
+        res.json({ success: true, message: "Return request submitted", return: order.return });
+    } catch (err) {
+        console.error("REQUEST RETURN:", err);
+        res.status(500).json({ success: false, message: "Failed to submit return request" });
     }
 };
 

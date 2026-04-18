@@ -1,0 +1,18 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+Disallow: /cart
+Disallow: /checkout
+Disallow: /uh-checkout
+Disallow: /uh-cart
+Disallow: /orders
+Disallow: /profile
+Disallow: /wishlist
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /order-success
+
+# Sitemap
+Sitemap: https://www.urbexon.in/api/sitemap.xml

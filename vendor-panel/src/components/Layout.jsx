@@ -9,7 +9,7 @@ import { useNotifications } from "../contexts/NotificationContext";
 import {
   FiGrid, FiPackage, FiShoppingCart, FiDollarSign,
   FiUser, FiSettings, FiLogOut, FiMenu, FiX, FiBell,
-  FiSearch, FiChevronDown,
+  FiSearch, FiCreditCard,
 } from "react-icons/fi";
 
 const NAV = [
@@ -17,6 +17,7 @@ const NAV = [
   { to: "/products", icon: FiPackage, label: "My Products" },
   { to: "/orders", icon: FiShoppingCart, label: "Orders" },
   { to: "/earnings", icon: FiDollarSign, label: "Earnings" },
+  { to: "/subscription", icon: FiCreditCard, label: "Subscription" },
   { to: "/profile", icon: FiUser, label: "Profile" },
   { to: "/settings", icon: FiSettings, label: "Settings" },
 ];

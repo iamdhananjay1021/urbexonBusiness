@@ -28,6 +28,7 @@ import UHCategoryStrip from "../components/uh/UHCategoryStrip";
 import UHProductSection from "../components/uh/UHProductSection";
 import UHMidBanner from "../components/uh/UHMidBanner";
 import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
+import SEO from "../components/SEO";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
@@ -156,7 +157,13 @@ const UrbexonHour = () => {
         } catch { }
         return null;
     });
-    const [initialLoading, setInitialLoading] = useState(false);
+    const [initialLoading, setInitialLoading] = useState(() => {
+        try {
+            const stored = localStorage.getItem("uh_pincode");
+            if (stored) { const p = JSON.parse(stored); if (p?.code) return true; }
+        } catch { }
+        return false;
+    });
     const [showPincodeEdit, setShowPincodeEdit] = useState(false);
     const searchQuery = searchParams.get("search") || "";
     const clearSearch = useCallback(() => {
@@ -221,8 +228,9 @@ const UrbexonHour = () => {
             }
             // 3) Fetch products for pincode
             if (code && !cancelled) {
-                checkPincodeInner(code);
+                await checkPincodeInner(code);
             }
+            if (!cancelled) setInitialLoading(false);
         };
         load();
         return () => { cancelled = true; };
@@ -393,11 +401,12 @@ const UrbexonHour = () => {
     // Only show pincode entry if:
     // 1. No saved pincode (first visit), or
     // 2. User explicitly clicks 'Change' (showPincodeEdit)
-    const showHero = (!savedPincode?.code && !hasActiveService && !loading) || showPincodeEdit;
-    const showSkeleton = loading && savedPincode?.code && !showPincodeEdit;
+    const showHero = (!savedPincode?.code && !hasActiveService && !loading && !initialLoading) || showPincodeEdit;
+    const showSkeleton = (loading || initialLoading) && savedPincode?.code && !showPincodeEdit;
 
     return (
         <div className="uh-root">
+            <SEO title="Urbexon Hour - Quick Delivery" description="Get groceries, essentials, and more delivered in minutes with Urbexon Hour. Order now for lightning-fast delivery!" path="/urbexon-hour" />
             <style>{PAGE_CSS}</style>
             <main>
 
@@ -531,37 +540,19 @@ const UrbexonHour = () => {
                     </div>
                 )}
 
-                {/* ═══ ZEPTO-STYLE HOMEPAGE SECTIONS ═══ */}
+                {/* ═══ HOMEPAGE SECTIONS — Logical Flow ═══ */}
                 {hasActiveService && !showPincodeEdit && !searchQuery && !activeCategory && (
                     <>
-                        {/* ── DELIVERY PROMISE BAR ── */}
-                        <div className="uh-promise-bar">
-                            <div className="container uh-promise-inner">
-                                <div className="uh-promise-item">
-                                    <span className="uh-promise-ic">⚡</span>
-                                    <span>Superfast {deliveryEta.min}-{deliveryEta.max} min delivery</span>
-                                </div>
-                                <div className="uh-promise-dot" />
-                                <div className="uh-promise-item">
-                                    <span className="uh-promise-ic">🎯</span>
-                                    <span>{homepageData?.stats?.totalProducts || products.length}+ products available</span>
-                                </div>
-                                <div className="uh-promise-dot" />
-                                <div className="uh-promise-item">
-                                    <span className="uh-promise-ic">💸</span>
-                                    <span>Best prices guaranteed</span>
-                                </div>
-                            </div>
-                        </div>
+                        {/* ─── SECTION 1: DISCOVERY ─────────────────────── */}
 
-                        {/* ── HERO BANNER CAROUSEL ── */}
+                        {/* Hero Banner Carousel */}
                         {heroBanners.length > 0 && (
                             <div className="container" style={{ paddingTop: 20, paddingBottom: 0 }}>
                                 <UHBannerCarousel banners={heroBanners} />
                             </div>
                         )}
 
-                        {/* ── CATEGORY STRIP (horizontal scroll pills) ── */}
+                        {/* Category Strip (horizontal scroll pills) */}
                         <div className="container" style={{ paddingTop: 20 }}>
                             <UHCategoryStrip
                                 categories={apiCategories}
@@ -570,7 +561,72 @@ const UrbexonHour = () => {
                             />
                         </div>
 
-                        {/* ── BEST SELLERS ── */}
+                        {/* ─── SECTION 2: SHOP BY CATEGORY ─────────────── */}
+                        {homepageData?.categorySections && Object.keys(homepageData.categorySections).some(k => homepageData.categorySections[k]?.length >= 3) && (
+                            <div className="uh-cat-group">
+                                <div className="container">
+                                    <div className="uh-group-header">
+                                        <span className="uh-group-ic">🏬</span>
+                                        <div>
+                                            <h2 className="uh-group-title">Shop by Category</h2>
+                                            <p className="uh-group-sub">Browse products organized by what you need</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                {Object.entries(homepageData.categorySections).map(([catName, prods]) => (
+                                    prods.length >= 3 && (
+                                        <div className="container" key={catName}>
+                                            <UHProductSection
+                                                title={catName}
+                                                subtitle={`${prods.length} products`}
+                                                icon={getCategoryEmoji(catName)}
+                                                products={prods}
+                                                renderCard={(p) => <ProductCard product={p} />}
+                                            />
+                                        </div>
+                                    )
+                                ))}
+                            </div>
+                        )}
+
+                        {/* ─── SECTION 3: FLASH DEALS ──────────────────── */}
+                        {uhDeals.length > 0 && (
+                            <div className="uh-deals-section">
+                                <div className="container">
+                                    <div className="uh-deals-header">
+                                        <div className="uh-deals-title-row">
+                                            <div className="uh-deals-icon"><FaFire size={14} /></div>
+                                            <div>
+                                                <div className="uh-deals-title">Flash Deals</div>
+                                                <div className="uh-deals-sub">
+                                                    {uhDeals.length} hot offer{uhDeals.length !== 1 ? "s" : ""}
+                                                    {uhDeals.length > 0 && uhDeals[0].meta ? ` • Avg ${uhDeals[0].meta.avgDiscount}% off` : ""}
+                                                    — grab before they expire!
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="uh-deals-scroll">
+                                        {uhDeals.map((p) => (
+                                            <div key={p._id} className="uh-deals-scroll-item">
+                                                <ProductCard product={p} />
+                                                {p.dealEndsAt && (() => {
+                                                    const diff = new Date(p.dealEndsAt) - new Date();
+                                                    if (diff <= 0) return null;
+                                                    const h = Math.floor(diff / 3600000);
+                                                    const m = Math.floor((diff % 3600000) / 60000);
+                                                    return <div className="uh-deal-timer"><FaClock size={9} /> {h}h {m}m left</div>;
+                                                })()}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ─── SECTION 4: POPULAR PICKS ────────────────── */}
+
+                        {/* Best Sellers */}
                         {homepageData?.bestSellers?.length > 0 && (
                             <div className="container">
                                 <UHProductSection
@@ -583,7 +639,29 @@ const UrbexonHour = () => {
                             </div>
                         )}
 
-                        {/* ── TRENDING NOW ── */}
+                        {/* Top Deals */}
+                        {homepageData?.topDeals?.length > 0 && (
+                            <div className="container">
+                                <UHProductSection
+                                    title="Top Deals"
+                                    subtitle="Biggest discounts right now"
+                                    icon="💰"
+                                    products={homepageData.topDeals}
+                                    renderCard={(p) => <ProductCard product={p} />}
+                                />
+                            </div>
+                        )}
+
+                        {/* Mid-page Banners (visual break) */}
+                        {midBanners.length > 0 && (
+                            <div className="container" style={{ paddingTop: 12, paddingBottom: 12 }}>
+                                <UHMidBanner banners={midBanners} />
+                            </div>
+                        )}
+
+                        {/* ─── SECTION 5: TRENDING & VALUE ─────────────── */}
+
+                        {/* Trending Now */}
                         {homepageData?.trending?.length > 0 && (
                             <div className="container">
                                 <UHProductSection
@@ -596,27 +674,7 @@ const UrbexonHour = () => {
                             </div>
                         )}
 
-                        {/* ── TOP DEALS ── */}
-                        {homepageData?.topDeals?.length > 0 && (
-                            <div className="container">
-                                <UHProductSection
-                                    title="Top Deals"
-                                    subtitle="Grab before they expire"
-                                    icon="💰"
-                                    products={homepageData.topDeals}
-                                    renderCard={(p) => <ProductCard product={p} />}
-                                />
-                            </div>
-                        )}
-
-                        {/* ── MID-PAGE BANNERS ── */}
-                        {midBanners.length > 0 && (
-                            <div className="container" style={{ paddingTop: 12, paddingBottom: 12 }}>
-                                <UHMidBanner banners={midBanners} />
-                            </div>
-                        )}
-
-                        {/* ── BUDGET PICKS ── */}
+                        {/* Budget Picks */}
                         {homepageData?.budgetPicks?.length > 0 && (
                             <div className="container">
                                 <UHProductSection
@@ -629,7 +687,29 @@ const UrbexonHour = () => {
                             </div>
                         )}
 
-                        {/* ── RECOMMENDED ── */}
+                        {/* ─── SECTION 6: LOCAL DISCOVERY ──────────────── */}
+
+                        {/* Nearby Stores */}
+                        <div className="container">
+                            <NearbyShops pincode={pincode} pincodeLabel={savedPincode?.area || savedPincode?.city || ''} maxResults={12} />
+                        </div>
+
+                        {/* ─── SECTION 7: PERSONALIZED ─────────────────── */}
+
+                        {/* Recently Viewed */}
+                        {uhRecentlyViewed.length > 0 && (
+                            <div className="container" style={{ paddingTop: 12, paddingBottom: 8 }}>
+                                <UHProductSection
+                                    title="Recently Viewed"
+                                    subtitle="Continue where you left off"
+                                    icon="🕐"
+                                    products={uhRecentlyViewed.slice(0, 10)}
+                                    renderCard={(p) => <ProductCard product={p} />}
+                                />
+                            </div>
+                        )}
+
+                        {/* Fresh Arrivals */}
                         {homepageData?.recommended?.length > 0 && (
                             <div className="container">
                                 <UHProductSection
@@ -642,22 +722,7 @@ const UrbexonHour = () => {
                             </div>
                         )}
 
-                        {/* ── CATEGORY-BASED SECTIONS ── */}
-                        {homepageData?.categorySections && Object.entries(homepageData.categorySections).map(([catName, prods]) => (
-                            prods.length >= 3 && (
-                                <div className="container" key={catName}>
-                                    <UHProductSection
-                                        title={catName}
-                                        subtitle={`${prods.length} products`}
-                                        icon={getCategoryEmoji(catName)}
-                                        products={prods}
-                                        renderCard={(p) => <ProductCard product={p} />}
-                                    />
-                                </div>
-                            )
-                        ))}
-
-                        {/* ── WHY CHOOSE US ── */}
+                        {/* ─── SECTION 8: TRUST & CLOSE ────────────────── */}
                         <div className="uh-why-section">
                             <div className="container">
                                 <h3 className="uh-why-title">Why shop on Urbexon Hour?</h3>
@@ -696,57 +761,6 @@ const UrbexonHour = () => {
                     </div>
                 )}
 
-                {/* ── UH FLASH DEALS (hide when searching or no pincode) ── */}
-                {hasActiveService && uhDeals.length > 0 && !searchQuery && (
-                    <div className="uh-deals-section">
-                        <div className="container">
-                            <div className="uh-deals-header">
-                                <div className="uh-deals-title-row">
-                                    <div className="uh-deals-icon"><FaFire size={14} /></div>
-                                    <div>
-                                        <div className="uh-deals-title">Flash Deals</div>
-                                        <div className="uh-deals-sub">
-                                            {uhDeals.length} hot offer{uhDeals.length !== 1 ? "s" : ""}
-                                            {uhDeals.length > 0 && uhDeals[0].meta ? ` • Avg ${uhDeals[0].meta.avgDiscount}% off` : ""}
-                                            — grab before they expire!
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="uh-deals-scroll">
-                                {uhDeals.map((p) => (
-                                    <div key={p._id} className="uh-deals-scroll-item">
-                                        <ProductCard product={p} />
-                                        {p.dealEndsAt && (() => {
-                                            const diff = new Date(p.dealEndsAt) - new Date();
-                                            if (diff <= 0) return null;
-                                            const h = Math.floor(diff / 3600000);
-                                            const m = Math.floor((diff % 3600000) / 60000);
-                                            return <div className="uh-deal-timer"><FaClock size={9} /> {h}h {m}m left</div>;
-                                        })()}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* ── AVAILABILITY BAR ── */}
-                {pinData?.available && (
-                    <div className="avail-bar">
-                        <div className="container avail-inner">
-                            <FaMapMarkerAlt size={13} className="avail-pin" />
-                            <span>
-                                Showing results for{" "}
-                                <strong>{pinData.area || pincode}</strong>
-                                {pinData.city ? `, ${pinData.city}` : ""} —{" "}
-                                <strong>{pinData.vendorCount || vendorGroups.length}</strong>{" "}
-                                vendor{(pinData.vendorCount || vendorGroups.length) !== 1 ? "s" : ""} available
-                            </span>
-                        </div>
-                    </div>
-                )}
-
                 {/* ── SEARCH RESULTS COUNTER ── */}
                 {searchQuery && hasActiveService && !showPincodeEdit && (
                     <div className="search-results-bar">
@@ -762,36 +776,6 @@ const UrbexonHour = () => {
                             >
                                 <FaTimes size={12} /> Clear
                             </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* ── NEARBY STORES ── */}
-                {hasActiveService && !showPincodeEdit && !searchQuery && (
-                    <div className="container">
-                        <NearbyShops pincode={pincode} pincodeLabel={savedPincode?.area || savedPincode?.city || ''} maxResults={12} />
-                    </div>
-                )}
-
-                {/* ── RECENTLY VIEWED (UH only) ── */}
-                {hasActiveService && !showPincodeEdit && !searchQuery && uhRecentlyViewed.length > 0 && (
-                    <div className="container" style={{ paddingTop: 12, paddingBottom: 8 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                            <FaClock size={14} style={{ color: "#7c3aed" }} />
-                            <h3 style={{ fontSize: "clamp(14px,3vw,18px)", fontWeight: 800, margin: 0, color: "#1a1a2e" }}>
-                                Recently Viewed
-                            </h3>
-                            <span style={{ fontSize: 11, color: "#78788c" }}>· Continue where you left off</span>
-                        </div>
-                        <div style={{
-                            display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8,
-                            scrollbarWidth: "none", WebkitOverflowScrolling: "touch",
-                        }}>
-                            {uhRecentlyViewed.slice(0, 10).map(p => (
-                                <div key={p._id} style={{ minWidth: 150, maxWidth: 170, flexShrink: 0 }}>
-                                    <ProductCard product={p} />
-                                </div>
-                            ))}
                         </div>
                     </div>
                 )}
@@ -1157,6 +1141,14 @@ main{position:relative;z-index:1}
 
 /* ── WHY CHOOSE US ── */
 .uh-why-section{background:linear-gradient(135deg,#f8fafc,#eef2ff);padding:40px 0;margin:8px 0}
+
+/* ── CATEGORY GROUP HEADER ── */
+.uh-cat-group{background:linear-gradient(180deg,#fafbfc 0%,#f5f6fa 100%);padding:8px 0 4px;margin:8px 0;border-top:1px solid #e8ecf1;border-bottom:1px solid #e8ecf1}
+.uh-group-header{display:flex;align-items:center;gap:14px;padding:20px 0 4px}
+.uh-group-ic{font-size:28px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.06))}
+.uh-group-title{font-size:clamp(18px,3.5vw,22px);font-weight:800;color:#0f172a;margin:0;letter-spacing:-.3px}
+.uh-group-sub{font-size:12px;color:#64748b;margin:2px 0 0;font-weight:500}
+@media(max-width:640px){.uh-group-header{padding:16px 0 2px;gap:10px}.uh-group-ic{font-size:22px}.uh-group-title{font-size:16px}}
 .uh-why-title{font-size:clamp(18px,3.5vw,24px);font-weight:800;color:#0f172a;text-align:center;margin-bottom:28px;letter-spacing:-.3px}
 .uh-why-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
 .uh-why-card{background:#fff;border:1px solid #e8ecf1;border-radius:16px;padding:24px 18px;text-align:center;transition:all .3s;cursor:default;position:relative;overflow:hidden}

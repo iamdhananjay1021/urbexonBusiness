@@ -6,6 +6,7 @@ import {
     createBanner,
     updateBanner,
     deleteBanner,
+    toggleBanner,
 } from "../controllers/bannerController.js";
 import { protect, adminOnly } from "../middlewares/authMiddleware.js";
 
@@ -30,6 +31,7 @@ router.get("/", getActiveBanners);
 router.get("/all", protect, adminOnly, getAllBanners);
 router.post("/", protect, adminOnly, upload.single("image"), createBanner);
 router.put("/:id", protect, adminOnly, upload.single("image"), updateBanner);
+router.patch("/:id/toggle", protect, adminOnly, toggleBanner);
 router.delete("/:id", protect, adminOnly, deleteBanner);
 
 export default router;

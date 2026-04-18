@@ -52,7 +52,7 @@ const Orders = () => {
         setTotal(data.total || 0);
         setStats(data.stats || {});
       })
-      .catch(() => { })
+      .catch((err) => { setOrders([]); setTotal(0); })
       .finally(() => setLoading(false));
   }, [filter, page, debouncedSearch, dateRange]);
 

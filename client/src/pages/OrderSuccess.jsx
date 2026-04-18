@@ -8,6 +8,7 @@ import {
     FaCheckCircle, FaMapMarkerAlt, FaPhone, FaUser,
     FaTruck, FaReceipt,
 } from "react-icons/fa";
+import SEO from "../components/SEO";
 
 const OrderSuccess = () => {
     const { id } = useParams();
@@ -72,6 +73,7 @@ const OrderSuccess = () => {
             fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
             padding: "24px 16px 48px",
         }}>
+            <SEO title="Order Confirmed" description="Your Urbexon order has been placed successfully!" noindex />
             <style>{`
                 @keyframes fadeUp {
                     from { opacity: 0; transform: translateY(16px); }

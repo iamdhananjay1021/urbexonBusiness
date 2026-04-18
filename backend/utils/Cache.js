@@ -45,8 +45,12 @@ export const delCacheByPrefix = async (prefix) => {
     const redis = getRedis();
     if (redis && isRedisUp()) {
         try {
-            const keys = await redis.keys(`${prefix}*`);
-            if (keys.length) await redis.del(...keys);
+            let cursor = "0";
+            do {
+                const [nextCursor, keys] = await redis.scan(cursor, "MATCH", `${prefix}*`, "COUNT", 100);
+                cursor = nextCursor;
+                if (keys.length) await redis.del(...keys);
+            } while (cursor !== "0");
             return;
         } catch { /* fall through */ }
     }
@@ -65,9 +69,9 @@ export const flushCache = async () => {
 
 export const getCacheStats = () => ({
     backend: isRedisUp() ? "redis" : "memory",
-    keys:    memCache.keys().length,
-    hits:    memCache.getStats().hits,
-    misses:  memCache.getStats().misses,
+    keys: memCache.keys().length,
+    hits: memCache.getStats().hits,
+    misses: memCache.getStats().misses,
 });
 
 export default { getCache, setCache, delCache, delCacheByPrefix, flushCache, getCacheStats };

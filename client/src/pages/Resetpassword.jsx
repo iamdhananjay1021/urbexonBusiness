@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { FaLock, FaEye, FaEyeSlash, FaGift, FaCheckCircle } from "react-icons/fa";
 import api from "../api/axios";
+import SEO from "../components/SEO";
 
 const ResetPassword = () => {
     const { token } = useParams();
@@ -19,7 +20,7 @@ const ResetPassword = () => {
         e.preventDefault();
 
         if (!password.trim()) return setError("Please enter a new password");
-        if (password.length < 6) return setError("Password must be at least 6 characters");
+        if (password.length < 8) return setError("Password must be at least 8 characters");
         if (password !== confirmPassword) return setError("Passwords do not match");
 
         try {
@@ -37,6 +38,7 @@ const ResetPassword = () => {
 
     return (
         <div className="min-h-[90vh] flex items-center justify-center px-4 bg-gradient-to-br from-stone-100 via-amber-50/30 to-stone-100">
+            <SEO title="Reset Password" description="Set a new password for your Urbexon account." noindex />
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap');
                 .auth-font { font-family: 'DM Sans', sans-serif; }

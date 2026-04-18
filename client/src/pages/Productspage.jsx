@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import SEO from "../components/SEO";
 import api from "../api/axios";
 import ProductCardUnified from "../components/ProductCardUnified";
 import { FaChevronDown, FaSortAmountDown } from "react-icons/fa";
@@ -86,6 +87,7 @@ const AllProducts = () => {
 
     return (
         <div style={{ background: "#fff", minHeight: "100vh" }}>
+            <SEO title={`Products${categoryDisplay}`} description={`Browse ${total || ""} products on Urbexon. Find the best deals on fashion, electronics, and more.`} path="/products" />
             <style>{`
                 @keyframes shimmer {
                     0%, 100% { background-position: 200% 0; }

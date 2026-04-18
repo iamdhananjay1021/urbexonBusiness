@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import SEO from "../components/SEO";
 
 export default function TermsConditions() {
     useEffect(() => {
@@ -7,6 +8,7 @@ export default function TermsConditions() {
 
     return (
         <div className="min-h-screen bg-[#fdf8f3]">
+            <SEO title="Terms & Conditions" description="Urbexon terms and conditions. Understand your rights, responsibilities, and our policies." path="/terms-conditions" />
             {/* Header */}
             <div className="bg-white border-b border-stone-100 py-12">
                 <div className="max-w-3xl mx-auto px-6 text-center">

@@ -3,11 +3,12 @@ import { Toast, useToast } from "./components/Toast";
 import GlobalWebSocket from "./components/GlobalWebSocket";
 import { BrowserRouter as Router } from "react-router-dom";
 import { Suspense, lazy, useEffect, useState } from "react";
+import { HelmetProvider } from "react-helmet-async";
 
 import { AuthProvider } from "./contexts/AuthContext";
 import { LocationProvider } from "./contexts/LocationContext";
 
-const AppRoutes = lazy(() => import("./routes/AppRoutes"));
+import AppRoutes from "./routes/AppRoutes";
 
 const Loader = () => (
   <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f7f4ee" }}>
@@ -28,15 +29,17 @@ export default function App() {
   // ✅ SAHI — Toast ko Router ke andar, AuthProvider ke andar rakha
   return (
     <ErrorBoundary>
-      <Router>
-        <AuthProvider>
-          <LocationProvider>
-            <GlobalWebSocket />
-            <AppRoutes />
-            <Toast toast={toast} />
-          </LocationProvider>
-        </AuthProvider>
-      </Router>
+      <HelmetProvider>
+        <Router>
+          <AuthProvider>
+            <LocationProvider>
+              <GlobalWebSocket />
+              <AppRoutes />
+              <Toast toast={toast} />
+            </LocationProvider>
+          </AuthProvider>
+        </Router>
+      </HelmetProvider>
     </ErrorBoundary>
   );
 }

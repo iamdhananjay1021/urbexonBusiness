@@ -8,11 +8,11 @@ import {
     FaSignOutAlt, FaBars, FaTimes, FaChevronRight, FaPlusCircle,
     FaImage, FaTags, FaStore, FaMapMarkerAlt, FaMoneyBillWave, FaUndoAlt, FaTruck,
     FaUsers, FaTicketAlt, FaBell, FaCheck, FaShoppingCart, FaExclamationTriangle, FaInfoCircle,
-    FaGlobeAsia,
+    FaGlobeAsia, FaCog,
 } from "react-icons/fa";
 
 /* ─── Pages that need zero padding (manage their own layout) ─── */
-const FULLBLEED_ROUTES = ["refunds", "settlements", "payouts", "pincodes", "local-delivery", "map"];
+const FULLBLEED_ROUTES = ["refunds", "settlements", "payouts", "pincodes", "local-delivery", "map", "delivery-settings"];
 
 const ADMIN_STYLES = `
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
@@ -281,6 +281,8 @@ const NAV_SECTIONS = [
             { to: "refunds", icon: FaUndoAlt, label: "Refunds" },
             { to: "coupons", icon: FaTags, label: "Coupons" },
             { to: "local-delivery", icon: FaTruck, label: "Local Delivery" },
+            { to: "delivery-settings", icon: FaCog, label: "Delivery Settings" },
+            { to: "scheduler", icon: FaCog, label: "Scheduler" },
         ],
     },
 ];

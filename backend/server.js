@@ -44,9 +44,12 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import stockNotificationRoutes from "./routes/stockNotificationRoutes.js";
 import userNotificationRoutes from "./routes/userNotificationRoutes.js";
 import schedulerRoutes from "./routes/schedulerRoutes.js";
+import sitemapRoutes from "./routes/sitemapRoutes.js";
+import deliveryConfigRoutes from "./routes/deliveryConfigRoutes.js";
 import { notFound, errorHandler } from "./middlewares/errorMiddleware.js";
 import scheduler from "./jobs/scheduler.js";
 import logger from "./utils/logger.js";
+import { refreshDeliveryConfig } from "./config/deliveryConfig.js";
 import cloudinary from "./config/cloudinary.js";
 
 dotenv.config();
@@ -164,6 +167,8 @@ app.use("/api/user-notifications", generalLimiter, userNotificationRoutes);
 app.use("/api", generalLimiter, vendorRoutes);
 app.use("/api/delivery", generalLimiter, deliveryRoutes);
 app.use("/api/admin", adminLimiter, schedulerRoutes);
+app.use("/api", sitemapRoutes);
+app.use("/api", generalLimiter, deliveryConfigRoutes);
 
 // ── 404 + Error Handler ───────────────────────────────────
 app.use(notFound);
@@ -178,6 +183,9 @@ const server = httpServer.listen(PORT, "0.0.0.0", async () => {
 
     initWebSocket(server);
     console.log("🔌 WebSocket ready at /ws");
+
+    // Load delivery config from DB
+    await refreshDeliveryConfig();
 
     // 🤖 Initialize Production Automation Scheduler
     try {

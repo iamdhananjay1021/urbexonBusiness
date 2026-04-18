@@ -33,6 +33,7 @@ import {
 import { useCheckout } from "../../hooks/useCheckout";
 import PriceSummary from "./PriceSummary";
 import AddressForm from "./AddressForm";
+import SEO from "../SEO";
 
 const fmt = (n) => Number(n || 0).toLocaleString("en-IN");
 
@@ -576,6 +577,7 @@ const Checkout = () => {
 
     return (
         <>
+            <SEO title="Checkout" noindex />
             <style>{css}</style>
 
             <div className="ck-page">

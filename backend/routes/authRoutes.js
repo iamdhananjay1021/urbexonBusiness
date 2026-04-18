@@ -9,7 +9,7 @@ import {
     register, login, adminLogin,
     verifyOtp, resendOtp, refreshToken,
     getProfile, updateProfile, changePassword, saveLocation,
-    getAllUsers,
+    getAllUsers, toggleBlockUser,
     forgotPassword, resetPassword,
     adminForgotPassword, adminResetPassword,
     vendorForgotPassword, vendorResetPassword,
@@ -117,6 +117,7 @@ router.post("/save-location", protect, saveLocation);
 
 /* ── Admin only ── */
 router.get("/users", protect, adminOnly, getAllUsers);
+router.patch("/users/:id/toggle-block", protect, adminOnly, toggleBlockUser);
 router.get("/admin/dashboard", protect, adminOnly, adminGetDashboard);
 
 export default router;

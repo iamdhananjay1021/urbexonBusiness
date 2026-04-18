@@ -6,6 +6,8 @@ import { useAuth } from "../contexts/AuthContext";
 import RelatedProductsSlider from "../components/RelatedProductsSlider";
 import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
 import { imgUrl } from "../utils/imageUrl";
+import SEO, { JsonLd } from "../components/SEO";
+import DeliveryEstimate from "../components/DeliveryEstimate";
 import {
     FaStar, FaRegStar, FaShoppingCart, FaBolt,
     FaTrash, FaCheckCircle, FaArrowLeft,
@@ -382,6 +384,39 @@ const ProductDetails = () => {
 
     return (
         <>
+            {product && (
+                <>
+                    <SEO
+                        title={product.name}
+                        description={product.description?.slice(0, 160) || `Buy ${product.name} at best price on Urbexon.`}
+                        path={`/products/${id}`}
+                        image={product.images?.[0]?.url || ""}
+                        type="product"
+                    />
+                    <JsonLd data={{
+                        "@context": "https://schema.org",
+                        "@type": "Product",
+                        name: product.name,
+                        description: product.description?.slice(0, 300),
+                        image: product.images?.map(i => i.url) || [],
+                        brand: { "@type": "Brand", name: product.brand || "Urbexon" },
+                        offers: {
+                            "@type": "Offer",
+                            url: `https://www.urbexon.in/products/${id}`,
+                            priceCurrency: "INR",
+                            price: product.price,
+                            availability: product.inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+                        },
+                        ...(product.avgRating > 0 && {
+                            aggregateRating: {
+                                "@type": "AggregateRating",
+                                ratingValue: product.avgRating,
+                                reviewCount: product.reviewCount || 1,
+                            },
+                        }),
+                    }} />
+                </>
+            )}
             {/* ── Global CSS ── */}
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');
@@ -634,10 +669,10 @@ const ProductDetails = () => {
                                 )}
                             </div>
 
-                            {/* Delivery */}
-                            <p style={{ fontSize: 12, color: "#878787", marginTop: 6, marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #f0f0f0" }}>
-                                🚚 Free delivery on orders above ₹499
-                            </p>
+                            {/* Delivery Estimate */}
+                            <div style={{ marginTop: 6, marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #f0f0f0" }}>
+                                <DeliveryEstimate productPrice={Number(product.price) || 0} productWeight={product.weight || 500} />
+                            </div>
 
                             {/* Stock */}
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>

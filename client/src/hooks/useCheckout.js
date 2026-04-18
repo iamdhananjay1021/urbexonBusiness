@@ -26,7 +26,7 @@ import { initiateOnlinePayment } from "../services/paymentService";
 export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { cartItems, clear } = useCart();
+    const { cartItems, clearEcommerce: clear } = useCart();
     const checkoutItems = buyNowItem
         ? [buyNowItem]
         : (cartItems || []);
@@ -130,6 +130,9 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
             }
         }, 300);
     }, [checkoutItems, paymentMethod, deliveryType, codDistance, selectedAddress?.pincode, coupon]);
+
+    // Cleanup debounce on unmount
+    useEffect(() => () => clearTimeout(pricingDebounce.current), []);
 
     // Initial pricing fetch
     useEffect(() => {

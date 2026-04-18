@@ -76,6 +76,9 @@ const UHBannerCarousel = memo(({ banners = [] }) => {
                             <div className="uhb-overlay">
                                 {b.title && <h2 className="uhb-title">{b.title}</h2>}
                                 {b.subtitle && <p className="uhb-sub">{b.subtitle}</p>}
+                                {b.link && b.buttonText && (
+                                    <span className="uhb-cta">{b.buttonText}</span>
+                                )}
                             </div>
                         )}
                     </div>
@@ -117,6 +120,8 @@ const CSS = `
 .uhb-overlay{position:absolute;bottom:0;left:0;right:0;padding:28px 32px;background:linear-gradient(transparent 0%,rgba(0,0,0,.6) 100%);pointer-events:none}
 .uhb-title{color:#fff;font-size:clamp(16px,3vw,28px);font-weight:800;margin:0 0 4px;line-height:1.2;letter-spacing:-.3px;text-shadow:0 2px 12px rgba(0,0,0,.4)}
 .uhb-sub{color:rgba(255,255,255,.9);font-size:clamp(11px,1.8vw,14px);margin:0;font-weight:500}
+.uhb-cta{display:inline-block;margin-top:10px;padding:7px 18px;background:#fff;color:#0f172a;font-size:12px;font-weight:700;border-radius:8px;pointer-events:auto;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.uhb-cta:hover{background:#f1f5f9;transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.2)}
 .uhb-dots{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:2}
 .uhb-dot{width:8px;height:8px;border-radius:50%;border:none;background:rgba(255,255,255,.4);cursor:pointer;padding:0;transition:all .3s}
 .uhb-dot.on{background:#fff;width:24px;border-radius:4px;box-shadow:0 1px 6px rgba(0,0,0,.2)}

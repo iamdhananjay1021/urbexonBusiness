@@ -16,6 +16,7 @@ import {
     FaChevronDown, FaChevronUp, FaShieldAlt,
 } from "react-icons/fa";
 import { useUHCheckout } from "../hooks/useUHCheckout";
+import SEO from "../components/SEO";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
@@ -66,6 +67,7 @@ const UHCheckout = () => {
 
     return (
         <div className="uhck-root">
+            <SEO title="Urbexon Hour Checkout" noindex />
             <style>{CSS}</style>
 
             {/* Header */}

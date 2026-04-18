@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import api from '../api/axios';
+import api from '../api/adminApi';
 import { FaBolt, FaCheckCircle, FaClock, FaExclamationTriangle, FaRefresh } from 'react-icons/fa';
 
 const CSS = `

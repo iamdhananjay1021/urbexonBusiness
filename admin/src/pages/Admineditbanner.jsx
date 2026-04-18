@@ -19,10 +19,37 @@ const Field = ({ label, hint, children }) => (
     </div>
 );
 
+const LINK_TYPES = [
+    { value: "none", label: "No Link", icon: "—" },
+    { value: "route", label: "Internal Route", icon: "🔗" },
+    { value: "product", label: "Product Page", icon: "📦" },
+    { value: "category", label: "Category Page", icon: "📂" },
+    { value: "external", label: "External URL", icon: "🌐" },
+];
+
+const LINK_HINTS = {
+    none: "",
+    route: "e.g. /deals, /urbexon-hour, /category/fashion",
+    product: "e.g. /product/6639abc123",
+    category: "e.g. /category/electronics",
+    external: "e.g. https://example.com/promo",
+};
+
+const toLocalDT = (d) => {
+    if (!d) return "";
+    const dt = new Date(d);
+    if (isNaN(dt)) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+};
+
 const AdminEditBanner = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const [form, setForm] = useState({ title: "", subtitle: "", link: "", isActive: true, order: 0, type: "ecommerce", placement: "hero" });
+    const [form, setForm] = useState({
+        title: "", subtitle: "", description: "", link: "", linkType: "none", buttonText: "",
+        isActive: true, order: 0, type: "ecommerce", placement: "hero", startDate: "", endDate: "",
+    });
     const [currentImage, setCurrentImage] = useState("");
     const [imageFile, setImageFile] = useState(null);
     const [preview, setPreview] = useState("");
@@ -36,7 +63,20 @@ const AdminEditBanner = () => {
                 const { data } = await fetchAllBanners();
                 const banner = data.find(b => b._id === id);
                 if (!banner) { navigate("/admin/banners"); return; }
-                setForm({ title: banner.title || "", subtitle: banner.subtitle || "", link: banner.link || "", isActive: banner.isActive, order: banner.order || 0, type: banner.type || "ecommerce", placement: banner.placement || "hero" });
+                setForm({
+                    title: banner.title || "",
+                    subtitle: banner.subtitle || "",
+                    description: banner.description || "",
+                    link: banner.link || "",
+                    linkType: banner.linkType || (banner.link ? "route" : "none"),
+                    buttonText: banner.buttonText || "",
+                    isActive: banner.isActive,
+                    order: banner.order || 0,
+                    type: banner.type || "ecommerce",
+                    placement: banner.placement || "hero",
+                    startDate: toLocalDT(banner.startDate),
+                    endDate: toLocalDT(banner.endDate),
+                });
                 setCurrentImage(banner.image?.url || "");
             } catch {
                 setError("Failed to load banner");
@@ -68,11 +108,16 @@ const AdminEditBanner = () => {
             const fd = new FormData();
             fd.append("title", form.title.trim());
             fd.append("subtitle", form.subtitle.trim());
+            fd.append("description", form.description.trim());
             fd.append("link", form.link.trim());
+            fd.append("linkType", form.linkType);
+            fd.append("buttonText", form.buttonText.trim());
             fd.append("isActive", form.isActive);
             fd.append("order", form.order);
             fd.append("type", form.type);
             fd.append("placement", form.placement);
+            if (form.startDate) fd.append("startDate", form.startDate);
+            if (form.endDate) fd.append("endDate", form.endDate);
             if (imageFile) fd.append("image", imageFile);
             await updateBanner(id, fd);
             navigate("/admin/banners");
@@ -92,6 +137,8 @@ const AdminEditBanner = () => {
 
     return (
         <div style={{ fontFamily: "'Inter', system-ui, sans-serif", maxWidth: 640, margin: "0 auto" }}>
+            <style>{`@keyframes ux-spin{to{transform:rotate(360deg)}}
+@media(max-width:520px){.bnr-grid2{grid-template-columns:1fr !important;}.bnr-form{padding:16px !important;}}`}</style>
 
             {/* Header */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
@@ -100,12 +147,12 @@ const AdminEditBanner = () => {
                 </button>
                 <div>
                     <h1 style={{ fontSize: 20, fontWeight: 700, color: "#1e293b", margin: 0 }}>Edit Banner</h1>
-                    <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>Update banner details</p>
+                    <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>Update banner details & settings</p>
                 </div>
             </div>
 
             <form onSubmit={handleSubmit}>
-                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.04)", display: "flex", flexDirection: "column", gap: 20 }}>
+                <div className="bnr-form" style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.04)", display: "flex", flexDirection: "column", gap: 20 }}>
 
                     {/* Current / New Image */}
                     <Field label="Banner Image" hint="(upload new to replace)">
@@ -136,23 +183,54 @@ const AdminEditBanner = () => {
                         )}
                     </Field>
 
-                    <Field label="Title" hint="(optional)">
-                        <input name="title" value={form.title} onChange={handleChange} placeholder="e.g. Shop The Trend"
+                    {/* Title */}
+                    <Field label="Title" hint="(optional — shown as main heading)">
+                        <input name="title" value={form.title} onChange={handleChange} placeholder="e.g. Summer Sale — Up to 70% Off"
                             style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
                     </Field>
 
-                    <Field label="Subtitle" hint="(optional)">
-                        <input name="subtitle" value={form.subtitle} onChange={handleChange} placeholder="e.g. Live The Trend."
+                    {/* Subtitle */}
+                    <Field label="Subtitle" hint="(optional — shown below title)">
+                        <input name="subtitle" value={form.subtitle} onChange={handleChange} placeholder="e.g. Limited time offer"
                             style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
                     </Field>
 
-                    <Field label="Link URL" hint="(optional)">
-                        <input name="link" value={form.link} onChange={handleChange} placeholder="e.g. /category/mens-fashion"
-                            style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                    {/* Description */}
+                    <Field label="Description" hint="(optional — additional detail text)">
+                        <textarea name="description" value={form.description} onChange={handleChange} placeholder="Detailed description..."
+                            rows={2} style={{ ...inputStyle, resize: "vertical" }} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
                     </Field>
+
+                    {/* Link Type */}
+                    <Field label="Click Action" hint="(what happens when user clicks)">
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {LINK_TYPES.map(lt => (
+                                <button key={lt.value} type="button" onClick={() => setForm(prev => ({ ...prev, linkType: lt.value, link: lt.value === "none" ? "" : prev.link }))}
+                                    style={{ padding: "7px 12px", border: `2px solid ${form.linkType === lt.value ? "#2563eb" : "#e2e8f0"}`, borderRadius: 8, background: form.linkType === lt.value ? "#eff6ff" : "#fff", cursor: "pointer", fontSize: 11, fontWeight: form.linkType === lt.value ? 700 : 500, color: form.linkType === lt.value ? "#2563eb" : "#64748b", fontFamily: "inherit", transition: "all 0.2s" }}>
+                                    {lt.icon} {lt.label}
+                                </button>
+                            ))}
+                        </div>
+                    </Field>
+
+                    {/* Link URL */}
+                    {form.linkType !== "none" && (
+                        <Field label="Link URL" hint={`(${LINK_HINTS[form.linkType]})`}>
+                            <input name="link" value={form.link} onChange={handleChange} placeholder={LINK_HINTS[form.linkType]}
+                                style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                        </Field>
+                    )}
+
+                    {/* Button Text */}
+                    {form.linkType !== "none" && (
+                        <Field label="Button Text" hint="(CTA label, e.g. 'Shop Now', 'View Deals')">
+                            <input name="buttonText" value={form.buttonText} onChange={handleChange} placeholder="e.g. Shop Now"
+                                style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                        </Field>
+                    )}
 
                     {/* Type & Placement */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <div className="bnr-grid2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                         <Field label="Banner Type">
                             <div style={{ display: "flex", gap: 8 }}>
                                 {[{ value: "ecommerce", label: "🛒 Ecommerce" }, { value: "urbexon_hour", label: "⚡ Urbexon Hour" }].map(opt => (
@@ -175,8 +253,21 @@ const AdminEditBanner = () => {
                         </Field>
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                        <Field label="Display Order">
+                    {/* Schedule */}
+                    <div className="bnr-grid2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                        <Field label="Start Date" hint="(optional)">
+                            <input name="startDate" type="datetime-local" value={form.startDate} onChange={handleChange}
+                                style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                        </Field>
+                        <Field label="End Date" hint="(optional)">
+                            <input name="endDate" type="datetime-local" value={form.endDate} onChange={handleChange}
+                                style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                        </Field>
+                    </div>
+
+                    {/* Order + Active */}
+                    <div className="bnr-grid2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                        <Field label="Display Order" hint="(lower = first)">
                             <input name="order" type="number" min="0" value={form.order} onChange={handleChange}
                                 style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
                         </Field>
@@ -191,12 +282,14 @@ const AdminEditBanner = () => {
                         </Field>
                     </div>
 
+                    {/* Error */}
                     {error && (
                         <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 500 }}>
                             ⚠ {error}
                         </div>
                     )}
 
+                    {/* Buttons */}
                     <div style={{ display: "flex", gap: 10 }}>
                         <button type="button" onClick={() => navigate("/admin/banners")}
                             style={{ flex: 1, padding: "11px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, color: "#64748b", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
@@ -209,7 +302,6 @@ const AdminEditBanner = () => {
                     </div>
                 </div>
             </form>
-            <style>{`@keyframes ux-spin{to{transform:rotate(360deg)}}`}</style>
         </div>
     );
 };

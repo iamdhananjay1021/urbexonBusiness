@@ -11,7 +11,7 @@ export const checkPincode = async (req, res) => {
     try {
         const { code } = req.params;
         if (!code || !/^\d{6}$/.test(code.trim())) {
-            return res.status(400).json({ success: false,  available: false, message: "Invalid pincode format" });
+            return res.status(400).json({ success: false, available: false, message: "Invalid pincode format" });
         }
 
         const pincode = await Pincode.findOne({ code: code.trim() })
@@ -49,7 +49,7 @@ export const checkPincode = async (req, res) => {
         });
     } catch (err) {
         console.error("[checkPincode]", err);
-        res.status(500).json({ success: false,  message: "Server error" });
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
@@ -57,16 +57,16 @@ export const checkPincode = async (req, res) => {
 export const joinWaitlist = async (req, res) => {
     try {
         const { code, name, email, phone } = req.body;
-        if (!code || !email) return res.status(400).json({ success: false,  message: "Pincode and email are required" });
-        if (!/^\d{6}$/.test(code)) return res.status(400).json({ success: false,  message: "Invalid pincode" });
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ success: false,  message: "Invalid email address" });
+        if (!code || !email) return res.status(400).json({ success: false, message: "Pincode and email are required" });
+        if (!/^\d{6}$/.test(code)) return res.status(400).json({ success: false, message: "Invalid pincode" });
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ success: false, message: "Invalid email address" });
 
         const pincode = await Pincode.findOne({ code });
-        if (!pincode) return res.status(404).json({ success: false,  message: "Pincode not found" });
-        if (pincode.status === "active") return res.status(400).json({ success: false,  message: "Service is already active in your area!" });
+        if (!pincode) return res.status(404).json({ success: false, message: "Pincode not found" });
+        if (pincode.status === "active") return res.status(400).json({ success: false, message: "Service is already active in your area!" });
 
         if (pincode.waitlist?.find((w) => w.email === email.toLowerCase())) {
-            return res.status(400).json({ success: false,  message: "You are already on the waitlist!" });
+            return res.status(400).json({ success: false, message: "You are already on the waitlist!" });
         }
 
         pincode.waitlist = pincode.waitlist || [];
@@ -77,7 +77,7 @@ export const joinWaitlist = async (req, res) => {
         res.json({ success: true, message: "You're on the waitlist! We'll notify you when we launch in your area." });
     } catch (err) {
         console.error("[joinWaitlist]", err);
-        res.status(500).json({ success: false,  message: "Server error" });
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
@@ -88,11 +88,12 @@ export const getAllPincodes = async (req, res) => {
         const filter = {};
         if (status) filter.status = status;
         if (search) {
+            const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             filter.$or = [
-                { code: { $regex: search } },
-                { city: { $regex: search, $options: "i" } },
-                { area: { $regex: search, $options: "i" } },
-                { state: { $regex: search, $options: "i" } },
+                { code: { $regex: escaped } },
+                { city: { $regex: escaped, $options: "i" } },
+                { area: { $regex: escaped, $options: "i" } },
+                { state: { $regex: escaped, $options: "i" } },
             ];
         }
 
@@ -106,7 +107,7 @@ export const getAllPincodes = async (req, res) => {
         res.json({ success: true, pincodes, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
     } catch (err) {
         console.error("[getAllPincodes]", err);
-        res.status(500).json({ success: false,  message: "Failed to fetch pincodes" });
+        res.status(500).json({ success: false, message: "Failed to fetch pincodes" });
     }
 };
 
@@ -114,10 +115,10 @@ export const getAllPincodes = async (req, res) => {
 export const createPincode = async (req, res) => {
     try {
         const { code, status, area, city, district, state, priority, expectedLaunchDate } = req.body;
-        if (!code || !/^\d{6}$/.test(code)) return res.status(400).json({ success: false,  message: "Valid 6-digit pincode is required" });
+        if (!code || !/^\d{6}$/.test(code)) return res.status(400).json({ success: false, message: "Valid 6-digit pincode is required" });
 
         const existing = await Pincode.findOne({ code });
-        if (existing) return res.status(409).json({ success: false,  message: `Pincode ${code} already exists` });
+        if (existing) return res.status(409).json({ success: false, message: `Pincode ${code} already exists` });
 
         const pincode = await Pincode.create({
             code, status: status || "coming_soon",
@@ -130,7 +131,7 @@ export const createPincode = async (req, res) => {
         res.status(201).json({ success: true, pincode, message: "Pincode created" });
     } catch (err) {
         console.error("[createPincode]", err);
-        res.status(500).json({ success: false,  message: "Failed to create pincode" });
+        res.status(500).json({ success: false, message: "Failed to create pincode" });
     }
 };
 
@@ -138,7 +139,7 @@ export const createPincode = async (req, res) => {
 export const updatePincode = async (req, res) => {
     try {
         const pincode = await Pincode.findById(req.params.id);
-        if (!pincode) return res.status(404).json({ success: false,  message: "Pincode not found" });
+        if (!pincode) return res.status(404).json({ success: false, message: "Pincode not found" });
 
         const fields = ["status", "area", "city", "district", "state", "priority", "expectedLaunchDate", "note"];
         fields.forEach((f) => { if (req.body[f] !== undefined) pincode[f] = req.body[f]; });
@@ -152,7 +153,7 @@ export const updatePincode = async (req, res) => {
         res.json({ success: true, pincode, message: "Pincode updated" });
     } catch (err) {
         console.error("[updatePincode]", err);
-        res.status(500).json({ success: false,  message: "Failed to update pincode" });
+        res.status(500).json({ success: false, message: "Failed to update pincode" });
     }
 };
 
@@ -160,9 +161,9 @@ export const updatePincode = async (req, res) => {
 export const deletePincode = async (req, res) => {
     try {
         const pincode = await Pincode.findByIdAndDelete(req.params.id);
-        if (!pincode) return res.status(404).json({ success: false,  message: "Pincode not found" });
+        if (!pincode) return res.status(404).json({ success: false, message: "Pincode not found" });
         res.json({ success: true, message: "Pincode deleted" });
     } catch (err) {
-        res.status(500).json({ success: false,  message: "Failed to delete pincode" });
+        res.status(500).json({ success: false, message: "Failed to delete pincode" });
     }
 };

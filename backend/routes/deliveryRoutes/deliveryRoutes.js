@@ -36,15 +36,15 @@ const router = express.Router();
 
 router.post("/register", protect, docUpload, validateBody({ name: { required: true, minLength: 2 }, phone: { required: true, pattern: /^[6-9]\d{9}$/ }, vehicleType: { required: true, enum: ['bicycle', 'scooter', 'motorcycle', 'car', 'other'] } }), registerDeliveryBoy);
 router.get("/status", protect, getDeliveryStatus);
-router.patch("/toggle-status", protect, toggleOnlineStatus);
-router.get("/orders", protect, getDeliveryOrders);
-router.patch("/orders/:id/accept", protect, acceptOrder);
-router.patch("/orders/:id/pickup", protect, pickupOrder);
-router.patch("/orders/:id/deliver", protect, validateBody({ otp: { required: true, minLength: 4, maxLength: 6 } }), markDelivered);
-router.patch("/location", protect, validateBody({ lat: { required: true, type: 'number' }, lng: { required: true, type: 'number' } }), updateRiderLocation);
-router.get("/earnings", protect, getDeliveryEarnings);
-router.patch("/profile", protect, updateDeliveryProfile);
-router.patch("/documents", protect, docUpload, updateDeliveryDocuments);
+router.patch("/toggle-status", protect, deliveryOnly, toggleOnlineStatus);
+router.get("/orders", protect, deliveryOnly, getDeliveryOrders);
+router.patch("/orders/:id/accept", protect, deliveryOnly, acceptOrder);
+router.patch("/orders/:id/pickup", protect, deliveryOnly, pickupOrder);
+router.patch("/orders/:id/deliver", protect, deliveryOnly, validateBody({ otp: { required: true, minLength: 4, maxLength: 6 } }), markDelivered);
+router.patch("/location", protect, deliveryOnly, validateBody({ lat: { required: true, type: 'number' }, lng: { required: true, type: 'number' } }), updateRiderLocation);
+router.get("/earnings", protect, deliveryOnly, getDeliveryEarnings);
+router.patch("/profile", protect, deliveryOnly, updateDeliveryProfile);
+router.patch("/documents", protect, deliveryOnly, docUpload, updateDeliveryDocuments);
 router.patch("/bank-details", protect, deliveryOnly, deliveryUpdateBankDetails);
 router.get("/payouts", protect, deliveryOnly, deliveryGetPayouts);
 router.post("/payouts/request", protect, deliveryOnly, deliveryRequestPayout);
@@ -52,9 +52,9 @@ router.post("/payouts/request", protect, deliveryOnly, deliveryRequestPayout);
 router.get("/orders/:id/rider-location", protect, getRiderLocationForOrder);
 
 // ── New v3.0 endpoints ──
-router.patch("/orders/:id/reject", protect, rejectOrder);
-router.patch("/orders/:id/cancel", protect, cancelOrder);
-router.patch("/orders/:id/status", protect, validateBody({ status: { required: true } }), updateDeliveryStatus);
-router.patch("/fcm-token", protect, validateBody({ token: { required: true } }), saveFcmToken);
+router.patch("/orders/:id/reject", protect, deliveryOnly, rejectOrder);
+router.patch("/orders/:id/cancel", protect, deliveryOnly, cancelOrder);
+router.patch("/orders/:id/status", protect, deliveryOnly, validateBody({ status: { required: true } }), updateDeliveryStatus);
+router.patch("/fcm-token", protect, deliveryOnly, validateBody({ token: { required: true } }), saveFcmToken);
 
 export default router;

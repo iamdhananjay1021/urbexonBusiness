@@ -16,6 +16,7 @@ const Dashboard = lazy(() => import("../pages/Dashboard"));
 const ProductList = lazy(() => import("../pages/products/ProductList"));
 const ProductForm = lazy(() => import("../pages/products/ProductForm"));
 const Orders = lazy(() => import("../pages/Orders"));
+const OrderDetail = lazy(() => import("../pages/OrderDetail"));
 const Earnings = lazy(() => import("../pages/Earnings"));
 const Profile = lazy(() => import("../pages/Profile"));
 const Settings = lazy(() => import("../pages/Settings"));
@@ -84,6 +85,7 @@ const AppRoutes = () => (
         <Route path="products/new" element={<ApprovedRoute><ProductForm /></ApprovedRoute>} />
         <Route path="products/:id/edit" element={<ApprovedRoute><ProductForm /></ApprovedRoute>} />
         <Route path="orders" element={<ApprovedRoute><Orders /></ApprovedRoute>} />
+        <Route path="orders/:id" element={<ApprovedRoute><OrderDetail /></ApprovedRoute>} />
         <Route path="earnings" element={<ApprovedRoute><Earnings /></ApprovedRoute>} />
         <Route path="subscription" element={<ApprovedRoute><Subscription /></ApprovedRoute>} />
         <Route path="profile" element={<Profile />} />

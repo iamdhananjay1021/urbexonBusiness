@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { FaStar, FaMapMarkerAlt, FaArrowLeft, FaStore, FaBox } from "react-icons/fa";
 import api from "../api/axios";
 import ProductCard from "../components/ProductCard";
+import SEO from "../components/SEO";
 
 const VendorStore = () => {
     const { slug } = useParams();
@@ -54,6 +55,11 @@ const VendorStore = () => {
 
     return (
         <div style={styles.page}>
+            <SEO
+                title={vendor?.shopName || "Vendor Store"}
+                description={`Shop at ${vendor?.shopName || "this vendor"} on Urbexon. ${vendor?.address?.city ? `Located in ${vendor.address.city}.` : ""} Browse products and order now.`}
+                path={`/vendor/${slug}`}
+            />
             <style>{css}</style>
 
             {/* Banner */}

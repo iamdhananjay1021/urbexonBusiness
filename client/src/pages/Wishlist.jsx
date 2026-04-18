@@ -7,6 +7,7 @@ import { useNavigate, Link } from "react-router-dom";
 import api from "../api/axios";
 import { useCart } from "../hooks/useCart";
 import { FaHeart, FaShoppingCart, FaTrash, FaBolt } from "react-icons/fa";
+import SEO from "../components/SEO";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
@@ -42,13 +43,13 @@ const Wishlist = () => {
   useEffect(() => {
     api.get("/wishlist")
       .then(({ data }) => setProducts(data.products || []))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, []);
 
   const remove = async (id) => {
     setProducts(p => p.filter(x => x._id !== id));
-    try { await api.delete(`/wishlist/${id}`); } catch {}
+    try { await api.delete(`/wishlist/${id}`); } catch { }
   };
 
   const addToCart = (product) => {
@@ -56,20 +57,21 @@ const Wishlist = () => {
   };
 
   if (loading) return (
-    <div style={{ minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f7f4ee" }}>
-      <div style={{ width:34,height:34,border:"3px solid #e8e4d9",borderTop:"3px solid #c9a84c",borderRadius:"50%",animation:"spin .8s linear infinite" }}/>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f7f4ee" }}>
+      <div style={{ width: 34, height: 34, border: "3px solid #e8e4d9", borderTop: "3px solid #c9a84c", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
       <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
     </div>
   );
 
   return (
     <div className="wl-root">
+      <SEO title="My Wishlist" noindex />
       <style>{CSS}</style>
       <div className="wl-inner">
         <div className="wl-head">
-          <h1 className="wl-title"><FaHeart color="#ef4444" size={20}/>My Wishlist <span style={{fontSize:15,color:"#94a3b8",fontWeight:500}}>({products.length})</span></h1>
+          <h1 className="wl-title"><FaHeart color="#ef4444" size={20} />My Wishlist <span style={{ fontSize: 15, color: "#94a3b8", fontWeight: 500 }}>({products.length})</span></h1>
           {products.length > 0 && (
-            <button onClick={() => { products.forEach(p => addToCart(p)); alert("Sab items cart mein add ho gaye!"); }} style={{ padding:"9px 18px",background:"#1a1740",border:"none",color:"#c9a84c",borderRadius:8,fontWeight:700,fontSize:12,cursor:"pointer" }}>
+            <button onClick={() => { products.forEach(p => addToCart(p)); alert("Sab items cart mein add ho gaye!"); }} style={{ padding: "9px 18px", background: "#1a1740", border: "none", color: "#c9a84c", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
               Sab Cart Mein Add Karein
             </button>
           )}
@@ -77,24 +79,24 @@ const Wishlist = () => {
 
         {products.length === 0 ? (
           <div className="wl-empty">
-            <div style={{ fontSize:56,marginBottom:16,opacity:.3 }}>🤍</div>
-            <h2 style={{ fontSize:20,fontWeight:800,color:"#1a1740",marginBottom:8 }}>Wishlist Khali Hai</h2>
-            <p style={{ fontSize:14,color:"#94a3b8",marginBottom:24 }}>Apne pasandida products save karein</p>
-            <button onClick={() => navigate("/")} style={{ padding:"11px 24px",background:"#1a1740",border:"none",color:"#c9a84c",borderRadius:8,cursor:"pointer",fontWeight:700 }}>
+            <div style={{ fontSize: 56, marginBottom: 16, opacity: .3 }}>🤍</div>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>Wishlist Khali Hai</h2>
+            <p style={{ fontSize: 14, color: "#94a3b8", marginBottom: 24 }}>Apne pasandida products save karein</p>
+            <button onClick={() => navigate("/")} style={{ padding: "11px 24px", background: "#1a1740", border: "none", color: "#c9a84c", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>
               Shopping Karein →
             </button>
           </div>
         ) : (
           <div className="wl-grid">
             {products.map(product => {
-              const disc = product.mrp > product.price ? Math.round(((product.mrp - product.price)/product.mrp)*100) : 0;
+              const disc = product.mrp > product.price ? Math.round(((product.mrp - product.price) / product.mrp) * 100) : 0;
               const inCart = cartItems.some(c => c._id === product._id);
               return (
                 <div key={product._id} className="wl-card">
                   <Link to={`/products/${product.slug || product._id}`}>
-                    <img className="wl-img" src={product.images?.[0]?.url || "/placeholder.png"} alt={product.name} onError={e => { e.target.src = "/placeholder.png"; }}/>
+                    <img className="wl-img" src={product.images?.[0]?.url || "/placeholder.png"} alt={product.name} onError={e => { e.target.src = "/placeholder.png"; }} />
                   </Link>
-                  <button className="wl-rm" onClick={() => remove(product._id)}><FaTrash size={11}/></button>
+                  <button className="wl-rm" onClick={() => remove(product._id)}><FaTrash size={11} /></button>
                   <div className="wl-body">
                     {product.category && <div className="wl-cat">{product.category}</div>}
                     <div className="wl-name">{product.name}</div>
@@ -104,10 +106,10 @@ const Wishlist = () => {
                       {disc > 0 && <span className="wl-disc">{disc}% OFF</span>}
                     </div>
                     {product.productType === "urbexon_hour" && (
-                      <div style={{ fontSize:9,fontWeight:700,color:"#c9a84c",marginTop:3,display:"flex",alignItems:"center",gap:4 }}><FaBolt size={8}/>Urbexon Hour</div>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: "#c9a84c", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}><FaBolt size={8} />Urbexon Hour</div>
                     )}
-                    <button className={`wl-add ${inCart?"added":""}`} onClick={() => addToCart(product)}>
-                      <FaShoppingCart size={11}/>{inCart ? "Cart Mein Hai" : "Cart Mein Add Karein"}
+                    <button className={`wl-add ${inCart ? "added" : ""}`} onClick={() => addToCart(product)}>
+                      <FaShoppingCart size={11} />{inCart ? "Cart Mein Hai" : "Cart Mein Add Karein"}
                     </button>
                   </div>
                 </div>

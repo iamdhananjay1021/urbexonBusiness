@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { FaEnvelope, FaGift, FaArrowLeft } from "react-icons/fa";
 import api from "../api/axios";
+import SEO from "../components/SEO";
 
 const ForgotPassword = () => {
     const [email, setEmail] = useState("");
@@ -27,6 +28,7 @@ const ForgotPassword = () => {
 
     return (
         <div className="min-h-[90vh] flex items-center justify-center px-4 bg-gradient-to-br from-stone-100 via-amber-50/30 to-stone-100">
+            <SEO title="Forgot Password" description="Reset your Urbexon account password." path="/forgot-password" noindex />
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap');
                 .auth-font { font-family: 'DM Sans', sans-serif; }

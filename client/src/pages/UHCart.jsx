@@ -14,6 +14,7 @@ import {
     FaBolt, FaTrash, FaPlus, FaMinus, FaArrowLeft,
     FaShoppingCart, FaClock, FaShieldAlt, FaTruck,
 } from "react-icons/fa";
+import SEO from "../components/SEO";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
@@ -53,6 +54,7 @@ const UHCart = () => {
 
     return (
         <div className="uhc-root">
+            <SEO title="Urbexon Hour Cart" noindex />
             <style>{CSS}</style>
 
             {/* Header */}

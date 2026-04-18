@@ -27,12 +27,11 @@ api.interceptors.request.use((config) => {
     if (isPublic) return config; // ← token inject skip
 
     try {
-        const raw = localStorage.getItem("vendorAuth") || localStorage.getItem("auth");
+        const raw = localStorage.getItem("vendorAuth");
         const auth = JSON.parse(raw || "{}");
         if (auth?.token) config.headers.Authorization = `Bearer ${auth.token}`;
     } catch {
         localStorage.removeItem("vendorAuth");
-        localStorage.removeItem("auth");
     }
     return config;
 });

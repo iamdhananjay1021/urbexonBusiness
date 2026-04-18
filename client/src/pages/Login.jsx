@@ -6,6 +6,7 @@ import { useState, useCallback } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { FaEnvelope, FaLock, FaEye, FaEyeSlash, FaArrowLeft } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
+import SEO from "../components/SEO";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../api/axios";
 import { getFirebaseAuth, isFirebaseConfigured } from "../config/firebase";
@@ -172,6 +173,7 @@ const Login = () => {
 
     return (
         <div className="lg-root">
+            <SEO title="Login" description="Sign in to your Urbexon account." path="/login" noindex />
             <style>{S}</style>
             <div className="lg-card">
                 <div className="lg-top">

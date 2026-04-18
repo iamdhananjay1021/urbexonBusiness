@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../api/axios";
 import { FaMotorcycle, FaUpload, FaCheckCircle, FaArrowRight } from "react-icons/fa";
+import SEO from "../components/SEO";
 
 const CSS = `
 *{box-sizing:border-box}
@@ -68,37 +69,38 @@ const BecomeDelivery = () => {
     } finally { setSubmitting(false); }
   };
 
-  if (loading) return <div style={{ minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0fdf4" }}><div style={{ width:32,height:32,border:"3px solid #dcfce7",borderTop:"3px solid #22c55e",borderRadius:"50%",animation:"spin .8s linear infinite" }}/><style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style></div>;
+  if (loading) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f0fdf4" }}><div style={{ width: 32, height: 32, border: "3px solid #dcfce7", borderTop: "3px solid #22c55e", borderRadius: "50%", animation: "spin .8s linear infinite" }} /><style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style></div>;
 
   if (status) {
-    const cfg = { pending:{icon:"⏳",title:"Review Mein Hai",msg:"24-48 ghante mein update milega."}, approved:{icon:"✅",title:"Approved! Delivery Start Karein",msg:"App mein login karein."}, rejected:{icon:"❌",title:"Rejected",msg:status.rider?.adminNote||"Admin se contact karein."} };
-    const c = cfg[status.status]||cfg.pending;
-    return <div className="bd-root"><style>{CSS}</style><div style={{padding:"80px 20px",textAlign:"center"}}><div style={{fontSize:48,marginBottom:12}}>{c.icon}</div><h2 style={{fontSize:20,fontWeight:800,color:"#1a1740",marginBottom:8}}>{c.title}</h2><p style={{fontSize:14,color:"#64748b"}}>{c.msg}</p></div></div>;
+    const cfg = { pending: { icon: "⏳", title: "Review Mein Hai", msg: "24-48 ghante mein update milega." }, approved: { icon: "✅", title: "Approved! Delivery Start Karein", msg: "App mein login karein." }, rejected: { icon: "❌", title: "Rejected", msg: status.rider?.adminNote || "Admin se contact karein." } };
+    const c = cfg[status.status] || cfg.pending;
+    return <div className="bd-root"><style>{CSS}</style><div style={{ padding: "80px 20px", textAlign: "center" }}><div style={{ fontSize: 48, marginBottom: 12 }}>{c.icon}</div><h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>{c.title}</h2><p style={{ fontSize: 14, color: "#64748b" }}>{c.msg}</p></div></div>;
   }
 
-  if (success) return <div className="bd-root"><style>{CSS}</style><div style={{padding:"80px 20px",textAlign:"center"}}><div style={{fontSize:48,marginBottom:12}}>🎉</div><h2 style={{fontSize:20,fontWeight:800,color:"#1a1740",marginBottom:8}}>Registration Ho Gayi!</h2><p style={{fontSize:14,color:"#64748b",marginBottom:24}}>24-48 ghante mein approve ho jaoge. App download karein.</p><button onClick={() => navigate("/")} style={{padding:"11px 24px",background:"#0f172a",border:"none",color:"#22c55e",borderRadius:8,cursor:"pointer",fontWeight:700}}>Home Par Jayen</button></div></div>;
+  if (success) return <div className="bd-root"><style>{CSS}</style><div style={{ padding: "80px 20px", textAlign: "center" }}><div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div><h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>Registration Ho Gayi!</h2><p style={{ fontSize: 14, color: "#64748b", marginBottom: 24 }}>24-48 ghante mein approve ho jaoge. App download karein.</p><button onClick={() => navigate("/")} style={{ padding: "11px 24px", background: "#0f172a", border: "none", color: "#22c55e", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>Home Par Jayen</button></div></div>;
 
   return (
     <div className="bd-root">
+      <SEO title="Become a Delivery Partner" description="Join Urbexon as a delivery partner. Flexible hours, guaranteed earnings, and instant payouts." path="/become-delivery" />
       <style>{CSS}</style>
       <div className="bd-hero">
-        <div className="bd-badge"><FaMotorcycle size={11}/>Delivery Partner</div>
-        <h1 className="bd-title">Delivery Partner Banein<br/><span style={{color:"#22c55e"}}>Apni Schedule Par Kamao</span></h1>
-        <p style={{fontSize:14,color:"rgba(255,255,255,.65)",maxWidth:400,margin:"0 auto"}}>Flexible hours, guaranteed earnings, aur instant payouts.</p>
+        <div className="bd-badge"><FaMotorcycle size={11} />Delivery Partner</div>
+        <h1 className="bd-title">Delivery Partner Banein<br /><span style={{ color: "#22c55e" }}>Apni Schedule Par Kamao</span></h1>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,.65)", maxWidth: 400, margin: "0 auto" }}>Flexible hours, guaranteed earnings, aur instant payouts.</p>
       </div>
       <div className="bd-body">
-        {error && <div style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#b91c1c",padding:"12px 16px",borderRadius:10,fontSize:13,marginBottom:16}}>{error}</div>}
+        {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", padding: "12px 16px", borderRadius: 10, fontSize: 13, marginBottom: 16 }}>{error}</div>}
         <form onSubmit={submit}>
           <div className="bd-card">
-            <div style={{fontWeight:800,fontSize:15,color:"#1a1740",marginBottom:4}}>Personal Details</div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: "#1a1740", marginBottom: 4 }}>Personal Details</div>
             <div className="bd-grid">
-              <div><label className="bd-label">Full Name *</label><input className="bd-inp" value={form.name} onChange={set("name")} required/></div>
-              <div><label className="bd-label">Phone *</label><input className="bd-inp" value={form.phone} onChange={set("phone")} required/></div>
-              <div><label className="bd-label">City *</label><input className="bd-inp" value={form.city} onChange={set("city")}/></div>
+              <div><label className="bd-label">Full Name *</label><input className="bd-inp" value={form.name} onChange={set("name")} required /></div>
+              <div><label className="bd-label">Phone *</label><input className="bd-inp" value={form.phone} onChange={set("phone")} required /></div>
+              <div><label className="bd-label">City *</label><input className="bd-inp" value={form.city} onChange={set("city")} /></div>
             </div>
           </div>
           <div className="bd-card">
-            <div style={{fontWeight:800,fontSize:15,color:"#1a1740",marginBottom:4}}>Vehicle Details</div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: "#1a1740", marginBottom: 4 }}>Vehicle Details</div>
             <div className="bd-grid">
               <div>
                 <label className="bd-label">Vehicle Type *</label>
@@ -109,20 +111,20 @@ const BecomeDelivery = () => {
                   <option value="car">Car</option>
                 </select>
               </div>
-              <div><label className="bd-label">Vehicle Number</label><input className="bd-inp" value={form.vehicleNumber} onChange={set("vehicleNumber")} placeholder="UP32 AB 1234"/></div>
-              <div><label className="bd-label">Vehicle Model</label><input className="bd-inp" value={form.vehicleModel} onChange={set("vehicleModel")} placeholder="Honda Activa"/></div>
+              <div><label className="bd-label">Vehicle Number</label><input className="bd-inp" value={form.vehicleNumber} onChange={set("vehicleNumber")} placeholder="UP32 AB 1234" /></div>
+              <div><label className="bd-label">Vehicle Model</label><input className="bd-inp" value={form.vehicleModel} onChange={set("vehicleModel")} placeholder="Honda Activa" /></div>
             </div>
           </div>
           <div className="bd-card">
-            <div style={{fontWeight:800,fontSize:15,color:"#1a1740",marginBottom:16}}>Documents Upload</div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: "#1a1740", marginBottom: 16 }}>Documents Upload</div>
             <div className="bd-grid">
-              {[["aadhaarPhoto","Aadhaar Card *"],["licensePhoto","Driving License *"],["vehicleRc","Vehicle RC"],["selfie","Selfie Photo"]].map(([k,l]) => (
+              {[["aadhaarPhoto", "Aadhaar Card *"], ["licensePhoto", "Driving License *"], ["vehicleRc", "Vehicle RC"], ["selfie", "Selfie Photo"]].map(([k, l]) => (
                 <div key={k}>
                   <label className="bd-label">{l}</label>
-                  <label className={`bd-upload ${files[k]?"has":""}`}>
-                    <FaUpload size={16} color={files[k]?"#22c55e":"#94a3b8"}/>
-                    <div style={{fontSize:11,color:files[k]?"#15803d":"#94a3b8",marginTop:6}}>{files[k]?files[k].name:"Choose file"}</div>
-                    <input type="file" accept="image/*,.pdf" onChange={setFile(k)} style={{display:"none"}}/>
+                  <label className={`bd-upload ${files[k] ? "has" : ""}`}>
+                    <FaUpload size={16} color={files[k] ? "#22c55e" : "#94a3b8"} />
+                    <div style={{ fontSize: 11, color: files[k] ? "#15803d" : "#94a3b8", marginTop: 6 }}>{files[k] ? files[k].name : "Choose file"}</div>
+                    <input type="file" accept="image/*,.pdf" onChange={setFile(k)} style={{ display: "none" }} />
                   </label>
                 </div>
               ))}

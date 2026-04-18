@@ -9,6 +9,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useCart } from "../hooks/useCart";
 import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
+import SEO, { JsonLd } from "../components/SEO";
+import { UHDeliveryEstimate } from "../components/DeliveryEstimate";
 import {
   FaArrowLeft, FaPlus, FaMinus, FaTrash, FaShoppingCart,
   FaClock, FaStar, FaChevronRight, FaShareAlt, FaStore,
@@ -160,6 +162,31 @@ const UHProductDetail = () => {
 
   return (
     <div className="uhd-root">
+      {product && (
+        <>
+          <SEO
+            title={product.name}
+            description={product.description?.slice(0, 160) || `Order ${product.name} with quick delivery on Urbexon Hour.`}
+            path={`/uh-product/${id}`}
+            image={product.images?.[0]?.url || ""}
+            type="product"
+          />
+          <JsonLd data={{
+            "@context": "https://schema.org",
+            "@type": "Product",
+            name: product.name,
+            description: product.description?.slice(0, 300),
+            image: product.images?.map(i => i.url) || [],
+            offers: {
+              "@type": "Offer",
+              url: `https://www.urbexon.in/uh-product/${id}`,
+              priceCurrency: "INR",
+              price: product.price,
+              availability: product.inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+            },
+          }} />
+        </>
+      )}
       <style>{CSS}</style>
 
       {/* ── Top Nav ── */}
@@ -261,10 +288,8 @@ const UHProductDetail = () => {
             )}
           </div>
 
-          {/* India Location */}
-          <div className="uhd-location-tag">
-            <FaMapMarkerAlt size={11} /> India — Express delivery available
-          </div>
+          {/* Express Delivery Estimate */}
+          <UHDeliveryEstimate vendorName={product.vendorId?.shopName} />
 
           {/* Price */}
           <div className="uhd-price-block">
@@ -279,12 +304,6 @@ const UHProductDetail = () => {
 
           {/* Inclusive of taxes */}
           <p className="uhd-tax-note">Inclusive of all taxes (GST)</p>
-
-          {/* Delivery badge */}
-          <div className="uhd-delivery-badge">
-            <FaTruck size={13} />
-            <span>Express delivery in <strong>45–120 min</strong></span>
-          </div>
 
           {/* ── CTA: Desktop ── */}
           <div className="uhd-cta-desktop">

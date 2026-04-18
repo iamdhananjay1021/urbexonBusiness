@@ -12,11 +12,14 @@ export const getAllVendors = async (req, res) => {
         const { status, search, page = 1, limit = 20 } = req.query;
         const filter = { isDeleted: { $ne: true } };
         if (status && status !== "all") filter.status = status;
-        if (search) filter.$or = [
-            { shopName: { $regex: search, $options: "i" } },
-            { ownerName: { $regex: search, $options: "i" } },
-            { email: { $regex: search, $options: "i" } },
-        ];
+        if (search) {
+            const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            filter.$or = [
+                { shopName: { $regex: escaped, $options: "i" } },
+                { ownerName: { $regex: escaped, $options: "i" } },
+                { email: { $regex: escaped, $options: "i" } },
+            ];
+        }
         const skip = (Number(page) - 1) * Number(limit);
         const [vendors, total] = await Promise.all([
             Vendor.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)).lean(),
@@ -292,10 +295,13 @@ export const getAllDeliveryBoys = async (req, res) => {
         const { status, search, page = 1, limit = 20 } = req.query;
         const filter = {};
         if (status && status !== "all") filter.status = status;
-        if (search) filter.$or = [
-            { name: { $regex: search, $options: "i" } },
-            { phone: { $regex: search } },
-        ];
+        if (search) {
+            const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            filter.$or = [
+                { name: { $regex: escaped, $options: "i" } },
+                { phone: { $regex: escaped } },
+            ];
+        }
         const skip = (Number(page) - 1) * Number(limit);
         const [deliveryBoys, total] = await Promise.all([
             DeliveryBoy.find(filter).populate("userId", "name email").sort({ createdAt: -1 }).skip(skip).limit(Number(limit)).lean(),

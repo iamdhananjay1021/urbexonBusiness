@@ -7,6 +7,7 @@ import {
     FaTimes, FaChevronDown, FaChevronUp,
     FaSortAmountDown, FaSearch,
 } from "react-icons/fa";
+import SEO from "../components/SEO";
 
 const SORT_OPTIONS = [
     { val: "newest", label: "Newest First" },
@@ -123,6 +124,11 @@ const CategoryPage = () => {
 
     return (
         <>
+            <SEO
+                title={categoryLabel || slug?.replace(/-/g, " ")}
+                description={`Shop ${categoryLabel || slug?.replace(/-/g, " ")} on Urbexon. Browse ${total || ""} products with best prices and fast delivery.`}
+                path={`/category/${slug}`}
+            />
             <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
         .cp { font-family:'DM Sans',sans-serif; min-height:100vh; background:#f7f4ee; }

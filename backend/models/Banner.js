@@ -12,6 +12,11 @@ const bannerSchema = new mongoose.Schema(
             trim: true,
             maxlength: 400,
         },
+        description: {
+            type: String,
+            trim: true,
+            maxlength: 600,
+        },
         image: {
             url: { type: String, required: true },
             public_id: { type: String, required: true },
@@ -19,6 +24,17 @@ const bannerSchema = new mongoose.Schema(
         link: {
             type: String,
             trim: true,
+            default: "",
+        },
+        linkType: {
+            type: String,
+            enum: ["route", "product", "category", "external", "none"],
+            default: "none",
+        },
+        buttonText: {
+            type: String,
+            trim: true,
+            maxlength: 50,
             default: "",
         },
         isActive: {
@@ -39,8 +55,20 @@ const bannerSchema = new mongoose.Schema(
             enum: ["hero", "mid"],
             default: "hero",
         },
+        startDate: {
+            type: Date,
+            default: null,
+        },
+        endDate: {
+            type: Date,
+            default: null,
+        },
     },
     { timestamps: true }
 );
+
+// ── Indexes for common query patterns ──
+bannerSchema.index({ isActive: 1, type: 1, placement: 1 });
+bannerSchema.index({ startDate: 1, endDate: 1 });
 
 export default mongoose.model("Banner", bannerSchema);

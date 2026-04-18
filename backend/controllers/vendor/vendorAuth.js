@@ -201,9 +201,8 @@ export const registerVendor = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: "Application submitted successfully! Pending admin review.",
+            message: "Application submitted successfully! Pending admin review. Your default password is your phone number.",
             token,
-            defaultPassword: phone.trim(),
             vendor: {
                 _id: vendor._id,
                 shopName: vendor.shopName,

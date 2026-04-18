@@ -9,14 +9,14 @@ import {
 
 const router = express.Router();
 
+// GET /api/reviews/my (user's reviews) — MUST be before /:productId
+router.get("/my", protect, getMyReviews);
+
 // ✅ POST /api/reviews/:productId (matches frontend)
 router.post("/:productId", protect, addReview);
 
 // ✅ GET /api/reviews/:productId (matches frontend)
 router.get("/:productId", getProductReviews);
-
-// GET /api/reviews/my (user's reviews)
-router.get("/my", protect, getMyReviews);
 
 // DELETE /api/reviews/:reviewId
 router.delete("/:reviewId", protect, deleteReview);
