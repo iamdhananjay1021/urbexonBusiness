@@ -15,7 +15,7 @@ import {
     FaBell, FaTag, FaShare, FaWhatsapp,
     FaFacebook, FaInstagram, FaLink, FaTwitter,
     FaSearchPlus, FaChevronDown, FaChevronUp,
-    FaShieldAlt, FaTruck, FaUndo,
+    FaShieldAlt, FaTruck, FaUndo, FaTimesCircle,
 } from "react-icons/fa";
 
 /* ─── Helpers ───────────────────────────────────────────── */
@@ -885,7 +885,8 @@ const ProductDetails = () => {
                             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                                 <div className="pd-trust"><FaShieldAlt color="#388e3c" size={14} /> <strong>Secure</strong> 100% Secure Checkout</div>
                                 <div className="pd-trust"><FaTruck color="#2874f0" size={14} /> <strong>Free</strong> Delivery on orders above ₹499</div>
-                                <div className="pd-trust"><FaUndo color="#ff9f00" size={14} /> <strong>Easy</strong> Returns &amp; Exchanges</div>
+                                <div className="pd-trust"><FaUndo color="#ff9f00" size={14} /> <strong>{product.isReturnable !== false ? `${product.returnWindow || 7}-Day` : "No"}</strong> Returns {product.isReplaceable ? `& ${product.replacementWindow || 7}-Day Replacement` : ""}</div>
+                                {product.isCancellable === false && <div className="pd-trust" style={{ color: "#ef4444" }}><FaTimesCircle color="#ef4444" size={14} /> <strong>Non-Cancellable</strong> This product cannot be cancelled after ordering</div>}
                             </div>
 
                             {/* Accordions */}
@@ -896,8 +897,15 @@ const ProductDetails = () => {
                                 <Accordion title="Delivery & Return" icon={<FaTruck size={13} color="#878787" />} defaultOpen={false}>
                                     <p>• Free delivery on orders above ₹499</p>
                                     <p>• Standard delivery: 4–7 business days</p>
-                                    <p>• Easy 7-day return policy</p>
-                                    <p>• Exchange available on most products</p>
+                                    {product.isReturnable !== false
+                                        ? <p>• {product.returnWindow || 7}-day return policy</p>
+                                        : <p style={{ color: "#ef4444" }}>• Non-returnable{product.nonReturnableReason ? ` — ${product.nonReturnableReason}` : ""}</p>}
+                                    {product.isReplaceable
+                                        ? <p>• {product.replacementWindow || 7}-day replacement available</p>
+                                        : <p>• No replacement available</p>}
+                                    {product.isCancellable !== false
+                                        ? <p>• Cancellable {product.cancelWindow > 0 ? `within ${product.cancelWindow} hours` : "before packing"}</p>
+                                        : <p style={{ color: "#ef4444" }}>• Non-cancellable product</p>}
                                 </Accordion>
                             </div>
                         </div>

@@ -77,6 +77,8 @@ export const initiateOnlinePayment = async ({
                             phone: address.phone || contact.phone,
                             email: contact.email || "",
                             address: formatAddressString(address),
+                            city: address.city || "",
+                            state: address.state || "",
                             pincode: address?.pincode,
                             latitude: address.lat,
                             longitude: address.lng,

@@ -44,6 +44,10 @@ const STATUS = {
     OUT_FOR_DELIVERY: { label: "Out for Delivery", color: C.orange, bg: C.orangeBg, icon: FaTruck },
     DELIVERED: { label: "Delivered", color: C.green, bg: C.greenBg, icon: FaHome },
     CANCELLED: { label: "Cancelled", color: C.red, bg: C.redBg, icon: FaTimesCircle },
+    RETURN_REQUESTED: { label: "Return Requested", color: C.amber, bg: C.amberBg, icon: FaUndo },
+    RETURN_APPROVED: { label: "Return Approved", color: C.green, bg: C.greenBg, icon: FaUndo },
+    REPLACEMENT_REQUESTED: { label: "Replacement Requested", color: C.amber, bg: C.amberBg, icon: FaBox },
+    REPLACEMENT_APPROVED: { label: "Replacement Approved", color: C.blue, bg: C.blueBg, icon: FaBox },
 };
 
 const REFUND_CFG = {
@@ -154,6 +158,10 @@ const OrderDetails = () => {
     const [returnReason, setReturnReason] = useState("");
     const [requestingReturn, setRequestingReturn] = useState(false);
     const [returnError, setReturnError] = useState("");
+    const [showReplacementForm, setShowReplacementForm] = useState(false);
+    const [replacementReason, setReplacementReason] = useState("");
+    const [requestingReplacement, setRequestingReplacement] = useState(false);
+    const [replacementError, setReplacementError] = useState("");
     const [downloadingInvoice, setDownloadingInvoice] = useState(false);
     const [riderLocation, setRiderLocation] = useState(null);
     const [deliveryStatus, setDeliveryStatus] = useState(null);
@@ -187,6 +195,7 @@ const OrderDetails = () => {
     const handleCancel = async () => { try { setCancelling(true); setCancelError(""); const { data } = await api.patch(`/orders/${id}/cancel`); setOrder(data.order); setConfirmCancel(false); } catch (e) { setCancelError(e.response?.data?.message || "Failed to cancel"); } finally { setCancelling(false); } };
     const handleRefund = async () => { try { setRequestingRefund(true); setRefundError(""); const { data } = await api.post(`/payment/refund/${id}`, { reason: refundReason || "Requested by customer" }); setOrder(p => ({ ...p, refund: data.refund })); setShowRefundForm(false); } catch (e) { setRefundError(e.response?.data?.message || "Refund failed"); } finally { setRequestingRefund(false); } };
     const handleReturnRequest = async () => { try { setRequestingReturn(true); setReturnError(""); const { data } = await api.put(`/orders/${id}/return/request`, { reason: returnReason }); setOrder(p => ({ ...p, return: data.return, orderStatus: "RETURN_REQUESTED" })); setShowReturnForm(false); } catch (e) { setReturnError(e.response?.data?.message || "Return request failed"); } finally { setRequestingReturn(false); } };
+    const handleReplacementRequest = async () => { try { setRequestingReplacement(true); setReplacementError(""); const { data } = await api.put(`/orders/${id}/replacement/request`, { reason: replacementReason }); setOrder(p => ({ ...p, replacement: data.replacement, orderStatus: "REPLACEMENT_REQUESTED" })); setShowReplacementForm(false); } catch (e) { setReplacementError(e.response?.data?.message || "Replacement request failed"); } finally { setRequestingReplacement(false); } };
     const handleDownload = async () => {
         try { setDownloadingInvoice(true); const res = await api.get(`/invoice/${id}/download`, { responseType: "blob" }); const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" })); const a = document.createElement("a"); a.href = url; a.setAttribute("download", order?.invoiceNumber ? `${order.invoiceNumber}.pdf` : `Urbexon_Invoice_${id.slice(-8).toUpperCase()}.pdf`); document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url); }
         catch (e) { alert(e.response?.status === 403 ? "Access denied." : e.response?.status === 404 ? "Invoice not found." : "Download failed."); }
@@ -219,12 +228,14 @@ const OrderDetails = () => {
     const stepIdx = flow.indexOf(order.orderStatus);
     const isCancelled = order.orderStatus === "CANCELLED";
     const isDelivered = order.orderStatus === "DELIVERED";
-    const canCancel = CANCELLABLE.includes(order.orderStatus);
+    const pi = order.policyInfo || {};
+    const canCancel = pi.canCancel ?? CANCELLABLE.includes(order.orderStatus);
     const isRazorpay = order.payment?.method === "RAZORPAY";
     const isPaid = order.payment?.status === "PAID";
     const refund = order.refund?.status && order.refund.status !== "NONE" ? REFUND_CFG[order.refund.status] : null;
     const canRefund = isCancelled && isRazorpay && isPaid && !refund;
-    const canReturn = isDelivered && (!order.return?.status || order.return.status === "NONE");
+    const canReturn = pi.canReturn ?? (isDelivered && (!order.return?.status || order.return.status === "NONE"));
+    const canReplace = pi.canReplace ?? false;
     const hasShipping = !!order.shipping?.awbCode;
     const showInvoice = isDelivered || (isPaid && !isCancelled);
     const itemsTotal = order.items.reduce((s, i) => s + i.price * i.qty, 0);
@@ -467,6 +478,10 @@ const OrderDetails = () => {
                                                 {item.selectedSize && <span style={{ fontSize: 10, fontWeight: 700, background: C.amberBg, color: C.amber, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.amberMid}` }}>Size: {item.selectedSize}</span>}
                                                 {item.customization?.text && <span style={{ fontSize: 10, fontWeight: 600, background: C.blueBg, color: C.blue, padding: "1px 7px", borderRadius: 4 }}>✏️ {item.customization.text}</span>}
                                                 {item.customization?.note && <span style={{ fontSize: 10, fontWeight: 600, background: C.borderLight, color: C.sub, padding: "1px 7px", borderRadius: 4 }}>📝 {item.customization.note}</span>}
+                                                {item.policy?.isReturnable === false && <span style={{ fontSize: 10, fontWeight: 700, background: C.redBg, color: C.red, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.redMid}` }}>Non-Returnable</span>}
+                                                {item.policy?.isReturnable !== false && <span style={{ fontSize: 10, fontWeight: 700, background: C.greenBg, color: C.green, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.greenMid}` }}>{item.policy?.returnWindow || 7}-Day Return</span>}
+                                                {item.policy?.isReplaceable && <span style={{ fontSize: 10, fontWeight: 700, background: C.blueBg, color: C.blue, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.blueMid}` }}>{item.policy?.replacementWindow || 7}-Day Replacement</span>}
+                                                {item.policy?.isCancellable === false && <span style={{ fontSize: 10, fontWeight: 700, background: C.redBg, color: C.red, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.redMid}` }}>Non-Cancellable</span>}
                                             </div>
                                         </div>
                                         <p style={{ fontWeight: 800, fontSize: 14, color: accent, flexShrink: 0, margin: 0, alignSelf: "center" }}>₹{inr(item.qty * item.price)}</p>
@@ -537,7 +552,9 @@ const OrderDetails = () => {
                         <Card accent={C.amberMid}>
                             <Heading icon={FaUndo} color={C.amber}>Request Return</Heading>
                             <p style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.4, margin: 0, marginBottom: 12 }}>
-                                You can request a return within 7 days of delivery.
+                                {pi.returnDaysRemaining != null
+                                    ? `You can request a return within ${Math.ceil(pi.returnDaysRemaining)} day${Math.ceil(pi.returnDaysRemaining) !== 1 ? "s" : ""} remaining (${pi.returnWindowDays}-day window).`
+                                    : "You can request a return within the return window."}
                             </p>
                             {returnError && <p style={{ color: C.red, fontSize: 12, background: C.redBg, padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>{returnError}</p>}
                             {showReturnForm ? (
@@ -555,13 +572,55 @@ const OrderDetails = () => {
                     </div>
                 )}
 
+                {/* Replacement Status */}
+                {order.replacement?.status && order.replacement.status !== "NONE" && (
+                    <div className="od-f" style={{ animationDelay: "165ms", marginBottom: 14 }}>
+                        <Card accent={C.blueMid}>
+                            <Heading icon={FaBox} color={C.blue}>Replacement Request</Heading>
+                            <Row label="Status" value={order.replacement.status.replace(/_/g, " ")} bold color={order.replacement.status === "APPROVED" || order.replacement.status === "SHIPPED" ? C.green : order.replacement.status === "REJECTED" ? C.red : C.amber} />
+                            {order.replacement.reason && <Row label="Reason" value={order.replacement.reason} />}
+                            {order.replacement.requestedAt && <Row label="Requested" value={fmtDate(order.replacement.requestedAt)} />}
+                            {order.replacement.trackingUrl && <Row label="Tracking" value={<a href={order.replacement.trackingUrl} target="_blank" rel="noopener noreferrer" style={{ color: C.blue, fontWeight: 700, fontSize: 12 }}>Track <FaExternalLinkAlt size={9} /></a>} />}
+                            {order.replacement.adminNote && <p style={{ fontSize: 12, color: C.muted, background: C.bg, padding: "8px 12px", borderRadius: 8, marginTop: 8, lineHeight: 1.4 }}>Admin: {order.replacement.adminNote}</p>}
+                        </Card>
+                    </div>
+                )}
+
+                {/* Request Replacement */}
+                {canReplace && (
+                    <div className="od-f" style={{ animationDelay: "172ms", marginBottom: 14 }}>
+                        <Card accent={C.blueMid}>
+                            <Heading icon={FaBox} color={C.blue}>Request Replacement</Heading>
+                            <p style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.4, margin: 0, marginBottom: 12 }}>
+                                {pi.replacementDaysRemaining != null
+                                    ? `Request a replacement within ${Math.ceil(pi.replacementDaysRemaining)} day${Math.ceil(pi.replacementDaysRemaining) !== 1 ? "s" : ""} remaining (${pi.replacementWindowDays}-day window).`
+                                    : "You can request a replacement for eligible items."}
+                            </p>
+                            {replacementError && <p style={{ color: C.red, fontSize: 12, background: C.redBg, padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>{replacementError}</p>}
+                            {showReplacementForm ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                    <textarea value={replacementReason} onChange={e => setReplacementReason(e.target.value)} placeholder="Why do you need a replacement? (required)" rows={3} style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box", color: C.text }} />
+                                    <div style={{ display: "flex", gap: 8 }}>
+                                        <button onClick={handleReplacementRequest} disabled={requestingReplacement || !replacementReason.trim()} className="od-btn" style={{ flex: 1, padding: 11, background: C.blue, color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit", opacity: !replacementReason.trim() ? 0.5 : 1 }}>{requestingReplacement ? "Submitting…" : "Submit Replacement"}</button>
+                                        <button onClick={() => { setShowReplacementForm(false); setReplacementError(""); }} className="od-btn" style={{ padding: "11px 16px", background: C.bg, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>Cancel</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button onClick={() => setShowReplacementForm(true)} className="od-btn" style={{ width: "100%", padding: 11, background: "transparent", border: `1.5px solid ${C.blueMid}`, color: C.blue, borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}><FaBox size={10} style={{ marginRight: 6 }} />Request Replacement</button>
+                            )}
+                        </Card>
+                    </div>
+                )}
+
                 {/* Cancel */}
-                {canCancel && (
+                {canCancel && !isCancelled && (
                     <div className="od-f" style={{ animationDelay: "180ms", marginBottom: 14 }}>
                         <Card accent={C.redMid}>
                             <Heading icon={FaTimesCircle} color={C.red}>Cancel Order</Heading>
                             <p style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.4, margin: 0, marginBottom: 12 }}>
-                                You can cancel since it hasn't been packed.
+                                {pi.cancelWindowHours > 0
+                                    ? `Cancel within ${Math.ceil(pi.cancelHoursRemaining || 0)} hour${Math.ceil(pi.cancelHoursRemaining || 0) !== 1 ? "s" : ""} remaining.`
+                                    : "You can cancel since it hasn't been packed."}
                                 {isRazorpay && isPaid && <span style={{ display: "block", marginTop: 4, color: C.amber, fontWeight: 600 }}>⚡ Refund will be auto-requested.</span>}
                             </p>
                             {cancelError && <p style={{ color: C.red, fontSize: 12, background: C.redBg, padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>{cancelError}</p>}

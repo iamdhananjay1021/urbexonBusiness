@@ -139,15 +139,20 @@ export const createShiprocketOrder = async ({ order, totalWeight = 500 }) => {
         const isCOD = order.payment?.method === "COD";
         const weightKg = Math.max(0.1, totalWeight / 1000);
 
-        // Extract pincode from address string
-        const pinMatch = order.address?.match(/\b\d{6}\b/);
-        const pincode = pinMatch ? pinMatch[0] : (process.env.SHOP_PINCODE || "000000");
+        // Use structured fields (city, state, pincode) if available,
+        // otherwise fall back to parsing from address string
+        const pincode = order.pincode
+            || order.address?.match(/\b\d{6}\b/)?.[0]
+            || process.env.SHOP_PINCODE || "000000";
 
-        // Parse city from address (last meaningful part before pincode)
         const addrParts = order.address?.split(",") || [];
-        const city = addrParts.length >= 2
-            ? addrParts[addrParts.length - 2]?.trim()
-            : "Unknown";
+        const city = order.city
+            || (addrParts.length >= 2 ? addrParts[addrParts.length - 2]?.trim() : "")
+            || "Unknown";
+
+        const state = order.state
+            || (addrParts.length >= 1 ? addrParts[addrParts.length - 1]?.replace(/[\s\-]*\d{6}[\s]*$/, "").trim() : "")
+            || "Unknown";
 
         const orderItems = order.items.map(item => ({
             name: (item.name || "Product").slice(0, 100),
@@ -170,7 +175,7 @@ export const createShiprocketOrder = async ({ order, totalWeight = 500 }) => {
             billing_address: (order.address || "").slice(0, 200),
             billing_city: city,
             billing_pincode: pincode,
-            billing_state: "Uttar Pradesh",
+            billing_state: state,
             billing_country: "India",
             billing_email: order.email || process.env.SHOP_EMAIL || "support@urbexon.in",
             billing_phone: order.phone,
@@ -333,3 +338,26 @@ export const schedulePickup = async ({ shipmentId }) => {
 };
 
 export const isMockMode = () => MOCK_MODE;
+
+/* ══════════════════════════════════════════════════════
+   7. CANCEL SHIPROCKET ORDER
+══════════════════════════════════════════════════════ */
+export const cancelShiprocketOrder = async ({ orderId }) => {
+    if (MOCK_MODE)
+        return { success: true, mock: true };
+
+    try {
+        const headers = await srHeaders();
+        const res = await fetch(`${SR_BASE}/orders/cancel`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ ids: [orderId] }),
+            signal: AbortSignal.timeout(10_000),
+        });
+        const data = await res.json();
+        return { success: true, mock: false, data };
+    } catch (err) {
+        console.error("[Shiprocket] Cancel error:", err.message);
+        return { success: false, error: err.message };
+    }
+};

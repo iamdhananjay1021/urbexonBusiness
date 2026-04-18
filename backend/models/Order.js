@@ -63,6 +63,16 @@ const orderSchema = new mongoose.Schema(
                     imageUrl: { type: String, default: "" },
                     note: { type: String, default: "" },
                 },
+                /* ── Policy snapshot (copied from product at order time) ── */
+                policy: {
+                    isCancellable: { type: Boolean, default: true },
+                    isReturnable: { type: Boolean, default: true },
+                    isReplaceable: { type: Boolean, default: false },
+                    returnWindow: { type: Number, default: 7 },
+                    replacementWindow: { type: Number, default: 7 },
+                    cancelWindow: { type: Number, default: 0 },
+                    nonReturnableReason: { type: String, default: "" },
+                },
             },
         ],
 
@@ -71,6 +81,10 @@ const orderSchema = new mongoose.Schema(
         phone: String,
         address: String,
         email: String,
+        /* ── Structured address for Shiprocket ── */
+        city: { type: String, default: "" },
+        state: { type: String, default: "" },
+        pincode: { type: String, default: "" },
         totalAmount: Number,
         platformFee: { type: Number, default: 0 },
         deliveryCharge: { type: Number, default: 0 },
@@ -205,6 +219,22 @@ const orderSchema = new mongoose.Schema(
             adminNote: { type: String, default: "" },
         },
 
+        /* ── REPLACEMENT ── */
+        replacement: {
+            status: {
+                type: String,
+                enum: ["NONE", "REQUESTED", "APPROVED", "REJECTED", "SHIPPED", "DELIVERED"],
+                default: "NONE",
+            },
+            reason: { type: String, default: "" },
+            images: [{ type: String }],
+            requestedAt: { type: Date },
+            processedAt: { type: Date },
+            processedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+            adminNote: { type: String, default: "" },
+            trackingUrl: { type: String, default: "" },
+        },
+
         /* ── ORDER STATUS ── */
         orderStatus: {
             type: String,
@@ -219,6 +249,8 @@ const orderSchema = new mongoose.Schema(
                 "CANCELLED",
                 "RETURN_REQUESTED",
                 "RETURN_APPROVED",
+                "REPLACEMENT_REQUESTED",
+                "REPLACEMENT_APPROVED",
             ],
             default: "PLACED",
         },
@@ -262,6 +294,7 @@ orderSchema.index({ vendorId: 1, createdAt: -1 });
 orderSchema.index({ orderStatus: 1 });
 orderSchema.index({ "refund.status": 1 });
 orderSchema.index({ "return.status": 1 });
+orderSchema.index({ "replacement.status": 1 });
 orderSchema.index({ "payment.flagged": 1 });
 orderSchema.index({ "payment.razorpayPaymentId": 1 }, { sparse: true });
 orderSchema.index({ "delivery.assignedTo": 1 }, { sparse: true });

@@ -9,7 +9,7 @@ import {
     FaSync, FaUser, FaPhone, FaMapMarkerAlt,
     FaCheckCircle, FaBan, FaMoneyBillWave, FaUndo,
     FaExclamationTriangle, FaSpinner, FaChevronDown,
-    FaChevronUp, FaFlag, FaBoxOpen,
+    FaChevronUp, FaFlag, FaBoxOpen, FaExchangeAlt,
 } from "react-icons/fa";
 
 /* ─── Status config ─── */
@@ -540,11 +540,92 @@ const Loader = () => (
 );
 
 /* ══════════════════════════════════════
+   REPLACEMENT CARD
+══════════════════════════════════════ */
+const REPL_CFG = {
+    REQUESTED: { cls: "badge-amber", label: "Requested" },
+    APPROVED: { cls: "badge-green", label: "Approved" },
+    REJECTED: { cls: "badge-red", label: "Rejected" },
+    SHIPPED: { cls: "badge-blue", label: "Shipped" },
+    DELIVERED: { cls: "badge-green", label: "Delivered" },
+};
+
+const ReplacementCard = ({ order, onAction }) => {
+    const [processing, setProcessing] = useState(false);
+    const [adminNote, setAdminNote] = useState("");
+    const repl = order.replacement || {};
+    const cfg = REPL_CFG[repl.status] || REPL_CFG.REQUESTED;
+
+    const handle = async (action) => {
+        try {
+            setProcessing(true);
+            await api.put(`/orders/${order._id}/replacement/process`, { action, adminNote });
+            onAction();
+        } catch (err) { alert(err.response?.data?.message || "Failed"); }
+        finally { setProcessing(false); }
+    };
+
+    return (
+        <div className="rr-card">
+            <div className="rr-card-header">
+                <div>
+                    <span className="rr-order-id">#{order._id?.slice(-8).toUpperCase()}</span>
+                    <span className={`rr-badge ${cfg.cls}`}>{cfg.label}</span>
+                </div>
+                <span className="rr-date">{new Date(repl.requestedAt || order.updatedAt).toLocaleDateString()}</span>
+            </div>
+            <div className="rr-card-body">
+                <div className="rr-meta-row">
+                    <span><FaUser size={10} /> {order.customerName}</span>
+                    <span><FaPhone size={10} /> {order.phone}</span>
+                </div>
+                {repl.reason && <div className="rr-reason">Reason: {repl.reason}</div>}
+                {repl.images?.length > 0 && (
+                    <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                        {repl.images.map((img, i) => (
+                            <a key={i} href={img} target="_blank" rel="noreferrer">
+                                <img src={img} alt="proof" style={{ width: 50, height: 50, objectFit: "cover", borderRadius: 6, border: "1px solid #e2e8f0" }} />
+                            </a>
+                        ))}
+                    </div>
+                )}
+                {repl.status === "REQUESTED" && (
+                    <div style={{ marginTop: 10 }}>
+                        <input placeholder="Admin note (optional)" value={adminNote} onChange={e => setAdminNote(e.target.value)}
+                            style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #e2e8f0", fontSize: 12, marginBottom: 8, fontFamily: "inherit" }} />
+                        <div style={{ display: "flex", gap: 8 }}>
+                            <button onClick={() => handle("approve")} disabled={processing}
+                                className="rr-action-btn" style={{ background: "#059669", color: "#fff" }}>
+                                {processing ? <FaSpinner size={10} className="rr-spin-icon" /> : <FaCheckCircle size={10} />} Approve
+                            </button>
+                            <button onClick={() => handle("reject")} disabled={processing}
+                                className="rr-action-btn" style={{ background: "#dc2626", color: "#fff" }}>
+                                {processing ? <FaSpinner size={10} className="rr-spin-icon" /> : <FaBan size={10} />} Reject
+                            </button>
+                        </div>
+                    </div>
+                )}
+                {repl.status === "APPROVED" && (
+                    <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                        <button onClick={() => handle("ship")} disabled={processing}
+                            className="rr-action-btn" style={{ background: "#2563eb", color: "#fff" }}>
+                            Mark Shipped
+                        </button>
+                    </div>
+                )}
+                {repl.adminNote && <div style={{ marginTop: 6, fontSize: 11, color: "#64748b" }}>Admin: {repl.adminNote}</div>}
+            </div>
+        </div>
+    );
+};
+
+/* ══════════════════════════════════════
    MAIN
 ══════════════════════════════════════ */
 const TABS = [
     { id: "refunds", label: "Refunds", icon: <FaMoneyBillWave size={12} /> },
     { id: "returns", label: "Returns", icon: <FaUndo size={12} /> },
+    { id: "replacements", label: "Replacements", icon: <FaExchangeAlt size={12} /> },
     { id: "flagged", label: "Flagged", icon: <FaExclamationTriangle size={12} /> },
 ];
 
@@ -552,6 +633,7 @@ const AdminRefundReturn = () => {
     const [tab, setTab] = useState("refunds");
     const [refunds, setRefunds] = useState([]);
     const [returns, setReturns] = useState([]);
+    const [replacements, setReplacements] = useState([]);
     const [flagged, setFlagged] = useState([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
@@ -559,21 +641,23 @@ const AdminRefundReturn = () => {
     const fetchAll = useCallback(async () => {
         try {
             setLoading(true);
-            const [r1, r2, r3] = await Promise.all([
+            const [r1, r2, r3, r4] = await Promise.all([
                 api.get("/orders/admin/refunds"),
                 api.get("/orders/admin/returns"),
                 api.get("/orders/admin/flagged"),
+                api.get("/orders/admin/replacements").catch(() => ({ data: [] })),
             ]);
             setRefunds(Array.isArray(r1.data) ? r1.data : []);
             setReturns(Array.isArray(r2.data) ? r2.data : []);
             setFlagged(Array.isArray(r3.data) ? r3.data : []);
+            setReplacements(Array.isArray(r4.data) ? r4.data : []);
         } catch (e) { console.error(e); }
         finally { setLoading(false); setSyncing(false); }
     }, []);
 
     useEffect(() => { fetchAll(); }, [fetchAll]);
 
-    const counts = { refunds: refunds.length, returns: returns.length, flagged: flagged.length };
+    const counts = { refunds: refunds.length, returns: returns.length, replacements: replacements.length, flagged: flagged.length };
 
     return (
         <div className="rr-root">
@@ -583,8 +667,8 @@ const AdminRefundReturn = () => {
             <div className="rr-header">
                 <div className="rr-header-top">
                     <div>
-                        <h1 className="rr-title">Refunds &amp; Returns</h1>
-                        <p className="rr-sub">Manage refunds, returns &amp; fraud alerts</p>
+                        <h1 className="rr-title">Refunds, Returns &amp; Replacements</h1>
+                        <p className="rr-sub">Manage refunds, returns, replacements &amp; fraud alerts</p>
                     </div>
                     <button
                         className="rr-refresh"
@@ -625,6 +709,11 @@ const AdminRefundReturn = () => {
                             returns.length === 0
                                 ? <Empty icon={<FaBoxOpen size={22} />} text="No pending return requests" />
                                 : returns.map(o => <ReturnCard key={o._id} order={o} onAction={fetchAll} />)
+                        )}
+                        {tab === "replacements" && (
+                            replacements.length === 0
+                                ? <Empty icon={<FaExchangeAlt size={22} />} text="No pending replacement requests" />
+                                : replacements.map(o => <ReplacementCard key={o._id} order={o} onAction={fetchAll} />)
                         )}
                         {tab === "flagged" && (
                             flagged.length === 0

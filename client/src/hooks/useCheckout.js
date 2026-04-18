@@ -12,6 +12,7 @@ import { useCart } from "./useCart";
 import {
     fetchAddresses,
     fetchCheckoutPricing,
+    fetchShippingRate,
     verifyPincode,
     addAddress as apiAddAddress,
     updateAddress as apiUpdateAddress,
@@ -64,6 +65,9 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
     const [codDistance, setCodDistance] = useState(null);
     const [codChecking, setCodChecking] = useState(false);
     const [deliveryETA, setDeliveryETA] = useState("");
+
+    /* ── Shiprocket rate info ── */
+    const [shippingInfo, setShippingInfo] = useState(null); // { courier, etd, rate, mock }
 
     /* ── Pricing (server-driven) ── */
     const [pricing, setPricing] = useState(null);  // { itemsTotal, deliveryCharge, finalTotal, ... }
@@ -176,6 +180,23 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
         };
         checkCOD();
     }, [selectedAddress?.pincode, step]);
+
+    /* ── Fetch Shiprocket rate for courier/ETA info ── */
+    useEffect(() => {
+        if (step !== 3 || !selectedAddress?.pincode || deliveryType === "URBEXON_HOUR") {
+            setShippingInfo(null);
+            return;
+        }
+        const fetchRate = async () => {
+            try {
+                const data = await fetchShippingRate(selectedAddress.pincode, paymentMethod || "online");
+                if (data.success) setShippingInfo(data);
+            } catch {
+                // Non-critical — don't block checkout
+            }
+        };
+        fetchRate();
+    }, [selectedAddress?.pincode, step, deliveryType, paymentMethod]);
 
     const codAvailable = codStatus === "available";
 
@@ -375,6 +396,7 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
         codChecking,
         codAvailable,
         deliveryETA,
+        shippingInfo,
         pricing,
         pricingLoading,
         deliveryType,

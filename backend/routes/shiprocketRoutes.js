@@ -11,6 +11,7 @@ import {
     getShippingLabel,
     getManifest,
     requestPickup,
+    cancelShipment,
     shiprocketWebhook,
 } from "../controllers/shiprocketController.js";
 
@@ -25,6 +26,7 @@ router.get("/track/:orderId", protect, trackOrder);
 
 // ── Admin only ───────────────────────────────────────
 router.post("/create/:orderId", protect, adminOnly, createShipment);
+router.post("/cancel/:orderId", protect, adminOnly, cancelShipment);
 router.get("/label/:orderId", protect, adminOnly, getShippingLabel);
 router.get("/manifest/:orderId", protect, adminOnly, getManifest);
 router.post("/pickup/:orderId", protect, adminOnly, requestPickup);

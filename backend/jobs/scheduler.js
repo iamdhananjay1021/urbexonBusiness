@@ -9,6 +9,7 @@ import logger from '../utils/logger.js';
 
 // Import all job handlers
 import {
+    autoCancelStaleCODOrders,
     autoCompleteDeliveredOrders,
     autoRefundExpiredPayments,
     autoGenerateInvoices,
@@ -52,6 +53,12 @@ import {
 
 const JOBS = [
     {
+        name: 'Auto-Cancel Stale COD Orders',
+        schedule: '0 */3 * * *', // Every 3 hours
+        handler: autoCancelStaleCODOrders,
+        enabled: true,
+    },
+    {
         name: 'Auto-Complete Delivered Orders',
         schedule: '0 */6 * * *', // Every 6 hours
         handler: autoCompleteDeliveredOrders,
@@ -67,13 +74,13 @@ const JOBS = [
         name: 'Auto-Generate Invoices',
         schedule: '0 */12 * * *', // Every 12 hours
         handler: autoGenerateInvoices,
-        enabled: true,
+        enabled: false, // DISABLED: Only sets a flag, no actual invoice PDF generated
     },
     {
         name: 'Check Low Stock Items',
         schedule: '0 9 * * *', // Daily at 9 AM
         handler: checkLowStockItems,
-        enabled: true,
+        enabled: false, // DISABLED: Only logs warnings, no vendor email alerts wired
     },
     {
         name: 'Send Pending Order Emails',
@@ -83,7 +90,7 @@ const JOBS = [
     },
     {
         name: 'Send Delivery Updates',
-        schedule: '*/30 * * * *', // Every 30 minutes
+        schedule: '0 */2 * * *', // Every 2 hours (reduced from 30min)
         handler: sendDeliveryUpdates,
         enabled: true,
     },
@@ -103,7 +110,7 @@ const JOBS = [
         name: 'Auto-Generate Payouts',
         schedule: '0 0 5 * *', // 5th of every month
         handler: autoGeneratePayouts,
-        enabled: true,
+        enabled: false, // DISABLED: No payment gateway for vendor payouts yet
     },
     {
         name: 'Update Vendor Ratings',
@@ -127,13 +134,13 @@ const JOBS = [
         name: 'Archive Old Orders',
         schedule: '0 4 * * 0', // Weekly on Sunday at 4 AM
         handler: archiveOldOrders,
-        enabled: true,
+        enabled: false, // DISABLED: Cosmetic flag, not needed early-stage
     },
     {
         name: 'Cleanup Temporary Files',
         schedule: '0 5 * * *', // Daily at 5 AM
         handler: cleanupTemporaryFiles,
-        enabled: true,
+        enabled: false, // DISABLED: Low-risk, no heavy temp file usage
     },
     {
         name: 'Refresh Cache Data',
@@ -149,7 +156,7 @@ const JOBS = [
     },
     {
         name: 'Update Delivery Status',
-        schedule: '*/2 * * * *', // Every 2 minutes
+        schedule: '*/10 * * * *', // Every 10 minutes (reduced from 2min)
         handler: updateDeliveryStatus,
         enabled: true,
     },
@@ -157,19 +164,19 @@ const JOBS = [
         name: 'Check New Deal Alerts',
         schedule: '0 */1 * * *', // Every hour
         handler: checkNewDeals,
-        enabled: true,
+        enabled: false, // DISABLED: Marketing feature, enable when deal flow is established
     },
     {
         name: 'Send Wishlist Reminders',
         schedule: '0 10 * * *', // Daily at 10 AM
         handler: sendWishlistReminders,
-        enabled: true,
+        enabled: false, // DISABLED: Marketing feature, enable later
     },
     {
         name: 'Send Admin Daily Summary',
         schedule: '0 21 * * *', // Daily at 9 PM IST
         handler: sendAdminDailySummary,
-        enabled: true,
+        enabled: false, // DISABLED: Informational, enable when needed
     },
 ];
 

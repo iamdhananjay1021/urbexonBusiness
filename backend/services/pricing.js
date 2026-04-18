@@ -31,7 +31,7 @@ export const validateAndPriceItems = async (frontendItems) => {
         if (!productId) throw new Error("Invalid product in cart");
 
         const product = await Product.findById(productId)
-            .select("name price mrp inStock stock images productType vendorId")
+            .select("name price mrp inStock stock images productType vendorId isCancellable isReturnable isReplaceable returnWindow replacementWindow cancelWindow nonReturnableReason")
             .lean();
 
         if (!product) throw new Error(`Product not found: ${productId}`);
@@ -61,6 +61,15 @@ export const validateAndPriceItems = async (frontendItems) => {
             selectedSize: String(item.selectedSize || "").trim().slice(0, 50),
             productType: product.productType,
             vendorId: product.vendorId || null,
+            policy: {
+                isCancellable: product.isCancellable !== false,
+                isReturnable: product.isReturnable !== false,
+                isReplaceable: product.isReplaceable === true,
+                returnWindow: product.returnWindow ?? 7,
+                replacementWindow: product.replacementWindow ?? 7,
+                cancelWindow: product.cancelWindow ?? 0,
+                nonReturnableReason: product.nonReturnableReason || "",
+            },
         });
     }
 

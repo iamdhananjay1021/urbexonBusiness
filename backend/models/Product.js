@@ -44,6 +44,15 @@ const productSchema = new mongoose.Schema({
     returnPolicy: { type: String, default: "7 days return" },
     shippingInfo: { type: String, default: "" },
     gstPercent: { type: Number, default: 0 },
+
+    // ── Cancellation / Return / Replacement Policy ────────
+    isCancellable: { type: Boolean, default: true },
+    isReturnable: { type: Boolean, default: true },
+    isReplaceable: { type: Boolean, default: false },
+    returnWindow: { type: Number, default: 7, min: 0, max: 30 },       // days after delivery
+    replacementWindow: { type: Number, default: 7, min: 0, max: 30 },  // days after delivery
+    cancelWindow: { type: Number, default: 0, min: 0, max: 72 },       // hours after order placed (0 = until packed)
+    nonReturnableReason: { type: String, default: "" },                 // e.g. "Hygiene product"
     isCustomizable: { type: Boolean, default: false },
     customizationConfig: {
         allowText: { type: Boolean, default: true },

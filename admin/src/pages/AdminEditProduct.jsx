@@ -148,6 +148,8 @@ const AdminEditProduct = () => {
         isCustomizable: false, isFeatured: false, tags: "", stock: "",
         brand: "", sku: "", weight: "", origin: "", color: "", material: "", occasion: "",
         isDeal: false, dealEndsAt: "", returnPolicy: "7", shippingInfo: "", gstPercent: "0",
+        isCancellable: true, isReturnable: true, isReplaceable: false,
+        returnWindow: "7", replacementWindow: "7", cancelWindow: "0", nonReturnableReason: "",
     });
     const [custConfig, setCustConfig] = useState({ ...DEFAULT_CUST_CONFIG });
     const [images, setImages] = useState([]);
@@ -210,6 +212,13 @@ const AdminEditProduct = () => {
                     returnPolicy: data.returnPolicy || "7",
                     shippingInfo: data.shippingInfo || "",
                     gstPercent: String(data.gstPercent ?? 0),
+                    isCancellable: data.isCancellable !== false,
+                    isReturnable: data.isReturnable !== false,
+                    isReplaceable: data.isReplaceable === true,
+                    returnWindow: String(data.returnWindow ?? 7),
+                    replacementWindow: String(data.replacementWindow ?? 7),
+                    cancelWindow: String(data.cancelWindow ?? 0),
+                    nonReturnableReason: data.nonReturnableReason || "",
                 });
                 if (data.customizationConfig && typeof data.customizationConfig === "object") {
                     setCustConfig({ ...DEFAULT_CUST_CONFIG, ...data.customizationConfig });
@@ -332,6 +341,15 @@ const AdminEditProduct = () => {
 
             /* GST */
             formData.append("gstPercent", String(+form.gstPercent || 0));
+
+            /* POLICY FIELDS */
+            formData.append("isCancellable", form.isCancellable ? "true" : "false");
+            formData.append("isReturnable", form.isReturnable ? "true" : "false");
+            formData.append("isReplaceable", form.isReplaceable ? "true" : "false");
+            formData.append("returnWindow", String(+form.returnWindow || 7));
+            formData.append("replacementWindow", String(+form.replacementWindow || 7));
+            formData.append("cancelWindow", String(+form.cancelWindow || 0));
+            if (form.nonReturnableReason.trim()) formData.append("nonReturnableReason", form.nonReturnableReason.trim());
 
             /* Booleans */
             formData.append("isFeatured", form.isFeatured ? "true" : "false");
@@ -579,6 +597,43 @@ const AdminEditProduct = () => {
                                     <input name="shippingInfo" value={form.shippingInfo} onChange={handleChange}
                                         placeholder="Ships in 2–3 days" className="ep-inp" />
                                 </Field>
+                            </div>
+
+                            {/* ── Cancel / Return / Replacement Policy ── */}
+                            <div style={{ background: "#f8fafc", border: "1.5px solid #e2e8f2", borderRadius: 11, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+                                <p style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", letterSpacing: ".04em" }}>
+                                    📋 Cancel / Return / Replacement Policy
+                                </p>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                                    <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: form.isCancellable ? "#f0fdf4" : "#fef2f2", border: `1.5px solid ${form.isCancellable ? "#bbf7d0" : "#fecaca"}`, borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                                        <input type="checkbox" checked={form.isCancellable} onChange={e => setForm(p => ({ ...p, isCancellable: e.target.checked }))} />
+                                        Cancellable
+                                    </label>
+                                    <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: form.isReturnable ? "#f0fdf4" : "#fef2f2", border: `1.5px solid ${form.isReturnable ? "#bbf7d0" : "#fecaca"}`, borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                                        <input type="checkbox" checked={form.isReturnable} onChange={e => setForm(p => ({ ...p, isReturnable: e.target.checked }))} />
+                                        Returnable
+                                    </label>
+                                    <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: form.isReplaceable ? "#f0fdf4" : "#fef2f2", border: `1.5px solid ${form.isReplaceable ? "#bbf7d0" : "#fecaca"}`, borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                                        <input type="checkbox" checked={form.isReplaceable} onChange={e => setForm(p => ({ ...p, isReplaceable: e.target.checked }))} />
+                                        Replaceable
+                                    </label>
+                                </div>
+                                <div className="g2" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
+                                    <Field label="Cancel Window (hrs)" hint="0 = until packed">
+                                        <input name="cancelWindow" value={form.cancelWindow} onChange={handleChange} type="number" min="0" max="72" placeholder="0" className="ep-inp" />
+                                    </Field>
+                                    <Field label="Return Window (days)" hint="after delivery">
+                                        <input name="returnWindow" value={form.returnWindow} onChange={handleChange} type="number" min="0" max="30" placeholder="7" className="ep-inp" />
+                                    </Field>
+                                    <Field label="Replacement Window (days)" hint="after delivery">
+                                        <input name="replacementWindow" value={form.replacementWindow} onChange={handleChange} type="number" min="0" max="30" placeholder="7" className="ep-inp" />
+                                    </Field>
+                                </div>
+                                {!form.isReturnable && (
+                                    <Field label="Non-Returnable Reason" hint="shown to customer">
+                                        <input name="nonReturnableReason" value={form.nonReturnableReason} onChange={handleChange} placeholder="e.g. Hygiene product, Perishable item" className="ep-inp" />
+                                    </Field>
+                                )}
                             </div>
 
                             <div className="g2">

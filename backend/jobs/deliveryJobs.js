@@ -1,71 +1,45 @@
 /**
  * 🚚 DELIVERY AUTOMATION JOBS
- * Auto-assign delivery boys, update status, track location
+ * Fallback auto-assign, status updates, availability tracking
+ * NOTE: Primary assignment is handled by assignmentEngine.js (real-time).
+ *       These jobs are fallback/cleanup for stuck orders.
  */
 
 import Order from '../models/Order.js';
 import DeliveryBoy from '../models/deliveryModels/DeliveryBoy.js';
 import logger from '../utils/logger.js';
+import { startAssignment } from '../services/assignmentEngine.js';
 
 // ══════════════════════════════════════════════════════
-// 1️⃣ AUTO-ASSIGN DELIVERY BOYS
+// 1️⃣ FALLBACK: RE-TRIGGER ASSIGNMENT FOR STUCK UH ORDERS
 // ══════════════════════════════════════════════════════
 export const autoAssignDeliveryBoys = async () => {
     try {
-        // Pending orders (confirmed, not assigned)
-        const pendingOrders = await Order.find({
-            status: 'CONFIRMED',
-            'delivery.assignedBoyId': { $exists: false },
-            createdAt: { $gt: new Date(Date.now() - 2 * 60 * 60 * 1000) }, // Created in last 2 hours
-        }).select('_id orderId delivery pincode vendorId');
+        // UH orders that are READY_FOR_PICKUP with no rider assigned and delivery FAILED/SEARCHING
+        const stuckOrders = await Order.find({
+            orderMode: 'URBEXON_HOUR',
+            orderStatus: 'READY_FOR_PICKUP',
+            'delivery.assignedTo': { $exists: false },
+            'delivery.provider': 'LOCAL_RIDER',
+            'delivery.status': { $in: ['FAILED', 'SEARCHING_RIDER'] },
+            updatedAt: { $lt: new Date(Date.now() - 5 * 60 * 1000) }, // Stuck > 5 mins
+        }).select('_id').lean();
 
-        if (pendingOrders.length === 0) {
-            return { assignmentsCreated: 0 };
-        }
+        if (stuckOrders.length === 0) return { assignmentsRetried: 0 };
 
-        let assigned = 0;
-
-        for (const order of pendingOrders) {
+        let retried = 0;
+        for (const order of stuckOrders) {
             try {
-                // Find available delivery boys near the area
-                const nearbyBoys = await DeliveryBoy.find({
-                    isActive: true,
-                    isOnline: true,
-                    serviceablePincodes: order.delivery?.pincode,
-                    currentOrders: { $lt: 5 }, // Max 5 orders
-                }).select('_id name phone currentOrders').sort({ currentOrders: 1 }).limit(3);
-
-                if (nearbyBoys.length === 0) {
-                    logger.warn(`No delivery boys available for order ${order.orderId}`);
-                    continue;
-                }
-
-                // Assign to boy with least orders (load balancing)
-                const selectedBoy = nearbyBoys[0];
-
-                await Order.findByIdAndUpdate(order._id, {
-                    $set: {
-                        'delivery.assignedBoyId': selectedBoy._id,
-                        'delivery.assignedAt': new Date(),
-                        'delivery.status': 'ASSIGNED',
-                    },
-                });
-
-                // Update delivery boy's current orders count
-                await DeliveryBoy.findByIdAndUpdate(selectedBoy._id, {
-                    $inc: { currentOrders: 1 },
-                });
-
-                logger.info(
-                    `✅ Assigned order ${order.orderId} to delivery boy ${selectedBoy.name}`
-                );
-                assigned++;
+                await Order.findByIdAndUpdate(order._id, { 'delivery.status': 'PENDING' });
+                startAssignment(order._id).catch(() => { });
+                retried++;
+                logger.info(`🔄 Re-triggered assignment for stuck UH order ${order._id}`);
             } catch (err) {
-                logger.warn(`Failed to assign order ${order.orderId}`);
+                logger.warn(`Failed to re-trigger assignment for order ${order._id}`);
             }
         }
 
-        return { assignmentsCreated: assigned, ordersProcessed: pendingOrders.length };
+        return { assignmentsRetried: retried };
     } catch (err) {
         logger.error('Auto-Assign Delivery Boys Error:', err);
         throw { message: err.message, critical: true };
@@ -73,42 +47,40 @@ export const autoAssignDeliveryBoys = async () => {
 };
 
 // ══════════════════════════════════════════════════════
-// 2️⃣ UPDATE DELIVERY STATUS
+// 2️⃣ CLEANUP: MARK STALE ASSIGNED ORDERS
 // ══════════════════════════════════════════════════════
 export const updateDeliveryStatus = async () => {
     try {
-        // Orders assigned but not picked up (> 30 mins from assignment)
-        const notPickedUp = await Order.find({
-            status: 'CONFIRMED',
-            'delivery.assignedBoyId': { $exists: true },
-            'delivery.status': 'ASSIGNED',
-            'delivery.assignedAt': { $lt: new Date(Date.now() - 30 * 60 * 1000) },
-        }).select('_id orderId delivery');
+        // UH orders assigned to a rider but stuck at READY_FOR_PICKUP for > 45 mins
+        const staleAssigned = await Order.find({
+            orderMode: 'URBEXON_HOUR',
+            orderStatus: 'READY_FOR_PICKUP',
+            'delivery.assignedTo': { $exists: true },
+            'delivery.assignedAt': { $lt: new Date(Date.now() - 45 * 60 * 1000) },
+        }).select('_id delivery').lean();
 
         let updated = 0;
-
-        for (const order of notPickedUp) {
+        for (const order of staleAssigned) {
             try {
-                // Auto-update status to PICKED_UP
+                // Unassign rider, decrement their active orders, re-trigger
                 await Order.findByIdAndUpdate(order._id, {
-                    $set: {
-                        status: 'OUT_FOR_DELIVERY',
-                        'delivery.status': 'OUT_FOR_DELIVERY',
-                        'delivery.pickedUpAt': new Date(),
-                    },
+                    $set: { 'delivery.status': 'PENDING' },
+                    $unset: { 'delivery.assignedTo': '', 'delivery.assignedAt': '' },
                 });
-
-                logger.info(`📦 Order ${order.orderId} auto-marked as OUT_FOR_DELIVERY`);
+                if (order.delivery?.assignedTo) {
+                    await DeliveryBoy.findByIdAndUpdate(order.delivery.assignedTo, {
+                        $inc: { activeOrders: -1 },
+                    }).catch(() => { });
+                }
+                startAssignment(order._id).catch(() => { });
+                logger.info(`🔄 Unassigned stale rider from UH order ${order._id}, re-triggering`);
                 updated++;
             } catch (err) {
-                logger.warn(`Failed to update order ${order.orderId}`);
+                logger.warn(`Failed to update stale order ${order._id}`);
             }
         }
 
-        if (updated > 0) {
-            logger.info(`🚚 Updated ${updated} delivery statuses`);
-        }
-
+        if (updated > 0) logger.info(`🚚 Cleaned up ${updated} stale UH delivery assignments`);
         return { statusUpdates: updated };
     } catch (err) {
         logger.error('Update Delivery Status Error:', err);
@@ -161,7 +133,7 @@ export const updateDeliveryBoyAvailability = async () => {
 export const sendDeliveryBoyReports = async () => {
     try {
         const boys = await DeliveryBoy.find({
-            isActive: true,
+            status: 'approved',
         }).select('_id name email totalDeliveries rating');
 
         let sent = 0;
@@ -171,8 +143,8 @@ export const sendDeliveryBoyReports = async () => {
                 // Calculate stats
                 const thisMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
                 const completedOrders = await Order.countDocuments({
-                    'delivery.assignedBoyId': boy._id,
-                    status: 'DELIVERED',
+                    'delivery.assignedTo': boy._id,
+                    orderStatus: 'DELIVERED',
                     createdAt: { $gte: thisMonth },
                 });
 

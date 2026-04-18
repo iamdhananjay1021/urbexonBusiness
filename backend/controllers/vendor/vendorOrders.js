@@ -92,6 +92,27 @@ export const updateOrderStatus = async (req, res) => {
 
         if (!hasProduct) return res.status(403).json({ success: false, message: "Not authorized to update this order" });
 
+        // ── Transition validation ──
+        const VENDOR_TRANSITIONS = {
+            PLACED: ["CONFIRMED", "CANCELLED"],
+            CONFIRMED: ["PACKED", "CANCELLED"],
+            PACKED: ["READY_FOR_PICKUP", "CANCELLED"],  // READY_FOR_PICKUP for UH only
+        };
+        const allowed = VENDOR_TRANSITIONS[order.orderStatus] || [];
+        if (!allowed.includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot transition from ${order.orderStatus} to ${status}. Allowed: ${allowed.join(", ") || "none"}`,
+            });
+        }
+        // READY_FOR_PICKUP only for Urbexon Hour orders
+        if (status === "READY_FOR_PICKUP" && order.orderMode !== "URBEXON_HOUR") {
+            return res.status(400).json({
+                success: false,
+                message: "READY_FOR_PICKUP is only applicable to Urbexon Hour orders",
+            });
+        }
+
         const prevStatus = order.orderStatus;
         order.orderStatus = status;
 

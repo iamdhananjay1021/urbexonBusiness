@@ -37,6 +37,9 @@ const STATUS_CONFIG = {
     OUT_FOR_DELIVERY: { label: "Out for Delivery", color: T.orange, bg: "#fff7ed" },
     DELIVERED: { label: "Delivered", color: T.green, bg: "#f0fdf4" },
     CANCELLED: { label: "Cancelled", color: T.red, bg: "#fef2f2" },
+    RETURN_REQUESTED: { label: "Return Requested", color: "#b45309", bg: "#fffbeb" },
+    REPLACEMENT_REQUESTED: { label: "Replacement Requested", color: "#7c3aed", bg: "#f5f3ff" },
+    REPLACEMENT_APPROVED: { label: "Replacement Approved", color: "#059669", bg: "#ecfdf5" },
 };
 
 const FLOW = {
@@ -109,6 +112,7 @@ const ShiprocketPanel = ({ order, onOrderUpdate, globalToast }) => {
     const [tracking, setTracking] = useState(null);
     const [loadingTrack, setLoadingTrack] = useState(false);
     const [weight, setWeight] = useState(500);
+    const [cancelling, setCancelling] = useState(false);
 
     const createShipment = async () => {
         try {
@@ -154,6 +158,17 @@ const ShiprocketPanel = ({ order, onOrderUpdate, globalToast }) => {
         try { setLoadingTrack(true); const { data } = await api.get(`/shiprocket/track/${order._id}`); setTracking(data); }
         catch (err) { globalToast("error", err.response?.data?.message || "Tracking not available"); }
         finally { setLoadingTrack(false); }
+    };
+
+    const cancelSR = async () => {
+        if (!window.confirm("Cancel this Shiprocket shipment?")) return;
+        try {
+            setCancelling(true);
+            await api.post(`/shiprocket/cancel/${order._id}`);
+            onOrderUpdate(order._id, { ...order, shipping: { ...shipping, status: "CANCELLED" } });
+            globalToast("success", "Shipment cancelled");
+        } catch (err) { globalToast("error", err.response?.data?.message || "Failed to cancel shipment"); }
+        finally { setCancelling(false); }
     };
 
     const btn = { display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "none" };
@@ -215,6 +230,12 @@ const ShiprocketPanel = ({ order, onOrderUpdate, globalToast }) => {
                             {loadingTrack ? <FiLoader size={11} style={{ animation: "ao-spin .8s linear infinite" }} /> : <FiNavigation size={11} />}
                             Live Track
                         </button>
+                        {shipping.status !== "CANCELLED" && (
+                            <button onClick={cancelSR} disabled={cancelling} style={{ ...btn, background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626" }}>
+                                {cancelling ? <FiLoader size={11} style={{ animation: "ao-spin .8s linear infinite" }} /> : <FiX size={11} />}
+                                {cancelling ? "Cancelling…" : "Cancel Shipment"}
+                            </button>
+                        )}
                     </div>
                     {tracking && (
                         <div style={{ marginTop: 10, background: T.white, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 12px" }}>

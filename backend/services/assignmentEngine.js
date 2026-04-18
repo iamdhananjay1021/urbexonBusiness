@@ -95,7 +95,7 @@ const runAssignmentRound = async (ctx) => {
     console.log(`[Assignment] Round ${ctx.round} for order ${ctx.orderId}`);
 
     const order = await Order.findById(ctx.orderId).lean();
-    if (!order || order.delivery?.assignedTo) {
+    if (!order || order.delivery?.assignedTo || order.orderStatus === "CANCELLED") {
         cleanup(ctx);
         return;
     }
@@ -504,3 +504,15 @@ function cleanup(ctx) {
     clearTimeout(ctx.timer);
     activeAssignments.delete(ctx.orderId);
 }
+
+/**
+ * Cancel an active assignment process (e.g., when order is cancelled)
+ */
+export const cancelAssignment = (orderId) => {
+    const ctx = activeAssignments.get(String(orderId));
+    if (ctx) {
+        ctx.cancelled = true;
+        cleanup(ctx);
+        console.log(`[Assignment] Cancelled assignment for order ${orderId}`);
+    }
+};

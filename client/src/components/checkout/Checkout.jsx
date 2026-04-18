@@ -77,6 +77,7 @@ const Checkout = () => {
         savingAddr, deleteConfirmId, setDeleteConfirmId,
         paymentMethod, selectPaymentMethod, payState, loading,
         codStatus, codDistance, codChecking, codAvailable, deliveryETA,
+        shippingInfo,
         pricing, pricingLoading,
         deliveryType, setDeliveryType,
         mobileSummaryOpen, setMobileSummaryOpen,
@@ -843,7 +844,9 @@ const Checkout = () => {
                                                     <div className="ck-pay-icon pi-online"><FaTruck size={13} /></div>
                                                     <div style={{ flex: 1, textAlign: "left" }}>
                                                         <p style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", marginBottom: 2 }}>E-commerce Standard</p>
-                                                        <p style={{ fontSize: 12, color: "var(--faint)" }}>3–5 business days · Shiprocket managed</p>
+                                                        <p style={{ fontSize: 12, color: "var(--faint)" }}>
+                                                            {shippingInfo?.etd || "3–5 business days"}{shippingInfo?.courier ? ` · ${shippingInfo.courier}` : " · Shiprocket managed"}
+                                                        </p>
                                                     </div>
                                                     {deliveryType === "ECOMMERCE_STANDARD" && <FaCheckCircle className="ck-pay-check pc-online" />}
                                                 </button>

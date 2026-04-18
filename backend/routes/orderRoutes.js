@@ -9,6 +9,7 @@ import {
     getRefundQueue, getReturnQueue, processReturn, requestReturn, getFlaggedOrders,
     getCheckoutPricing, streamMyOrderEvents,
     getLocalDeliveryQueue, assignLocalDelivery,
+    requestReplacement, processReplacement, getReplacementQueue,
 } from "../controllers/orderController.js";
 import { protect, adminOnly } from "../middlewares/authMiddleware.js";
 import { downloadInvoice } from "../controllers/invoiceController.js";
@@ -34,6 +35,7 @@ router.get("/my", protect, getMyOrders);
 // Admin queues (before /:id)
 router.get("/admin/refunds", protect, adminOnly, getRefundQueue);
 router.get("/admin/returns", protect, adminOnly, getReturnQueue);
+router.get("/admin/replacements", protect, adminOnly, getReplacementQueue);
 router.get("/admin/flagged", protect, adminOnly, getFlaggedOrders);
 router.get("/admin/local-delivery", protect, adminOnly, getLocalDeliveryQueue);
 router.put("/admin/local-delivery/:id/assign", protect, adminOnly, assignLocalDelivery);
@@ -52,6 +54,10 @@ router.put("/:id/refund/retry", protect, adminOnly, retryRefund);
 // Return
 router.put("/:id/return/request", protect, validateBody({ reason: { required: true, minLength: 5, maxLength: 500 } }), requestReturn);
 router.put("/:id/return/process", protect, adminOnly, validateBody({ action: { required: true, enum: ['approve', 'reject', 'pickup', 'refund'] } }), processReturn);
+
+// Replacement
+router.put("/:id/replacement/request", protect, validateBody({ reason: { required: true, minLength: 5, maxLength: 500 } }), requestReplacement);
+router.put("/:id/replacement/process", protect, adminOnly, validateBody({ action: { required: true, enum: ['approve', 'reject', 'ship', 'deliver'] } }), processReplacement);
 
 // Invoice
 router.get("/:id/invoice", protect, downloadInvoice);

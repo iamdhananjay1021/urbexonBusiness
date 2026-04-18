@@ -24,10 +24,11 @@ import DeliveryBoy from "../models/deliveryModels/DeliveryBoy.js";
 import { addUserStream, removeUserStream, publishToUser } from "../utils/realtimeHub.js";
 import { sendNotification as sendToUser } from "../utils/notificationQueue.js";
 import { broadcastToUsers, broadcastAll } from "../utils/wsHub.js";
-import { startAssignment } from "../services/assignmentEngine.js";
+import { startAssignment, cancelAssignment } from "../services/assignmentEngine.js";
 import { createNotification } from "./admin/notificationController.js";
 import { Settlement } from "../models/vendorModels/Settlement.js";
 import Vendor from "../models/vendorModels/Vendor.js";
+import { createShiprocketOrder } from "../utils/Shiprocketservice.js";
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -110,6 +111,42 @@ export const streamMyOrderEvents = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════════
+   AUTO-CREATE SHIPROCKET SHIPMENT (async, non-blocking)
+   Called after order creation for ECOMMERCE orders
+══════════════════════════════════════════════ */
+const autoCreateShipment = async (orderId) => {
+    try {
+        const order = await Order.findById(orderId);
+        if (!order) return;
+        if (order.delivery?.type === "URBEXON_HOUR") return; // UH uses local riders
+        if (order.shipping?.shipmentId) return; // already created
+
+        const totalWeight = order.items.reduce((sum, i) => sum + (i.qty || 1) * 250, 0); // ~250g per item estimate
+        const result = await createShiprocketOrder({ order, totalWeight });
+
+        if (result.success) {
+            order.shipping = {
+                shipmentId: String(result.shipment_id),
+                awbCode: result.awb_code,
+                courierName: result.courier_name,
+                trackingUrl: result.tracking_url,
+                labelUrl: result.label_url || "",
+                status: "CREATED",
+                mock: result.mock || false,
+                autoCreated: true,
+                createdAt: new Date(),
+            };
+            await order.save();
+            console.log(`[Shiprocket] Auto-created shipment for order ${orderId} — AWB: ${result.awb_code}`);
+        } else {
+            console.warn(`[Shiprocket] Auto-create failed for order ${orderId}:`, result.error);
+        }
+    } catch (err) {
+        console.warn(`[Shiprocket] Auto-create error for order ${orderId}:`, err.message);
+    }
+};
+
+/* ══════════════════════════════════════════════
    CREATE ORDER (COD)
    ✅ Prices recalculated from DB — frontend totalAmount IGNORED
    ✅ COD validated server-side
@@ -124,6 +161,8 @@ export const createOrder = async (req, res) => {
             address,
             email,
             pincode,
+            city,
+            state,
             paymentMethod,
             deliveryType,
             distanceKm,
@@ -156,9 +195,23 @@ export const createOrder = async (req, res) => {
         }
 
         const method = paymentMethod === "COD" ? "COD" : "RAZORPAY";
+
+        // ── UH: Server-side distance calculation (don't trust client distanceKm) ──
+        let realDistanceKm = Number(distanceKm || 0);
+        if (deliveryType === "URBEXON_HOUR" && latitude && longitude) {
+            const shopLat = DELIVERY_CONFIG.SHOP_LAT;
+            const shopLng = DELIVERY_CONFIG.SHOP_LNG;
+            const toRad = (d) => (d * Math.PI) / 180;
+            const R = 6371;
+            const dLat = toRad(latitude - shopLat);
+            const dLon = toRad(longitude - shopLng);
+            const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(shopLat)) * Math.cos(toRad(latitude)) * Math.sin(dLon / 2) ** 2;
+            realDistanceKm = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
+        }
+
         let pricing;
         try {
-            pricing = await calculateOrderPricing(items, method, { deliveryType, distanceKm, pincode, couponId, couponCode, userId: req.user._id });
+            pricing = await calculateOrderPricing(items, method, { deliveryType, distanceKm: realDistanceKm, pincode, couponId, couponCode, userId: req.user._id });
         } catch (err) {
             return res.status(400).json({ success: false, message: err.message });
         }
@@ -177,6 +230,9 @@ export const createOrder = async (req, res) => {
             phone: phone.trim(),
             address: address.trim().slice(0, 500),
             email: email?.trim().toLowerCase().slice(0, 200) || "",
+            city: city?.trim().slice(0, 100) || "",
+            state: state?.trim().slice(0, 100) || "",
+            pincode: pincode?.trim() || "",
             latitude: latitude ? Number(latitude) : undefined,
             longitude: longitude ? Number(longitude) : undefined,
             totalAmount: finalTotal,
@@ -317,6 +373,12 @@ export const createOrder = async (req, res) => {
             }
         })();
 
+        // ── Auto-create Shiprocket shipment for prepaid ecommerce orders (async) ──
+        // COD orders will get shipment auto-created when admin marks PACKED/SHIPPED
+        if (finalDeliveryType !== "URBEXON_HOUR" && savedOrder.payment?.method === "RAZORPAY") {
+            autoCreateShipment(savedOrder._id).catch(() => { });
+        }
+
         res.status(201).json({
             success: true,
             orderId: savedOrder._id,
@@ -415,6 +477,28 @@ export const cancelOrder = async (req, res) => {
             return res.status(403).json({ success: false, message: "Not authorized" });
         if (order.orderStatus === "CANCELLED")
             return res.status(400).json({ success: false, message: "Already cancelled" });
+
+        // Check if any item is non-cancellable
+        const nonCancellable = order.items.find(i => i.policy?.isCancellable === false);
+        if (nonCancellable)
+            return res.status(400).json({
+                success: false,
+                message: `"${nonCancellable.name}" is non-cancellable. Order cannot be cancelled.`,
+            });
+
+        // Check cancel window per item (hours after placement)
+        const placedAt = order.statusTimeline?.placedAt || order.createdAt;
+        const hoursSincePlaced = (Date.now() - new Date(placedAt).getTime()) / (1000 * 60 * 60);
+        const maxCancelWindow = Math.max(...order.items.map(i => i.policy?.cancelWindow || 0));
+
+        if (maxCancelWindow > 0 && hoursSincePlaced > maxCancelWindow) {
+            return res.status(400).json({
+                success: false,
+                message: `Cancellation window of ${maxCancelWindow} hours has expired.`,
+            });
+        }
+
+        // Standard status check — cannot cancel after PACKED
         if (!["PLACED", "CONFIRMED"].includes(order.orderStatus))
             return res.status(400).json({
                 message: `Cannot cancel — order is ${order.orderStatus.toLowerCase().replace(/_/g, " ")}. Cancellation only allowed before packing.`,
@@ -431,17 +515,47 @@ export const cancelOrder = async (req, res) => {
                 requested: true,
                 requestedAt: new Date(),
                 reason: req.body?.reason || "Order cancelled by customer",
-                status: "REQUESTED",
+                status: "PROCESSING",
                 amount: order.totalAmount,
             };
             order.paymentLogs.push({
                 event: "REFUND_REQUESTED", amount: order.totalAmount,
                 method: "RAZORPAY", ip: getClientIp(req), at: new Date(),
             });
+
+            // Auto-initiate Razorpay refund for user-cancelled prepaid orders
+            if (order.payment.razorpayPaymentId) {
+                try {
+                    const refundResult = await razorpay.payments.refund(order.payment.razorpayPaymentId, {
+                        amount: Math.round(order.totalAmount * 100), // paise
+                        notes: { orderId: order._id.toString(), reason: "Customer cancelled" },
+                    });
+                    order.refund.status = "PROCESSED";
+                    order.refund.processedAt = new Date();
+                    order.refund.razorpayRefundId = refundResult.id;
+                    order.payment.status = "REFUNDED";
+                    order.paymentLogs.push({
+                        event: "REFUND_PROCESSED", amount: order.totalAmount,
+                        method: "RAZORPAY", paymentId: refundResult.id, at: new Date(),
+                    });
+                } catch (refundErr) {
+                    console.error("[Refund] Auto-refund failed for order", order._id, refundErr.message);
+                    order.refund.status = "REQUESTED"; // fallback to manual admin approval
+                    order.paymentLogs.push({
+                        event: "REFUND_FAILED", amount: order.totalAmount,
+                        method: "RAZORPAY", meta: { error: refundErr.message }, at: new Date(),
+                    });
+                }
+            }
         }
 
         await order.save();
         await restoreStock(order.items);
+
+        // Stop assignment engine if UH order is being searched for riders
+        if (order.orderMode === "URBEXON_HOUR") {
+            cancelAssignment(order._id);
+        }
 
         res.json({
             success: true,
@@ -510,6 +624,50 @@ export const getOrderById = async (req, res) => {
             }
         }
 
+        /* ── Compute policy eligibility for the client ── */
+        const now = Date.now();
+        const placedAt = order.statusTimeline?.placedAt || order.createdAt;
+        const deliveredAt = order.statusTimeline?.deliveredAt;
+        const hoursSincePlaced = (now - new Date(placedAt).getTime()) / (1000 * 60 * 60);
+        const daysSinceDelivered = deliveredAt ? (now - new Date(deliveredAt).getTime()) / (1000 * 60 * 60 * 24) : null;
+        const isUH = order.orderMode === "URBEXON_HOUR";
+
+        const canCancelItems = order.items.filter(i => i.policy?.isCancellable !== false);
+        const maxCancelWindow = canCancelItems.length ? Math.max(...canCancelItems.map(i => i.policy?.cancelWindow || 0)) : 0;
+        const cancelWindowOk = maxCancelWindow > 0 ? hoursSincePlaced <= maxCancelWindow : true;
+        const canCancel = canCancelItems.length > 0
+            && cancelWindowOk
+            && ["PLACED", "CONFIRMED"].includes(order.orderStatus);
+
+        const returnableItems = order.items.filter(i => i.policy?.isReturnable !== false);
+        const minReturnWindow = returnableItems.length ? Math.min(...returnableItems.map(i => i.policy?.returnWindow ?? 7)) : 0;
+        const canReturn = !isUH
+            && returnableItems.length > 0
+            && order.orderStatus === "DELIVERED"
+            && (!order.return?.status || order.return.status === "NONE")
+            && daysSinceDelivered !== null && daysSinceDelivered <= minReturnWindow;
+
+        const replaceableItems = order.items.filter(i => i.policy?.isReplaceable === true);
+        const minReplacementWindow = replaceableItems.length ? Math.min(...replaceableItems.map(i => i.policy?.replacementWindow ?? 7)) : 0;
+        const canReplace = !isUH
+            && replaceableItems.length > 0
+            && order.orderStatus === "DELIVERED"
+            && (!order.replacement?.status || order.replacement.status === "NONE")
+            && (!order.return?.status || ["NONE", "REJECTED"].includes(order.return.status))
+            && daysSinceDelivered !== null && daysSinceDelivered <= minReplacementWindow;
+
+        order.policyInfo = {
+            canCancel,
+            canReturn,
+            canReplace,
+            cancelWindowHours: maxCancelWindow,
+            cancelHoursRemaining: maxCancelWindow > 0 ? Math.max(0, maxCancelWindow - hoursSincePlaced) : null,
+            returnWindowDays: minReturnWindow,
+            returnDaysRemaining: daysSinceDelivered !== null ? Math.max(0, minReturnWindow - daysSinceDelivered) : null,
+            replacementWindowDays: minReplacementWindow,
+            replacementDaysRemaining: daysSinceDelivered !== null ? Math.max(0, minReplacementWindow - daysSinceDelivered) : null,
+        };
+
         res.json(order);
     } catch {
         res.status(500).json({ success: false, message: "Error fetching order" });
@@ -531,7 +689,7 @@ export const updateOrderStatus = async (req, res) => {
         const TRANSITIONS = {
             PLACED: ["CONFIRMED", "CANCELLED"],
             CONFIRMED: ["PACKED", "CANCELLED"],
-            PACKED: ["READY_FOR_PICKUP", "CANCELLED"],
+            PACKED: ["READY_FOR_PICKUP", "SHIPPED", "CANCELLED"],
             READY_FOR_PICKUP: ["SHIPPED", "OUT_FOR_DELIVERY", "CANCELLED"],
             SHIPPED: ["OUT_FOR_DELIVERY", "CANCELLED"],
             OUT_FOR_DELIVERY: ["DELIVERED", "CANCELLED"],
@@ -587,6 +745,47 @@ export const updateOrderStatus = async (req, res) => {
             startAssignment(order._id).catch(err => {
                 console.warn("[Assignment] Auto-start on READY_FOR_PICKUP failed:", err.message);
             });
+        }
+
+        // ── Auto Shiprocket: Create shipment on PACKED, schedule pickup on SHIPPED ──
+        if (order.orderMode !== "URBEXON_HOUR" && !order.shipping?.shipmentId && status === "PACKED") {
+            (async () => {
+                try {
+                    const { createShiprocketOrder } = await import("../utils/Shiprocketservice.js");
+                    const totalWeight = order.items.reduce((sum, i) => sum + (i.qty || 1) * 250, 0);
+                    const result = await createShiprocketOrder({ order, totalWeight });
+                    if (result.success) {
+                        await Order.updateOne({ _id: order._id }, {
+                            $set: {
+                                "shipping.shipmentId": String(result.shipment_id),
+                                "shipping.awbCode": result.awb_code,
+                                "shipping.courierName": result.courier_name,
+                                "shipping.trackingUrl": result.tracking_url,
+                                "shipping.labelUrl": result.label_url || "",
+                                "shipping.status": "CREATED",
+                                "shipping.mock": result.mock || false,
+                                "shipping.autoCreated": true,
+                                "shipping.createdAt": new Date(),
+                            }
+                        });
+                        console.log(`[Shiprocket] Auto-created on PACKED for order ${order._id} — AWB: ${result.awb_code}`);
+                    }
+                } catch (err) {
+                    console.warn(`[Shiprocket] Auto-create on PACKED failed:`, err.message);
+                }
+            })();
+        }
+
+        if (order.orderMode !== "URBEXON_HOUR" && order.shipping?.shipmentId && status === "SHIPPED") {
+            (async () => {
+                try {
+                    const { schedulePickup } = await import("../utils/Shiprocketservice.js");
+                    await schedulePickup(order.shipping.shipmentId);
+                    console.log(`[Shiprocket] Auto-pickup scheduled on SHIPPED for order ${order._id}`);
+                } catch (err) {
+                    console.warn(`[Shiprocket] Auto-pickup on SHIPPED failed:`, err.message);
+                }
+            })();
         }
 
         publishToUser(order.user, "order_status_updated", {
@@ -654,7 +853,12 @@ export const updateOrderStatus = async (req, res) => {
         }
 
         if (order.email && !order.email.includes("@placeholder.com")) {
-            const sMail = getOrderStatusEmailTemplate({ customerName: order.customerName, orderId: order._id, status });
+            const sMail = getOrderStatusEmailTemplate({
+                customerName: order.customerName, orderId: order._id, status,
+                trackingUrl: order.shipping?.trackingUrl || "",
+                courier: order.shipping?.courierName || "",
+                awb: order.shipping?.awbCode || "",
+            });
             if (status === "DELIVERED") {
                 try {
                     const pdf = await generateInvoiceBuffer(order.toObject ? order.toObject() : order);
@@ -952,9 +1156,25 @@ export const requestReturn = async (req, res) => {
         if (order.orderStatus !== "DELIVERED") return res.status(400).json({ success: false, message: "Only delivered orders can be returned" });
         if (order.return?.status && order.return.status !== "NONE") return res.status(400).json({ success: false, message: `Return already ${order.return.status.toLowerCase()}` });
 
-        // Check return window (default 7 days)
+        // Urbexon Hour orders (food/perishable) cannot be returned
+        if (order.orderMode === "URBEXON_HOUR")
+            return res.status(400).json({ success: false, message: "Urbexon Hour orders are non-returnable" });
+
+        // Check if ALL items are non-returnable
+        const returnableItems = order.items.filter(i => i.policy?.isReturnable !== false);
+        if (returnableItems.length === 0) {
+            const reasons = [...new Set(order.items.map(i => i.policy?.nonReturnableReason).filter(Boolean))];
+            return res.status(400).json({
+                success: false,
+                message: reasons.length
+                    ? `This order is non-returnable: ${reasons.join(", ")}`
+                    : "All items in this order are non-returnable",
+            });
+        }
+
+        // Check return window — use the minimum return window among returnable items
         const deliveredAt = order.statusTimeline?.deliveredAt;
-        const returnDays = 7;
+        const returnDays = Math.min(...returnableItems.map(i => i.policy?.returnWindow ?? 7));
         if (deliveredAt && Date.now() - new Date(deliveredAt).getTime() > returnDays * 24 * 60 * 60 * 1000) {
             return res.status(400).json({ success: false, message: `Return window of ${returnDays} days has expired` });
         }
@@ -977,6 +1197,26 @@ export const requestReturn = async (req, res) => {
         await order.save();
 
         res.json({ success: true, message: "Return request submitted", return: order.return });
+
+        // Notifications
+        createNotification({
+            type: "order",
+            title: `Return Requested #${order._id.toString().slice(-6).toUpperCase()}`,
+            message: `${order.customerName} requested return — "${reason.slice(0, 80)}"`,
+            icon: "alert",
+            link: "/admin/refund-return",
+            meta: { orderId: order._id },
+        });
+        sendEmail({
+            to: process.env.ADMIN_EMAIL,
+            subject: `🔄 Return Requested #${order._id.toString().slice(-6).toUpperCase()} — ${order.customerName}`,
+            html: `<p><b>${order.customerName}</b> requested return for order <b>#${order._id.toString().slice(-6).toUpperCase()}</b>.</p><p>Reason: ${reason}</p><p>Amount: ₹${order.totalAmount}</p>`,
+            label: "Admin/ReturnRequest",
+        });
+        if (order.email && !order.email.includes("@placeholder.com")) {
+            const mail = getOrderStatusEmailTemplate({ customerName: order.customerName, orderId: order._id, status: "RETURN_REQUESTED" });
+            sendEmail({ to: order.email, subject: mail.subject || `Return Request Received — #${order._id.toString().slice(-6).toUpperCase()}`, html: mail.html || `<p>Hi ${order.customerName}, your return request has been received. We'll review it within 1-2 business days.</p>`, label: "User/ReturnRequest" });
+        }
     } catch (err) {
         console.error("REQUEST RETURN:", err);
         res.status(500).json({ success: false, message: "Failed to submit return request" });
@@ -1098,5 +1338,158 @@ export const processReturn = async (req, res) => {
     } catch (err) {
         console.error("PROCESS RETURN:", err);
         res.status(500).json({ success: false, message: "Failed to process return" });
+    }
+};
+
+/* ══════════════════════════════════════════════
+   REQUEST REPLACEMENT (USER)
+   PUT /api/orders/:id/replacement/request
+   body: { reason, images? }
+══════════════════════════════════════════════ */
+export const requestReplacement = async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+        if (order.user.toString() !== req.user._id.toString())
+            return res.status(403).json({ success: false, message: "Not authorized" });
+        if (order.orderStatus !== "DELIVERED")
+            return res.status(400).json({ success: false, message: "Only delivered orders can be replaced" });
+        if (order.replacement?.status && order.replacement.status !== "NONE")
+            return res.status(400).json({ success: false, message: `Replacement already ${order.replacement.status.toLowerCase()}` });
+        if (order.return?.status && !["NONE", "REJECTED"].includes(order.return.status))
+            return res.status(400).json({ success: false, message: "Cannot request replacement — return is already in progress" });
+
+        // Urbexon Hour orders cannot be replaced
+        if (order.orderMode === "URBEXON_HOUR")
+            return res.status(400).json({ success: false, message: "Urbexon Hour orders are non-replaceable" });
+
+        // Check if ANY item is replaceable
+        const replaceableItems = order.items.filter(i => i.policy?.isReplaceable === true);
+        if (replaceableItems.length === 0)
+            return res.status(400).json({ success: false, message: "No items in this order are eligible for replacement" });
+
+        // Check replacement window
+        const deliveredAt = order.statusTimeline?.deliveredAt;
+        const replacementDays = Math.min(...replaceableItems.map(i => i.policy?.replacementWindow ?? 7));
+        if (deliveredAt && Date.now() - new Date(deliveredAt).getTime() > replacementDays * 24 * 60 * 60 * 1000)
+            return res.status(400).json({ success: false, message: `Replacement window of ${replacementDays} days has expired` });
+
+        const reason = (req.body.reason || "").trim().slice(0, 500);
+        if (!reason) return res.status(400).json({ success: false, message: "Replacement reason is required" });
+
+        order.replacement = {
+            status: "REQUESTED",
+            reason,
+            images: Array.isArray(req.body.images) ? req.body.images.slice(0, 5) : [],
+            requestedAt: new Date(),
+        };
+        order.orderStatus = "REPLACEMENT_REQUESTED";
+        order.statusTimeline = { ...order.statusTimeline, replacementRequestedAt: new Date() };
+        order.markModified("replacement");
+        order.markModified("statusTimeline");
+        await order.save();
+
+        res.json({ success: true, message: "Replacement request submitted", replacement: order.replacement });
+
+        // Notifications
+        createNotification({
+            type: "order",
+            title: `Replacement Requested #${order._id.toString().slice(-6).toUpperCase()}`,
+            message: `${order.customerName} requested replacement — "${reason.slice(0, 80)}"`,
+            icon: "alert",
+            link: "/admin/refund-return",
+            meta: { orderId: order._id },
+        });
+        sendEmail({
+            to: process.env.ADMIN_EMAIL,
+            subject: `🔄 Replacement Requested #${order._id.toString().slice(-6).toUpperCase()} — ${order.customerName}`,
+            html: `<p><b>${order.customerName}</b> requested replacement for order <b>#${order._id.toString().slice(-6).toUpperCase()}</b>.</p><p>Reason: ${reason}</p>`,
+            label: "Admin/ReplacementRequest",
+        });
+        if (order.email && !order.email.includes("@placeholder.com")) {
+            sendEmail({
+                to: order.email,
+                subject: `Replacement Request Received — #${order._id.toString().slice(-6).toUpperCase()} | Urbexon`,
+                html: `<p>Hi ${order.customerName}, your replacement request has been received. We'll review it within 1-2 business days.</p>`,
+                label: "User/ReplacementRequest",
+            });
+        }
+    } catch (err) {
+        console.error("REQUEST REPLACEMENT:", err);
+        res.status(500).json({ success: false, message: "Failed to submit replacement request" });
+    }
+};
+
+/* ══════════════════════════════════════════════
+   PROCESS REPLACEMENT (ADMIN)
+   PUT /api/orders/:id/replacement/process
+   body: { action: "approve"|"reject"|"ship"|"deliver", adminNote, trackingUrl }
+══════════════════════════════════════════════ */
+export const processReplacement = async (req, res) => {
+    try {
+        const { action, adminNote, trackingUrl } = req.body;
+        if (!["approve", "reject", "ship", "deliver"].includes(action))
+            return res.status(400).json({ success: false, message: "Invalid action. Use: approve | reject | ship | deliver" });
+
+        const order = await Order.findById(req.params.id);
+        if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+        if (!order.replacement?.status || order.replacement.status === "NONE")
+            return res.status(400).json({ success: false, message: "No replacement request found on this order" });
+
+        const statusMap = { approve: "APPROVED", reject: "REJECTED", ship: "SHIPPED", deliver: "DELIVERED" };
+        order.replacement.status = statusMap[action];
+        order.replacement.adminNote = adminNote?.trim() || "";
+        order.replacement.processedAt = new Date();
+        order.replacement.processedBy = req.user._id;
+        if (trackingUrl) order.replacement.trackingUrl = trackingUrl.trim();
+
+        if (action === "approve") order.orderStatus = "REPLACEMENT_APPROVED";
+        if (action === "deliver") order.orderStatus = "DELIVERED"; // replacement delivered = order complete
+
+        order.markModified("replacement");
+        await order.save();
+
+        // Notify customer
+        if (order.email && !order.email.includes("@placeholder.com")) {
+            const statusText = { approve: "approved", reject: "rejected", ship: "shipped", deliver: "delivered" }[action];
+            sendEmail({
+                to: order.email,
+                subject: `Replacement ${statusText.charAt(0).toUpperCase() + statusText.slice(1)} — #${order._id.toString().slice(-6).toUpperCase()} | Urbexon`,
+                html: `<p>Hi ${order.customerName}, your replacement has been <b>${statusText}</b>.${trackingUrl ? ` <a href="${trackingUrl}">Track here</a>` : ""}${adminNote ? `<br>Note: ${adminNote}` : ""}</p>`,
+                label: `User/Replacement_${action}`,
+            });
+        }
+
+        // WebSocket notify
+        publishToUser(order.user, "order_status_updated", {
+            orderId: order._id,
+            status: order.orderStatus,
+            replacementStatus: statusMap[action],
+            at: new Date().toISOString(),
+        });
+
+        res.json({ success: true, message: `Replacement ${action}d successfully`, replacement: order.replacement });
+    } catch (err) {
+        console.error("PROCESS REPLACEMENT:", err);
+        res.status(500).json({ success: false, message: "Failed to process replacement" });
+    }
+};
+
+/* ══════════════════════════════════════════════
+   GET REPLACEMENT QUEUE (ADMIN)
+   GET /api/orders/admin/replacements
+══════════════════════════════════════════════ */
+export const getReplacementQueue = async (req, res) => {
+    try {
+        const orders = await Order.find({
+            "replacement.status": { $in: ["REQUESTED", "APPROVED", "SHIPPED"] },
+        })
+            .sort({ "replacement.requestedAt": -1 })
+            .select("orderId customerName phone totalAmount items replacement orderStatus createdAt")
+            .lean();
+        res.json({ success: true, data: orders });
+    } catch (err) {
+        console.error("GET REPLACEMENT QUEUE:", err);
+        res.status(500).json({ success: false, message: "Failed to fetch replacement queue" });
     }
 };

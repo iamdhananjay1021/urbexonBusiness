@@ -44,6 +44,19 @@ export const verifyPincode = async (pincode) => {
 };
 
 /**
+ * Fetch Shiprocket shipping rate for a pincode
+ */
+export const fetchShippingRate = async (pincode, paymentMethod = "online", weight = 500) => {
+    const { data } = await api.post("/shiprocket/rate", {
+        pincode,
+        weight,
+        paymentMethod: paymentMethod === "cod" ? "COD" : "PREPAID",
+    });
+    return data;
+    // Returns: { success, rate, courier, etd, mock }
+};
+
+/**
  * Add new address
  */
 export const addAddress = async (form) => {
@@ -87,6 +100,8 @@ export const placeCODOrder = async ({ items, contact, address, pincode, delivery
         email: contact.email,
         address: formatAddressString(address),
         pincode: address.pincode,
+        city: address.city || "",
+        state: address.state || "",
         latitude: address.lat,
         longitude: address.lng,
         paymentMethod: "COD",

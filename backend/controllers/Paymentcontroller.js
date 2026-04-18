@@ -14,6 +14,7 @@ import { adminOrderEmailHTML } from "../utils/adminOrderEmail.js";
 import { calculateOrderPricing, deductStock, markCouponUsed } from "../services/pricing.js";
 import { DELIVERY_CONFIG } from "../config/deliveryConfig.js";
 import Pincode from "../models/vendorModels/Pincode.js";
+import { createShiprocketOrder } from "../utils/Shiprocketservice.js";
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -99,7 +100,7 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
             return res.status(400).json({ message: "Payment verification failed", success: false });
 
         // ✅ Step 2: Validate customer data
-        const { items, customerName, phone, email, address, latitude, longitude, deliveryType, distanceKm, pincode, couponId, couponCode } = orderData;
+        const { items, customerName, phone, email, address, latitude, longitude, deliveryType, distanceKm, pincode, city, state, couponId, couponCode } = orderData;
 
         if (!items?.length || items.length > 20)
             return res.status(400).json({ message: "Invalid cart", success: false });
@@ -163,6 +164,9 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
             phone: phone.trim(),
             email: email?.trim().toLowerCase() || "",
             address: address.trim().slice(0, 500),
+            city: city?.trim().slice(0, 100) || "",
+            state: state?.trim().slice(0, 100) || "",
+            pincode: pincode?.trim() || "",
             totalAmount: finalTotal,          // ✅ Server calculated
             platformFee,
             deliveryCharge,
@@ -176,8 +180,8 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
             longitude,
             coupon: appliedCoupon ? { code: appliedCoupon.couponCode, discount: appliedCoupon.discount || 0 } : undefined,
             orderMode: finalDeliveryType === "URBEXON_HOUR" ? "URBEXON_HOUR" : "ECOMMERCE",
-            orderStatus: "PLACED",
-            statusTimeline: { placedAt: new Date() },
+            orderStatus: "CONFIRMED",  // Prepaid orders auto-confirm (real ecommerce flow)
+            statusTimeline: { placedAt: new Date(), confirmedAt: new Date() },
             payment: {
                 method: "RAZORPAY",
                 status: "PAID",
@@ -215,7 +219,7 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
 
         // Emails async
         if (email && !email.includes("@placeholder.com")) {
-            const mail = getOrderStatusEmailTemplate({ customerName, orderId: order._id, status: "PLACED" });
+            const mail = getOrderStatusEmailTemplate({ customerName, orderId: order._id, status: "CONFIRMED" });
             sendEmail({ to: email, subject: mail.subject, html: mail.html, label: "User/NewOrder" });
         }
 
@@ -225,6 +229,35 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
             html: adminOrderEmailHTML({ order }),
             label: "Admin/NewOrder",
         });
+
+        // ── Auto-create Shiprocket shipment for prepaid ecommerce orders ──
+        if (finalDeliveryType !== "URBEXON_HOUR") {
+            (async () => {
+                try {
+                    const totalWeight = formattedItems.reduce((sum, i) => sum + (i.qty || 1) * 250, 0);
+                    const result = await createShiprocketOrder({ order, totalWeight });
+                    if (result.success) {
+                        order.shipping = {
+                            shipmentId: String(result.shipment_id),
+                            awbCode: result.awb_code,
+                            courierName: result.courier_name,
+                            trackingUrl: result.tracking_url,
+                            labelUrl: result.label_url || "",
+                            status: "CREATED",
+                            mock: result.mock || false,
+                            autoCreated: true,
+                            createdAt: new Date(),
+                        };
+                        await order.save();
+                        console.log(`[Shiprocket] Auto-created for prepaid order ${order._id} — AWB: ${result.awb_code}`);
+                    } else {
+                        console.warn(`[Shiprocket] Auto-create failed for order ${order._id}:`, result.error);
+                    }
+                } catch (err) {
+                    console.warn(`[Shiprocket] Auto-create error:`, err.message);
+                }
+            })();
+        }
 
     } catch (err) {
         console.error("VERIFY PAYMENT:", err);

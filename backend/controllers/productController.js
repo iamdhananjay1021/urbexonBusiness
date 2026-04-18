@@ -741,6 +741,15 @@ export const adminCreateProduct = async (req, res) => {
                 ? { customizationConfig: body.customizationConfig }
                 : {}),
 
+            /* Policy fields */
+            isCancellable: body.isCancellable !== "false" && body.isCancellable !== false,
+            isReturnable: body.isReturnable !== "false" && body.isReturnable !== false,
+            isReplaceable: body.isReplaceable === "true" || body.isReplaceable === true,
+            returnWindow: Math.min(30, Math.max(0, Number(body.returnWindow) || 7)),
+            replacementWindow: Math.min(30, Math.max(0, Number(body.replacementWindow) || 7)),
+            cancelWindow: Math.min(72, Math.max(0, Number(body.cancelWindow) || 0)),
+            nonReturnableReason: (body.nonReturnableReason || "").trim().slice(0, 200),
+
             productType: "ecommerce",
             vendorId: null,
             isActive: true,
@@ -855,6 +864,15 @@ export const adminUpdateProduct = async (req, res) => {
         if (body.isDeal !== undefined) product.isDeal = parseBool(body.isDeal);
         if (body.isActive !== undefined) product.isActive = parseBool(body.isActive);
         if (body.isCustomizable !== undefined) product.isCustomizable = parseBool(body.isCustomizable);
+
+        // 📋 Policy fields
+        if (body.isCancellable !== undefined) product.isCancellable = parseBool(body.isCancellable);
+        if (body.isReturnable !== undefined) product.isReturnable = parseBool(body.isReturnable);
+        if (body.isReplaceable !== undefined) product.isReplaceable = parseBool(body.isReplaceable);
+        if (body.returnWindow !== undefined) product.returnWindow = Math.min(30, Math.max(0, safeNumber(body.returnWindow, 7)));
+        if (body.replacementWindow !== undefined) product.replacementWindow = Math.min(30, Math.max(0, safeNumber(body.replacementWindow, 7)));
+        if (body.cancelWindow !== undefined) product.cancelWindow = Math.min(72, Math.max(0, safeNumber(body.cancelWindow, 0)));
+        if (body.nonReturnableReason !== undefined) product.nonReturnableReason = (body.nonReturnableReason || "").trim().slice(0, 200);
 
         // 🎨 Customization config
         if (body.customizationConfig !== undefined) {
