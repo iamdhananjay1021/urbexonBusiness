@@ -1,15 +1,12 @@
-html {
-    height: 100%;
-}
-
+html,
 body {
-    height: auto;
-    min-height: 100vh;
-    overflow-y: auto;
+    height: 100%;
+    overflow: hidden;
 }
 
 #root {
-    min-height: 100vh;
+    height: 100%;
+    overflow: hidden;
 }
 
 *,

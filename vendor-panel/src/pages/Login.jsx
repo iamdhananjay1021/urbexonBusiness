@@ -1,10 +1,8 @@
 /**
- * Login.jsx — Production v3.1
+ * Login.jsx — Production v3.0
  * Clean dark gradient login, matches Figma branding
  * ✅ Forgot Password link added
  * ✅ Production-ready registration section
- * ✅ Fixed: /apply → /become-vendor (React Router Link)
- * ✅ Fixed: onMouseEnter/Leave removed, CSS class hover used
  */
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
@@ -52,11 +50,10 @@ const Login = () => {
       fontFamily: "'DM Sans', -apple-system, sans-serif",
     }}>
       <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes spin { to { transform:rotate(360deg); } }
         .login-input:focus { border-color: #7c3aed !important; box-shadow: 0 0 0 3px rgba(124,58,237,0.15) !important; background: #fff !important; }
         .login-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(124,58,237,0.4); }
         .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .apply-btn:hover { background: #e5e7eb !important; border-color: #d1d5db !important; }
       `}</style>
 
       <div style={{
@@ -168,26 +165,26 @@ const Login = () => {
         </form>
 
         <div style={{ marginTop: 28, paddingTop: 20, borderTop: "1px solid #e5e7eb" }}>
-
           {/* Register Section */}
           <div style={{ marginBottom: 16 }}>
             <p style={{ fontSize: 13, color: "#6b7280", textAlign: "center", margin: 0, marginBottom: 10 }}>
               ✨ New to Urbexon?
             </p>
-            <Link
-              to="/apply"
-              className="apply-btn"
-              style={{
-                display: "block", width: "100%", padding: "11px",
-                background: "#f3f4f6", border: "1.5px solid #e5e7eb",
-                borderRadius: 10, color: "#7c3aed", fontSize: 14, fontWeight: 700,
-                textDecoration: "none", textAlign: "center",
-                transition: "all 0.2s", fontFamily: "inherit",
-                boxSizing: "border-box",
-              }}
-            >
+            <a href="/apply" style={{
+              display: "inline-block", width: "100%", padding: "11px",
+              background: "#f3f4f6", border: "1.5px solid #e5e7eb",
+              borderRadius: 10, color: "#7c3aed", fontSize: 14, fontWeight: 700,
+              textDecoration: "none", textAlign: "center",
+              transition: "all 0.2s", fontFamily: "inherit"
+            }} onMouseEnter={e => {
+              e.target.style.background = "#e5e7eb";
+              e.target.style.borderColor = "#d1d5db";
+            }} onMouseLeave={e => {
+              e.target.style.background = "#f3f4f6";
+              e.target.style.borderColor = "#e5e7eb";
+            }}>
               Apply as Vendor Now
-            </Link>
+            </a>
             <p style={{ fontSize: 11, color: "#9ca3af", textAlign: "center", marginTop: 8, margin: 0 }}>
               Join our partner network and grow your business
             </p>
@@ -202,7 +199,6 @@ const Login = () => {
               vendor-support@urbexon.in
             </a>
           </div>
-
         </div>
       </div>
     </div>
