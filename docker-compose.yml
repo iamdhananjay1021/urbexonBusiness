@@ -32,7 +32,8 @@ services:
       context: ./client
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=${VITE_API_URL:-http://localhost:9000/api}
+        - VITE_API_URL=https://api.urbexon.in/api
+        - VITE_WS_URL=wss://api.urbexon.in
     container_name: urbexon-client
     restart: unless-stopped
     ports:
@@ -45,7 +46,8 @@ services:
       context: ./admin
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=${VITE_API_URL:-http://localhost:9000/api}
+        - VITE_API_URL=https://api.urbexon.in/api
+        - VITE_WS_URL=wss://api.urbexon.in
     container_name: urbexon-admin
     restart: unless-stopped
     ports:
@@ -58,7 +60,8 @@ services:
       context: ./vendor-panel
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=${VITE_API_URL:-http://localhost:9000/api}
+        - VITE_API_URL=https://api.urbexon.in/api
+        - VITE_WS_URL=wss://api.urbexon.in
     container_name: urbexon-vendor
     restart: unless-stopped
     ports:
@@ -69,7 +72,8 @@ services:
   delivery:
     build:
       context: ./delivery-panel
-      dockerfile: Dockerfile
+      dockerfile: Dockehttps://api.urbexon.in/api
+        - VITE_WS_URL=wss://api.urbexon.in
       args:
         - VITE_API_URL=${VITE_API_URL:-http://localhost:9000/api}
     container_name: urbexon-delivery
