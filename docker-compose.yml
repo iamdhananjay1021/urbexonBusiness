@@ -72,9 +72,10 @@ services:
   delivery:
     build:
       context: ./delivery-panel
-      dockerfile: Dockehttps://api.urbexon.in/api - VITE_WS_URL=wss://api.urbexon.in
+      dockerfile: Dockerfile
       args:
-        - VITE_API_URL=${VITE_API_URL:-http://localhost:9000/api}
+        - VITE_API_URL=https://api.urbexon.in/api
+        - VITE_WS_URL=wss://api.urbexon.in
     container_name: urbexon-delivery
     restart: unless-stopped
     ports:
