@@ -1,0 +1,56 @@
+services:
+  - type: web
+    name: urbexon-api
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    plan: standard
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 9000
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+      - key: FROM_NAME
+        sync: false
+      - key: FRONTEND_URL
+        value: https://urbexon.in
+      - key: ADMIN_FRONTEND_URL
+        value: https://admin.urbexon.in
+      - key: VENDOR_FRONTEND_URL
+        value: https://vendor.urbexon.in
+      - key: DELIVERY_FRONTEND_URL
+        value: https://delivery.partner.urbexon.in
+      - key: SHIPROCKET_EMAIL
+        sync: false
+      - key: SHIPROCKET_PASSWORD
+        sync: false
+      - key: SHIPROCKET_PICKUP_LOCATION
+        value: Primary
+      - key: SHOP_NAME
+        value: Urbexon
+      - key: SHOP_EMAIL
+        value: support@urbexon.in
+      - key: SHOP_PHONE
+        value: 8808485840
+      - key: SHOP_WEBSITE
+        value: urbexon.in
+      - key: REDIS_URL
+        sync: false

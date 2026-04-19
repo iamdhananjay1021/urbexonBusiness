@@ -72,8 +72,7 @@ services:
   delivery:
     build:
       context: ./delivery-panel
-      dockerfile: Dockehttps://api.urbexon.in/api
-        - VITE_WS_URL=wss://api.urbexon.in
+      dockerfile: Dockehttps://api.urbexon.in/api - VITE_WS_URL=wss://api.urbexon.in
       args:
         - VITE_API_URL=${VITE_API_URL:-http://localhost:9000/api}
     container_name: urbexon-delivery
@@ -85,6 +84,7 @@ services:
 
 volumes:
   mongo-data:
+
 
 networks:
   urbexon-net:
