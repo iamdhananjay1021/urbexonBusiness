@@ -1,7 +1,6 @@
 {
     "buildCommand": "npm run build",
     "outputDirectory": "dist",
-    "cleanUrls": true,
     "rewrites": [
         {
             "source": "/(.*)",
@@ -14,7 +13,7 @@
     },
     "headers": [
         {
-            "source": "/assets/:path*",
+            "source": "/assets/(.*)",
             "headers": [
                 {
                     "key": "Cache-Control",
