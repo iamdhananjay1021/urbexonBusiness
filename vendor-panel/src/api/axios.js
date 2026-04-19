@@ -50,14 +50,17 @@ api.interceptors.response.use(
             return Promise.reject(error);
         }
 
-        // 401 Unauthorized → Auto logout
+        // 401 Unauthorized → Auto logout (but NOT on public pages)
         if (status === 401) {
-            console.warn("[Axios] 401 Unauthorized - logging out");
+            console.warn("[Axios] 401 Unauthorized");
             localStorage.removeItem("vendorAuth");
             delete api.defaults.headers.common["Authorization"];
 
-            // Redirect to login if not already there
-            if (!window.location.pathname.includes("/login")) {
+            // Only redirect to login if NOT on public pages
+            const publicPages = ["/login", "/apply", "/forgot-password", "/reset-password"];
+            const isPublicPage = publicPages.some(p => window.location.pathname.includes(p));
+
+            if (!isPublicPage && !window.location.pathname.includes("/login")) {
                 window.location.replace("/login");
             }
         }
