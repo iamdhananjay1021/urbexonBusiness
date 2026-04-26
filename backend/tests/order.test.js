@@ -5,6 +5,7 @@ import { jest } from "@jest/globals";
 import request from "supertest";
 import mongoose from "mongoose";
 import { buildApp, connectTestDB, disconnectTestDB, createTestUser } from "./helpers.js";
+import { deductStock } from "../services/pricing.js";
 
 jest.mock("../utils/emailService.js", () => ({
     sendEmail:           jest.fn().mockResolvedValue({ success: true }),
@@ -96,9 +97,9 @@ describe("POST /api/orders", () => {
             });
         expect(res.status).toBe(201);
         expect(res.body.success).toBe(true);
-        expect(res.body.order._id).toBeDefined();
-        expect(res.body.order.orderStatus).toBe("PLACED");
-        expect(res.body.order.payment.method).toBe("COD");
+        expect(res.body.orderId).toBeDefined();
+        expect(res.body.invoiceNumber).toBeDefined();
+        expect(res.body.orderStatus).toBe("CONFIRMED");
     });
 
     it("should reject missing customer details", async () => {
@@ -152,7 +153,7 @@ describe("PATCH /api/orders/:id/cancel", () => {
                 deliveryType:  "ECOMMERCE_STANDARD",
             });
         expect(createRes.status).toBe(201);
-        const orderId = createRes.body.order._id;
+        const orderId = createRes.body.orderId;
 
         // Cancel it
         const cancelRes = await request(app)
@@ -168,5 +169,46 @@ describe("PATCH /api/orders/:id/cancel", () => {
             .patch(`/api/orders/${fakeId}/cancel`)
             .set("Authorization", `Bearer ${token}`);
         expect(res.status).toBe(404);
+    });
+});
+
+describe("deductStock()", () => {
+    it("should roll back partial deductions on failure", async () => {
+        const Product = (await import("../models/Product.js")).default;
+
+        const p1 = await Product.create({
+            name: "Rollback Product A",
+            price: 100,
+            category: "Test",
+            stock: 5,
+            inStock: true,
+            productType: "ecommerce",
+            isActive: true,
+        });
+
+        const p2 = await Product.create({
+            name: "Rollback Product B",
+            price: 100,
+            category: "Test",
+            stock: 1,
+            inStock: true,
+            productType: "ecommerce",
+            isActive: true,
+        });
+
+        await expect(
+            deductStock([
+                { productId: p1._id, name: p1.name, qty: 2 },
+                { productId: p2._id, name: p2.name, qty: 2 }, // will fail
+            ])
+        ).rejects.toThrow(/went out of stock/i);
+
+        const [p1After, p2After] = await Promise.all([
+            Product.findById(p1._id).select("stock inStock").lean(),
+            Product.findById(p2._id).select("stock inStock").lean(),
+        ]);
+
+        expect(p1After.stock).toBe(5);
+        expect(p2After.stock).toBe(1);
     });
 });

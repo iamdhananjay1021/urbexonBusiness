@@ -19,6 +19,13 @@ export const sendPush = async (fcmToken, notification, data = {}) => {
 
     try {
         const admin = getFirebaseAdmin();
+
+        // ✅ Safety check: ensure messaging is available
+        if (!admin.messaging || typeof admin.messaging() !== 'object') {
+            console.warn("[FCM] admin.messaging() not available");
+            return { success: false, error: "FCM not available" };
+        }
+
         // Ensure all data values are strings (FCM requirement)
         const stringifiedData = {};
         for (const [key, value] of Object.entries(data)) {
@@ -85,6 +92,13 @@ export const sendPushMultiple = async (tokens, notification, data = {}) => {
     }
 
     const admin = getFirebaseAdmin();
+
+    // ✅ Safety check: ensure messaging is available
+    if (!admin.messaging || typeof admin.messaging() !== 'object') {
+        console.warn("[FCM] admin.messaging() not available");
+        return { successCount: 0, failureCount: tokens.length, invalidTokens: [] };
+    }
+
     const stringifiedData = {};
     for (const [key, value] of Object.entries(data)) {
         stringifiedData[key] = String(value);

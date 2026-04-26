@@ -380,6 +380,10 @@ const OrderCard = ({ o, i, onAssign, onRefresh }) => {
                 <div style={{ flex: 1, minWidth: 200 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                         <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>#{o._id.slice(-8).toUpperCase()}</span>
+                        {/* [BUG-FIX-A2] Show order type badge — prevents ecommerce assignment confusion */}
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, color: "#059669", background: "#ecfdf5", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                            UH
+                        </span>
                         <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, color: st.color, background: st.bg }}>{o.orderStatus}</span>
                         {hasRider && (
                             <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, color: T.green, background: "#ecfdf5" }}>

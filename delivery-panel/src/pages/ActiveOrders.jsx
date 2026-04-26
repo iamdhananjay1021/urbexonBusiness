@@ -136,6 +136,28 @@ const ActiveOrders = () => {
               load();
             }
             if (msg.type === "rider:order_assigned") { playNotification(); load(); }
+
+            // ✅ NEW: Handle "order_ready" event (when vendor marks order as ready)
+            if (msg.type === "order_ready") {
+              const p = msg.payload || {};
+              setNewAlert({
+                orderId: p.orderId,
+                orderNumber: p.orderNumber,
+                amount: p.amount,
+                items: p.items,
+                address: p.address,
+                distanceKm: p.distanceKm,
+                customerName: p.customerName,
+                customerPhone: p.customerPhone,
+                eta: p.eta,
+                isReady: true,  // Flag to show "Order Ready at Vendor" message
+                at: new Date()
+              });
+              startAlert();
+              load();
+              setTab("available");
+            }
+
             if (msg.type === "new_delivery_request" || msg.type === "new_order_available") {
               const p = msg.payload || {};
               setNewAlert({ orderId: p.orderId, amount: p.amount, items: p.items, address: p.address, distanceKm: p.distanceKm, at: new Date() });
@@ -213,13 +235,25 @@ const ActiveOrders = () => {
       {newAlert && (
         <div style={{ background: `linear-gradient(135deg,${G.navy},#1e293b)`, color: G.white, padding: "14px var(--px)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, animation: "slideDown .3s ease" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
-            <div style={{ width: 36, height: 36, borderRadius: "50%", background: G.brand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 16, animation: "pulseGreen 2s infinite" }}>🔔</div>
+            <div style={{ width: 36, height: 36, borderRadius: "50%", background: newAlert.isReady ? "#f59e0b" : G.brand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 16, animation: "pulseGreen 2s infinite" }}>
+              {newAlert.isReady ? "✅" : "🔔"}
+            </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 13 }}>Naya Order Aaya!</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,.7)", marginTop: 1 }}>
-                {newAlert.items} items • {fmt(newAlert.amount)}{newAlert.distanceKm ? ` • ${newAlert.distanceKm} km` : ""}
+              <div style={{ fontWeight: 800, fontSize: 13 }}>
+                {newAlert.isReady ? "Order Ready at Vendor!" : "Naya Order Aaya!"}
               </div>
-              {newAlert.address && <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginTop: 1 }}>{newAlert.address}</div>}
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,.7)", marginTop: 1 }}>
+                {newAlert.orderNumber && newAlert.isReady
+                  ? `Order #${newAlert.orderNumber.slice(-6)} ready for pickup`
+                  : `${newAlert.items} items • ${fmt(newAlert.amount)}${newAlert.distanceKm ? ` • ${newAlert.distanceKm} km` : ""}`
+                }
+              </div>
+              {newAlert.address && <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginTop: 1 }}>
+                {newAlert.isReady
+                  ? `📍 ${newAlert.address} • Customer: ${newAlert.customerName}`
+                  : newAlert.address
+                }
+              </div>}
             </div>
           </div>
           <button onClick={dismissAlert} style={{ background: "rgba(255,255,255,.15)", border: "none", borderRadius: 6, padding: "6px 10px", color: G.white, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✕ Dismiss</button>

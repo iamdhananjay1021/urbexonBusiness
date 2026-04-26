@@ -101,6 +101,7 @@ const UHCart = () => {
                                 <img
                                     src={img} alt={item.name}
                                     className="uhc-item-img"
+                                    loading="lazy"
                                     onError={(e) => { e.target.src = "/placeholder.png"; }}
                                 />
                                 <div className="uhc-item-body">
@@ -146,6 +147,15 @@ const UHCart = () => {
                                         <FaTrash size={10} /> Remove
                                     </button>
                                 </div>
+                                {(item.inStock === false || Number(item.stock ?? 0) === 0) && (
+                                    <div style={{
+                                        position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+                                        background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center",
+                                        borderRadius: 6, color: "#fff", fontWeight: 700, fontSize: 13
+                                    }}>
+                                        ⚠️ Out of Stock
+                                    </div>
+                                )}
                             </div>
                         );
                     })}

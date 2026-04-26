@@ -1,18 +1,12 @@
 /**
- * UrbexonHour.jsx — Production Ready v3.0 (Flipkart Minutes Style)
- * ─────────────────────────────────────────────────────────────────
- * • Pincode saved permanently after first entry (logged-in users)
- * • Change pincode option always visible
- * • Products load instantly for returning users
- * • Category filter chips
- * • Vendor-grouped product grid
- * • Floating UH cart button
- * • Qty controls directly on cards (Flipkart Minutes style)
- * • Auto-detect location from GPS
+ * UrbexonHour.jsx — Production Ready v3.1
+ * Fixes:
+ *  1. Location bar shows stale area — now merges fresh pinData area/city into savedPincode
+ *  2. Category click does not change URL — now navigates to /urbexon-hour/:slug
  */
 
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useParams } from "react-router-dom";
 import api from "../api/axios";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../hooks/useCart";
@@ -32,7 +26,7 @@ import SEO from "../components/SEO";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
-/* ── Product Card (Zepto/Blinkit premium style) ── */
+/* ── Product Card ── */
 const ProductCard = memo(({ product }) => {
     const { addItem, isInUHCart, uhItems, increment, decrement, removeItem } = useCart();
     const inCart = isInUHCart(product._id);
@@ -112,12 +106,10 @@ const ProductCard = memo(({ product }) => {
     );
 });
 
-/* ── Helper Functions (Industry-level cart management) ── */
+/* ── Helpers ── */
 const calculateEstimatedDeliveryTime = (pinData) => {
     if (!pinData?.available) return { min: 45, max: 120 };
-    // If within premium zone, faster delivery
     if (pinData.premium) return { min: 25, max: 50 };
-    // Normal zones
     if (pinData.standardDelivery) return { min: 45, max: 90 };
     return { min: 60, max: 120 };
 };
@@ -130,10 +122,29 @@ const calculateEstimatedSavings = (uhItems) => {
     }, 0);
 };
 
-/* ── Main Page ────────────────────────────────────────── */
+/* ── Category emoji helper ── */
+const CATEGORY_EMOJIS = {
+    dairy: "🥛", milk: "🥛", vegetables: "🥦", veggies: "🥦",
+    fruits: "🍎", fruit: "🍎", bakery: "🍞", bread: "🍞",
+    meat: "🥩", chicken: "🍗", drinks: "🧃", beverages: "🥤",
+    frozen: "🍦", pantry: "🫙", groceries: "🛒", electronics: "📱",
+    fashion: "👔", lifestyle: "✨", snacks: "🍿", default: "📦",
+};
+
+const getCategoryEmoji = (cat) => {
+    if (!cat) return "📦";
+    const key = cat.toLowerCase().replace(/[^a-z]/g, "");
+    for (const [k, v] of Object.entries(CATEGORY_EMOJIS)) {
+        if (key.includes(k)) return v;
+    }
+    return CATEGORY_EMOJIS.default;
+};
+
+/* ── Main Page ── */
 const UrbexonHour = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
+    const { slug } = useParams();
     const { user } = useAuth();
     const { uhTotalQty, uhTotal, uhItems } = useCart();
     const { recentlyViewed: uhRecentlyViewed } = useRecentlyViewed("urbexon_hour");
@@ -166,16 +177,30 @@ const UrbexonHour = () => {
     });
     const [showPincodeEdit, setShowPincodeEdit] = useState(false);
     const searchQuery = searchParams.get("search") || "";
-    const clearSearch = useCallback(() => {
-        setSearchParams(prev => { prev.delete("search"); return prev; }, { replace: true });
-    }, [setSearchParams]);
     const [uhDeals, setUhDeals] = useState([]);
     const [cartAnimating, setCartAnimating] = useState(false);
     const [heroBanners, setHeroBanners] = useState([]);
     const [midBanners, setMidBanners] = useState([]);
     const [homepageData, setHomepageData] = useState(null);
 
-    /* ── Fetch UH categories from API on mount ── */
+    const clearSearch = useCallback(() => {
+        setSearchParams(prev => { prev.delete("search"); return prev; }, { replace: true });
+    }, [setSearchParams]);
+
+    /* ── FIX: Category select → navigate to URL slug ── */
+    const handleCategorySelect = useCallback((catName) => {
+        if (!catName) {
+            navigate("/urbexon-hour", { replace: true });
+            setActiveCategory(null);
+            return;
+        }
+        const matched = apiCategories.find(c => c.name === catName);
+        const urlSlug = matched?.slug || catName.toLowerCase().replace(/\s+/g, "-");
+        navigate(`/urbexon-hour/${urlSlug}`);
+        setActiveCategory(catName);
+    }, [apiCategories, navigate]);
+
+    /* ── Fetch UH categories ── */
     useEffect(() => {
         api.get("/categories", { params: { type: "urbexon_hour" } }).then(({ data }) => {
             const cats = Array.isArray(data) ? data : data.categories || [];
@@ -183,7 +208,19 @@ const UrbexonHour = () => {
         }).catch(() => { });
     }, []);
 
-    /* ── Fetch banners & homepage data on mount ── */
+    /* ── Map URL slug to activeCategory ── */
+    useEffect(() => {
+        if (!slug) { setActiveCategory(null); return; }
+        const decoded = decodeURIComponent(slug).toLowerCase().replace(/-/g, " ");
+        const matched = apiCategories.find(c =>
+            c.slug?.toLowerCase() === slug.toLowerCase() ||
+            c.name?.toLowerCase() === decoded ||
+            c.name?.toLowerCase().replace(/\s+/g, "-") === slug.toLowerCase()
+        );
+        setActiveCategory(matched ? matched.name : null);
+    }, [slug, apiCategories]);
+
+    /* ── Fetch banners & homepage data ── */
     useEffect(() => {
         api.get("/banners", { params: { type: "urbexon_hour", placement: "hero" } })
             .then(({ data }) => setHeroBanners(Array.isArray(data) ? data : []))
@@ -196,7 +233,7 @@ const UrbexonHour = () => {
             .catch(() => { });
     }, []);
 
-    /* ── Trigger cart animation when items added ── */
+    /* ── Cart animation ── */
     useEffect(() => {
         if (uhTotalQty > 0) {
             setCartAnimating(true);
@@ -205,28 +242,77 @@ const UrbexonHour = () => {
         }
     }, [uhTotalQty]);
 
+    /* ── Inner Pincode Check ── */
+    const checkPincodeInner = async (code) => {
+        const pc = code.trim();
+        if (!/^\d{6}$/.test(pc)) return;
+        setLoading(true); setError(""); setPinData(null); setProducts([]); setCategories([]); setActiveCategory(null);
+        try {
+            const { data } = await api.get(`/pincode/check/${pc}`);
+            setPinData(data);
+            if (data.available) {
+                const [pRes, dRes] = await Promise.allSettled([
+                    api.get("/products", { params: { productType: "urbexon_hour", pincode: pc, limit: 60 } }),
+                    api.get("/products/urbexon-hour/deals", { params: { limit: 12 } }),
+                ]);
+
+                const prods = pRes.status === "fulfilled" ? (pRes.value.data.products || pRes.value.data || []) : [];
+                setProducts(prods);
+
+                const catSet = new Set();
+                prods.forEach((p) => { if (p.category) catSet.add(p.category); });
+                setCategories([...catSet]);
+
+                setUhDeals(dRes.status === "fulfilled" ? (dRes.value.data.products || []) : []);
+
+                /* FIX: Always use fresh area/city from pincode API response */
+                const pincodeData = {
+                    code: pc,
+                    area: data.area || null,
+                    city: data.city || null,
+                    state: data.state || null,
+                };
+                localStorage.setItem("uh_pincode", JSON.stringify(pincodeData));
+                setSavedPincode(pincodeData);
+                setShowPincodeEdit(false);
+                if (user) {
+                    api.post("/addresses/uh-pincode", pincodeData).catch(() => { });
+                }
+            }
+        } catch (err) {
+            setError(err?.response?.data?.message || "Failed to check pincode. Please try again.");
+        } finally { setLoading(false); }
+    };
+
     /* ── Load saved pincode on mount ── */
     useEffect(() => {
         let cancelled = false;
         const load = async () => {
-            // 1) Try user account pincode (logged in)
             let code = null;
             if (user) {
                 try {
                     const { data } = await api.get("/addresses/uh-pincode");
                     if (data?.uhPincode?.code && !cancelled) {
-                        setSavedPincode(data.uhPincode);
-                        setPincode(data.uhPincode.code);
-                        code = data.uhPincode.code;
+                        /* FIX: Merge server data with localStorage to avoid blank area */
+                        const localStored = (() => {
+                            try { return JSON.parse(localStorage.getItem("uh_pincode") || "{}"); } catch { return {}; }
+                        })();
+                        const merged = {
+                            ...data.uhPincode,
+                            area: data.uhPincode.area || localStored.area || null,
+                            city: data.uhPincode.city || localStored.city || null,
+                            state: data.uhPincode.state || localStored.state || null,
+                        };
+                        setSavedPincode(merged);
+                        setPincode(merged.code);
+                        code = merged.code;
                     }
                 } catch { /* continue */ }
             }
-            // 2) Fallback to localStorage (already read in state init)
             if (!code && savedPincode?.code) {
                 code = savedPincode.code;
                 setPincode(code);
             }
-            // 3) Fetch products for pincode
             if (code && !cancelled) {
                 await checkPincodeInner(code);
             }
@@ -235,25 +321,6 @@ const UrbexonHour = () => {
         load();
         return () => { cancelled = true; };
     }, []); // eslint-disable-line
-
-    /* ── Save pincode permanently ── */
-    const savePincode = useCallback(async (code, pinInfo) => {
-        const pincodeData = {
-            code,
-            area: pinInfo?.area || null,
-            city: pinInfo?.city || null,
-            state: pinInfo?.state || null,
-        };
-
-        // Save to localStorage (works for guests too)
-        localStorage.setItem("uh_pincode", JSON.stringify(pincodeData));
-        setSavedPincode(pincodeData);
-
-        // Save to user account if logged in
-        if (user) {
-            try { await api.post("/addresses/uh-pincode", pincodeData); } catch { /* silent */ }
-        }
-    }, [user]);
 
     /* ── GPS Detection ── */
     const detectLocation = useCallback(async () => {
@@ -298,44 +365,6 @@ const UrbexonHour = () => {
         }
     }, []);
 
-    /* ── Inner Pincode Check (no useCallback dep issues) ── */
-    const checkPincodeInner = async (code) => {
-        const pc = code.trim();
-        if (!/^\d{6}$/.test(pc)) return;
-        setLoading(true); setError(""); setPinData(null); setProducts([]); setCategories([]); setActiveCategory(null);
-        try {
-            const { data } = await api.get(`/pincode/check/${pc}`);
-            setPinData(data);
-            if (data.available) {
-                // Fetch products + deals in parallel
-                const [pRes, dRes] = await Promise.allSettled([
-                    api.get("/products", { params: { productType: "urbexon_hour", pincode: pc, limit: 60 } }),
-                    api.get("/products/urbexon-hour/deals", { params: { limit: 12 } }),
-                ]);
-
-                const prods = pRes.status === "fulfilled" ? (pRes.value.data.products || pRes.value.data || []) : [];
-                setProducts(prods);
-
-                const catSet = new Set();
-                prods.forEach((p) => { if (p.category) catSet.add(p.category); });
-                setCategories([...catSet]);
-
-                setUhDeals(dRes.status === "fulfilled" ? (dRes.value.data.products || []) : []);
-
-                // Save pincode (fire-and-forget)
-                const pincodeData = { code: pc, area: data.area || null, city: data.city || null, state: data.state || null };
-                localStorage.setItem("uh_pincode", JSON.stringify(pincodeData));
-                setSavedPincode(pincodeData);
-                setShowPincodeEdit(false);
-                if (user) {
-                    api.post("/addresses/uh-pincode", pincodeData).catch(() => { });
-                }
-            }
-        } catch (err) {
-            setError(err?.response?.data?.message || "Failed to check pincode. Please try again.");
-        } finally { setLoading(false); }
-    };
-
     /* ── Pincode Check (button handler) ── */
     const checkPincode = useCallback(() => {
         if (!/^\d{6}$/.test(pincode.trim())) { setError("Please enter a valid 6-digit pincode"); return; }
@@ -376,7 +405,7 @@ const UrbexonHour = () => {
         return Object.values(map);
     }, []);
 
-    /* ── Search filter ── */
+    /* ── Search + category filter ── */
     const filteredProducts = useMemo(() => {
         let prods = products;
         if (activeCategory) prods = prods.filter((p) => p.category === activeCategory);
@@ -393,14 +422,10 @@ const UrbexonHour = () => {
 
     const vendorGroups = groupByVendor(filteredProducts);
 
-    /* ── Memoized cart metrics ── */
     const cartSavings = useMemo(() => calculateEstimatedSavings(uhItems), [uhItems]);
     const deliveryEta = useMemo(() => calculateEstimatedDeliveryTime(pinData), [pinData]);
 
     const hasActiveService = pinData?.available && products.length > 0;
-    // Only show pincode entry if:
-    // 1. No saved pincode (first visit), or
-    // 2. User explicitly clicks 'Change' (showPincodeEdit)
     const showHero = (!savedPincode?.code && !hasActiveService && !loading && !initialLoading) || showPincodeEdit;
     const showSkeleton = (loading || initialLoading) && savedPincode?.code && !showPincodeEdit;
 
@@ -410,14 +435,16 @@ const UrbexonHour = () => {
             <style>{PAGE_CSS}</style>
             <main>
 
-                {/* ── UH LOCATION BAR (below main navbar) ── */}
+                {/* ── UH LOCATION BAR ── */}
                 {(hasActiveService || showSkeleton) && !showPincodeEdit && (
                     <div className="uh-loc-bar">
                         <div className="container uh-loc-bar-inner">
                             <div className="uh-loc-bar-left">
                                 <FaBolt size={12} className="uh-loc-bolt" />
                                 <span className="uh-loc-bar-label">Delivering to</span>
-                                <span className="uh-loc-bar-area">{savedPincode?.area || savedPincode?.city || pincode}</span>
+                                <span className="uh-loc-bar-area">
+                                    {savedPincode?.area || savedPincode?.city || pincode}
+                                </span>
                                 <span className="uh-loc-bar-eta">• {deliveryEta.min}–{deliveryEta.max} min</span>
                             </div>
                             <button className="uh-loc-bar-change" onClick={handleChangePincode}>
@@ -427,7 +454,7 @@ const UrbexonHour = () => {
                     </div>
                 )}
 
-                {/* ── HERO (first time or changing pincode) ── */}
+                {/* ── HERO ── */}
                 {showHero && (
                     <div className="hero">
                         <div className="hero-bg" />
@@ -494,7 +521,7 @@ const UrbexonHour = () => {
                     </div>
                 )}
 
-                {/* ── TRUST STRIP (Premium glassmorphism) ── */}
+                {/* ── TRUST STRIP ── */}
                 {(hasActiveService || showSkeleton) && !showPincodeEdit && (
                     <div className="trust-strip">
                         <div className="container trust-inner">
@@ -540,28 +567,26 @@ const UrbexonHour = () => {
                     </div>
                 )}
 
-                {/* ═══ HOMEPAGE SECTIONS — Logical Flow ═══ */}
+                {/* ═══ HOMEPAGE SECTIONS ═══ */}
                 {hasActiveService && !showPincodeEdit && !searchQuery && !activeCategory && (
                     <>
-                        {/* ─── SECTION 1: DISCOVERY ─────────────────────── */}
-
-                        {/* Hero Banner Carousel */}
+                        {/* Hero Banner */}
                         {heroBanners.length > 0 && (
                             <div className="container" style={{ paddingTop: 20, paddingBottom: 0 }}>
                                 <UHBannerCarousel banners={heroBanners} />
                             </div>
                         )}
 
-                        {/* Category Strip (horizontal scroll pills) */}
+                        {/* Category Strip — FIX: onSelect uses handleCategorySelect for URL navigation */}
                         <div className="container" style={{ paddingTop: 20 }}>
                             <UHCategoryStrip
                                 categories={apiCategories}
                                 activeCategory={activeCategory}
-                                onSelect={setActiveCategory}
+                                onSelect={handleCategorySelect}
                             />
                         </div>
 
-                        {/* ─── SECTION 2: SHOP BY CATEGORY ─────────────── */}
+                        {/* Shop by Category */}
                         {homepageData?.categorySections && Object.keys(homepageData.categorySections).some(k => homepageData.categorySections[k]?.length >= 3) && (
                             <div className="uh-cat-group">
                                 <div className="container">
@@ -589,7 +614,7 @@ const UrbexonHour = () => {
                             </div>
                         )}
 
-                        {/* ─── SECTION 3: FLASH DEALS ──────────────────── */}
+                        {/* Flash Deals */}
                         {uhDeals.length > 0 && (
                             <div className="uh-deals-section">
                                 <div className="container">
@@ -624,8 +649,6 @@ const UrbexonHour = () => {
                             </div>
                         )}
 
-                        {/* ─── SECTION 4: POPULAR PICKS ────────────────── */}
-
                         {/* Best Sellers */}
                         {homepageData?.bestSellers?.length > 0 && (
                             <div className="container">
@@ -652,14 +675,12 @@ const UrbexonHour = () => {
                             </div>
                         )}
 
-                        {/* Mid-page Banners (visual break) */}
+                        {/* Mid Banners */}
                         {midBanners.length > 0 && (
                             <div className="container" style={{ paddingTop: 12, paddingBottom: 12 }}>
                                 <UHMidBanner banners={midBanners} />
                             </div>
                         )}
-
-                        {/* ─── SECTION 5: TRENDING & VALUE ─────────────── */}
 
                         {/* Trending Now */}
                         {homepageData?.trending?.length > 0 && (
@@ -687,14 +708,10 @@ const UrbexonHour = () => {
                             </div>
                         )}
 
-                        {/* ─── SECTION 6: LOCAL DISCOVERY ──────────────── */}
-
                         {/* Nearby Stores */}
                         <div className="container">
                             <NearbyShops pincode={pincode} pincodeLabel={savedPincode?.area || savedPincode?.city || ''} maxResults={12} />
                         </div>
-
-                        {/* ─── SECTION 7: PERSONALIZED ─────────────────── */}
 
                         {/* Recently Viewed */}
                         {uhRecentlyViewed.length > 0 && (
@@ -722,7 +739,7 @@ const UrbexonHour = () => {
                             </div>
                         )}
 
-                        {/* ─── SECTION 8: TRUST & CLOSE ────────────────── */}
+                        {/* Why Urbexon Hour */}
                         <div className="uh-why-section">
                             <div className="container">
                                 <h3 className="uh-why-title">Why shop on Urbexon Hour?</h3>
@@ -745,13 +762,13 @@ const UrbexonHour = () => {
                     </>
                 )}
 
-                {/* ── CATEGORY BROWSER (Myntra-style, UH categories) — shown when search/filter active ── */}
+                {/* ── CATEGORY BROWSER (search/filter active) ── */}
                 {hasActiveService && !showPincodeEdit && (searchQuery || activeCategory) && (
                     <div className="section">
                         <div className="container">
                             <CategoryBrowser
                                 categories={apiCategories}
-                                onCategorySelect={setActiveCategory}
+                                onCategorySelect={handleCategorySelect}
                                 activeCategory={activeCategory}
                                 title="Shop by Category"
                                 subtitle={activeCategory ? `Showing: ${activeCategory}` : "Tap to filter by category"}
@@ -769,18 +786,14 @@ const UrbexonHour = () => {
                             <span>
                                 Found <strong>{filteredProducts.length}</strong> product{filteredProducts.length !== 1 ? "s" : ""} matching "<strong>{searchQuery}</strong>"
                             </span>
-                            <button
-                                className="search-clear-btn"
-                                onClick={clearSearch}
-                                title="Clear search"
-                            >
+                            <button className="search-clear-btn" onClick={clearSearch} title="Clear search">
                                 <FaTimes size={12} /> Clear
                             </button>
                         </div>
                     </div>
                 )}
 
-                {/* ── PRODUCTS BY VENDOR (shown when filtering/searching) ── */}
+                {/* ── PRODUCTS BY VENDOR (filtering/searching) ── */}
                 {pinData?.available && (searchQuery || activeCategory) && (
                     <div className="container">
                         {filteredProducts.length === 0 && !loading && (
@@ -797,7 +810,7 @@ const UrbexonHour = () => {
                                 <button
                                     className="pin-btn"
                                     style={{ marginTop: 16 }}
-                                    onClick={() => { setActiveCategory(null); clearSearch(); }}
+                                    onClick={() => { handleCategorySelect(null); clearSearch(); }}
                                 >
                                     Show all products
                                 </button>
@@ -871,7 +884,7 @@ const UrbexonHour = () => {
                 <div style={{ height: 80 }} />
             </main>
 
-            {/* ── FLOATING UH CART BUTTON - Industry Level ── */}
+            {/* ── FLOATING CART ── */}
             {uhTotalQty > 0 && (
                 <button
                     className={`float-cart ${cartAnimating ? 'cart-pulse' : ''}`}
@@ -903,7 +916,6 @@ const UrbexonHour = () => {
             {/* ── FOOTER ── */}
             <footer className="footer">
                 <div className="container footer-main">
-                    {/* Footer Top - Brand & Newsletter */}
                     <div className="footer-top">
                         <div className="footer-brand-sec">
                             <div className="footer-brand">
@@ -921,7 +933,7 @@ const UrbexonHour = () => {
                         </div>
 
                         <div className="footer-newsletter">
-                            <h4 style={{ fontSize: 12, fontWeight: 900, color: "#fff", marginkBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>Subscribe for Updates</h4>
+                            <h4 style={{ fontSize: 12, fontWeight: 900, color: "#fff", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>Subscribe for Updates</h4>
                             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                                 <input type="email" placeholder="Your email" style={{ flex: 1, padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 12, fontFamily: "'DM Sans'" }} />
                                 <button style={{ padding: "10px 16px", background: "#3b82f6", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: "pointer", transition: "all 0.2s", whiteSpace: "nowrap" }} onMouseEnter={(e) => e.target.style.background = "#2563eb"} onMouseLeave={(e) => e.target.style.background = "#3b82f6"}>Subscribe</button>
@@ -929,63 +941,54 @@ const UrbexonHour = () => {
                         </div>
                     </div>
 
-                    {/* Footer Middle - Links Sections */}
                     <div className="footer-links-grid">
-                        <div className="footer-section">
-                            <h5 style={{ fontSize: 12, fontWeight: 900, color: "#fff", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>Company</h5>
-                            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                                <li><a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }} onMouseEnter={(e) => e.target.style.color = "#3b82f6"} onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>About Us</a></li>
-                                <li><a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }} onMouseEnter={(e) => e.target.style.color = "#3b82f6"} onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>Careers</a></li>
-                                <li><a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }} onMouseEnter={(e) => e.target.style.color = "#3b82f6"} onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>Press</a></li>
-                                <li><a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }} onMouseEnter={(e) => e.target.style.color = "#3b82f6"} onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>Blog</a></li>
-                            </ul>
-                        </div>
-
-                        <div className="footer-section">
-                            <h5 style={{ fontSize: 12, fontWeight: 900, color: "#fff", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>Help & Support</h5>
-                            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                                <li><a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }} onMouseEnter={(e) => e.target.style.color = "#3b82f6"} onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>FAQs</a></li>
-                                <li><a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }} onMouseEnter={(e) => e.target.style.color = "#3b82f6"} onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>Contact Us</a></li>
-                                <li><a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }} onMouseEnter={(e) => e.target.style.color = "#3b82f6"} onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>Track Order</a></li>
-                                <li><a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }} onMouseEnter={(e) => e.target.style.color = "#3b82f6"} onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>Support Center</a></li>
-                            </ul>
-                        </div>
-
-                        <div className="footer-section">
-                            <h5 style={{ fontSize: 12, fontWeight: 900, color: "#fff", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>Legal</h5>
-                            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                                <li><a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }} onMouseEnter={(e) => e.target.style.color = "#3b82f6"} onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>Privacy Policy</a></li>
-                                <li><a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }} onMouseEnter={(e) => e.target.style.color = "#3b82f6"} onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>Terms & Conditions</a></li>
-                                <li><a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }} onMouseEnter={(e) => e.target.style.color = "#3b82f6"} onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>Refund Policy</a></li>
-                                <li><a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }} onMouseEnter={(e) => e.target.style.color = "#3b82f6"} onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>Shipping Policy</a></li>
-                            </ul>
-                        </div>
+                        {[
+                            { title: "Company", links: ["About Us", "Careers", "Press", "Blog"] },
+                            { title: "Help & Support", links: ["FAQs", "Contact Us", "Track Order", "Support Center"] },
+                            { title: "Legal", links: ["Privacy Policy", "Terms & Conditions", "Refund Policy", "Shipping Policy"] },
+                        ].map(sec => (
+                            <div key={sec.title} className="footer-section">
+                                <h5 style={{ fontSize: 12, fontWeight: 900, color: "#fff", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>{sec.title}</h5>
+                                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                                    {sec.links.map(link => (
+                                        <li key={link}>
+                                            <a href="#" style={{ fontSize: 13, color: "#d1d5db", textDecoration: "none", lineHeight: 2, transition: "color 0.2s" }}
+                                                onMouseEnter={(e) => e.target.style.color = "#3b82f6"}
+                                                onMouseLeave={(e) => e.target.style.color = "#d1d5db"}>
+                                                {link}
+                                            </a>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ))}
 
                         <div className="footer-section">
                             <h5 style={{ fontSize: 12, fontWeight: 900, color: "#fff", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>Follow Us</h5>
                             <div style={{ display: "flex", gap: 10 }}>
-                                <a href="#" style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(59,130,246,.2)", border: "1px solid rgba(59,130,246,.3)", display: "flex", alignItems: "center", justifyContent: "center", color: "#3b82f6", textDecoration: "none", transition: "all 0.2s", fontSize: 14 }} onMouseEnter={(e) => { e.target.style.background = "#3b82f6"; e.target.style.color = "#fff"; }} onMouseLeave={(e) => { e.target.style.background = "rgba(59,130,246,.2)"; e.target.style.color = "#3b82f6"; }} title="Facebook">f</a>
-                                <a href="#" style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(59,130,246,.2)", border: "1px solid rgba(59,130,246,.3)", display: "flex", alignItems: "center", justifyContent: "center", color: "#3b82f6", textDecoration: "none", transition: "all 0.2s", fontSize: 12 }} onMouseEnter={(e) => { e.target.style.background = "#3b82f6"; e.target.style.color = "#fff"; }} onMouseLeave={(e) => { e.target.style.background = "rgba(59,130,246,.2)"; e.target.style.color = "#3b82f6"; }} title="Twitter">𝕏</a>
-                                <a href="#" style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(59,130,246,.2)", border: "1px solid rgba(59,130,246,.3)", display: "flex", alignItems: "center", justifyContent: "center", color: "#3b82f6", textDecoration: "none", transition: "all 0.2s", fontSize: 14 }} onMouseEnter={(e) => { e.target.style.background = "#3b82f6"; e.target.style.color = "#fff"; }} onMouseLeave={(e) => { e.target.style.background = "rgba(59,130,246,.2)"; e.target.style.color = "#3b82f6"; }} title="Instagram">📷</a>
-                                <a href="#" style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(59,130,246,.2)", border: "1px solid rgba(59,130,246,.3)", display: "flex", alignItems: "center", justifyContent: "center", color: "#3b82f6", textDecoration: "none", transition: "all 0.2s", fontSize: 14 }} onMouseEnter={(e) => { e.target.style.background = "#3b82f6"; e.target.style.color = "#fff"; }} onMouseLeave={(e) => { e.target.style.background = "rgba(59,130,246,.2)"; e.target.style.color = "#3b82f6"; }} title="LinkedIn">in</a>
+                                {[{ label: "f", title: "Facebook" }, { label: "𝕏", title: "Twitter" }, { label: "📷", title: "Instagram" }, { label: "in", title: "LinkedIn" }].map(s => (
+                                    <a key={s.title} href="#" title={s.title}
+                                        style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(59,130,246,.2)", border: "1px solid rgba(59,130,246,.3)", display: "flex", alignItems: "center", justifyContent: "center", color: "#3b82f6", textDecoration: "none", transition: "all 0.2s", fontSize: 14 }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.background = "#3b82f6"; e.currentTarget.style.color = "#fff"; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(59,130,246,.2)"; e.currentTarget.style.color = "#3b82f6"; }}>
+                                        {s.label}
+                                    </a>
+                                ))}
                             </div>
                         </div>
                     </div>
 
-                    {/* Footer Divider */}
                     <div style={{ height: "1px", background: "linear-gradient(90deg, transparent, rgba(255,255,255,.1), transparent)", margin: "24px 0" }} />
 
-                    {/* Footer Bottom - Copyright & Payment Methods */}
                     <div className="footer-bottom">
                         <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap", justifyContent: "space-between", width: "100%" }}>
                             <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>© 2025 Urbexon Hour. All rights reserved. | Made with ❤️ for local communities</p>
                             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                                 <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>We Accept</span>
                                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                    <span style={{ fontSize: 16, background: "rgba(255,255,255,.1)", padding: "4px 8px", borderRadius: 4 }}>💳</span>
-                                    <span style={{ fontSize: 16, background: "rgba(255,255,255,.1)", padding: "4px 8px", borderRadius: 4 }}>🏦</span>
-                                    <span style={{ fontSize: 16, background: "rgba(255,255,255,.1)", padding: "4px 8px", borderRadius: 4 }}>📱</span>
-                                    <span style={{ fontSize: 16, background: "rgba(255,255,255,.1)", padding: "4px 8px", borderRadius: 4 }}>₹</span>
+                                    {["💳", "🏦", "📱", "₹"].map(ic => (
+                                        <span key={ic} style={{ fontSize: 16, background: "rgba(255,255,255,.1)", padding: "4px 8px", borderRadius: 4 }}>{ic}</span>
+                                    ))}
                                 </div>
                             </div>
                         </div>
@@ -996,39 +999,18 @@ const UrbexonHour = () => {
     );
 };
 
-/* ── Category emoji helper ── */
-const CATEGORY_EMOJIS = {
-    dairy: "🥛", milk: "🥛", vegetables: "🥦", veggies: "🥦",
-    fruits: "🍎", fruit: "🍎", bakery: "🍞", bread: "🍞",
-    meat: "🥩", chicken: "🍗", drinks: "🧃", beverages: "🥤",
-    frozen: "🍦", pantry: "🫙", groceries: "🛒", electronics: "📱",
-    fashion: "👔", lifestyle: "✨", snacks: "🍿", default: "📦",
-};
-
-const getCategoryEmoji = (cat) => {
-    if (!cat) return "📦";
-    const key = cat.toLowerCase().replace(/[^a-z]/g, "");
-    for (const [k, v] of Object.entries(CATEGORY_EMOJIS)) {
-        if (key.includes(k)) return v;
-    }
-    return CATEGORY_EMOJIS.default;
-};
-
 /* ── CSS ── */
 const PAGE_CSS = `
-/* fonts loaded from index.html */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{background:#f5f6fa}
 main{position:relative;z-index:1}
 .uh-root{min-height:100vh;background:#f5f6fa;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1a202c;position:relative;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 .container{max-width:1280px;margin:0 auto;padding:0 clamp(16px,4vw,48px)}
 
-/* Initial loading */
 .uh-initial-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:14px;color:#64748b;font-size:14px}
 .uh-loader{width:40px;height:40px;border:3px solid #e2e8f0;border-top:3px solid #3b82f6;border-radius:50%;animation:uhspin .8s linear infinite}
 @keyframes uhspin{to{transform:rotate(360deg)}}
 
-/* UH LOCATION BAR */
 .uh-loc-bar{background:linear-gradient(135deg,#1a1740 0%,#2d1b69 100%);border-bottom:1px solid rgba(201,168,76,.15);backdrop-filter:blur(10px)}
 .uh-loc-bar-inner{display:flex;align-items:center;justify-content:space-between;padding:10px 0}
 .uh-loc-bar-left{display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,.85);font-weight:600}
@@ -1044,22 +1026,6 @@ main{position:relative;z-index:1}
   .uh-loc-bar-change{padding:4px 12px;font-size:10px}
 }
 
-/* ── DELIVERY PROMISE BAR ── */
-.uh-promise-bar{background:linear-gradient(90deg,#0f172a,#1e293b);border-bottom:1px solid rgba(59,130,246,.15)}
-.uh-promise-inner{display:flex;align-items:center;justify-content:center;gap:20px;padding:10px 0;flex-wrap:wrap}
-.uh-promise-item{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:rgba(255,255,255,.85);letter-spacing:.2px}
-.uh-promise-ic{font-size:14px;filter:drop-shadow(0 0 3px rgba(255,255,255,.2))}
-.uh-promise-dot{width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.2)}
-@media(max-width:640px){
-  .uh-promise-inner{gap:8px;padding:8px 0}
-  .uh-promise-item{font-size:10px;gap:4px}
-  .uh-promise-dot{display:none}
-  .uh-promise-inner{flex-direction:row;overflow-x:auto;justify-content:flex-start;scrollbar-width:none}
-  .uh-promise-inner::-webkit-scrollbar{display:none}
-  .uh-promise-item{white-space:nowrap;flex-shrink:0}
-}
-
-/* SKELETON */
 .uh-sk-cats{display:flex;gap:16px;margin-bottom:20px}
 .uh-sk-cat{display:flex;flex-direction:column;align-items:center;gap:8px}
 .uh-sk-circle{width:56px;height:56px;border-radius:14px;background:linear-gradient(90deg,#eee 25%,#e0e0e0 50%,#eee 75%);background-size:200% 100%;animation:uhsk 1.2s infinite}
@@ -1073,7 +1039,6 @@ main{position:relative;z-index:1}
 .uh-sk-line{height:10px;border-radius:4px;background:linear-gradient(90deg,#eee 25%,#e0e0e0 50%,#eee 75%);background-size:200% 100%;animation:uhsk 1.2s infinite}
 @keyframes uhsk{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
-/* HERO */
 .hero{background:linear-gradient(135deg,#667eea 0%,#764ba2 50%,#f093fb 100%);position:relative;overflow:hidden;margin-bottom:0}
 .hero-bg{position:absolute;inset:0;pointer-events:none;opacity:.3;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")}
 .hero-inner{position:relative;z-index:1;display:flex;align-items:center;gap:48px;padding:clamp(48px,6vw,80px) 0;justify-content:space-between}
@@ -1088,7 +1053,6 @@ main{position:relative;z-index:1}
 .hero-emoji{font-size:clamp(80px,12vw,140px);position:relative;z-index:2;filter:drop-shadow(0 8px 24px rgba(0,0,0,.2));animation:bob 3s ease-in-out infinite}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-15px)}}
 
-/* PINCODE */
 .pin-block{max-width:600px}
 .pin-row{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap}
 .pin-inp-wrap{flex:1;min-width:200px;position:relative;display:flex;align-items:center}
@@ -1106,7 +1070,6 @@ main{position:relative;z-index:1}
 .spin{width:14px;height:14px;display:inline-block;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 
-/* ── TRUST STRIP - Premium Glassmorphism ── */
 .trust-strip{background:linear-gradient(135deg,#ffffff,#f8fafc);border-bottom:1px solid #e8ecf1;border-top:1px solid #e8ecf1;box-shadow:0 2px 12px rgba(0,0,0,.03)}
 .trust-inner{display:grid;grid-template-columns:repeat(4,1fr);gap:0;width:100%;overflow:hidden}
 .trust-item{display:flex;align-items:center;gap:clamp(10px,1.5vw,14px);padding:clamp(16px,2.5vw,22px) clamp(14px,2vw,24px);border-right:1px solid #e8ecf1;position:relative;transition:all .3s;min-width:0;animation:trustSlideIn .5s cubic-bezier(.34,.1,.68,1) backwards}
@@ -1118,31 +1081,11 @@ main{position:relative;z-index:1}
 .trust-title{font-size:clamp(10px,1.8vw,11.5px);font-weight:800;color:#0f172a;letter-spacing:.6px;text-transform:uppercase;font-family:'DM Sans';white-space:nowrap}
 .trust-sub{font-size:clamp(10px,1.5vw,11.5px);color:#64748b;margin-top:2px;line-height:1.3;font-weight:500;white-space:nowrap}
 @keyframes trustSlideIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@media(max-width:1024px){
-  .trust-inner{grid-template-columns:repeat(4,1fr)}
-  .trust-item{padding:14px 12px;gap:10px}
-}
-@media(max-width:768px){
-  .trust-inner{grid-template-columns:repeat(2,1fr)}
-  .trust-item{border-right:none;border-bottom:1px solid #e8ecf1;padding:12px 14px;min-width:0}
-  .trust-item:nth-child(odd){border-right:1px solid #e8ecf1}
-  .trust-item:nth-child(3),.trust-item:nth-child(4){border-bottom:none}
-  .trust-title{font-size:10px}
-  .trust-sub{font-size:10px}
-}
-@media(max-width:480px){
-  .trust-inner{grid-template-columns:repeat(2,1fr)}
-  .trust-item{padding:10px 10px;gap:8px}
-  .trust-title{font-size:9px;letter-spacing:.3px}
-  .trust-sub{display:none}
-  .trust-ic-wrap{width:32px;height:32px;border-radius:8px}
-  .trust-ic{font-size:16px}
-}
+@media(max-width:1024px){.trust-inner{grid-template-columns:repeat(4,1fr)}.trust-item{padding:14px 12px;gap:10px}}
+@media(max-width:768px){.trust-inner{grid-template-columns:repeat(2,1fr)}.trust-item{border-right:none;border-bottom:1px solid #e8ecf1;padding:12px 14px;min-width:0}.trust-item:nth-child(odd){border-right:1px solid #e8ecf1}.trust-item:nth-child(3),.trust-item:nth-child(4){border-bottom:none}.trust-title{font-size:10px}.trust-sub{font-size:10px}}
+@media(max-width:480px){.trust-inner{grid-template-columns:repeat(2,1fr)}.trust-item{padding:10px 10px;gap:8px}.trust-title{font-size:9px;letter-spacing:.3px}.trust-sub{display:none}.trust-ic-wrap{width:32px;height:32px;border-radius:8px}.trust-ic{font-size:16px}}
 
-/* ── WHY CHOOSE US ── */
 .uh-why-section{background:linear-gradient(135deg,#f8fafc,#eef2ff);padding:40px 0;margin:8px 0}
-
-/* ── CATEGORY GROUP HEADER ── */
 .uh-cat-group{background:linear-gradient(180deg,#fafbfc 0%,#f5f6fa 100%);padding:8px 0 4px;margin:8px 0;border-top:1px solid #e8ecf1;border-bottom:1px solid #e8ecf1}
 .uh-group-header{display:flex;align-items:center;gap:14px;padding:20px 0 4px}
 .uh-group-ic{font-size:28px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.06))}
@@ -1161,33 +1104,12 @@ main{position:relative;z-index:1}
 @media(max-width:768px){.uh-why-grid{grid-template-columns:repeat(2,1fr);gap:12px}.uh-why-card{padding:18px 14px}}
 @media(max-width:480px){.uh-why-grid{grid-template-columns:1fr 1fr;gap:10px}.uh-why-card{padding:16px 12px}.uh-why-ic{font-size:26px;margin-bottom:8px}.uh-why-card-title{font-size:12px}.uh-why-card-desc{font-size:11px}}
 
-/* SECTIONS */
 .section{background:#fff;margin:16px 0;padding:clamp(24px,4vw,40px) 0;border-bottom:1px solid #f0f0f0}
 .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;gap:12px}
 .section-title{font-size:clamp(16px,3vw,22px);font-weight:800;color:#1f2937;letter-spacing:-.3px}
 .see-all-btn{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#3b82f6;font-weight:700;background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;padding:4px 8px;border-radius:6px;transition:all .2s}
 .see-all-btn:hover{background:rgba(59,130,246,.08)}
 
-/* CATEGORY GRID */
-.g-cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:16px;margin:0 -8px;padding:0 8px}
-@media(max-width:640px){.g-cat-grid{grid-template-columns:repeat(4,1fr);gap:12px;margin:0;padding:0}}
-@media(max-width:480px){.g-cat-grid{grid-template-columns:repeat(3,1fr);gap:10px}}
-.g-cat-item{display:flex;flex-direction:column;align-items:center;gap:10px;cursor:pointer;position:relative;transition:transform .2s;border-radius:16px;padding:8px 4px}
-.g-cat-item:hover{transform:translateY(-4px)}
-.g-cat-emoji{width:clamp(56px,10vw,88px);height:clamp(56px,10vw,88px);background:#fff;border:2px solid #e5e7eb;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:clamp(24px,4vw,36px);transition:all .25s;box-shadow:0 2px 8px rgba(0,0,0,.05)}
-.g-cat-img{width:clamp(56px,10vw,88px);height:clamp(56px,10vw,88px);object-fit:cover;border-radius:16px;border:2px solid #e5e7eb;transition:all .25s;box-shadow:0 2px 8px rgba(0,0,0,.05)}
-.g-cat-item:hover .g-cat-img,.g-cat-item.active .g-cat-img{border-color:#3b82f6;box-shadow:0 4px 16px rgba(59,130,246,.15);transform:scale(1.08)}
-.g-cat-dim{opacity:.45;pointer-events:none}
-.g-cat-item:hover .g-cat-emoji,.g-cat-item.active .g-cat-emoji{border-color:#3b82f6;background:#eff6ff;box-shadow:0 4px 16px rgba(59,130,246,.15);transform:scale(1.08)}
-.g-cat-label{font-size:11px;font-weight:600;color:#475569;text-align:center;text-transform:capitalize;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;transition:color .2s}
-.g-cat-item:hover .g-cat-label,.g-cat-item.active .g-cat-label{color:#3b82f6;font-weight:700}
-
-/* AVAILABILITY */
-.avail-bar{background:linear-gradient(135deg,#dcfce7,#ecfdf5);border-top:1px solid #bbf7d0;border-bottom:1px solid #bbf7d0;margin:12px 0}
-.avail-inner{display:flex;align-items:center;gap:10px;padding:14px 16px;font-size:13px;color:#166534;font-weight:500}
-.avail-pin{color:#16a34a;flex-shrink:0;font-size:14px}
-
-/* SEARCH RESULTS BAR */
 .search-results-bar{background:linear-gradient(135deg,#eff6ff,#f0f9ff);border:1px solid #bfdbfe;border-bottom:2px solid #3b82f6;margin:12px 0;animation:slideDown .3s ease;position:relative;z-index:25}
 .search-results-inner{display:flex;align-items:center;gap:8px;padding:12px 16px}
 .search-results-inner>span{font-size:13px;color:#1e40af;font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1196,7 +1118,6 @@ main{position:relative;z-index:1}
 .search-clear-btn:hover{background:rgba(239,68,68,.2);border-color:rgba(239,68,68,.5)}
 @keyframes slideDown{from{opacity:0;transform:translateY(-8px);max-height:0}to{opacity:1;transform:translateY(0);max-height:60px}}
 
-/* UH FLASH DEALS */
 .uh-deals-section{background:#fff;margin:16px 0;padding:clamp(24px,4vw,40px) 0;border-bottom:1px solid #f0f0f0;overflow:hidden}
 .uh-deals-header{margin-bottom:24px}
 .uh-deals-title-row{display:flex;align-items:center;gap:14px}
@@ -1213,11 +1134,8 @@ main{position:relative;z-index:1}
 .uh-deals-scroll-item .pc{padding:0;border:none;box-shadow:none}
 .uh-deals-scroll-item .pc-img-wrap{border-radius:0}
 .uh-deal-timer{display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 12px;background:#fff7ed;border-top:1px solid #fed7aa;font-size:11px;font-weight:700;color:#ea580c;letter-spacing:.2px}
-.uh-deal-badge{padding:8px 10px;background:#fff3cd;border-top:1px solid #ffe69c;font-size:11px;font-weight:700;text-align:center;color:#856404}
-.uh-deal-badge.ending-soon{background:linear-gradient(135deg,#fecaca,#fca5a5);border-top:1px solid #f87171;color:#7f1d1d;font-weight:800}
 @media(max-width:640px){.uh-deals-scroll-item{min-width:180px;max-width:200px}}
 
-/* VENDOR BLOCK */
 .vendor-block{background:#fff;border-radius:16px;border:1px solid #e8ecf1;margin:16px 0;overflow:visible;transition:all .25s;box-shadow:0 2px 12px rgba(0,0,0,.04)}
 .vendor-block:hover{border-color:#c7d2fe;box-shadow:0 8px 32px rgba(0,0,0,.06)}
 .vendor-header{display:flex;align-items:center;gap:14px;padding:16px 20px;border-bottom:1px solid #f0f2f5;background:linear-gradient(135deg,#fafbfc,#f8fafc);transition:background .2s;border-radius:16px 16px 0 0}
@@ -1227,12 +1145,10 @@ main{position:relative;z-index:1}
 .vendor-meta{display:flex;align-items:center;gap:8px;font-size:12px;color:#6b7280;margin-top:4px;flex-wrap:wrap;font-weight:500}
 .star-ic{color:#f59e0b;font-size:11px}
 
-/* PRODUCT GRID */
 .prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;background:transparent;padding:20px;border-radius:0 0 14px 14px}
 @media(max-width:768px){.prod-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;padding:16px}}
 @media(max-width:480px){.prod-grid{grid-template-columns:repeat(2,1fr);gap:10px;padding:12px}}
 
-/* ── PRODUCT CARD (Premium Zepto/Blinkit style) ── */
 .pc{background:#fff;padding:0;cursor:pointer;border-radius:14px;transition:all .3s cubic-bezier(.34,.1,.68,1);border:1px solid #edf0f4;height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.03)}
 .pc:hover{border-color:#d4dae4;box-shadow:0 8px 32px rgba(0,0,0,.08);transform:translateY(-4px)}
 .pc-img-wrap{position:relative;aspect-ratio:1;background:linear-gradient(135deg,#f8f9fc,#f0f4f8);border-radius:0;overflow:hidden;border:none;flex-shrink:0}
@@ -1252,15 +1168,11 @@ main{position:relative;z-index:1}
 .pc-price{font-size:16px;font-weight:900;color:#0f172a;letter-spacing:-.3px}
 .pc-mrp{font-size:11px;color:#94a3b8;text-decoration:line-through;font-weight:500}
 .pc-disc-text{font-size:10px;font-weight:700;color:#16a34a;background:linear-gradient(135deg,#dcfce7,#bbf7d0);padding:2px 6px;border-radius:4px}
-
-/* ADD button (Blinkit green-accent style) */
 .pc-add{width:100%;padding:9px 12px;background:#fff;border:1.5px solid #22c55e;color:#16a34a;font-weight:800;font-size:13px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;transition:all .2s cubic-bezier(.34,.1,.68,1);font-family:'DM Sans',sans-serif;letter-spacing:.3px;margin-top:auto;text-transform:uppercase}
 .pc-add:hover{background:#22c55e;color:#fff;box-shadow:0 4px 16px rgba(34,197,94,.25);transform:scale(1.02)}
 .pc-add:active{transform:scale(0.97)}
 .pc-add-oos{border-color:#d1d5db;color:#9ca3af;cursor:not-allowed;font-size:11px;text-transform:none}
 .pc-add-oos:hover{background:#fff;color:#9ca3af;box-shadow:none;transform:none}
-
-/* QTY Stepper (Blinkit style) */
 .pc-qty-stepper{display:flex;align-items:center;justify-content:space-between;border:1.5px solid #22c55e;border-radius:8px;overflow:hidden;background:#22c55e;margin-top:auto;transition:all .15s}
 .pc-qty-stepper:hover{box-shadow:0 4px 16px rgba(34,197,94,.2)}
 .pc-qty-stepper button{width:34px;height:34px;border:none;background:transparent;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s cubic-bezier(.34,.1,.68,1);font-size:12px;font-weight:700}
@@ -1268,7 +1180,6 @@ main{position:relative;z-index:1}
 .pc-qty-stepper button:active{transform:scale(0.9)}
 .pc-qty-stepper span{flex:1;text-align:center;font-size:15px;font-weight:900;color:#fff;user-select:none}
 
-/* STATES */
 .empty-state{padding:clamp(40px,8vw,80px) 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px}
 .empty-ic{color:#d1d5db;font-size:48px}
 .empty-title{font-size:18px;font-weight:800;color:#1f2937}
@@ -1283,101 +1194,39 @@ main{position:relative;z-index:1}
 .waitlist-btn:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(59,130,246,.3)}
 .wl-success{background:#dcfce7;border:1.5px solid #86efac;border-radius:12px;color:#15803d;font-weight:700;font-size:14px;text-align:center;padding:18px 20px;margin:20px 0;letter-spacing:.2px}
 
-/* FLOATING CART (Premium glassmorphism) */
 .float-cart{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:12px 20px;border-radius:50px;font-family:'DM Sans',sans-serif;font-weight:700;box-shadow:0 8px 32px rgba(34,197,94,.35),0 2px 8px rgba(0,0,0,.1);z-index:50;white-space:nowrap;animation:floatIn .3s ease;transition:all .25s cubic-bezier(.34,.1,.68,1);max-width:calc(100vw - 32px);pointer-events:auto;backdrop-filter:blur(4px)}
 .float-cart:hover{transform:translateX(-50%) translateY(-4px);box-shadow:0 12px 40px rgba(34,197,94,.4),0 4px 12px rgba(0,0,0,.1)}
 .float-cart:active{transform:translateX(-50%) translateY(-2px)}
 .float-cart.cart-pulse{animation:cartPulse .6s cubic-bezier(.34,.1,.68,1)}
 @keyframes cartPulse{0%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.08)}100%{transform:translateX(-50%) scale(1)}}
-
 .float-cart-icon-badge{position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .cart-badge{position:absolute;top:-8px;right:-8px;background:#fff;color:#16a34a;font-size:10px;font-weight:900;padding:2px 6px;border-radius:12px;min-width:20px;text-align:center;border:2px solid #16a34a;box-shadow:0 2px 6px rgba(0,0,0,.1)}
 .float-cart-content{display:flex;flex-direction:column;gap:1px;min-width:60px}
 .cart-qty-text{font-size:12px;font-weight:700;opacity:.9}
 .cart-amount-text{font-size:15px;font-weight:900;letter-spacing:-.3px}
-
 .float-cart-meta{display:flex;flex-direction:column;gap:2px;font-size:10px;opacity:.9}
 .cart-savings{background:rgba(255,255,255,.2);padding:2px 6px;border-radius:4px;font-weight:700}
 .cart-delivery{background:rgba(255,255,255,.15);padding:2px 6px;border-radius:4px;font-weight:700}
-
 .cart-chevron{opacity:.8;transition:transform .25s}
 .float-cart:hover .cart-chevron{transform:translateX(3px)}
-
 @keyframes floatIn{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@media(max-width:768px){.float-cart{gap:10px;padding:11px 16px}.cart-amount-text{font-size:14px}.float-cart-meta{gap:1px;font-size:9px}}
+@media(max-width:480px){.float-cart{gap:8px;padding:10px 14px;font-size:12px;bottom:16px;border-radius:40px}.float-cart-content{min-width:50px}.cart-qty-text{font-size:11px}.cart-amount-text{font-size:13px}.float-cart-meta{display:none}.cart-badge{font-size:9px;padding:1px 4px}}
 
-@media(max-width:768px){
-  .float-cart{gap:10px;padding:11px 16px}
-  .cart-amount-text{font-size:14px}
-  .float-cart-meta{gap:1px;font-size:9px}
-}
-@media(max-width:480px){
-  .float-cart{gap:8px;padding:10px 14px;font-size:12px;bottom:16px;border-radius:40px}
-  .float-cart-content{min-width:50px}
-  .cart-qty-text{font-size:11px}
-  .cart-amount-text{font-size:13px}
-  .float-cart-meta{display:none}
-  .cart-badge{font-size:9px;padding:1px 4px}
-}
-
-/* FOOTER */
 .footer{background:linear-gradient(135deg,#0f172a,#1e293b);border-top:2px solid rgba(59,130,246,.1);margin-top:60px;position:relative;z-index:20;padding-bottom:100px}
 .footer-main{padding:48px clamp(16px,4vw,48px)}
-
-/* Footer Top - Brand & Newsletter */
 .footer-top{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-bottom:40px;align-items:start}
 .footer-brand-sec{max-width:380px}
 .footer-brand{display:flex;align-items:flex-start;gap:12px;margin-bottom:8px}
 .logo-mark-sm{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:#fff;font-family:'DM Sans',sans-serif;flex-shrink:0}
-
-.footer-newsletter h4{margin:0 0 8px 0}
-.footer-newsletter input::placeholder{color:rgba(255,255,255,.4)}
-.footer-newsletter input:focus{outline:none;border-color:#3b82f6;background:rgba(59,130,246,.1)}
-
-/* Footer Links Grid */
 .footer-links-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;margin-bottom:24px}
-.footer-section h5{margin:0 0 12px 0}
-.footer-section ul li{line-height:2.2}
-
-/* Footer Bottom */
 .footer-bottom{display:flex;align-items:center;justify-content:space-between;padding-top:24px;border-top:1px solid rgba(255,255,255,.05)}
+@media(max-width:1024px){.footer-links-grid{grid-template-columns:repeat(2,1fr);gap:24px}}
+@media(max-width:768px){.footer-top{grid-template-columns:1fr;gap:24px}.footer-links-grid{grid-template-columns:1fr 1fr;gap:20px}.footer-bottom{flex-direction:column;gap:16px;align-items:flex-start;text-align:center}.footer-main{padding:36px clamp(16px,4vw,32px)}}
+@media(max-width:480px){.footer-top{margin-bottom:28px}.footer-links-grid{grid-template-columns:1fr;gap:16px;margin-bottom:18px}.footer-bottom{font-size:11px;gap:12px}}
 
-@media(max-width:1024px){
-  .footer-links-grid{grid-template-columns:repeat(2,1fr);gap:24px}
-}
-@media(max-width:768px){
-  .footer-top{grid-template-columns:1fr;gap:24px}
-  .footer-links-grid{grid-template-columns:1fr 1fr;gap:20px}
-  .footer-bottom{flex-direction:column;gap:16px;align-items:flex-start;text-align:center}
-  .footer-main{padding:36px clamp(16px,4vw,32px)}
-}
-@media(max-width:480px){
-  .footer-top{margin-bottom:28px}
-  .footer-links-grid{grid-template-columns:1fr;gap:16px;margin-bottom:18px}
-  .footer-section h5{font-size:11px;margin-bottom:10px}
-  .footer-section ul li{line-height:1.8;font-size:12px}
-  .footer-newsletter{width:100%}
-  .footer-newsletter button{width:100%}
-  .footer-bottom{font-size:11px;gap:12px}
-}
-
-/* Mobile responsive */
-@media(max-width:768px){
-  .hero-art{display:none}
-  .uh-pin-bar-inner{flex-direction:column;align-items:stretch;gap:10px}
-  .uh-pin-bar-right{width:100%;justify-content:space-between}
-  .hero-inner{flex-direction:column;gap:32px}
-  .pin-row{flex-direction:column}
-  .pin-inp-wrap{width:100%}
-}
-@media(max-width:480px){
-  .hero-title{font-size:clamp(24px,6vw,32px)}
-  .pin-inp{font-size:14px;padding:11px 14px 11px 36px}
-  .pin-btn{padding:11px 16px;font-size:12px}
-  .section-title{font-size:16px}
-  .vendor-name{font-size:13px}
-  .uh-pin-bar-inner{gap:8px;padding:10px 0}
-  .hero-sub{font-size:14px;margin-bottom:20px}
-}
+@media(max-width:768px){.hero-art{display:none}.hero-inner{flex-direction:column;gap:32px}.pin-row{flex-direction:column}.pin-inp-wrap{width:100%}}
+@media(max-width:480px){.hero-title{font-size:clamp(24px,6vw,32px)}.pin-inp{font-size:14px;padding:11px 14px 11px 36px}.pin-btn{padding:11px 16px;font-size:12px}.section-title{font-size:16px}.vendor-name{font-size:13px}.hero-sub{font-size:14px;margin-bottom:20px}}
 `;
 
 export default UrbexonHour;

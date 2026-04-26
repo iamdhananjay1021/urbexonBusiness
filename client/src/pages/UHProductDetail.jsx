@@ -119,6 +119,10 @@ const UHProductDetail = () => {
 
   const handleAdd = useCallback(() => {
     if (!product) return;
+    if (product.inStock === false || Number(product.stock ?? 0) === 0) {
+      alert("❌ Item out of stock");
+      return;
+    }
     addItem({ ...product, productType: "urbexon_hour" });
     if (navigator.vibrate) navigator.vibrate(10);
   }, [product, addItem]);
@@ -214,6 +218,7 @@ const UHProductDetail = () => {
                 <div key={i} className="uhd-gallery-slide"
                   style={{ display: i === imgIdx ? "flex" : "none" }}>
                   <img src={img.url || img} alt={product.name}
+                    loading="lazy"
                     onError={(e) => { e.target.src = "/placeholder.png"; }} />
                 </div>
               ))}
@@ -249,6 +254,7 @@ const UHProductDetail = () => {
                   <button key={i} className={`uhd-thumb ${i === imgIdx ? "active" : ""}`}
                     onClick={() => setImgIdx(i)}>
                     <img src={img.url || img} alt=""
+                      loading="lazy"
                       onError={(e) => { e.target.src = "/placeholder.png"; }} />
                   </button>
                 ))}

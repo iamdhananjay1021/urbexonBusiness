@@ -18,7 +18,7 @@ const { SHOP_LAT, SHOP_LNG } = DELIVERY_CONFIG;
    LOCAL PINCODE COORDS (known pincodes)
 ══════════════════════════════════════════════ */
 const LOCAL_PINCODE_COORDS = {
-    "224122": { lat: 26.4192, lng: 82.5359 },  // ✅ Akbarpur — COD available
+    "224122": { lat: 26.4192, lng: 82.5359 },
     "224123": { lat: 26.4300, lng: 82.5500 },
     "224001": { lat: 26.4500, lng: 82.5200 },
     "224181": { lat: 26.3900, lng: 82.5600 },
@@ -31,9 +31,14 @@ const LOCAL_PINCODE_COORDS = {
 
 /* ══════════════════════════════════════════════
    PINCODE CACHE (in-memory, 24h TTL)
+   + in-flight lock to prevent parallel spam
 ══════════════════════════════════════════════ */
 const pincodeCache = new Map();
 const CACHE_TTL = 24 * 60 * 60 * 1000;
+
+// FIX #2 — in-flight lock: prevents multiple simultaneous requests
+// for the same pincode from all hitting external APIs at once
+const inflightRequests = new Set();
 
 /* ──────────────────────────────────────────────
    HELPERS
@@ -59,7 +64,11 @@ const fetchLatLng = async (pincode) => {
         );
         const data = await res.json();
         if (data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-    } catch { /* silent */ }
+    } catch (err) {
+        // FIX #1 — log geocode failure properly instead of silent fail
+        console.warn(`[Pincode] Geocode failed for ${pincode}:`, err.message);
+    }
+    // FIX #1 — return explicit nulls, caller handles fallback
     return { lat: null, lng: null };
 };
 
@@ -216,9 +225,6 @@ export const setDefaultAddress = async (req, res) => {
 
 /* ══════════════════════════════════════════════
    GET /api/addresses/pincode/:pin
-   ✅ COD logic: ONLY 224122 → available
-   ✅ All others → codAllowed: false, codStatus: "coming_soon"
-   ✅ Backend is SINGLE SOURCE OF TRUTH
 ══════════════════════════════════════════════ */
 export const verifyPincode = async (req, res) => {
     try {
@@ -230,6 +236,17 @@ export const verifyPincode = async (req, res) => {
         const cached = pincodeCache.get(pin);
         if (cached && Date.now() - cached.ts < CACHE_TTL)
             return res.json(cached.data);
+
+        // FIX #2 — if this pincode is already being fetched by another request,
+        // wait briefly then serve from cache to avoid duplicate external API calls
+        if (inflightRequests.has(pin)) {
+            await new Promise(r => setTimeout(r, 800));
+            const cachedNow = pincodeCache.get(pin);
+            if (cachedNow && Date.now() - cachedNow.ts < CACHE_TTL)
+                return res.json(cachedNow.data);
+        }
+
+        inflightRequests.add(pin);
 
         // Postal API for city/state
         let city = "", state = "", country = "India";
@@ -244,16 +261,20 @@ export const verifyPincode = async (req, res) => {
                 state = po.State || "";
                 country = po.Country || "India";
             }
-        } catch { /* use empty strings */ }
+        } catch (err) {
+            // FIX #1 — log postal API failure, continue with empty city/state
+            console.warn(`[Pincode] Postal API failed for ${pin}:`, err.message);
+        }
 
         // Lat/Lng
         const { lat, lng } = await fetchLatLng(pin);
 
+        // FIX #1 — if geocode failed, distanceKm is null but we still respond
+        // with a valid result — caller gets null distance, not a broken response
         let distanceKm = null;
         if (lat !== null && lng !== null)
             distanceKm = Math.round(getDistanceKm(SHOP_LAT, SHOP_LNG, lat, lng) * 10) / 10;
 
-        // ✅ COD decision — check Pincode DB (Flipkart-style per-pincode gating)
         const pincodeDoc = await Pincode.findOne({ code: pin }).lean();
         let codAllowed = false;
         let codStatus = "unavailable";
@@ -274,18 +295,21 @@ export const verifyPincode = async (req, res) => {
             state,
             country,
             pincode: pin,
-            serviceable: true,          // always serviceable for online orders
+            serviceable: true,
             lat,
             lng,
             distanceKm,
-            codAllowed,                 // ✅ false for all except 224122
-            codStatus,                  // "available" | "coming_soon"
-            deliveryETA,                // "1 Business Day" | "4-7 Business Days"
+            codAllowed,
+            codStatus,
+            deliveryETA,
         };
 
         pincodeCache.set(pin, { data: result, ts: Date.now() });
+        inflightRequests.delete(pin);
         res.json(result);
     } catch (err) {
+        // FIX #1 — always clean up lock on error
+        inflightRequests.delete(req.params.pin);
         console.error("PINCODE VERIFY:", err.message);
         res.status(503).json({ success: false, message: "Pincode service temporarily unavailable", serviceable: null });
     }
@@ -293,9 +317,7 @@ export const verifyPincode = async (req, res) => {
 
 /* ══════════════════════════════════════════════
    EXPORTED HELPER — used by orderController
-   to validate COD without HTTP layer
 ══════════════════════════════════════════════ */
-// ✅ COD eligibility based on Pincode DB (Flipkart-style)
 export const checkCODEligibility = async (pincode) => {
     if (!/^\d{6}$/.test(pincode))
         return { allowed: false, reason: "Invalid pincode", codStatus: "unavailable" };
@@ -315,7 +337,7 @@ export const checkCODEligibility = async (pincode) => {
 };
 
 /* ══════════════════════════════════════════════
-   SAVE UH PINCODE (logged-in user)
+   SAVE UH PINCODE
    POST /api/addresses/uh-pincode
 ══════════════════════════════════════════════ */
 export const saveUHPincode = async (req, res) => {

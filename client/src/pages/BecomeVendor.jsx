@@ -50,7 +50,7 @@ const Field = ({ label, children, full }) => (
 );
 
 const BecomeVendor = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [status, setStatus] = useState(null); // null=loading, false=not-applied, {status}=applied
   const [loading, setLoading] = useState(true);
@@ -66,8 +66,14 @@ const BecomeVendor = () => {
     bankHolder: "", bankAccount: "", bankIFSC: "", bankName: "",
   });
 
+  // ✅ Authentication guard - check FIRST before anything else
   useEffect(() => {
-    if (!user) { navigate("/login", { state: { from: "/become-vendor" } }); return; }
+    if (authLoading) return; // Wait for auth to load
+    if (!user) {
+      navigate("/login", { state: { from: "/become-vendor" } });
+      return;
+    }
+    // ✅ Only check vendor status if user is authenticated
     api.get("/vendor/status")
       .then(({ data }) => {
         if (data.registered) setStatus(data);
@@ -75,7 +81,7 @@ const BecomeVendor = () => {
       })
       .catch(() => setStatus(false))
       .finally(() => setLoading(false));
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   const set = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }));
   const setFile = (k) => (e) => {
@@ -89,6 +95,8 @@ const BecomeVendor = () => {
       return setError("Shop name, owner name, phone aur email zaroori hain");
     if (!form.pincode || !/^\d{6}$/.test(form.pincode))
       return setError("Valid 6-digit pincode daalen");
+    if (!/^[6-9]\d{9}$/.test(form.phone.trim()))
+      return setError("Valid 10-digit mobile number daalen (starts with 6-9)");
 
     setSubmitting(true); setError("");
     try {
@@ -111,6 +119,17 @@ const BecomeVendor = () => {
       setError(err.response?.data?.message || "Application submit karne mein dikkat hui");
     } finally { setSubmitting(false); }
   };
+
+  // ✅ Show loading during auth check
+  if (authLoading) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f7f4ee" }}>
+      <div style={{ width: 36, height: 36, border: "3px solid #e8e4d9", borderTop: "3px solid #c9a84c", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
+      <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
+    </div>
+  );
+
+  // ✅ If not authenticated, don't render anything (redirect handled in effect)
+  if (!user) return null;
 
   if (loading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f7f4ee" }}>
@@ -135,16 +154,24 @@ const BecomeVendor = () => {
             <div style={{ fontSize: 48, marginBottom: 12 }}>{c.icon}</div>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>{c.title}</h2>
             <p style={{ fontSize: 14, color: "#64748b", marginBottom: 24, lineHeight: 1.6 }}>{c.msg}</p>
-            {status.status === "approved" && (
-              <a href={import.meta.env.VITE_VENDOR_URL || import.meta.env.VITE_VENDOR_URL || "http://localhost:5175"} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", background: "#1a1740", color: "#c9a84c", borderRadius: 8, fontWeight: 700, fontSize: 13, textDecoration: "none" }}>
-                Vendor Dashboard <FaArrowRight size={11} />
-              </a>
-            )}
-            {status.status === "rejected" && (
-              <button onClick={() => setStatus(false)} style={{ padding: "11px 22px", background: "#1a1740", border: "none", color: "#c9a84c", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>
-                Dobara Apply Karein
+
+            <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+              {status.status === "approved" && (
+                <a href={import.meta.env.VITE_VENDOR_URL || import.meta.env.VITE_VENDOR_URL || "http://localhost:5175"} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", background: "#1a1740", color: "#c9a84c", borderRadius: 8, fontWeight: 700, fontSize: 13, textDecoration: "none" }}>
+                  Vendor Dashboard <FaArrowRight size={11} />
+                </a>
+              )}
+              {status.status === "rejected" && (
+                <button onClick={() => setStatus(false)} style={{ padding: "11px 22px", background: "#1a1740", border: "none", color: "#c9a84c", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>
+                  Dobara Apply Karein
+                </button>
+              )}
+
+              {/* Home button for all statuses */}
+              <button onClick={() => navigate("/")} style={{ padding: "11px 22px", background: "#f3f4f6", border: "1px solid #e5e7eb", color: "#1a1740", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>
+                Home Par Jayen
               </button>
-            )}
+            </div>
           </div>
         </div>
       </div>
@@ -197,8 +224,25 @@ const BecomeVendor = () => {
             <div className="bv-sec-title"><FaStore color="#c9a84c" size={16} />Shop Information</div>
             <div className="bv-grid">
               <Field label="Shop Name *"><input className="bv-inp" value={form.shopName} onChange={set("shopName")} placeholder="Aapke shop ka naam" /></Field>
-              <Field label="Shop Category"><input className="bv-inp" value={form.shopCategory} onChange={set("shopCategory")} placeholder="e.g. Food, Grocery" /></Field>
-              <Field label="Shop Description" full={true}><textarea className="bv-inp" rows={3} value={form.shopDescription} onChange={set("shopDescription")} placeholder="Aapke shop ke baare mein batayen…" style={{ resize: "vertical" }} /></Field>
+              <Field label="Shop Category *">
+                <select className="bv-inp" value={form.shopCategory} onChange={set("shopCategory")}>
+                  <option value="">-- Select Category --</option>
+                  <option value="grocery">Grocery &amp; Staples</option>
+                  <option value="food">Food &amp; Beverages</option>
+                  <option value="fashion">Fashion &amp; Apparel</option>
+                  <option value="electronics">Electronics &amp; Gadgets</option>
+                  <option value="home">Home &amp; Kitchen</option>
+                  <option value="beauty">Beauty &amp; Personal Care</option>
+                  <option value="health">Health &amp; Wellness</option>
+                  <option value="sports">Sports &amp; Fitness</option>
+                  <option value="books">Books &amp; Stationery</option>
+                  <option value="toys">Toys &amp; Baby Products</option>
+                  <option value="furniture">Furniture &amp; Decor</option>
+                  <option value="automotive">Automotive</option>
+                  <option value="pets">Pet Supplies</option>
+                  <option value="other">Other</option>
+                </select>
+              </Field>              <Field label="Shop Description" full={true}><textarea className="bv-inp" rows={3} value={form.shopDescription} onChange={set("shopDescription")} placeholder="Aapke shop ke baare mein batayen…" style={{ resize: "vertical" }} /></Field>
             </div>
           </div>
 

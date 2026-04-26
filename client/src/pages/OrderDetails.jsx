@@ -59,7 +59,8 @@ const REFUND_CFG = {
 };
 
 const ECOM_FLOW = ["PLACED", "CONFIRMED", "PACKED", "SHIPPED", "OUT_FOR_DELIVERY", "DELIVERED"];
-const UH_FLOW = ["PLACED", "CONFIRMED", "PACKED", "READY_FOR_PICKUP", "OUT_FOR_DELIVERY", "DELIVERED"];
+const UH_RIDER_FLOW = ["PLACED", "CONFIRMED", "PACKED", "READY_FOR_PICKUP", "OUT_FOR_DELIVERY", "DELIVERED"];
+const UH_SELF_FLOW = ["PLACED", "CONFIRMED", "PACKED", "OUT_FOR_DELIVERY", "DELIVERED"];
 const CANCELLABLE = ["PLACED", "CONFIRMED"];
 
 const getImg = (item) => item.images?.[0]?.url || item.image || null;
@@ -223,8 +224,9 @@ const OrderDetails = () => {
 
     /* ── Derived ── */
     const isUH = order.orderMode === "URBEXON_HOUR";
+    const isVendorSelfDelivery = isUH && order.delivery?.provider === "VENDOR_SELF";
     const cfg = STATUS[order.orderStatus] || STATUS.PLACED;
-    const flow = isUH ? UH_FLOW : ECOM_FLOW;
+    const flow = isUH ? (isVendorSelfDelivery ? UH_SELF_FLOW : UH_RIDER_FLOW) : ECOM_FLOW;
     const stepIdx = flow.indexOf(order.orderStatus);
     const isCancelled = order.orderStatus === "CANCELLED";
     const isDelivered = order.orderStatus === "DELIVERED";
@@ -349,7 +351,9 @@ const OrderDetails = () => {
                                                 <div style={{ width: 34, height: 34, borderRadius: "50%", background: done ? (active ? accent : `${accent}18`) : C.borderLight, border: `2px solid ${done ? accent : C.border}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: active ? `0 0 0 5px ${accent}12` : "none", transition: "all .3s" }}>
                                                     {i < stepIdx ? <FaCheckCircle size={13} color={accent} /> : <Icon size={12} color={done ? "#fff" : C.hint} />}
                                                 </div>
-                                                <p style={{ fontSize: 9, fontWeight: done ? 700 : 500, color: done ? accent : C.hint, textAlign: "center", marginTop: 5, textTransform: "uppercase", letterSpacing: ".03em", maxWidth: 52, lineHeight: 1.25, margin: 0, marginTop: 5 }}>{STATUS[step]?.label}</p>
+                                                <p style={{
+                                                    fontSize: 9, fontWeight: done ? 700 : 500, color: done ? accent : C.hint, textAlign: "center", marginTop: 5, textTransform: "uppercase", letterSpacing: ".03em", maxWidth: 52, lineHeight: 1.25, marginTop: 5
+                                                }}>{STATUS[step]?.label}</p>
                                             </div>
                                         );
                                     })}
@@ -426,7 +430,9 @@ const OrderDetails = () => {
                                 <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.greenBg, border: `1px solid ${C.greenMid}`, padding: "2px 8px", borderRadius: 20 }}>● LIVE</span>
                             </div>
                             <LiveTrackingMap riderLat={riderLocation.lat} riderLng={riderLocation.lng} riderName={riderLocation.riderName || "Partner"} destLat={order.latitude} destLng={order.longitude} destLabel={order.address || "Address"} height="clamp(170px,28vw,220px)" lastUpdated={riderLocation.at} />
-                            <p style={{ fontSize: 10, color: C.hint, textAlign: "center", marginTop: 6, margin: 0, marginTop: 6 }}>Updated: {riderLocation.at ? new Date(riderLocation.at).toLocaleTimeString("en-IN") : "Just now"}</p>
+                            <p style={{
+                                fontSize: 10, color: C.hint, textAlign: "center", margin: 0, marginTop: 6
+                            }}>Updated: {riderLocation.at ? new Date(riderLocation.at).toLocaleTimeString("en-IN") : "Just now"}</p>
                         </Card>
                     </div>
                 )}
@@ -469,7 +475,7 @@ const OrderDetails = () => {
                                 return (
                                     <div key={i} style={{ display: "flex", gap: 12, padding: 12, background: C.bg, borderRadius: 10, border: `1px solid ${C.borderLight}` }}>
                                         <div style={{ width: 56, height: 56, background: C.white, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                            {img ? <img src={img} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 2 }} /> : <FaGift size={16} color={C.hint} />}
+                                            {img ? <img src={img} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 2 }} loading="lazy" /> : <FaGift size={16} color={C.hint} />}
                                         </div>
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                             <p style={{ fontWeight: 700, fontSize: 13, margin: 0, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</p>
@@ -551,7 +557,10 @@ const OrderDetails = () => {
                     <div className="od-f" style={{ animationDelay: "170ms", marginBottom: 14 }}>
                         <Card accent={C.amberMid}>
                             <Heading icon={FaUndo} color={C.amber}>Request Return</Heading>
-                            <p style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.4, margin: 0, marginBottom: 12 }}>
+                            <p style={{
+                                fontSize: 12, color: C.muted, lineHeight: 1.4, margin: 0, marginBottom: 12
+
+                            }}>
                                 {pi.returnDaysRemaining != null
                                     ? `You can request a return within ${Math.ceil(pi.returnDaysRemaining)} day${Math.ceil(pi.returnDaysRemaining) !== 1 ? "s" : ""} remaining (${pi.returnWindowDays}-day window).`
                                     : "You can request a return within the return window."}
@@ -591,7 +600,10 @@ const OrderDetails = () => {
                     <div className="od-f" style={{ animationDelay: "172ms", marginBottom: 14 }}>
                         <Card accent={C.blueMid}>
                             <Heading icon={FaBox} color={C.blue}>Request Replacement</Heading>
-                            <p style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.4, margin: 0, marginBottom: 12 }}>
+                            <p style={{
+                                fontSize: 12, color: C.muted, lineHeight: 1.4, margin: 0, marginBottom: 12
+
+                            }}>
                                 {pi.replacementDaysRemaining != null
                                     ? `Request a replacement within ${Math.ceil(pi.replacementDaysRemaining)} day${Math.ceil(pi.replacementDaysRemaining) !== 1 ? "s" : ""} remaining (${pi.replacementWindowDays}-day window).`
                                     : "You can request a replacement for eligible items."}
@@ -617,7 +629,10 @@ const OrderDetails = () => {
                     <div className="od-f" style={{ animationDelay: "180ms", marginBottom: 14 }}>
                         <Card accent={C.redMid}>
                             <Heading icon={FaTimesCircle} color={C.red}>Cancel Order</Heading>
-                            <p style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.4, margin: 0, marginBottom: 12 }}>
+                            <p style={{
+                                fontSize: 12, color: C.muted, lineHeight: 1.4, margin: 0, marginBottom: 12
+
+                            }}>
                                 {pi.cancelWindowHours > 0
                                     ? `Cancel within ${Math.ceil(pi.cancelHoursRemaining || 0)} hour${Math.ceil(pi.cancelHoursRemaining || 0) !== 1 ? "s" : ""} remaining.`
                                     : "You can cancel since it hasn't been packed."}

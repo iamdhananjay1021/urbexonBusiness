@@ -21,6 +21,8 @@ import { createNotification } from "../admin/notificationController.js";
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/vendor/register  (PUBLIC — no protect middleware needed)
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /api/vendor/register (PROTECTED — user must be authenticated)
+// ─────────────────────────────────────────────────────────────────────────────
 export const registerVendor = async (req, res) => {
     try {
         const {
@@ -37,27 +39,18 @@ export const registerVendor = async (req, res) => {
             });
         }
 
-        const normalizedEmail = email.toLowerCase().trim();
-
-        // ── 1. Find or auto-create User account ───────────────────────────────
-        let user = await User.findOne({ email: normalizedEmail });
-
-        if (!user) {
-            // Default password = phone number (shown to vendor in response)
-            const hashedPwd = await bcrypt.hash(phone.trim(), 12);
-            user = await User.create({
-                name: ownerName.trim(),
-                email: normalizedEmail,
-                phone: phone.trim(),
-                password: hashedPwd,
-                role: "vendor",
-                isVerified: true,
+        // ✅ Use authenticated user from protect middleware
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required. Please login first.",
             });
         }
 
-        const userId = user._id;
+        const userId = req.user._id;
+        const user = req.user;
 
-        // ── 2. Duplicate application check ───────────────────────────────────
+        // ── 1. Check for duplicate application ───────────────────────────────
         const existing = await Vendor.findOne({ userId, isDeleted: false });
         if (existing) {
             return res.status(409).json({
@@ -68,7 +61,7 @@ export const registerVendor = async (req, res) => {
             });
         }
 
-        // ── 3. Safe JSON parse helpers ────────────────────────────────────────
+        // ── 2. Safe JSON parse helpers ────────────────────────────────────────
         const safeParse = (v) => {
             if (!v) return {};
             if (typeof v === "object" && !Array.isArray(v)) return v;
@@ -150,7 +143,7 @@ export const registerVendor = async (req, res) => {
             shopDescription: shopDescription?.trim() || "",
             shopCategory: shopCategory?.trim() || "",
             ownerName: ownerName.trim(),
-            email: normalizedEmail,
+            email: user.email,  // ✅ Use user's verified email from auth
             phone: phone.trim(),
             whatsapp: whatsapp?.trim() || "",
             alternatePhone: alternatePhone?.trim() || "",

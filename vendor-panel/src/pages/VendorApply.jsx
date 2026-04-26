@@ -216,6 +216,14 @@ const VendorApply = () => {
     const [submitted, setSubmitted] = useState(null);
     const [categoryList, setCategoryList] = useState([]);
 
+    // OTP states
+    const [otpStep, setOtpStep] = useState('email'); // 'email' | 'otp' | 'verified'
+    const [otp, setOtp] = useState('');
+    const [otpCountdown, setOtpCountdown] = useState(0);
+    const [otpLoading, setOtpLoading] = useState(false);
+
+    // No OTP states - original form
+
     // Fetch dynamic categories
     useEffect(() => {
         api.get("/categories", { params: { type: "urbexon_hour" } })
@@ -236,6 +244,8 @@ const VendorApply = () => {
             setForm(prev => ({ ...prev, [name]: value }));
         }
     };
+
+
 
     // ── File change ───────────────────────────────────────────────────────────
     const handleFileChange = (field, e) => {

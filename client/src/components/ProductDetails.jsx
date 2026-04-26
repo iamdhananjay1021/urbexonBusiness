@@ -58,7 +58,7 @@ const ShareModal = ({ product, onClose }) => {
                 <div style={{ margin: "12px 20px", background: "#fafafa", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 12, border: "1px solid #f0f0f0" }}>
                     <div style={{ width: 48, height: 48, borderRadius: 8, background: "#fff", border: "1px solid #eee", overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                         {product.images?.[0]?.url
-                            ? <img src={imgUrl.detail(product.images[0].url)} alt={product.name} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 4 }} />
+                            ? <img src={imgUrl.detail(product.images[0].url)} alt={product.name} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 4 }} loading="lazy" />
                             : <span style={{ fontSize: 20 }}>🎁</span>}
                     </div>
                     <div style={{ minWidth: 0 }}>

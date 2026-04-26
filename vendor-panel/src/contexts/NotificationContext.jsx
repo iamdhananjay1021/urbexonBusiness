@@ -16,9 +16,8 @@ export const NotificationProvider = ({ children }) => {
     const wsRef = useRef(null);
     const reconnectRef = useRef(null);
     const pingRef = useRef(null);
-    const backoffRef = useRef(5000); // exponential backoff start
+    const backoffRef = useRef(5000);
 
-    // � Sound notification helper
     const playSoundRef = useRef(() => {
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -27,17 +26,17 @@ export const NotificationProvider = ({ children }) => {
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.type = "sine";
-            // Two-tone notification sound
             osc.frequency.setValueAtTime(880, ctx.currentTime);
             osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.15);
             gain.gain.setValueAtTime(0.3, ctx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
             osc.start(ctx.currentTime);
             osc.stop(ctx.currentTime + 0.4);
-        } catch { /* silent fallback */ }
+        } catch {
+            // silent fallback
+        }
     });
 
-    // �🔔 Add notification
     const addNotification = useCallback((n) => {
         setNotifications((prev) =>
             [{ ...n, read: false, createdAt: new Date() }, ...prev].slice(0, 50)
@@ -52,7 +51,6 @@ export const NotificationProvider = ({ children }) => {
         setTimeout(() => setToast(null), 5000);
     }, []);
 
-    // ✅ Mark all as read
     const markAllRead = useCallback(() => {
         setNotifications((prev) =>
             prev.map((n) => ({ ...n, read: true }))
@@ -61,7 +59,6 @@ export const NotificationProvider = ({ children }) => {
 
     const unreadCount = notifications.filter((n) => !n.read).length;
 
-    // 🌐 WebSocket Connection
     useEffect(() => {
         const raw = localStorage.getItem("vendorAuth");
         if (!raw) return;
@@ -75,7 +72,6 @@ export const NotificationProvider = ({ children }) => {
 
         if (!token) return;
 
-        // WebSocket URL: explicit env var → runtime hostname detection → fallback
         const wsBase = import.meta.env.VITE_WS_URL
             || (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
                 ? "ws://localhost:9000" : "wss://api.urbexon.in");
@@ -86,6 +82,7 @@ export const NotificationProvider = ({ children }) => {
         const connect = () => {
             if (retries >= MAX_RETRIES) return;
             if (document.hidden) return;
+
             try {
                 const tkn = encodeURIComponent(token);
                 const ws = new WebSocket(`${wsBase}/ws?token=${tkn}`);
@@ -108,12 +105,15 @@ export const NotificationProvider = ({ children }) => {
 
                         if (msg.type === "new_order") {
                             playSoundRef.current();
+                            const orderAmount = Number(
+                                msg.payload?.totalAmount
+                                ?? msg.payload?.amount
+                                ?? 0
+                            );
+
                             addNotification({
-                                title: "🛍️ New Order",
-                                body: `₹${Number(
-                                    msg.payload?.totalAmount || 0
-                                ).toLocaleString("en-IN")} from ${msg.payload?.customerName || "Customer"
-                                    }`,
+                                title: "New Order",
+                                body: `₹${orderAmount.toLocaleString("en-IN")} from ${msg.payload?.customerName || "Customer"}`,
                                 type: "order",
                                 data: msg.payload,
                             });
@@ -128,7 +128,7 @@ export const NotificationProvider = ({ children }) => {
                         if (msg.type === "order_status") {
                             playSoundRef.current();
                             addNotification({
-                                title: "📦 Order Update",
+                                title: "Order Update",
                                 body: `Status: ${msg.payload?.status}`,
                                 type: "update",
                             });
@@ -137,8 +137,8 @@ export const NotificationProvider = ({ children }) => {
                         if (msg.type === "order_status_changed") {
                             playSoundRef.current();
                             addNotification({
-                                title: "📦 Order Status Changed",
-                                body: `#${(msg.payload?.orderId || "").toString().slice(-6).toUpperCase()} → ${msg.payload?.status?.replace(/_/g, " ")}`,
+                                title: "Order Status Changed",
+                                body: `#${(msg.payload?.orderId || "").toString().slice(-6).toUpperCase()} -> ${msg.payload?.status?.replace(/_/g, " ")}`,
                                 type: "update",
                                 data: msg.payload,
                             });
@@ -166,7 +166,6 @@ export const NotificationProvider = ({ children }) => {
             }
         };
 
-        // Reconnect when tab becomes visible
         const onVisChange = () => {
             if (!document.hidden && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) {
                 retries = 0;
@@ -175,8 +174,8 @@ export const NotificationProvider = ({ children }) => {
                 connect();
             }
         };
-        document.addEventListener("visibilitychange", onVisChange);
 
+        document.addEventListener("visibilitychange", onVisChange);
         connect();
 
         return () => {
@@ -199,14 +198,13 @@ export const NotificationProvider = ({ children }) => {
         >
             {children}
 
-            {/* 🔥 Global Toast UI */}
             {toast && (
                 <div style={styles.toast}>
                     <div style={styles.title}>{toast.title}</div>
                     <div style={styles.body}>{toast.body}</div>
 
                     <button style={styles.close} onClick={() => setToast(null)}>
-                        ×
+                        x
                     </button>
                 </div>
             )}
@@ -214,14 +212,12 @@ export const NotificationProvider = ({ children }) => {
     );
 };
 
-// 🎯 Hook
 export const useNotifications = () => {
     const ctx = useContext(NotificationContext);
     if (!ctx) throw new Error("useNotifications must be used inside NotificationProvider");
     return ctx;
 };
 
-// 🎨 Styles
 const styles = {
     toast: {
         position: "fixed",

@@ -373,6 +373,7 @@ const UHCheckout = () => {
                                 <img
                                     src={item.images?.[0]?.url || item.image?.url || item.image || "/placeholder.png"}
                                     alt={item.name} className="uhck-side-img"
+                                    loading="lazy"
                                     onError={(e) => { e.target.src = "/placeholder.png"; }}
                                 />
                                 <div className="uhck-side-item-info">
@@ -405,6 +406,7 @@ const UHCheckout = () => {
                             <img
                                 src={item.images?.[0]?.url || item.image || "/placeholder.png"}
                                 alt={item.name} className="uhck-side-img"
+                                loading="lazy"
                                 onError={(e) => { e.target.src = "/placeholder.png"; }}
                             />
                             <div className="uhck-side-item-info">

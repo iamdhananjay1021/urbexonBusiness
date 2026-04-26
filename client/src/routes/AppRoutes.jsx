@@ -39,6 +39,7 @@ const Wishlist = lazy(() => import("../pages/Wishlist"));
 const BecomeVendor = lazy(() => import("../pages/BecomeVendor"));
 const BecomeDelivery = lazy(() => import("../pages/BecomeDelivery"));
 const VendorStore = lazy(() => import("../pages/VendorStore"));
+
 const Loader = () => (
   <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f7f4ee" }}>
     <div style={{ width: 36, height: 36, border: "3px solid #e8e4d9", borderTop: "3px solid #c9a84c", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
@@ -95,7 +96,11 @@ const AppRoutes = () => (
           <Route path="/category/:slug" element={<PageTransition><CategoryPage /></PageTransition>} />
           <Route path="/deals" element={<PageTransition><DealsPage /></PageTransition>} />
           <Route path="/products/:id" element={<PageTransition><ProductDetails /></PageTransition>} />
+
+          {/* Urbexon Hour — base + category slug */}
           <Route path="/urbexon-hour" element={<PageTransition><UrbexonHour /></PageTransition>} />
+          <Route path="/urbexon-hour/:slug" element={<PageTransition><UrbexonHour /></PageTransition>} />
+
           <Route path="/privacy-policy" element={<PageTransition><PrivacyPolicy /></PageTransition>} />
           <Route path="/terms-conditions" element={<PageTransition><TermsConditions /></PageTransition>} />
           <Route path="/refund-policy" element={<PageTransition><RefundPolicy /></PageTransition>} />

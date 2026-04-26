@@ -1,17 +1,9 @@
-/**
- * Navbar.jsx — Urbexon Production v3.0
- * ✅ Matches Figma: white navbar, "Switch to Hour" pill, search, wishlist, dual cart
- * ✅ All existing functions preserved
- * ✅ No static/dummy categories — API-driven
- * ✅ UH bar timer persisted in localStorage
- */
-
 import { useNavigate, useLocation } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
     FaSearch, FaShoppingCart, FaTimes, FaUser, FaBox,
-    FaSignOutAlt, FaStore, FaChevronDown, FaBolt,
-    FaHeart, FaChevronRight, FaMapMarkerAlt,
+    FaSignOutAlt, FaStore, FaChevronDown, FaBolt, FaHeart,
+    FaChevronRight, FaMapMarkerAlt,
 } from "react-icons/fa";
 import { useSelector } from "react-redux";
 import { useAuth } from "../contexts/AuthContext";
@@ -20,10 +12,7 @@ import LocationModal from "./LocationModal";
 import { fetchActiveCategories } from "../api/categoryApi";
 import api from "../api/axios";
 import NotificationCenter from "./NotificationCenter";
-import {
-    selectEcommerceTotalItems,
-    selectUHTotalItems,
-} from "../features/cart/cartSlice";
+import { selectEcommerceTotalItems, selectUHTotalItems } from "../features/cart/cartSlice";
 
 const getMenuItems = (user) => {
     if (!user) return [];
@@ -39,450 +28,240 @@ const getMenuItems = (user) => {
     return base;
 };
 
-/* ─── CSS ───────────────────────────────────────────────── */
+const isUHCategory = (cat) =>
+    cat?.productType === "urbexon_hour" ||
+    cat?.productType === "urbexon-hour" ||
+    cat?.type === "urbexon_hour" ||
+    cat?.type === "urbexon-hour" ||
+    Boolean(cat?.isUrbexonHour);
+
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
 
-:where(.ux-nav), :where(.ux-nav) *, :where(.ux-nav) *::before, :where(.ux-nav) *::after {
-    box-sizing: border-box; margin: 0; padding: 0;
-}
+:where(.ux-nav),:where(.ux-nav) *,:where(.ux-nav) *::before,:where(.ux-nav) *::after{box-sizing:border-box;margin:0;padding:0}
 
-@keyframes ux-dd  { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
-@keyframes ux-sh  { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-@keyframes ux-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+@keyframes ux-dd{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+@keyframes ux-slidein{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+@keyframes ux-glow{0%,100%{box-shadow:0 0 12px rgba(201,168,76,.3)}50%{box-shadow:0 0 24px rgba(201,168,76,.6)}}
 
-/* ══ MAIN NAVBAR ════════════════════════════════════════ */
-.ux-navbar {
-    background: #fff;
-    border-bottom: 1px solid #eef0f4;
-    box-shadow: 0 1px 3px rgba(0,0,0,.04);
-    transition: box-shadow .25s;
-}
-.ux-navbar.sc { box-shadow: 0 2px 24px rgba(0,0,0,.08); }
+.ux-navbar{background:#fff;border-bottom:1px solid #f1f5f9;box-shadow:0 1px 4px rgba(0,0,0,.03);transition:all .3s cubic-bezier(.4,0,.2,1)}
+.ux-navbar.sc{box-shadow:0 4px 24px rgba(0,0,0,.08);border-bottom-color:transparent}
+.ux-nav-row{max-width:1400px;margin:0 auto;padding:0 clamp(16px,3vw,40px);height:72px;display:flex;align-items:center;gap:14px}
 
-.ux-nav-row {
-    max-width: 1400px; margin: 0 auto;
-    padding: 0 clamp(16px,3vw,40px);
-    height: 68px;
-    display: flex; align-items: center; gap: 16px;
-}
+.ux-logo-btn,.ux-m-logo{display:flex;align-items:center;background:none;border:none;cursor:pointer;text-decoration:none;flex-shrink:0}
+.ux-logo-mark,.ux-m-mark{background:linear-gradient(135deg,#111827 0%,#374151 100%);display:flex;align-items:center;justify-content:center;font-family:'Plus Jakarta Sans',sans-serif;font-weight:900;color:#fff;flex-shrink:0}
+.ux-logo-mark{width:36px;height:36px;border-radius:12px;font-size:18px;letter-spacing:-.5px;margin-right:8px;transition:all .3s cubic-bezier(.4,0,.2,1)}
+.ux-logo-btn:hover .ux-logo-mark{transform:scale(1.05) rotate(-2deg);box-shadow:0 4px 12px rgba(17,24,39,.15)}
+.ux-logo-word,.ux-logo-uh,.ux-m-word,.ux-m-uh-text{font-family:'Plus Jakarta Sans',sans-serif;font-weight:900;line-height:1}
+.ux-logo-word{font-size:23px;color:#111827;letter-spacing:-.7px}
+.ux-logo-uh{font-size:23px;color:#c9a84c;letter-spacing:-.5px;margin-left:5px}
+.ux-m-mark{width:32px;height:32px;border-radius:10px;font-size:16px;margin-right:6px}
+.ux-m-word{font-size:20px;color:#111827;letter-spacing:-.4px}
+.ux-m-uh-text{font-size:20px;color:#c9a84c;margin-left:4px}
 
-/* Logo */
-.ux-logo-btn {
-    display: flex; align-items: center; gap: 0;
-    background: none; border: none; cursor: pointer;
-    padding: 0; flex-shrink: 0; text-decoration: none;
-}
-.ux-logo-mark {
-    width: 32px; height: 32px; border-radius: 10px;
-    background: #111827;
-    display: flex; align-items: center; justify-content: center;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 16px; font-weight: 900; color: #fff;
-    letter-spacing: -.5px; flex-shrink: 0;
-    margin-right: 6px;
-    transition: all .2s;
-}
-.ux-logo-btn:hover .ux-logo-mark { transform: scale(1.05); }
-.ux-logo-word {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 22px; font-weight: 900;
-    color: #111827; letter-spacing: -.7px;
-    line-height: 1;
-}
-.ux-logo-uh {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 22px; font-weight: 900;
-    color: #c9a84c; letter-spacing: -.5px;
-    margin-left: 5px;
-}
+.ux-hour-pill{display:flex;align-items:center;gap:6px;padding:8px 16px;background:linear-gradient(135deg,#fffbeb,#fefce8);border:1px solid #fde68a;border-radius:24px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;font-weight:800;color:#b45309;white-space:nowrap;transition:all .2s;flex-shrink:0}
+.ux-hour-pill:hover{background:linear-gradient(135deg,#fef3c7,#fde68a);transform:translateY(-1px);box-shadow:0 4px 12px rgba(245,158,11,.15);border-color:#fcd34d}
 
-/* Switch to Hour pill */
-.ux-hour-pill {
-    display: flex; align-items: center; gap: 6px;
-    padding: 7px 14px;
-    background: linear-gradient(135deg, #111827, #1e293b);
-    border: 1px solid #374151; border-radius: 20px; cursor: pointer;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 12px; font-weight: 700; color: #c9a84c;
-    white-space: nowrap; transition: all .2s; flex-shrink: 0;
-}
-.ux-hour-pill:hover { background: linear-gradient(135deg, #1e293b, #374151); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.12); }
-.ux-hour-pill .ux-hp-bolt { color: #c9a84c; }
-@media(max-width:640px){ .ux-hour-pill span.ux-hp-label { display: none; } }
-@media(max-width:1024px){
-    .ux-icon-btn-lbl { display: none; }
-    .ux-usr-name, .ux-usr-sub { display: none; }
-    .ux-srch { max-width: 400px; }
-}
+.ux-loc-btn{display:flex;align-items:center;gap:8px;padding:8px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:24px;cursor:pointer;max-width:200px;font-family:'Plus Jakarta Sans',sans-serif;transition:all .2s ease;flex-shrink:0}
+.ux-loc-btn:hover{border-color:#cbd5e1;background:#f1f5f9}
+.ux-loc-icon{color:#111827;flex-shrink:0}
+.ux-loc-text{min-width:0;text-align:left}
+.ux-loc-label{font-size:10px;font-weight:800;color:#64748b;letter-spacing:.5px;text-transform:uppercase;line-height:1;margin-bottom:2px}
+.ux-loc-city{font-size:12.5px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
 
-/* Search */
-.ux-srch {
-    flex: 1; max-width: 680px;
-    display: flex; height: 44px;
-    border: 1.5px solid #e5e7eb; border-radius: 10px;
-    overflow: hidden; transition: all .2s;
-    background: #f9fafb;
-}
-.ux-srch.foc { border-color: #111827; background: #fff; box-shadow: 0 0 0 3px rgba(17,24,39,.06); }
-.ux-srch-inp {
-    flex: 1; padding: 0 14px;
-    background: transparent; border: none; outline: none;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 14px; color: #111827;
-}
-.ux-srch-inp::placeholder { color: #9ca3af; }
-.ux-srch-btn {
-    padding: 0 18px; background: #111827; border: none; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: background .18s; flex-shrink: 0;
-}
-.ux-srch-btn:hover { background: #374151; }
+.ux-srch{flex:1;max-width:680px;display:flex;height:48px;border:1px solid #e2e8f0;border-radius:24px;overflow:hidden;transition:all .3s ease;background:#f8fafc}
+.ux-srch.foc{border-color:#c9a84c;background:#fff;box-shadow:0 0 0 4px rgba(201,168,76,.12)}
+.ux-srch-inp{flex:1;padding:0 20px;background:transparent;border:none;outline:none;font-family:'Plus Jakarta Sans',sans-serif;font-size:14.5px;color:#111827;font-weight:500}
+.ux-srch-inp::placeholder{color:#94a3b8;font-weight:500}
+.ux-srch-btn{margin:4px;padding:0 20px;background:#111827;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:20px;transition:all .2s ease;flex-shrink:0}
+.ux-srch-btn:hover{background:#c9a84c;transform:scale(1.02)}
 
-/* Right actions */
-.ux-acts { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.ux-sugg{position:absolute;top:calc(100% + 8px);left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.1);z-index:100;max-height:400px;overflow-y:auto;padding:8px 0}
+.ux-sugg-lbl{padding:12px 20px 8px;font-size:11px;font-weight:800;color:#94a3b8;letter-spacing:1.5px;text-transform:uppercase;background:#fff}
+.ux-sugg-item{display:flex;align-items:center;gap:12px;padding:10px 20px;cursor:pointer;transition:background .15s;animation:ux-slidein .15s ease}
+.ux-sugg-item:hover{background:#f8fafc}
+.ux-sugg-img{width:40px;height:40px;border-radius:8px;object-fit:cover;background:#f1f5f9;flex-shrink:0;border:1px solid #e2e8f0}
+.ux-sugg-info{flex:1;min-width:0}
+.ux-sugg-name{font-size:14px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+.ux-sugg-meta{font-size:12px;font-weight:500;color:#64748b}
 
-.ux-icon-btn {
-    display: flex; flex-direction: column; align-items: center; gap: 1px;
-    padding: 7px 10px; background: none; border: none; cursor: pointer;
-    border-radius: 8px; transition: background .15s; position: relative;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-}
-.ux-icon-btn:hover { background: #f3f4f6; }
-.ux-icon-btn-lbl { font-size: 10px; font-weight: 600; color: #374151; }
+.ux-acts{display:flex;align-items:center;gap:4px;margin-left:auto;flex-shrink:0}
+.ux-icon-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 12px;background:none;border:none;cursor:pointer;border-radius:12px;transition:all .2s ease;position:relative;font-family:'Plus Jakarta Sans',sans-serif}
+.ux-icon-btn:hover{background:#f1f5f9;transform:translateY(-1px)}
+.ux-icon-btn-lbl{font-size:10px;font-weight:700;color:#475569}
+.ux-vdiv{width:1.5px;height:28px;background:#e2e8f0;flex-shrink:0;margin:0 2px;border-radius:2px}
+.ux-badge{position:absolute;top:2px;right:4px;min-width:20px;height:20px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;padding:0 4px;border:2px solid #fff;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+.ux-cart-count{background:#ef4444;color:#fff;font-size:10px;font-weight:900;padding:2px 7px;border-radius:10px;min-width:20px;text-align:center}
 
-/* Login btn */
-.ux-login-btn {
-    padding: 8px 20px;
-    background: none; border: 1.5px solid #111827;
-    border-radius: 8px; cursor: pointer;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 13px; font-weight: 700; color: #111827;
-    transition: all .18s; white-space: nowrap;
-}
-.ux-login-btn:hover { background: #111827; color: #fff; }
-.ux-register-btn {
-    padding: 8px 20px;
-    background: #111827; border: 1.5px solid #111827;
-    border-radius: 8px; cursor: pointer;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 13px; font-weight: 700; color: #fff;
-    transition: all .18s; white-space: nowrap;
-}
-.ux-register-btn:hover { background: #374151; border-color: #374151; }
+.ux-eco-cart{display:flex;align-items:center;gap:7px;padding:9px 18px;background:linear-gradient(135deg,#111827,#1f2937);border:none;border-radius:20px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:800;color:#fff;position:relative;transition:all .2s ease;flex-shrink:0;box-shadow:0 3px 10px rgba(17,24,39,.2)}
+.ux-eco-cart:hover{background:linear-gradient(135deg,#1f2937,#374151);transform:translateY(-1px)}
+.ux-uh-cart-btn{display:flex;align-items:center;gap:7px;padding:9px 18px;background:linear-gradient(135deg,#c9a84c,#b8943e);border:none;border-radius:20px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:800;color:#111827;position:relative;transition:all .2s ease;flex-shrink:0;box-shadow:0 3px 10px rgba(201,168,76,.25)}
+.ux-uh-cart-btn:hover{filter:brightness(1.08);transform:translateY(-1px);animation:ux-glow 1.5s ease infinite}
+.ux-uh-cart-btn .ux-cart-count{background:#111827;color:#c9a84c}
+.ux-uh-mini{display:flex;align-items:center;gap:5px;padding:7px 12px;background:#fefce8;border:1.5px solid #fde68a;border-radius:12px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:800;color:#b45309;position:relative;transition:all .2s ease;flex-shrink:0}
+.ux-uh-mini:hover{background:#fef9c3;border-color:#fcd34d}
+.ux-uh-mini-count{background:#c9a84c;color:#111827;font-size:10px;font-weight:900;padding:1px 6px;border-radius:8px;min-width:18px;text-align:center}
 
-/* Cart badge */
-.ux-badge {
-    position: absolute; top: 2px; right: 4px;
-    min-width: 18px; height: 18px; border-radius: 9px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 10px; font-weight: 800; padding: 0 3px;
-    border: 2px solid #fff;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-}
-.ux-badge-red  { background: #ef4444; color: #fff; }
-.ux-badge-org  { background: #c9a84c; color: #fff; }
+.ux-login-btn{padding:10px 20px;background:transparent;border:1.5px solid #e2e8f0;border-radius:24px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;color:#374151;transition:all .2s ease;white-space:nowrap}
+.ux-login-btn:hover{border-color:#111827;color:#111827;background:#f8fafc}
+.ux-register-btn{padding:10px 20px;background:linear-gradient(135deg,#111827,#374151);border:none;border-radius:24px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;color:#fff;transition:all .2s ease;white-space:nowrap}
+.ux-register-btn:hover{background:linear-gradient(135deg,#1f2937,#4b5563);transform:translateY(-1px)}
 
-/* UH cart special button */
-.ux-uh-cart {
-    display: flex; align-items: center; gap: 5px;
-    padding: 7px 10px;
-    background: #fefce8; border: 1.5px solid #fde68a;
-    border-radius: 8px; cursor: pointer;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 12px; font-weight: 700; color: #92400e;
-    position: relative; transition: all .18s; flex-shrink: 0;
-}
-.ux-uh-cart:hover { background: #fef9c3; border-color: #fcd34d; }
+.ux-usr-wrap{position:relative}
+.ux-usr-btn{display:flex;align-items:center;gap:10px;padding:6px 12px;background:none;border:1px solid transparent;cursor:pointer;border-radius:24px;transition:all .2s ease;font-family:'Plus Jakarta Sans',sans-serif}
+.ux-usr-btn:hover{background:#f8fafc;border-color:#e2e8f0}
+.ux-usr-av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#111827,#374151);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff;flex-shrink:0}
+.ux-usr-name{font-size:13px;font-weight:800;color:#111827;line-height:1.2;text-align:left}
+.ux-usr-sub{font-size:10px;font-weight:600;color:#64748b;text-align:left}
+.ux-ddrop{position:absolute;right:0;top:calc(100% + 8px);background:#fff;border-radius:16px;box-shadow:0 12px 48px rgba(0,0,0,.12),0 0 0 1px rgba(0,0,0,.04);min-width:240px;overflow:hidden;z-index:1000;border:1px solid #f1f5f9;animation:ux-dd .2s cubic-bezier(.4,0,.2,1)}
+.ux-ddrop-hd{padding:20px;display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#111827,#1e293b)}
+.ux-ddrop-av{width:44px;height:44px;border-radius:50%;flex-shrink:0;background:rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800}
+.ux-ddrop-nm{font-size:15px;font-weight:800;color:#fff;white-space:nowrap}
+.ux-ddrop-em{font-size:12px;font-weight:500;color:rgba(255,255,255,.6)}
+.ux-dmi{display:flex;align-items:center;gap:12px;padding:12px 20px;background:none;border:none;cursor:pointer;width:100%;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:600;color:#374151;transition:background .15s}
+.ux-dmi:hover{background:#f8fafc;color:#111827}
+.ux-dmi-ic{width:32px;height:32px;border-radius:8px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#64748b;flex-shrink:0}
+.ux-dmi-out{color:#ef4444}
+.ux-dmi-out:hover{background:#fef2f2;color:#dc2626}
+.ux-ddrop-sep{height:1px;background:#f1f5f9;margin:4px 0}
 
-/* Divider */
-.ux-vdiv { width: 1px; height: 28px; background: #e5e7eb; flex-shrink: 0; }
+/* Category bars */
+.ux-catbar{background:#fff;border-top:1px solid #f1f5f9;border-bottom:1px solid #e2e8f0}
+.ux-catbar-in,.ux-uh-catbar-in{max-width:1400px;margin:0 auto;display:flex;align-items:center;overflow-x:auto;scrollbar-width:none;gap:6px}
+.ux-catbar-in::-webkit-scrollbar,.ux-uh-catbar-in::-webkit-scrollbar{display:none}
+.ux-catbar-in{padding:4px clamp(16px,3vw,40px)}
+.ux-catbtn{padding:8px 18px;background:transparent;border:1px solid transparent;cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:600;color:#475569;border-radius:20px;transition:all .2s ease}
+.ux-catbtn:hover{color:#111827;background:#f8fafc}
+.ux-catbtn.act{color:#fff;font-weight:700;background:#111827}
+.ux-hot{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:6px;margin-left:6px;vertical-align:middle;letter-spacing:.5px}
 
-/* User dropdown */
-.ux-usr-wrap { position: relative; }
-.ux-usr-btn {
-    display: flex; align-items: center; gap: 8px;
-    padding: 6px 10px; background: none; border: none; cursor: pointer;
-    border-radius: 8px; transition: background .15s;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-}
-.ux-usr-btn:hover { background: #f3f4f6; }
-.ux-usr-av {
-    width: 34px; height: 34px; border-radius: 50%;
-    background: linear-gradient(135deg, #111827, #374151);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 800; color: #fff; flex-shrink: 0;
-}
-.ux-usr-name { font-size: 13px; font-weight: 700; color: #111827; line-height: 1.2; }
-.ux-usr-sub  { font-size: 10px; color: #9ca3af; }
+.ux-uh-catbar{background:#fff;border-top:1px solid #fde68a;border-bottom:1px solid #f1f5f9}
+.ux-uh-catbar-in{padding:5px clamp(16px,3vw,40px)}
+.ux-uh-catbtn{padding:7px 16px;background:transparent;border:1px solid transparent;cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:600;color:#64748b;border-radius:20px;transition:all .2s ease}
+.ux-uh-catbtn:hover{color:#d97706;background:#fffbeb;border-color:#fde68a}
+.ux-uh-catbtn.act{color:#fff;font-weight:700;background:linear-gradient(135deg,#d97706,#b45309);border-color:transparent;box-shadow:0 2px 8px rgba(217,119,6,.25)}
+.ux-uh-fast{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:6px;margin-left:6px;vertical-align:middle;letter-spacing:.5px}
 
-.ux-ddrop {
-    position: absolute; right: 0; top: calc(100% + 8px);
-    background: #fff; border-radius: 14px;
-    box-shadow: 0 12px 48px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.04);
-    min-width: 230px; overflow: hidden; z-index: 1000;
-    border: none;
-    animation: ux-dd .18s ease;
-}
-.ux-ddrop-hd {
-    padding: 16px 18px; display: flex; align-items: center; gap: 12px;
-    background: linear-gradient(135deg, #111827, #1e293b);
-}
-.ux-ddrop-av {
-    width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
-    background: rgba(255,255,255,.12); color: #fff;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 15px; font-weight: 800;
-}
-.ux-ddrop-nm { font-size: 14px; font-weight: 700; color: #fff; white-space: nowrap; }
-.ux-ddrop-em { font-size: 11px; color: rgba(255,255,255,.55); }
-.ux-dmi {
-    display: flex; align-items: center; gap: 10px;
-    padding: 11px 16px; background: none; border: none;
-    cursor: pointer; width: 100%; text-align: left;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 13px; font-weight: 500; color: #374151;
-    transition: background .12s;
-}
-.ux-dmi:hover { background: #f8fafc; color: #111827; }
-.ux-dmi-ic {
-    width: 28px; height: 28px; border-radius: 7px;
-    background: #f3f4f6; display: flex; align-items: center;
-    justify-content: center; color: #6b7280; flex-shrink: 0;
-}
-.ux-dmi:hover .ux-dmi-ic { background: #e5e7eb; color: #111827; }
-.ux-dmi-out { color: #ef4444; }
-.ux-dmi-out:hover { background: #fef2f2; color: #dc2626; }
-.ux-dmi-out .ux-dmi-ic { background: #fef2f2; color: #ef4444; }
-.ux-ddrop-sep { height: 1px; background: #f3f4f6; }
+/* Mobile nav */
+.ux-mnav{background:#fff;border-bottom:1px solid #e5e7eb;box-shadow:0 2px 10px rgba(0,0,0,.04);position:relative;z-index:620}
+.ux-mnav-in{max-width:1400px;margin:0 auto;padding:0 12px;height:64px;display:flex;align-items:center;gap:8px}
+.ux-m-loc-btn{display:flex;align-items:center;gap:6px;min-width:0;flex:1;height:38px;padding:0 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:999px;cursor:pointer}
+.ux-m-loc-city{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:700;color:#111827}
+.ux-m-acts{margin-left:auto;display:flex;align-items:center;gap:2px}
+.ux-m-btn{width:42px;height:42px;border:none;background:none;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#374151;cursor:pointer;position:relative}
+.ux-m-btn:hover{background:#f3f4f6}
+.ux-burger{display:flex;flex-direction:column;gap:5px;width:20px}
+.ux-burger span{display:block;height:2.5px;background:#374151;border-radius:3px;transition:all .3s cubic-bezier(.4,0,.2,1)}
 
-/* ══ CATEGORY BAR ═══════════════════════════════════════ */
-.ux-catbar {
-    background: #fff;
-    border-top: 1px solid #f0f2f5;
-    border-bottom: 1px solid #eef0f4;
-}
-.ux-catbar-in {
-    max-width: 1400px; margin: 0 auto;
-    padding: 0 clamp(16px,3vw,40px);
-    display: flex; align-items: center;
-    overflow-x: auto; scrollbar-width: none; gap: 2px;
-}
-.ux-catbar-in::-webkit-scrollbar { display: none; }
-.ux-catbtn {
-    padding: 10px 16px; background: none; border: none;
-    cursor: pointer; white-space: nowrap; flex-shrink: 0;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 13px; font-weight: 500; color: #4b5563;
-    border-bottom: 2.5px solid transparent;
-    transition: all .18s;
-}
-.ux-catbtn:hover { color: #111827; background: #f9fafb; }
-.ux-catbtn.act { color: #111827; font-weight: 700; border-bottom-color: #111827; }
-.ux-hot {
-    background: #ef4444; color: #fff;
-    font-size: 8px; font-weight: 800; padding: 1px 5px;
-    border-radius: 3px; margin-left: 4px;
-    vertical-align: middle; letter-spacing: .5px;
-}
+/* Mobile menu */
+.ux-mmenu-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.45);backdrop-filter:blur(3px);z-index:698;opacity:0;pointer-events:none;transition:opacity .25s ease}
+.ux-mmenu-backdrop.on{opacity:1;pointer-events:auto}
+.ux-mmenu{position:fixed;top:0;left:0;bottom:0;width:min(82vw,340px);background:#fff;z-index:699;box-shadow:24px 0 64px rgba(0,0,0,.18);transform:translateX(-105%);transition:transform .3s cubic-bezier(.22,1,.36,1);display:flex;flex-direction:column;overflow:hidden}
+.ux-mmenu.on{transform:translateX(0)}
+.ux-mm-topbar{height:58px;padding:0 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f1f5f9;background:#fff;flex-shrink:0}
+.ux-mm-close{width:34px;height:34px;border:none;border-radius:8px;background:#f3f4f6;color:#64748b;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;margin-left:auto;transition:background .15s}
+.ux-mm-close:hover{background:#e2e8f0;color:#111827}
+.ux-mm-scroll{overflow-y:auto;flex:1;background:#f8fafc}
+.ux-mm-scroll::-webkit-scrollbar{width:3px}
+.ux-mm-scroll::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:3px}
+.ux-mm-head{background:#0f172a;padding:16px 16px 18px;position:relative;overflow:hidden}
+.ux-mm-head::after{content:'';position:absolute;right:-20px;top:-20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.04);pointer-events:none}
+.ux-mm-av-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.ux-mm-av{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.18);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;flex-shrink:0}
+.ux-mm-nm{font-size:15px;line-height:1.2;font-weight:700;color:#fff;font-family:'Plus Jakarta Sans',sans-serif}
+.ux-mm-em{margin-top:2px;font-size:11.5px;color:rgba(255,255,255,.5);font-weight:500;word-break:break-all;font-family:'Plus Jakarta Sans',sans-serif}
+.ux-mm-chips{display:flex;flex-wrap:wrap;gap:6px}
+.ux-mm-chip{height:32px;padding:0 12px;border-radius:999px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:rgba(255,255,255,.85);display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:background .15s}
+.ux-mm-chip:hover{background:rgba(255,255,255,.14)}
+.ux-mm-chip-out{background:rgba(239,68,68,.12);border-color:rgba(248,113,113,.22);color:#fca5a5}
+.ux-mm-chip-out:hover{background:rgba(239,68,68,.2)}
+.ux-mm-section{background:#fff;margin-top:8px}
+.ux-mm-lbl{padding:14px 16px 8px;font-size:10px;line-height:1;font-weight:800;color:#94a3b8;letter-spacing:1.6px;text-transform:uppercase;font-family:'Plus Jakarta Sans',sans-serif}
+.ux-mm-row{min-height:48px;padding:0 16px;border-top:1px solid #f8fafc;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;background:#fff;color:#1e293b;font-size:14px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;transition:background .12s}
+.ux-mm-row:hover{background:#fafbfc}
+.ux-mm-row:first-of-type{border-top:none}
+.ux-mm-row-left{min-width:0;display:flex;align-items:center;gap:8px}
+.ux-mm-row-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ux-mm-arrow{color:#cbd5e1;flex-shrink:0}
+.ux-mm-auth{padding:12px 14px;display:flex;gap:10px;background:#fff}
+.ux-mm-sin,.ux-mm-reg{flex:1;height:42px;border-radius:999px;font-size:13px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;transition:all .18s}
+.ux-mm-sin{border:1.5px solid #e2e8f0;background:#fff;color:#374151}
+.ux-mm-sin:hover{border-color:#111827;color:#111827}
+.ux-mm-reg{border:none;background:#111827;color:#fff}
+.ux-mm-reg:hover{background:#1e293b}
+.ux-mm-uh-wrap{padding:12px 14px 16px;background:#fff;margin-top:8px}
+.ux-mm-uh{padding:14px 16px;border-radius:14px;background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);border:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:12px;cursor:pointer;transition:filter .18s}
+.ux-mm-uh:hover{filter:brightness(1.08)}
+.ux-mm-uh-nm{font-size:14px;font-weight:800;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;line-height:1.2}
+.ux-mm-uh-sub{margin-top:2px;font-size:11.5px;color:rgba(255,255,255,.55);font-family:'Plus Jakarta Sans',sans-serif}
 
-/* ══ MOBILE NAV ════════════════════════════════════════ */
-.ux-mnav {
-    background: #fff;
-    border-bottom: 1px solid #eef0f4;
-    box-shadow: 0 1px 8px rgba(0,0,0,.05);
-}
-.ux-mnav-in {
-    max-width: 1400px; margin: 0 auto;
-    padding: 0 14px; height: 58px;
-    display: flex; align-items: center; gap: 8px;
-}
-.ux-m-logo {
-    display: flex; align-items: center;
-    background: none; border: none; cursor: pointer; flex-shrink: 0;
-}
-.ux-m-mark {
-    width: 28px; height: 28px; border-radius: 8px;
-    background: #111827;
-    display: flex; align-items: center; justify-content: center;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 14px; font-weight: 900; color: #fff;
-    margin-right: 5px; flex-shrink: 0;
-}
-.ux-m-word {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 19px; font-weight: 900; color: #111827; letter-spacing: -.5px;
-}
-.ux-m-uh-text {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 19px; font-weight: 900; color: #c9a84c;
-    margin-left: 4px; letter-spacing: -.3px;
-}
-.ux-m-acts { margin-left: auto; display: flex; align-items: center; gap: 0; }
-.ux-m-btn {
-    width: 42px; height: 42px; background: none; border: none;
-    cursor: pointer; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    color: #374151; position: relative; transition: background .15s;
-}
-.ux-m-btn:hover { background: #f3f4f6; }
+/* Search overlay */
+.ux-sov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:700;backdrop-filter:blur(6px)}
+.ux-sov-box{background:#fff;padding:20px;box-shadow:0 8px 32px rgba(0,0,0,.15);border-bottom-left-radius:24px;border-bottom-right-radius:24px}
+.ux-sov-form{display:flex;align-items:stretch;max-width:700px;margin:0 auto;border:2px solid #111827;border-radius:24px;overflow:hidden;height:52px;background:#fff}
+.ux-sov-inp{flex:1;padding:0 20px;font-size:15px;font-weight:500;color:#111827;border:none;outline:none;font-family:'Plus Jakarta Sans',sans-serif}
+.ux-sov-close{padding:0 18px;background:none;border:none;cursor:pointer;color:#64748b;display:flex;align-items:center}
+.ux-sov-tags{display:flex;gap:10px;flex-wrap:wrap;max-width:700px;margin:16px auto 0}
+.ux-sov-tag{background:#f1f5f9;border:1px solid #e2e8f0;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;color:#475569;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif}
+.ux-sov-tag:hover{background:#111827;color:#fff;border-color:#111827}
 
-/* ══ MOBILE MENU ═══════════════════════════════════════ */
-.ux-mmenu {
-    position: fixed; inset: 0; background: #fff;
-    z-index: 500; overflow-y: auto;
-    transform: translateX(-100%);
-    transition: transform .3s cubic-bezier(.4,0,.2,1);
-}
-.ux-mmenu.on { transform: none; }
-.ux-mm-head {
-    background: linear-gradient(135deg, #111827, #1e293b);
-    padding: 56px 18px 18px;
-}
-.ux-mm-av-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-.ux-mm-av {
-    width: 44px; height: 44px; border-radius: 50%;
-    background: rgba(255,255,255,.1);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 18px; font-weight: 800; color: #fff;
-}
-.ux-mm-nm { font-size: 15px; font-weight: 700; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; }
-.ux-mm-em { font-size: 11px; color: rgba(255,255,255,.5); font-family: 'Plus Jakarta Sans', sans-serif; }
-.ux-mm-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.ux-mm-chip {
-    display: flex; align-items: center; gap: 6px;
-    padding: 7px 14px; background: rgba(255,255,255,.08);
-    border: 1px solid rgba(255,255,255,.15); border-radius: 20px;
-    color: #fff; font-size: 12px; font-weight: 600; cursor: pointer;
-    font-family: 'Plus Jakarta Sans', sans-serif; transition: background .15s;
-}
-.ux-mm-chip:hover { background: rgba(255,255,255,.15); }
-.ux-mm-chip-out { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.3); color: #fca5a5; }
-.ux-mm-auth { padding: 14px 16px; display: flex; gap: 10px; }
-.ux-mm-sin { flex:1; padding:10px; border:1.5px solid #111827; background:transparent; color:#111827; font-weight:700; font-size:13px; border-radius:8px; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; }
-.ux-mm-reg { flex:1; padding:10px; border:none; background:#111827; color:#fff; font-weight:700; font-size:13px; border-radius:8px; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; }
-.ux-mm-lbl { padding:12px 16px 4px; font-size:9px; font-weight:800; color:#9ca3af; letter-spacing:2.5px; text-transform:uppercase; font-family:'Plus Jakarta Sans',sans-serif; }
-.ux-mm-row {
-    padding: 14px 16px; font-size: 14px; font-weight: 500; color: #374151;
-    border-bottom: 1px solid #f5f5f5; cursor: pointer;
-    display: flex; align-items: center; justify-content: space-between;
-    transition: background .12s; font-family: 'Plus Jakarta Sans', sans-serif;
-}
-.ux-mm-row:hover { background: #f8fafc; color: #111827; }
-.ux-mm-uh {
-    margin: 14px 16px; padding: 14px 16px;
-    background: linear-gradient(135deg, #111827, #1e293b);
-    border-radius: 12px; cursor: pointer;
-    display: flex; align-items: center; gap: 12px; transition: all .18s;
-    border: 1px solid #374151;
-}
-.ux-mm-uh:hover { background: linear-gradient(135deg, #1e293b, #374151); }
-.ux-mm-uh-nm { font-size: 14px; font-weight: 700; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; }
-.ux-mm-uh-sub { font-size: 11px; color: rgba(255,255,255,.55); font-family: 'Plus Jakarta Sans', sans-serif; }
+/* UH mode overrides */
+.ux-navbar.ux-uh-mode{background:#fff;border-bottom:1px solid #fde68a;box-shadow:0 2px 12px rgba(201,168,76,.1)}
+.ux-navbar.ux-uh-mode.sc{box-shadow:0 4px 24px rgba(201,168,76,.12)}
+.ux-navbar.ux-uh-mode .ux-logo-mark{background:linear-gradient(135deg,#d97706,#b45309);color:#fff}
+.ux-navbar.ux-uh-mode .ux-logo-word{color:#111827}
+.ux-navbar.ux-uh-mode .ux-logo-uh{color:#d97706}
+.ux-navbar.ux-uh-mode .ux-srch{border-color:#fde68a;background:#fffbeb}
+.ux-navbar.ux-uh-mode .ux-srch.foc{border-color:#f59e0b;background:#fff;box-shadow:0 0 0 3px rgba(245,158,11,.12)}
+.ux-navbar.ux-uh-mode .ux-srch-inp{color:#111827}
+.ux-navbar.ux-uh-mode .ux-srch-inp::placeholder{color:#a78a4e}
+.ux-navbar.ux-uh-mode .ux-srch-btn{background:linear-gradient(135deg,#d97706,#b45309)}
+.ux-navbar.ux-uh-mode .ux-srch-btn:hover{background:linear-gradient(135deg,#b45309,#92400e)}
+.ux-navbar.ux-uh-mode .ux-loc-btn{border-color:#fde68a;background:#fffbeb}
+.ux-navbar.ux-uh-mode .ux-loc-btn:hover{background:#fef3c7;border-color:#fcd34d}
+.ux-navbar.ux-uh-mode .ux-loc-icon{color:#d97706}
+.ux-navbar.ux-uh-mode .ux-loc-label{color:#92400e}
+.ux-navbar.ux-uh-mode .ux-loc-city{color:#111827}
+.ux-navbar.ux-uh-mode .ux-hour-pill{background:linear-gradient(135deg,#111827,#1f2937);border-color:transparent;color:#fff}
+.ux-navbar.ux-uh-mode .ux-hour-pill:hover{background:linear-gradient(135deg,#1f2937,#374151);box-shadow:0 4px 12px rgba(17,24,39,.2)}
+.ux-navbar.ux-uh-mode .ux-icon-btn:hover{background:#fef3c7}
+.ux-navbar.ux-uh-mode .ux-vdiv{background:#fde68a}
+.ux-navbar.ux-uh-mode .ux-uh-cart-btn{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;box-shadow:0 3px 12px rgba(217,119,6,.25)}
+.ux-navbar.ux-uh-mode .ux-uh-cart-btn .ux-cart-count{background:#fff;color:#d97706}
+.ux-navbar.ux-uh-mode .ux-login-btn{border-color:#fde68a;color:#92400e;background:#fffbeb}
+.ux-navbar.ux-uh-mode .ux-login-btn:hover{border-color:#d97706;background:#fef3c7;color:#78350f}
+.ux-navbar.ux-uh-mode .ux-register-btn{background:linear-gradient(135deg,#d97706,#b45309);color:#fff}
+.ux-navbar.ux-uh-mode .ux-register-btn:hover{background:linear-gradient(135deg,#b45309,#92400e)}
+.ux-navbar.ux-uh-mode .ux-usr-av{background:linear-gradient(135deg,#d97706,#b45309);color:#fff}
+.ux-navbar.ux-uh-mode .ux-usr-btn:hover{background:#fffbeb;border-color:#fde68a}
+.ux-navbar.ux-uh-mode .ux-usr-name{color:#111827}
+.ux-navbar.ux-uh-mode .ux-usr-sub{color:#78716c}
 
-/* ══ SEARCH OVERLAY ════════════════════════════════════ */
-.ux-sov { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:700; backdrop-filter:blur(4px); }
-.ux-sov-box { background:#fff; padding:16px; box-shadow:0 4px 24px rgba(0,0,0,.1); }
-.ux-sov-form { display:flex; align-items:stretch; max-width:700px; margin:0 auto; border:2px solid #111827; border-radius:10px; overflow:hidden; height:48px; background:#fff; }
-.ux-sov-inp { flex:1; padding:0 16px; font-size:15px; color:#111827; border:none; outline:none; font-family:'Plus Jakarta Sans',sans-serif; }
-.ux-sov-close { padding:0 14px; background:none; border:none; cursor:pointer; color:#6b7280; display:flex; align-items:center; }
-.ux-sov-tags { display:flex; gap:8px; flex-wrap:wrap; max-width:700px; margin:12px auto 0; }
-.ux-sov-tag { background:#f3f4f6; border:none; padding:6px 14px; border-radius:20px; font-size:12px; font-weight:600; color:#374151; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; transition:all .15s; }
-.ux-sov-tag:hover { background:#111827; color:#fff; }
+/* UH mobile overrides */
+.ux-mnav.ux-uh-mode{background:#fff;border-bottom:1px solid #fde68a;box-shadow:0 2px 10px rgba(201,168,76,.08)}
+.ux-mnav.ux-uh-mode .ux-m-mark{background:linear-gradient(135deg,#d97706,#b45309);color:#fff}
+.ux-mnav.ux-uh-mode .ux-m-word{color:#111827}
+.ux-mnav.ux-uh-mode .ux-m-uh-text{color:#d97706}
+.ux-mnav.ux-uh-mode .ux-m-btn:hover{background:#fef3c7}
+.ux-mnav.ux-uh-mode .ux-m-loc-btn{border-color:#fde68a;background:#fffbeb}
+.ux-mnav.ux-uh-mode .ux-m-loc-city{color:#111827}
 
-.ux-burger { display:flex; flex-direction:column; gap:4px; width:18px; }
-.ux-burger span { display:block; height:2px; background:#374151; border-radius:2px; transition:all .25s; }
-
-/* ══ UH MODE ════════════════════════════════════════════ */
-.ux-navbar.ux-uh-mode { background: linear-gradient(135deg, #0a0a0a, #111827); border-bottom-color: #1e293b; box-shadow: 0 2px 20px rgba(0,0,0,.3); }
-.ux-navbar.ux-uh-mode .ux-logo-mark { background: #c9a84c; color: #111827; }
-.ux-navbar.ux-uh-mode .ux-logo-word { color: #fff; }
-.ux-navbar.ux-uh-mode .ux-logo-uh { color: #c9a84c; }
-.ux-navbar.ux-uh-mode .ux-hour-pill { background: linear-gradient(135deg, #fff, #f8fafc); border-color: #e5e7eb; color: #111827; }
-.ux-navbar.ux-uh-mode .ux-hour-pill:hover { background: #fff; }
-.ux-navbar.ux-uh-mode .ux-srch { border-color: #374151; background: rgba(255,255,255,.06); }
-.ux-navbar.ux-uh-mode .ux-srch.foc { border-color: #c9a84c; background: rgba(255,255,255,.1); box-shadow: 0 0 0 3px rgba(201,168,76,.1); }
-.ux-navbar.ux-uh-mode .ux-srch-inp { color: #fff; }
-.ux-navbar.ux-uh-mode .ux-srch-inp::placeholder { color: rgba(255,255,255,.35); }
-.ux-navbar.ux-uh-mode .ux-srch-btn { background: #c9a84c; }
-.ux-navbar.ux-uh-mode .ux-srch-btn:hover { background: #b8943e; }
-.ux-navbar.ux-uh-mode .ux-icon-btn { color: rgba(255,255,255,.8); }
-.ux-navbar.ux-uh-mode .ux-icon-btn:hover { background: rgba(255,255,255,.08); }
-.ux-navbar.ux-uh-mode .ux-icon-btn-lbl { color: rgba(255,255,255,.5); }
-.ux-navbar.ux-uh-mode .ux-vdiv { background: #374151; }
-.ux-navbar.ux-uh-mode .ux-login-btn { border-color: #c9a84c; color: #c9a84c; }
-.ux-navbar.ux-uh-mode .ux-login-btn:hover { background: #c9a84c; color: #111827; }
-.ux-navbar.ux-uh-mode .ux-register-btn { background: #c9a84c; color: #111827; border-color: #c9a84c; }
-.ux-navbar.ux-uh-mode .ux-register-btn:hover { background: #b8943e; border-color: #b8943e; }
-.ux-navbar.ux-uh-mode .ux-usr-btn:hover { background: rgba(255,255,255,.08); }
-.ux-navbar.ux-uh-mode .ux-usr-name { color: #fff; }
-.ux-navbar.ux-uh-mode .ux-usr-sub { color: rgba(255,255,255,.4); }
-.ux-navbar.ux-uh-mode .ux-usr-av { background: linear-gradient(135deg, #c9a84c, #b8943e); color: #111827; }
-.ux-navbar.ux-uh-mode .ux-catbar { display: none; }
-.ux-navbar.ux-uh-mode .ux-badge-red { display: none; }
-/* UH cart always visible in UH mode */
-.ux-uh-cart-always { display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: linear-gradient(135deg, #c9a84c, #b8943e); border: none; border-radius: 8px; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; font-weight: 700; color: #111827; position: relative; transition: all .18s; flex-shrink: 0; }
-.ux-uh-cart-always:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(201,168,76,.25); }
-.ux-uh-cart-always .ux-badge { background: #111827; color: #c9a84c; border-color: #c9a84c; }
-.ux-mnav.ux-uh-mode { background: linear-gradient(135deg, #0a0a0a, #111827); border-bottom-color: #1e293b; }
-.ux-mnav.ux-uh-mode .ux-m-mark { background: #c9a84c; color: #111827; }
-.ux-mnav.ux-uh-mode .ux-m-word { color: #fff; }
-.ux-mnav.ux-uh-mode .ux-m-uh-text { color: #c9a84c; }
-.ux-mnav.ux-uh-mode .ux-m-btn { color: rgba(255,255,255,.8); }
-
-/* ══ SUGGESTIONS DROPDOWN ═══════════════════════════════ */
-
-/* ═ LOCATION SELECTOR ═══════════════════════════════════ */
-.ux-loc-btn {
-    display: flex; align-items: center; gap: 6px;
-    padding: 6px 12px; background: none; border: 1.5px solid #e5e7eb;
-    border-radius: 8px; cursor: pointer; max-width: 200px;
-    font-family: 'Plus Jakarta Sans', sans-serif; transition: all .18s;
-    flex-shrink: 0;
-}
-.ux-loc-btn:hover { border-color: #111827; background: #f9fafb; }
-.ux-loc-icon { color: #111827; flex-shrink: 0; }
-.ux-loc-text { min-width: 0; text-align: left; }
-.ux-loc-label { font-size: 9px; font-weight: 700; color: #9ca3af; letter-spacing: .5px; text-transform: uppercase; line-height: 1; }
-.ux-loc-city { font-size: 12px; font-weight: 600; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
-.ux-navbar.ux-uh-mode .ux-loc-btn { border-color: #374151; }
-.ux-navbar.ux-uh-mode .ux-loc-btn:hover { border-color: #c9a84c; background: rgba(255,255,255,.05); }
-.ux-navbar.ux-uh-mode .ux-loc-icon { color: #c9a84c; }
-.ux-navbar.ux-uh-mode .ux-loc-label { color: rgba(255,255,255,.4); }
-.ux-navbar.ux-uh-mode .ux-loc-city { color: rgba(255,255,255,.85); }
-/* Mobile location */
-.ux-m-loc-btn {
-    display: flex; align-items: center; gap: 4px;
-    padding: 4px 8px; background: none; border: 1px solid #e5e7eb;
-    border-radius: 6px; cursor: pointer; flex: 1; min-width: 0;
-    font-family: 'Plus Jakarta Sans', sans-serif; transition: all .18s;
-}
-.ux-m-loc-btn:hover { border-color: #111827; }
-.ux-m-loc-city { font-size: 11px; font-weight: 600; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ux-mnav.ux-uh-mode .ux-m-loc-btn { border-color: #374151; }
-.ux-mnav.ux-uh-mode .ux-m-loc-city { color: rgba(255,255,255,.85); }
-
-.ux-sugg { position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid #e5e7eb; border-top:none; border-radius:0 0 10px 10px; box-shadow:0 8px 32px rgba(0,0,0,.1); z-index:100; max-height:360px; overflow-y:auto; }
-.ux-sugg-item { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; transition:background .12s; border-bottom:1px solid #f5f5f5; }
-.ux-sugg-item:hover { background:#f8fafc; }
-.ux-sugg-item:last-child { border-bottom:none; }
-.ux-sugg-img { width:36px; height:36px; border-radius:8px; object-fit:cover; background:#f3f4f6; flex-shrink:0; }
-.ux-sugg-info { flex:1; min-width:0; }
-.ux-sugg-name { font-size:13px; font-weight:600; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.ux-sugg-meta { font-size:11px; color:#6b7280; }
-.ux-sugg-lbl { padding:8px 14px; font-size:10px; font-weight:800; color:#9ca3af; letter-spacing:1.5px; text-transform:uppercase; background:#fafbfc; }
+@media(max-width:1080px){.ux-icon-btn-lbl{display:none}.ux-usr-name,.ux-usr-sub{display:none}.ux-srch{max-width:360px}}
+@media(max-width:640px){.ux-hour-pill span.ux-hp-label{display:none}}
+@media(min-width:768px){.ux-mmenu,.ux-mmenu-backdrop{display:none !important}}
 `;
 
-/* ─── Main Navbar ───────────────────────────────────────── */
 const Navbar = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { user, logout } = useAuth();
     const { locationData, modalOpen: locModalOpen, setModalOpen: setLocModalOpen } = useLocation2();
+
     const isAuth = Boolean(user);
     const menuItems = getMenuItems(user);
 
-    const [categories, setCategories] = useState([]);
+    const [ecoCategories, setEcoCategories] = useState([]);
+    const [uhCategories, setUhCategories] = useState([]);
     const [mobileOpen, setMobileOpen] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
     const [scrolled, setScrolled] = useState(false);
@@ -493,52 +272,125 @@ const Navbar = () => {
     const [searchFocused, setSearchFocused] = useState(false);
     const [suggestions, setSuggestions] = useState([]);
     const [recentSearches, setRecentSearches] = useState([]);
-    const suggestTimer = useRef(null);
-    const isUHMode = location.pathname.startsWith("/urbexon-hour") || location.pathname.startsWith("/uh-");
 
+    const suggestTimer = useRef(null);
     const userMenuRef = useRef(null);
     const searchRef = useRef(null);
     const lastScrollY = useRef(0);
 
+    const isUHMode =
+        location.pathname.startsWith("/urbexon-hour") ||
+        location.pathname.startsWith("/uh-");
+
     const ecommerceCount = useSelector(selectEcommerceTotalItems);
     const uhCount = useSelector(selectUHTotalItems);
 
-    /* ── Load categories from API ── */
+    /* ── FIX: Category URL helpers — consistent with AppRoutes ── */
+    // AppRoutes: /urbexon-hour/:slug  (no "category/" prefix)
+    const uhCatPath = (slug) => `/urbexon-hour/${slug}`;
+    const isUHCatActive = (slug) => location.pathname === `/urbexon-hour/${slug}`;
+    const isCatActive = (slug) => location.pathname === `/category/${slug}`;
+
+    /* ── Fetch categories ── */
     useEffect(() => {
         fetchActiveCategories()
-            .then(res => { if (res?.data?.length) setCategories(res.data); })
+            .then((res) => {
+                if (res?.data?.length) {
+                    setEcoCategories(res.data.filter((c) => !isUHCategory(c)));
+                }
+            })
             .catch(() => { });
+
+        const parseUHCats = (res) =>
+            Array.isArray(res?.data?.data) ? res.data.data
+                : Array.isArray(res?.data?.categories) ? res.data.categories
+                    : Array.isArray(res?.data) ? res.data : [];
+
+        (async () => {
+            try {
+                let res = await api.get("/categories?type=urbexon-hour&isActive=true").catch(() => null);
+                let cats = parseUHCats(res).filter(isUHCategory);
+                if (cats.length > 0) { setUhCategories(cats); return; }
+
+                res = await api.get("/categories?productType=urbexon_hour&isActive=true").catch(() => null);
+                cats = parseUHCats(res).filter(isUHCategory);
+                if (cats.length > 0) { setUhCategories(cats); return; }
+
+                res = await api.get("/categories?productType=urbexon-hour&isActive=true").catch(() => null);
+                cats = parseUHCats(res).filter(isUHCategory);
+                if (cats.length > 0) { setUhCategories(cats); return; }
+
+                const allRes = await fetchActiveCategories().catch(() => null);
+                const allCats = Array.isArray(allRes?.data) ? allRes.data : [];
+                const uhOnly = allCats.filter(isUHCategory);
+                if (uhOnly.length > 0) setUhCategories(uhOnly);
+            } catch { }
+        })();
     }, []);
 
-    /* ── Scroll behavior ── */
+    /* ── Body scroll lock ── */
+    useEffect(() => {
+        const shouldLock = mobileOpen || searchOverlay;
+        if (shouldLock) {
+            const scrollY = window.scrollY;
+            document.body.style.position = "fixed";
+            document.body.style.top = `-${scrollY}px`;
+            document.body.style.left = "0";
+            document.body.style.right = "0";
+            document.body.style.overflowY = "scroll";
+        } else {
+            const scrollY = parseInt(document.body.style.top || "0", 10) * -1;
+            document.body.style.position = "";
+            document.body.style.top = "";
+            document.body.style.left = "";
+            document.body.style.right = "";
+            document.body.style.overflowY = "";
+            if (scrollY) window.scrollTo(0, scrollY);
+        }
+        return () => {
+            const scrollY = parseInt(document.body.style.top || "0", 10) * -1;
+            document.body.style.position = "";
+            document.body.style.top = "";
+            document.body.style.left = "";
+            document.body.style.right = "";
+            document.body.style.overflowY = "";
+            if (scrollY) window.scrollTo(0, scrollY);
+        };
+    }, [mobileOpen, searchOverlay]);
+
+    /* ── Scroll hide/show ── */
     useEffect(() => {
         const fn = () => {
             const y = window.scrollY;
             setScrolled(y > 8);
-            if (!mobileOpen && !searchOverlay)
+            if (!mobileOpen && !searchOverlay) {
                 setNavHidden(y > lastScrollY.current && y > 90);
+            }
             lastScrollY.current = y;
         };
         window.addEventListener("scroll", fn, { passive: true });
         return () => window.removeEventListener("scroll", fn);
     }, [mobileOpen, searchOverlay]);
 
-    /* ── Close dropdown on outside click ── */
+    /* ── Close user menu on outside click ── */
     useEffect(() => {
-        const fn = e => {
-            if (userMenuRef.current && !userMenuRef.current.contains(e.target))
+        const fn = (e) => {
+            if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
                 setUserMenuOpen(false);
+            }
         };
         document.addEventListener("mousedown", fn);
         return () => document.removeEventListener("mousedown", fn);
     }, []);
 
-    /* ── Load recent searches ── */
+    /* ── Recent searches ── */
     useEffect(() => {
-        try { setRecentSearches(JSON.parse(localStorage.getItem("ux_search_history")) || []); } catch { setRecentSearches([]); }
+        try {
+            setRecentSearches(JSON.parse(localStorage.getItem("ux-search-history")) || []);
+        } catch { setRecentSearches([]); }
     }, [location.pathname]);
 
-    /* ── Search overlay focus ── */
+    /* ── Search overlay auto-focus ── */
     useEffect(() => {
         if (searchOverlay) {
             const t = setTimeout(() => searchRef.current?.focus(), 100);
@@ -547,37 +399,53 @@ const Navbar = () => {
         setSearchVal("");
     }, [searchOverlay]);
 
-    /* ── Escape key ── */
+    /* ── Escape key closes everything ── */
     useEffect(() => {
-        const fn = e => {
-            if (e.key === "Escape") { setSearchOverlay(false); setMobileOpen(false); }
+        const fn = (e) => {
+            if (e.key === "Escape") {
+                setSearchOverlay(false);
+                setMobileOpen(false);
+                setUserMenuOpen(false);
+            }
         };
         document.addEventListener("keydown", fn);
         return () => document.removeEventListener("keydown", fn);
     }, []);
 
     /* ── Close on route change ── */
-    useEffect(() => { setMobileOpen(false); setSearchOverlay(false); }, [location.pathname]);
+    useEffect(() => {
+        setMobileOpen(false);
+        setSearchOverlay(false);
+        setUserMenuOpen(false);
+    }, [location.pathname]);
 
-    const go = useCallback(path => {
-        setMobileOpen(false); setUserMenuOpen(false); navigate(path);
+    const go = useCallback((path) => {
+        setMobileOpen(false);
+        setUserMenuOpen(false);
+        navigate(path);
     }, [navigate]);
 
     const handleLogout = useCallback(() => {
-        logout(); setUserMenuOpen(false); setMobileOpen(false);
+        logout();
+        setUserMenuOpen(false);
+        setMobileOpen(false);
         navigate("/login", { replace: true });
     }, [logout, navigate]);
 
-    const handleSearch = useCallback(q => {
+    const handleSearch = useCallback((q) => {
         if (!q.trim()) return;
-        // Save to search history
         try {
-            const hist = JSON.parse(localStorage.getItem("ux_search_history") || "[]").filter(h => h.toLowerCase() !== q.trim().toLowerCase());
+            const key = "ux-search-history";
+            const hist = (JSON.parse(localStorage.getItem(key)) || [])
+                .filter((h) => h.toLowerCase() !== q.trim().toLowerCase());
             hist.unshift(q.trim());
-            localStorage.setItem("ux_search_history", JSON.stringify(hist.slice(0, 15)));
-        } catch { /* ignore */ }
+            localStorage.setItem(key, JSON.stringify(hist.slice(0, 15)));
+            setRecentSearches(hist.slice(0, 15));
+        } catch { }
         setSuggestions([]);
-        setMobileOpen(false); setSearchOverlay(false);
+        setSearchFocused(false);
+        setMobileOpen(false);
+        setSearchOverlay(false);
         if (isUHMode) {
             navigate(`/urbexon-hour?search=${encodeURIComponent(q.trim())}`);
         } else {
@@ -585,72 +453,60 @@ const Navbar = () => {
         }
     }, [navigate, isUHMode]);
 
-    /* ── Desktop search suggestions (debounced) ── */
+    /* ── Search suggestions ── */
     useEffect(() => {
         clearTimeout(suggestTimer.current);
         if (deskSearch.trim().length < 2) { setSuggestions([]); return; }
         suggestTimer.current = setTimeout(() => {
-            const typeParam = isUHMode ? "&productType=urbexon_hour" : "";
+            const typeParam = isUHMode ? "&productType=urbexon-hour" : "&productType=ecommerce";
             api.get(`/products/suggestions?q=${encodeURIComponent(deskSearch.trim())}${typeParam}`)
-                .then(r => setSuggestions(Array.isArray(r.data) ? r.data : []))
+                .then((r) => setSuggestions(Array.isArray(r.data) ? r.data : []))
                 .catch(() => setSuggestions([]));
         }, 300);
         return () => clearTimeout(suggestTimer.current);
-    }, [deskSearch]);
+    }, [deskSearch, isUHMode]);
 
-    const isCatActive = useCallback(cat =>
-        location.pathname === `/category/${cat}`, [location.pathname]);
-
-    const navbarHeight = isUHMode ? `68px` : `calc(68px + 41px)`;
-    const mobileHeight = `58px`;
+    const navbarHeight = isUHMode
+        ? uhCategories.length > 0 ? "calc(72px + 43px)" : "72px"
+        : ecoCategories.length > 0 ? "calc(72px + 43px)" : "72px";
 
     return (
         <>
             <style>{CSS}</style>
 
-            {/* Fixed wrapper */}
-            <div className="ux-nav" style={{
-                position: "fixed", top: 0, left: 0, right: 0, zIndex: 600,
-                transform: navHidden ? "translateY(-100%)" : "translateY(0)",
-                transition: "transform .3s cubic-bezier(.4,0,.2,1)",
-            }}>
-
-
+            <div
+                className="ux-nav"
+                style={{
+                    position: "fixed", top: 0, left: 0, right: 0, zIndex: 600,
+                    transform: navHidden ? "translateY(-100%)" : "translateY(0)",
+                    transition: "transform .3s cubic-bezier(.4,0,.2,1)",
+                }}
+            >
                 {/* ── MOBILE NAV ── */}
-                <nav className={`ux-mnav${isUHMode ? " ux-uh-mode" : ""}`} style={{ display: "none" }} id="ux-mob-nav">
+                <nav id="ux-mob-nav" className={`ux-mnav ${isUHMode ? "ux-uh-mode" : ""}`} style={{ display: "none" }}>
                     <div className="ux-mnav-in">
                         <button className="ux-m-logo" onClick={() => go(isUHMode ? "/urbexon-hour" : "/")}>
-                            {isUHMode ? (
-                                <>
-                                    <span className="ux-m-mark">U</span>
-                                    <span className="ux-m-word">rbexon</span>
-                                    <span className="ux-m-uh-text">Hour</span>
-                                </>
-                            ) : (
-                                <>
-                                    <span className="ux-m-mark">U</span>
-                                    <span className="ux-m-word">rbexon</span>
-                                </>
-                            )}
+                            <span className="ux-m-mark">U</span>
+                            <span className="ux-m-word">rbexon</span>
+                            {isUHMode && <span className="ux-m-uh-text">Hour</span>}
                         </button>
 
-                        {/* Mobile location */}
                         <button className="ux-m-loc-btn" onClick={() => setLocModalOpen(true)}>
                             <FaMapMarkerAlt size={11} style={{ color: isUHMode ? "#c9a84c" : "#111827", flexShrink: 0 }} />
-                            <span className="ux-m-loc-city">
-                                {locationData?.city || locationData?.label || "Location"}
-                            </span>
+                            <span className="ux-m-loc-city">{locationData?.city || locationData?.label || "Location"}</span>
                             <FaChevronDown size={7} style={{ color: "#9ca3af", flexShrink: 0 }} />
                         </button>
+
                         <div className="ux-m-acts">
                             <button className="ux-m-btn" onClick={() => setSearchOverlay(true)}>
                                 <FaSearch size={16} />
                             </button>
+
                             {isUHMode ? (
                                 <button className="ux-m-btn" style={{ color: "#c9a84c" }} onClick={() => go("/uh-cart")}>
                                     <FaBolt size={16} />
                                     {uhCount > 0 && (
-                                        <span className="ux-badge" style={{ background: "#c9a84c", color: "#1a1740", top: 3, right: 3 }}>
+                                        <span className="ux-badge" style={{ background: "#c9a84c", color: "#111827", border: "2px solid #111827", top: 3, right: 3 }}>
                                             {uhCount > 9 ? "9+" : uhCount}
                                         </span>
                                     )}
@@ -658,9 +514,9 @@ const Navbar = () => {
                             ) : (
                                 <>
                                     {uhCount > 0 && (
-                                        <button className="ux-m-btn" style={{ color: "#ff4500" }} onClick={() => go("/uh-cart")}>
+                                        <button className="ux-m-btn" style={{ color: "#c9a84c" }} onClick={() => go("/uh-cart")}>
                                             <FaBolt size={16} />
-                                            <span className="ux-badge ux-badge-org" style={{ top: 3, right: 3 }}>
+                                            <span className="ux-badge" style={{ background: "#c9a84c", color: "#111827", border: "2px solid #fff", top: 3, right: 3 }}>
                                                 {uhCount > 9 ? "9+" : uhCount}
                                             </span>
                                         </button>
@@ -668,16 +524,19 @@ const Navbar = () => {
                                     <button className="ux-m-btn" onClick={() => go("/cart")}>
                                         <FaShoppingCart size={16} />
                                         {ecommerceCount > 0 && (
-                                            <span className="ux-badge ux-badge-red">{ecommerceCount > 9 ? "9+" : ecommerceCount}</span>
+                                            <span className="ux-badge" style={{ background: "#ef4444", color: "#fff", top: 3, right: 3 }}>
+                                                {ecommerceCount > 9 ? "9+" : ecommerceCount}
+                                            </span>
                                         )}
                                     </button>
                                 </>
                             )}
-                            <button className="ux-m-btn" onClick={() => setMobileOpen(s => !s)}>
+
+                            <button className="ux-m-btn" onClick={() => setMobileOpen((s) => !s)}>
                                 <div className="ux-burger">
-                                    <span style={{ transform: mobileOpen ? "translateY(6px) rotate(45deg)" : "none" }} />
+                                    <span style={{ transform: mobileOpen ? "translateY(7px) rotate(45deg)" : "none" }} />
                                     <span style={{ opacity: mobileOpen ? 0 : 1 }} />
-                                    <span style={{ transform: mobileOpen ? "translateY(-6px) rotate(-45deg)" : "none" }} />
+                                    <span style={{ transform: mobileOpen ? "translateY(-8px) rotate(-45deg)" : "none" }} />
                                 </div>
                             </button>
                         </div>
@@ -685,26 +544,14 @@ const Navbar = () => {
                 </nav>
 
                 {/* ── DESKTOP NAV ── */}
-                <nav className={`ux-navbar ${scrolled ? "sc" : ""}${isUHMode ? " ux-uh-mode" : ""}`} id="ux-desk-nav">
+                <nav id="ux-desk-nav" className={`ux-navbar ${scrolled ? "sc" : ""} ${isUHMode ? "ux-uh-mode" : ""}`}>
                     <div className="ux-nav-row">
-
-                        {/* Logo */}
                         <button className="ux-logo-btn" onClick={() => go(isUHMode ? "/urbexon-hour" : "/")}>
-                            {isUHMode ? (
-                                <>
-                                    <span className="ux-logo-mark">U</span>
-                                    <span className="ux-logo-word">rbexon</span>
-                                    <span className="ux-logo-uh">Hour</span>
-                                </>
-                            ) : (
-                                <>
-                                    <span className="ux-logo-mark">U</span>
-                                    <span className="ux-logo-word">rbexon</span>
-                                </>
-                            )}
+                            <span className="ux-logo-mark">U</span>
+                            <span className="ux-logo-word">rbexon</span>
+                            {isUHMode && <span className="ux-logo-uh">Hour</span>}
                         </button>
 
-                        {/* Location selector */}
                         <button className="ux-loc-btn" onClick={() => setLocModalOpen(true)}>
                             <FaMapMarkerAlt size={14} className="ux-loc-icon" />
                             <div className="ux-loc-text">
@@ -717,9 +564,8 @@ const Navbar = () => {
                             <FaChevronDown size={8} style={{ color: "#9ca3af", flexShrink: 0 }} />
                         </button>
 
-                        {/* Switch to Hour / Back to Store */}
                         <button className="ux-hour-pill" onClick={() => navigate(isUHMode ? "/" : "/urbexon-hour")}>
-                            {isUHMode ? <FaShoppingCart size={11} /> : <FaBolt size={12} className="ux-hp-bolt" />}
+                            {isUHMode ? <FaShoppingCart size={11} /> : <FaBolt size={12} />}
                             <span className="ux-hp-label">{isUHMode ? "Back to Store" : "Urbexon Hour"}</span>
                         </button>
 
@@ -727,50 +573,65 @@ const Navbar = () => {
                         <div style={{ position: "relative", flex: 1, maxWidth: 680 }}>
                             <form
                                 className={`ux-srch ${searchFocused ? "foc" : ""}`}
-                                onSubmit={e => { e.preventDefault(); handleSearch(deskSearch); }}
+                                onSubmit={(e) => { e.preventDefault(); handleSearch(deskSearch); }}
                             >
                                 <input
                                     className="ux-srch-inp"
                                     type="text"
                                     value={deskSearch}
-                                    onChange={e => setDeskSearch(e.target.value)}
+                                    onChange={(e) => setDeskSearch(e.target.value)}
                                     onFocus={() => setSearchFocused(true)}
                                     onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
                                     placeholder={isUHMode ? "Search Urbexon Hour products..." : "Search for products, brands and more..."}
                                 />
-                                {deskSearch && (
+                                {!!deskSearch && (
                                     <button type="button" onClick={() => { setDeskSearch(""); setSuggestions([]); }}
                                         style={{ background: "none", border: "none", cursor: "pointer", padding: "0 8px", color: "#9ca3af", display: "flex", alignItems: "center" }}>
                                         <FaTimes size={12} />
                                     </button>
                                 )}
                                 <button type="submit" className="ux-srch-btn">
-                                    <FaSearch size={15} color="#fff" />
+                                    <FaSearch size={15} color={isUHMode ? "#111827" : "#fff"} />
                                 </button>
                             </form>
-                            {/* Suggestions dropdown */}
+
                             {searchFocused && (suggestions.length > 0 || (deskSearch.length < 2 && recentSearches.length > 0)) && (
                                 <div className="ux-sugg">
                                     {suggestions.length > 0 ? (
                                         <>
                                             <div className="ux-sugg-lbl">Suggestions</div>
-                                            {suggestions.map(s => (
-                                                <div key={s._id} className="ux-sugg-item" onMouseDown={() => { navigate(isUHMode ? `/uh-product/${s.slug || s._id}` : `/products/${s.slug || s._id}`); setSuggestions([]); setDeskSearch(""); }}>
-                                                    <img className="ux-sugg-img" src={s.images?.[0]?.url || "/placeholder.png"} alt="" onError={e => { e.target.src = "/placeholder.png"; }} />
+                                            {suggestions.map((s, i) => (
+                                                <div key={s?._id || i} className="ux-sugg-item"
+                                                    onMouseDown={() => {
+                                                        navigate(isUHMode
+                                                            ? `/uh-product/${s.slug || s._id}`
+                                                            : `/products/${s.slug || s._id}`
+                                                        );
+                                                        setSuggestions([]);
+                                                        setDeskSearch("");
+                                                    }}
+                                                >
+                                                    <img className="ux-sugg-img"
+                                                        src={s?.images?.[0]?.url || "/placeholder.png"}
+                                                        alt={s?.name || "product"}
+                                                        onError={(e) => { e.currentTarget.src = "/placeholder.png"; }}
+                                                    />
                                                     <div className="ux-sugg-info">
-                                                        <div className="ux-sugg-name">{s.name}</div>
-                                                        <div className="ux-sugg-meta">{s.brand ? `${s.brand} · ` : ""}{s.category || ""}</div>
+                                                        <div className="ux-sugg-name">{s?.name}</div>
+                                                        <div className="ux-sugg-meta">{s?.brand || s?.category || "Product"}</div>
                                                     </div>
                                                 </div>
                                             ))}
                                         </>
-                                    ) : recentSearches.length > 0 && (
+                                    ) : (
                                         <>
                                             <div className="ux-sugg-lbl">Recent Searches</div>
-                                            {recentSearches.slice(0, 6).map(t => (
-                                                <div key={t} className="ux-sugg-item" onMouseDown={() => handleSearch(t)}>
+                                            {recentSearches.slice(0, 6).map((t, i) => (
+                                                <div key={i} className="ux-sugg-item" onMouseDown={() => handleSearch(t)}>
                                                     <FaSearch size={11} color="#9ca3af" />
-                                                    <div className="ux-sugg-info"><div className="ux-sugg-name">{t}</div></div>
+                                                    <div className="ux-sugg-info">
+                                                        <div className="ux-sugg-name">{t}</div>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </>
@@ -779,67 +640,53 @@ const Navbar = () => {
                             )}
                         </div>
 
-                        {/* Right actions */}
+                        {/* Actions */}
                         <div className="ux-acts">
                             {isAuth ? (
                                 <>
-                                    {/* Wishlist — ecommerce only */}
                                     {!isUHMode && (
                                         <button className="ux-icon-btn" onClick={() => go("/wishlist")}>
                                             <FaHeart size={20} color="#374151" />
                                             <span className="ux-icon-btn-lbl">Wishlist</span>
                                         </button>
                                     )}
-
-                                    {/* Notifications */}
                                     {!isUHMode && <NotificationCenter />}
+                                    <div className="ux-vdiv" />
 
-                                    {!isUHMode && <div className="ux-vdiv" />}
-
-                                    {/* UH Cart — always visible in UH mode with gold style */}
                                     {isUHMode ? (
-                                        <button className="ux-uh-cart-always" onClick={() => go("/uh-cart")}>
+                                        <button className="ux-uh-cart-btn" onClick={() => go("/uh-cart")}>
                                             <FaBolt size={14} />
-                                            <span>Cart</span>
-                                            {uhCount > 0 && (
-                                                <span className="ux-badge" style={{ position: "static", border: "none", minWidth: 20, height: 20, borderRadius: 10 }}>
-                                                    {uhCount > 9 ? "9+" : uhCount}
-                                                </span>
-                                            )}
+                                            <span>UH Cart</span>
+                                            {uhCount > 0 && <span className="ux-cart-count">{uhCount > 9 ? "9+" : uhCount}</span>}
                                         </button>
                                     ) : (
                                         <>
-                                            {/* UH Cart mini (ecommerce page) */}
                                             {uhCount > 0 && (
-                                                <button className="ux-uh-cart" onClick={() => go("/uh-cart")}>
-                                                    <FaBolt size={14} />
-                                                    <span>{uhCount}</span>
+                                                <button className="ux-uh-mini" onClick={() => go("/uh-cart")}>
+                                                    <FaBolt size={12} />
+                                                    <span className="ux-uh-mini-count">{uhCount > 9 ? "9+" : uhCount}</span>
                                                 </button>
                                             )}
-
-                                            {/* Ecommerce Cart */}
-                                            <button className="ux-icon-btn" onClick={() => go("/cart")}>
-                                                <FaShoppingCart size={20} color="#374151" />
-                                                {ecommerceCount > 0 && (
-                                                    <span className="ux-badge ux-badge-red">{ecommerceCount > 9 ? "9+" : ecommerceCount}</span>
-                                                )}
-                                                <span className="ux-icon-btn-lbl">Cart</span>
+                                            <button className="ux-eco-cart" onClick={() => go("/cart")}>
+                                                <FaShoppingCart size={15} />
+                                                <span>Cart</span>
+                                                {ecommerceCount > 0 && <span className="ux-cart-count">{ecommerceCount > 9 ? "9+" : ecommerceCount}</span>}
                                             </button>
                                         </>
                                     )}
 
                                     <div className="ux-vdiv" />
 
-                                    {/* User dropdown */}
                                     <div className="ux-usr-wrap" ref={userMenuRef}>
-                                        <button className="ux-usr-btn" onClick={() => setUserMenuOpen(s => !s)}>
+                                        <button className="ux-usr-btn" onClick={() => setUserMenuOpen((s) => !s)}>
                                             <div className="ux-usr-av">{user?.name?.[0]?.toUpperCase()}</div>
                                             <div>
                                                 <div className="ux-usr-name">{user?.name?.split(" ")[0]}</div>
                                                 <div className="ux-usr-sub">My Account</div>
                                             </div>
                                             <FaChevronDown size={9} color="#9ca3af"
-                                                style={{ transform: userMenuOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
+                                                style={{ transform: userMenuOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}
+                                            />
                                         </button>
 
                                         {userMenuOpen && (
@@ -868,24 +715,17 @@ const Navbar = () => {
                                 </>
                             ) : (
                                 <>
-                                    {/* Guest cart — context-aware */}
                                     {isUHMode ? (
-                                        <button className="ux-uh-cart-always" onClick={() => go("/uh-cart")}>
+                                        <button className="ux-uh-cart-btn" onClick={() => go("/uh-cart")}>
                                             <FaBolt size={14} />
-                                            <span>Cart</span>
-                                            {uhCount > 0 && (
-                                                <span className="ux-badge" style={{ position: "static", border: "none", minWidth: 20, height: 20, borderRadius: 10 }}>
-                                                    {uhCount > 9 ? "9+" : uhCount}
-                                                </span>
-                                            )}
+                                            <span>UH Cart</span>
+                                            {uhCount > 0 && <span className="ux-cart-count">{uhCount > 9 ? "9+" : uhCount}</span>}
                                         </button>
                                     ) : (
-                                        <button className="ux-icon-btn" onClick={() => go("/cart")}>
-                                            <FaShoppingCart size={20} color="#374151" />
-                                            {ecommerceCount > 0 && (
-                                                <span className="ux-badge ux-badge-red">{ecommerceCount > 9 ? "9+" : ecommerceCount}</span>
-                                            )}
-                                            <span className="ux-icon-btn-lbl">Cart</span>
+                                        <button className="ux-eco-cart" onClick={() => go("/cart")}>
+                                            <FaShoppingCart size={15} />
+                                            <span>Cart</span>
+                                            {ecommerceCount > 0 && <span className="ux-cart-count">{ecommerceCount > 9 ? "9+" : ecommerceCount}</span>}
                                         </button>
                                     )}
                                     <div className="ux-vdiv" />
@@ -896,135 +736,202 @@ const Navbar = () => {
                         </div>
                     </div>
 
-                    {/* Category bar (hidden in UH mode) */}
-                    {categories.length > 0 && !isUHMode && (
+                    {/* Ecommerce category bar */}
+                    {!isUHMode && ecoCategories.length > 0 && (
                         <div className="ux-catbar">
                             <div className="ux-catbar-in">
-                                {categories.map(cat => (
-                                    <button
-                                        key={cat._id}
+                                {ecoCategories.map((cat) => (
+                                    <button key={cat._id || cat.id}
                                         className={`ux-catbtn ${isCatActive(cat.slug) ? "act" : ""}`}
-                                        onClick={() => navigate(`/category/${cat.slug}`)}
-                                    >
+                                        onClick={() => navigate(`/category/${cat.slug}`)}>
                                         {cat.name}
                                         {cat.isHot && <span className="ux-hot">HOT</span>}
                                     </button>
                                 ))}
-                                <button
-                                    className={`ux-catbtn ${location.pathname === "/deals" ? "act" : ""}`}
-                                    onClick={() => navigate("/deals")}
-                                >
+                                <button className={`ux-catbtn ${location.pathname === "/deals" ? "act" : ""}`}
+                                    onClick={() => navigate("/deals")}>
                                     Deals <span className="ux-hot">HOT</span>
                                 </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* UH category bar — FIX: navigate to /urbexon-hour/:slug */}
+                    {isUHMode && uhCategories.length > 0 && (
+                        <div className="ux-uh-catbar">
+                            <div className="ux-uh-catbar-in">
+                                <button
+                                    className={`ux-uh-catbtn ${location.pathname === "/urbexon-hour" ? "act" : ""}`}
+                                    onClick={() => navigate("/urbexon-hour")}>
+                                    All <span className="ux-uh-fast">FAST</span>
+                                </button>
+                                {uhCategories.map((cat) => (
+                                    <button key={cat._id || cat.id}
+                                        className={`ux-uh-catbtn ${isUHCatActive(cat.slug) ? "act" : ""}`}
+                                        onClick={() => navigate(uhCatPath(cat.slug))}>
+                                        {cat.name}
+                                        {cat.isFast && <span className="ux-uh-fast">FAST</span>}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     )}
                 </nav>
             </div>
 
-            {/* Spacers */}
-            <div id="ux-spacer-mob" style={{ height: mobileHeight, display: "none" }} />
+            <div id="ux-spacer-mob" style={{ height: 64, display: "none" }} />
             <div id="ux-spacer-desk" style={{ height: navbarHeight }} />
 
-            {/* Mobile Menu */}
-            <div className={`ux-nav ux-mmenu ${mobileOpen ? "on" : ""}`}>
-                {isAuth ? (
-                    <div className="ux-mm-head">
-                        <div className="ux-mm-av-row">
-                            <div className="ux-mm-av">{user?.name?.[0]?.toUpperCase()}</div>
-                            <div>
-                                <div className="ux-mm-nm">{user?.name}</div>
-                                <div className="ux-mm-em">{user?.email}</div>
-                            </div>
-                        </div>
-                        <div className="ux-mm-chips">
-                            {menuItems.map(({ icon, label, path }) => (
-                                <button key={path} className="ux-mm-chip" onClick={() => go(path)}>
-                                    {icon} {label}
-                                </button>
-                            ))}
-                            <button className="ux-mm-chip ux-mm-chip-out" onClick={handleLogout}>
-                                <FaSignOutAlt size={11} /> Sign Out
-                            </button>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="ux-mm-auth" style={{ paddingTop: 70 }}>
-                        <button className="ux-mm-sin" onClick={() => go("/login")}>Login</button>
-                        <button className="ux-mm-reg" onClick={() => go("/register")}>Register</button>
-                    </div>
-                )}
+            <div className={`ux-mmenu-backdrop ${mobileOpen ? "on" : ""}`} onClick={() => setMobileOpen(false)} />
 
-                <div>
-                    {isUHMode ? (
-                        <>
-                            <div className="ux-mm-lbl">Quick Links</div>
-                            <div className="ux-mm-row" onClick={() => go("/orders")}>
-                                <span><FaBox size={12} /> My Orders</span>
-                                <FaChevronRight size={10} color="#9ca3af" />
-                            </div>
-                            <div className="ux-mm-row" onClick={() => go("/profile")}>
-                                <span><FaUser size={12} /> My Profile</span>
-                                <FaChevronRight size={10} color="#9ca3af" />
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <div className="ux-mm-lbl">Shop by Category</div>
-                            {categories.map(cat => (
-                                <div key={cat._id} className="ux-mm-row"
-                                    onClick={() => { setMobileOpen(false); navigate(`/category/${cat.slug}`); }}>
-                                    <span>{cat.name}{cat.isHot && <span className="ux-hot" style={{ marginLeft: 8 }}>HOT</span>}</span>
-                                    <FaChevronRight size={10} color="#9ca3af" />
-                                </div>
-                            ))}
-                            <div className="ux-mm-row" onClick={() => { setMobileOpen(false); navigate("/deals"); }}>
-                                <span>Deals <span className="ux-hot">HOT</span></span>
-                                <FaChevronRight size={10} color="#9ca3af" />
-                            </div>
-                        </>
-                    )}
+            {/* ── MOBILE MENU ── */}
+            <div className={`ux-nav ux-mmenu ${mobileOpen ? "on" : ""}`}>
+                <div className="ux-mm-topbar">
+                    <button className="ux-m-logo" onClick={() => go(isUHMode ? "/urbexon-hour" : "/")}>
+                        <span className="ux-m-mark">U</span>
+                        <span className="ux-m-word">rbexon</span>
+                        {isUHMode && <span className="ux-m-uh-text">Hour</span>}
+                    </button>
+                    <button className="ux-m-loc-btn" onClick={() => setLocModalOpen(true)}>
+                        <FaMapMarkerAlt size={11} style={{ color: isUHMode ? "#c9a84c" : "#111827", flexShrink: 0 }} />
+                        <span className="ux-m-loc-city">{locationData?.city || locationData?.label || "Location"}</span>
+                        <FaChevronDown size={7} style={{ color: "#9ca3af", flexShrink: 0 }} />
+                    </button>
+                    <button className="ux-mm-close" onClick={() => setMobileOpen(false)}>
+                        <FaTimes size={18} />
+                    </button>
                 </div>
 
-                {isUHMode ? (
-                    <div className="ux-mm-uh"
-                        onClick={() => { setMobileOpen(false); navigate("/"); }}>
-                        <FaShoppingCart size={20} color="#fff" />
-                        <div>
-                            <div className="ux-mm-uh-nm">Back to Store</div>
-                            <div className="ux-mm-uh-sub">Browse ecommerce products</div>
+                <div className="ux-mm-scroll">
+                    {isAuth ? (
+                        <div className="ux-mm-head">
+                            <div className="ux-mm-av-row">
+                                <div className="ux-mm-av">{user?.name?.[0]?.toUpperCase()}</div>
+                                <div style={{ minWidth: 0 }}>
+                                    <div className="ux-mm-nm">{user?.name}</div>
+                                    <div className="ux-mm-em">{user?.email}</div>
+                                </div>
+                            </div>
+                            <div className="ux-mm-chips">
+                                {menuItems.map(({ icon, label, path }) => (
+                                    <button key={path} className="ux-mm-chip" onClick={() => go(path)}>
+                                        {icon} {label}
+                                    </button>
+                                ))}
+                                <button className="ux-mm-chip ux-mm-chip-out" onClick={handleLogout}>
+                                    <FaSignOutAlt size={11} /> Sign Out
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                ) : (
-                    <div className="ux-mm-uh" onClick={() => { setMobileOpen(false); navigate("/urbexon-hour"); }}>
-                        <FaBolt size={20} color="#c9a84c" />
-                        <div>
-                            <div className="ux-mm-uh-nm">Urbexon Hour</div>
-                            <div className="ux-mm-uh-sub">Express delivery in 45–120 mins</div>
+                    ) : (
+                        <div className="ux-mm-auth" style={{ marginTop: 10 }}>
+                            <button className="ux-mm-sin" onClick={() => go("/login")}>Login</button>
+                            <button className="ux-mm-reg" onClick={() => go("/register")}>Register</button>
                         </div>
+                    )}
+
+                    <div className="ux-mm-section">
+                        <div className="ux-mm-lbl">{isUHMode ? "UH Categories" : "Shop by Category"}</div>
+
+                        {isUHMode ? (
+                            <>
+                                <div className="ux-mm-row" onClick={() => go("/urbexon-hour")}>
+                                    <div className="ux-mm-row-left">
+                                        <FaBolt size={12} style={{ color: "#c9a84c" }} />
+                                        <span className="ux-mm-row-text">All Products</span>
+                                    </div>
+                                    <FaChevronRight size={12} className="ux-mm-arrow" />
+                                </div>
+                                {/* FIX: Mobile menu bhi /urbexon-hour/:slug navigate kare */}
+                                {uhCategories.map((cat) => (
+                                    <div key={cat._id || cat.id} className="ux-mm-row"
+                                        onClick={() => go(uhCatPath(cat.slug))}>
+                                        <div className="ux-mm-row-left">
+                                            <span className="ux-mm-row-text">
+                                                {cat.name}
+                                                {cat.isFast && (
+                                                    <span style={{ marginLeft: 8, fontSize: 10, background: "#22c55e", color: "#fff", padding: "2px 6px", borderRadius: 999, fontWeight: 800 }}>
+                                                        FAST
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </div>
+                                        <FaChevronRight size={12} className="ux-mm-arrow" />
+                                    </div>
+                                ))}
+                            </>
+                        ) : (
+                            <>
+                                {ecoCategories.map((cat) => (
+                                    <div key={cat._id || cat.id} className="ux-mm-row"
+                                        onClick={() => go(`/category/${cat.slug}`)}>
+                                        <div className="ux-mm-row-left">
+                                            <span className="ux-mm-row-text">
+                                                {cat.name}
+                                                {cat.isHot && <span className="ux-hot" style={{ marginLeft: 8 }}>HOT</span>}
+                                            </span>
+                                        </div>
+                                        <FaChevronRight size={12} className="ux-mm-arrow" />
+                                    </div>
+                                ))}
+                                <div className="ux-mm-row" onClick={() => go("/deals")}>
+                                    <div className="ux-mm-row-left">
+                                        <span className="ux-mm-row-text">Deals <span className="ux-hot" style={{ marginLeft: 8 }}>HOT</span></span>
+                                    </div>
+                                    <FaChevronRight size={12} className="ux-mm-arrow" />
+                                </div>
+                            </>
+                        )}
                     </div>
-                )}
+
+                    {isAuth && !isUHMode && (
+                        <div className="ux-mm-section">
+                            <div className="ux-mm-lbl">Quick Links</div>
+                            <div className="ux-mm-row" onClick={() => go("/orders")}>
+                                <div className="ux-mm-row-left"><FaBox size={13} /><span className="ux-mm-row-text">My Orders</span></div>
+                                <FaChevronRight size={12} className="ux-mm-arrow" />
+                            </div>
+                            <div className="ux-mm-row" onClick={() => go("/wishlist")}>
+                                <div className="ux-mm-row-left"><FaHeart size={13} /><span className="ux-mm-row-text">Wishlist</span></div>
+                                <FaChevronRight size={12} className="ux-mm-arrow" />
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="ux-mm-uh-wrap">
+                        {isUHMode ? (
+                            <div className="ux-mm-uh" onClick={() => go("/")}>
+                                <FaShoppingCart size={20} color="#fff" />
+                                <div>
+                                    <div className="ux-mm-uh-nm">Back to Store</div>
+                                    <div className="ux-mm-uh-sub">Browse all e-commerce products</div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="ux-mm-uh" onClick={() => go("/urbexon-hour")}>
+                                <FaBolt size={20} color="#f5c84c" />
+                                <div>
+                                    <div className="ux-mm-uh-nm">Urbexon Hour</div>
+                                    <div className="ux-mm-uh-sub">Express delivery in 45–120 mins</div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
 
-            {mobileOpen && (
-                <div onClick={() => setMobileOpen(false)}
-                    style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.3)", zIndex: 499 }} />
-            )}
-
-            {/* Search Overlay */}
+            {/* ── SEARCH OVERLAY ── */}
             {searchOverlay && (
-                <div className="ux-nav ux-sov"
-                    onClick={e => { if (e.target === e.currentTarget) setSearchOverlay(false); }}>
+                <div className="ux-nav ux-sov" onClick={(e) => { if (e.target === e.currentTarget) setSearchOverlay(false); }}>
                     <div className="ux-sov-box">
-                        <form className="ux-sov-form"
-                            onSubmit={e => { e.preventDefault(); handleSearch(searchVal); }}>
+                        <form className="ux-sov-form" onSubmit={(e) => { e.preventDefault(); handleSearch(searchVal); }}>
                             <input
                                 ref={searchRef}
                                 className="ux-sov-inp"
                                 type="text"
                                 value={searchVal}
-                                onChange={e => setSearchVal(e.target.value)}
-                                placeholder={isUHMode ? "Search Urbexon Hour products…" : "Search for products, brands and more…"}
+                                onChange={(e) => setSearchVal(e.target.value)}
+                                placeholder={isUHMode ? "Search Urbexon Hour products" : "Search for products, brands and more"}
                             />
                             <button type="button" className="ux-sov-close" onClick={() => setSearchOverlay(false)}>
                                 <FaTimes size={18} />
@@ -1036,7 +943,7 @@ const Navbar = () => {
                                 : isUHMode
                                     ? ["Grocery", "Snacks", "Drinks", "Fresh", "Dairy", "Bakery"]
                                     : ["Fashion", "Electronics", "Watches", "Footwear", "Home Decor", "Sports"]
-                            ).map(t => (
+                            ).map((t) => (
                                 <button key={t} className="ux-sov-tag" onClick={() => handleSearch(t)}>{t}</button>
                             ))}
                         </div>
@@ -1044,20 +951,20 @@ const Navbar = () => {
                 </div>
             )}
 
-            {/* Responsive CSS */}
             <style>{`
                 @media(max-width:767px){
-                    #ux-desk-nav { display:none!important; }
-                    #ux-mob-nav  { display:block!important; }
-                    #ux-spacer-mob  { display:block!important; }
-                    #ux-spacer-desk { display:none!important; }
+                    #ux-desk-nav{display:none !important}
+                    #ux-mob-nav{display:block !important}
+                    #ux-spacer-mob{display:block !important}
+                    #ux-spacer-desk{display:none !important}
                 }
             `}</style>
 
-            {/* Location Modal */}
             {locModalOpen && <LocationModal onClose={() => setLocModalOpen(false)} />}
         </>
     );
 };
 
 export default Navbar;
+
+

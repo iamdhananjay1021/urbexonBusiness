@@ -346,7 +346,7 @@ const MyOrders = () => {
                                                 <div key={idx} className="mo-item-row">
                                                     <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg border border-stone-100 bg-stone-50 flex items-center justify-center shrink-0 overflow-hidden">
                                                         {img
-                                                            ? <img src={img} alt={item.name} className="w-full h-full object-contain p-1" onError={(e) => (e.target.style.display = "none")} />
+                                                            ? <img src={img} alt={item.name} className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => (e.target.style.display = "none")} />
                                                             : <FaBoxOpen size={16} className="text-stone-300" />}
                                                     </div>
                                                     <div className="flex-1 min-w-0">

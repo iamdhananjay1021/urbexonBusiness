@@ -26,6 +26,7 @@ import express from "express";
 import multer from "multer";
 
 import { registerVendor, getVendorStatus } from "../../controllers/vendor/vendorAuth.js";
+import { sendVendorOtp, verifyVendorOtpRegister, vendorOtpLogin } from "../../controllers/authController.js";
 import { getFeaturedVendors, getVendorStore, getNearbyVendors } from "../../controllers/vendor/vendorPublic.js";
 import { getMyProfile, updateMyProfile, toggleShopOpen, updateLocation } from "../../controllers/vendor/venderProfile.js";
 import { getEarnings, getWeeklyEarnings, getSubscription, requestPlanChange, cancelPlanChangeRequest } from "../../controllers/vendor/vendorEarnings.js";
@@ -34,7 +35,7 @@ import {
     verifySubscriptionPayment, handleSubscriptionPaymentFailure,
     getSubscriptionPaymentHistory,
 } from "../../controllers/vendor/vendorSubscriptionPayment.js";
-import { getVendorOrders, updateOrderStatus } from "../../controllers/vendor/vendorOrders.js";
+import { getVendorOrders, getVendorOrderById, updateOrderStatus } from "../../controllers/vendor/vendorOrders.js";
 import {
     getAllVendors, getVendorDetail,
     approveVendor, rejectVendor, suspendVendor,
@@ -92,9 +93,17 @@ router.get("/vendor/featured", getFeaturedVendors);
 router.get("/vendor/nearby", getNearbyVendors);
 router.get("/vendor/store/:slug", getVendorStore);
 
-// ── Vendor Registration (PUBLIC — no protect, auto creates user) ──────────────
+// ── Vendor OTP Flow (Public)
+router.post("/vendor/send-otp", validateBody({ email: { required: true, type: "email" } }), sendVendorOtp);
+router.post("/vendor/verify-otp-register", validateBody({ email: { required: true, type: "email" }, otp: { required: true, minLength: 6, maxLength: 6 } }), verifyVendorOtpRegister);
+router.post("/vendor/login-otp", validateBody({ email: { required: true, type: "email" }, otp: { required: true, minLength: 6, maxLength: 6 } }), vendorOtpLogin);
+
+
+
+// ── Vendor Registration (PROTECTED — user must be logged in) ────────────────────
 router.post(
     "/vendor/register",
+    protect,  // ✅ REQUIRED: User must be authenticated with valid JWT
     docUpload,
     validateBody({
         shopName: { required: true, minLength: 2, maxLength: 100 },
@@ -116,7 +125,8 @@ router.patch("/vendor/location", protectVendor, requireApprovedVendor, updateLoc
 
 // ── Vendor Orders ─────────────────────────────────────────────────────────────
 router.get("/vendor/orders", protectVendor, requireApprovedVendor, requireActiveSubscription, getVendorOrders);
-router.patch("/vendor/orders/:id/status", protectVendor, requireApprovedVendor, requireActiveSubscription, updateOrderStatus);
+router.get("/vendor/orders/:id", protectVendor, requireApprovedVendor, requireActiveSubscription, getVendorOrderById);
+router.patch("/vendor/orders/:id/status", protectVendor, requireApprovedVendor, requireActiveSubscription, validateBody({ status: { required: true, enum: ["CONFIRMED", "PACKED", "READY_FOR_PICKUP", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"] } }), updateOrderStatus);
 
 // ── Vendor Earnings ───────────────────────────────────────────────────────────
 router.get("/vendor/earnings", protectVendor, requireApprovedVendor, getEarnings);

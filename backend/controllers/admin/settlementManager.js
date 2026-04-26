@@ -1,5 +1,6 @@
 import { Settlement } from "../../models/vendorModels/Settlement.js";
 import Vendor from "../../models/vendorModels/Vendor.js";
+import mongoose from "mongoose";
 
 // ══════════════════════════════════════════════════════════════
 // ADMIN — Get all settlements
@@ -41,7 +42,6 @@ export const processWeeklySettlements = async (req, res) => {
             return res.json({ success: true, message: "No pending settlements to process", count: 0 });
         }
 
-        // Group by vendor for summary
         const vendorMap = {};
         pending.forEach((s) => {
             const vid = s.vendorId.toString();
@@ -76,31 +76,50 @@ export const processWeeklySettlements = async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 // ADMIN — Mark single settlement as paid
 // PATCH /api/admin/settlements/:id/paid
+// FIX #1 + #3: MongoDB transaction + idempotency guard
 // ══════════════════════════════════════════════════════════════
 export const markSettlementPaid = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const { paymentRef, paymentMethod } = req.body;
 
-        const settlement = await Settlement.findById(req.params.id);
-        if (!settlement) return res.status(404).json({ success: false, message: "Settlement not found" });
-        if (settlement.status === "paid") return res.status(400).json({ success: false, message: "Settlement already paid" });
-
-        settlement.status = "paid";
-        settlement.paymentRef = paymentRef;
-        settlement.paymentMethod = paymentMethod;
-        settlement.settlementDate = new Date();
-        await settlement.save();
-
-        // Update vendor earnings balance
-        await Vendor.findByIdAndUpdate(settlement.vendorId, {
-            $inc: {
-                pendingSettlement: -settlement.vendorEarning,
-                totalEarnings: settlement.vendorEarning,
+        // FIX #3 — Idempotency: fetch inside session with status condition
+        // Using findOneAndUpdate with status filter is atomic — prevents race
+        const settlement = await Settlement.findOneAndUpdate(
+            { _id: req.params.id, status: { $ne: "paid" } }, // FIX #2 — anti-race condition
+            {
+                status: "paid",
+                paymentRef,
+                paymentMethod,
+                settlementDate: new Date(),
             },
-        });
+            { new: true, session }
+        );
+
+        // FIX #3 — If null, either not found or already paid
+        if (!settlement) {
+            await session.abortTransaction();
+            session.endSession();
+            const existing = await Settlement.findById(req.params.id).lean();
+            if (!existing) return res.status(404).json({ success: false, message: "Settlement not found" });
+            return res.status(400).json({ success: false, message: "Settlement already paid" });
+        }
+
+        // FIX #1 — Vendor balance update inside same transaction (atomic)
+        await Vendor.findByIdAndUpdate(
+            settlement.vendorId,
+            { $inc: { pendingSettlement: -settlement.vendorEarning, totalEarnings: settlement.vendorEarning } },
+            { session }
+        );
+
+        await session.commitTransaction();
+        session.endSession();
 
         res.json({ success: true, message: "Settlement marked as paid", settlement });
     } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
         console.error("[markSettlementPaid]", err);
         res.status(500).json({ success: false, message: "Server error" });
     }
@@ -109,23 +128,34 @@ export const markSettlementPaid = async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 // ADMIN — Mark entire batch as paid
 // PATCH /api/admin/settlements/batch/:batchId/paid
+// FIX #1: MongoDB transaction for batch + vendor balance atomicity
 // ══════════════════════════════════════════════════════════════
 export const markBatchPaid = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const { batchId } = req.params;
         const { paymentRef, paymentMethod } = req.body;
 
-        const settlements = await Settlement.find({ batchId, status: "processing" });
+        const settlements = await Settlement.find(
+            { batchId, status: "processing" },
+            null,
+            { session }
+        );
+
         if (!settlements.length) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({ success: false, message: "No processing settlements found for this batch" });
         }
 
+        // FIX #1 — All updates inside same transaction
         await Settlement.updateMany(
             { batchId, status: "processing" },
-            { status: "paid", paymentRef, paymentMethod, settlementDate: new Date() }
+            { status: "paid", paymentRef, paymentMethod, settlementDate: new Date() },
+            { session }
         );
 
-        // Update each vendor's balance
         const vendorMap = {};
         settlements.forEach((s) => {
             const vid = s.vendorId.toString();
@@ -133,13 +163,19 @@ export const markBatchPaid = async (req, res) => {
             vendorMap[vid] += s.vendorEarning;
         });
 
+        // FIX #1 — All vendor balance updates in same transaction
         await Promise.all(
             Object.entries(vendorMap).map(([vendorId, amount]) =>
-                Vendor.findByIdAndUpdate(vendorId, {
-                    $inc: { pendingSettlement: -amount, totalEarnings: amount },
-                })
+                Vendor.findByIdAndUpdate(
+                    vendorId,
+                    { $inc: { pendingSettlement: -amount, totalEarnings: amount } },
+                    { session }
+                )
             )
         );
+
+        await session.commitTransaction();
+        session.endSession();
 
         res.json({
             success: true,
@@ -147,6 +183,8 @@ export const markBatchPaid = async (req, res) => {
             totalSettlements: settlements.length,
         });
     } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
         console.error("[markBatchPaid]", err);
         res.status(500).json({ success: false, message: "Server error" });
     }

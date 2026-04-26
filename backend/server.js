@@ -18,8 +18,8 @@ import xss from "xss-clean";
 import mongoSanitize from "express-mongo-sanitize";
 
 import connectDB from "./config/db.js";
-import { connectRedis } from "./config/redis.js";
-import { initFirebase } from "./config/firebase.js";
+import { connectRedis, isRedisUp, getCacheStatus } from "./config/redis.js";
+import { initFirebase, isFcmAvailable } from "./config/firebase.js";
 import { getCacheStats } from "./utils/Cache.js";
 import { getStreamStats } from "./utils/realtimeHub.js";
 import { initWebSocket, getWsStats } from "./utils/wsHub.js";
@@ -81,6 +81,17 @@ const httpServer = createServer(app);
 connectDB();
 connectRedis();
 initFirebase();
+
+// ────────────────────────────────────────────
+// STARTUP STATUS CHECKS
+// ────────────────────────────────────────────
+const cacheStatus = getCacheStatus();
+console.log("\n🔍 STARTUP CHECKS:");
+console.log(`   Redis:     ${isRedisUp() ? "🟢 UP" : "🟡 FALLBACK (NodeCache)"}`);
+console.log(`   Cache:     ✅ ACTIVE (${cacheStatus.backend})`);
+console.log(`   Firebase:  ${isFcmAvailable() ? "🟢 READY (FCM available)" : "🟡 DISABLED (FCM not configured)"}`);
+console.log("");
+
 app.set("trust proxy", 1);
 
 // ── Security ─────────────────────────────────────────────
@@ -94,11 +105,12 @@ const buildAllowedOrigins = () => {
         'https://urbexon.in',
         'https://admin.urbexon.in',
         'https://vendor.urbexon.in',
-        'https://delivery.partner.urbexon.in',  // ← yeh add karo
+        'https://delivery.partner.urbexon.in',
         'http://localhost:5173',
         'http://localhost:5174',
         'http://localhost:5175',
         'http://localhost:5176',
+        'http://localhost:5177',  // ✅ yeh add kar
     ];
     const fromEnv = [
         process.env.FRONTEND_URL,

@@ -514,7 +514,7 @@ const Profile = () => {
                                                 {order.orderItems?.slice(0, 3).map((item, i) => (
                                                     <div key={i} style={{ width: 44, height: 44, borderRadius: 4, overflow: "hidden", border: "1px solid var(--pf-border)", flexShrink: 0, background: "var(--pf-cream)" }}>
                                                         {item.image || item.images?.[0]?.url
-                                                            ? <img src={item.image || item.images?.[0]?.url} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                                            ? <img src={item.image || item.images?.[0]?.url} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
                                                             : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>📦</div>
                                                         }
                                                     </div>

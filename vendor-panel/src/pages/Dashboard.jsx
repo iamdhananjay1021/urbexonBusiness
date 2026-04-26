@@ -93,7 +93,7 @@ const OrderRow = memo(({ order, onRefresh }) => {
                 {order.customerName || order.customer?.name || "Guest"}
             </td>
             <td style={{ padding: "14px 16px", fontSize: 14, fontWeight: 700, color: "#111827" }}>
-                {fmt(order.totalAmount || order.pricing?.finalAmount || 0)}
+                {fmt(order.vendorSummary?.subtotal ?? order.totalAmount ?? order.pricing?.finalAmount ?? 0)}
             </td>
             <td style={{ padding: "14px 16px" }}>
                 <span style={{

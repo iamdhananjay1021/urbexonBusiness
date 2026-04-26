@@ -2,6 +2,8 @@
  * paymentService.js
  * ✅ Razorpay flow — server decides amount
  * ✅ No frontend amount calculation
+ * ✅ FIX: customerName, phone, email, address sent to create-order
+ * ✅ FIX: All required fields passed so backend validation passes
  */
 
 import api from "../api/axios";
@@ -22,7 +24,7 @@ const loadRazorpay = () =>
  * ✅ Server creates order with correct amount
  * ✅ Amount shown to user comes from server response
  *
- * @param {{ items, contact, address, navigate, onSuccess, onFailure, onCancel }}
+ * @param {{ items, contact, address, navigate, onSuccess, onFailure, onCancel, deliveryType, coupon }}
  */
 export const initiateOnlinePayment = async ({
     items,
@@ -39,20 +41,30 @@ export const initiateOnlinePayment = async ({
     const loaded = await loadRazorpay();
     if (!loaded) throw new Error("Payment gateway failed to load. Please refresh and try again.");
 
-    // ✅ Server creates Razorpay order with DB-calculated amount
+    // ✅ FIX: Send all required fields to create-order
+    // Backend validateOrderParams needs: customerName, phone, address, items, pincode
     const { data: rpOrder } = await api.post("/payment/create-order", {
         items: serializeItems(items),
+        // FIX: these fields were missing — backend returns 400 without them
+        customerName: contact.name,
+        phone: address?.phone || contact.phone,
+        email: contact.email || "",
+        address: formatAddressString(address),
+        city: address?.city || "",
+        state: address?.state || "",
+        pincode: address?.pincode || "",
+        latitude: address?.lat || null,
+        longitude: address?.lng || null,
         deliveryType,
         distanceKm,
-        pincode: address?.pincode,
         ...(coupon?.couponId && { couponId: coupon.couponId }),
         ...(coupon?.code && { couponCode: coupon.code }),
     });
 
     return new Promise((resolve, reject) => {
-        const options = {
+        const rzpOptions = {
             key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-            amount: rpOrder.amount,            // ✅ Server amount
+            amount: rpOrder.amount,         // ✅ Server amount
             currency: rpOrder.currency,
             name: "UrbeXon",
             description: `Order — ${items.length} item${items.length > 1 ? "s" : ""}`,
@@ -74,14 +86,14 @@ export const initiateOnlinePayment = async ({
                         orderData: {
                             items: serializeItems(items),
                             customerName: contact.name,
-                            phone: address.phone || contact.phone,
+                            phone: address?.phone || contact.phone,
                             email: contact.email || "",
                             address: formatAddressString(address),
-                            city: address.city || "",
-                            state: address.state || "",
-                            pincode: address?.pincode,
-                            latitude: address.lat,
-                            longitude: address.lng,
+                            city: address?.city || "",
+                            state: address?.state || "",
+                            pincode: address?.pincode || "",
+                            latitude: address?.lat || null,
+                            longitude: address?.lng || null,
                             deliveryType,
                             distanceKm,
                             ...(coupon?.couponId && { couponId: coupon.couponId }),
@@ -98,7 +110,10 @@ export const initiateOnlinePayment = async ({
                         });
                     }
                 } catch (err) {
-                    const msg = err.response?.data?.message || "Payment done but order failed. Contact support with Payment ID: " + response.razorpay_payment_id;
+                    const msg =
+                        err.response?.data?.message ||
+                        "Payment done but order failed. Contact support with Payment ID: " +
+                        response.razorpay_payment_id;
                     reject(new Error(msg));
                     if (onFailure) onFailure(msg);
                 }
@@ -113,7 +128,7 @@ export const initiateOnlinePayment = async ({
             },
         };
 
-        const rzp = new window.Razorpay(options);
+        const rzp = new window.Razorpay(rzpOptions);
         rzp.on("payment.failed", (r) => {
             const msg = `Payment failed: ${r.error.description}`;
             reject(new Error(msg));

@@ -77,40 +77,55 @@ export const validateAndPriceItems = async (frontendItems) => {
 };
 
 /**
- * Atomic stock deduction using findOneAndUpdate + $inc
- * ✅ Prevents race condition / overselling
- */
-export const deductStock = async (items) => {
-    for (const item of items) {
-        const updated = await Product.findOneAndUpdate(
-            { _id: item.productId, stock: { $gte: item.qty } },
-            { $inc: { stock: -item.qty } },
-            { new: true }
-        );
-        if (!updated) {
-            throw new Error(`"${item.name}" went out of stock during checkout`);
-        }
-        // Keep inStock flag in sync
-        if (updated.stock === 0) {
-            await Product.findByIdAndUpdate(item.productId, { inStock: false });
-        }
-    }
-};
-
-/**
  * Restore stock (on order cancel / payment failure)
  * Uses $inc for atomicity
  */
 export const restoreStock = async (items) => {
     for (const item of items) {
+        const qty = Number(item.qty || item.quantity || 0);
+        if (!item.productId || !Number.isFinite(qty) || qty <= 0) continue;
         try {
             await Product.findByIdAndUpdate(item.productId, {
-                $inc: { stock: item.qty },
-                inStock: true,
+                $inc: { stock: qty },
+                $set: { inStock: true },
             });
         } catch (e) {
             console.warn("[StockRestore] Failed for", item.productId, e.message);
         }
+    }
+};
+
+/**
+ * Atomic stock deduction using findOneAndUpdate + $inc
+ * Prevents overselling. Rolls back partial deductions on failure.
+ */
+export const deductStock = async (items) => {
+    const deducted = [];
+    try {
+        for (const item of items) {
+            const qty = Number(item.qty || item.quantity || 0);
+            if (!item.productId || !Number.isFinite(qty) || qty <= 0) continue;
+
+            const updated = await Product.findOneAndUpdate(
+                { _id: item.productId, stock: { $gte: qty } },
+                { $inc: { stock: -qty } },
+                { new: true }
+            );
+            if (!updated) {
+                throw new Error(`"${item.name}" went out of stock during checkout`);
+            }
+
+            deducted.push({ productId: item.productId, qty });
+
+            // Keep inStock flag in sync
+            if (updated.stock === 0) {
+                await Product.findByIdAndUpdate(item.productId, { inStock: false });
+            }
+        }
+    } catch (err) {
+        // Roll back any partial deductions to keep inventory consistent.
+        await restoreStock(deducted);
+        throw err;
     }
 };
 

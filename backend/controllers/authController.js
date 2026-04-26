@@ -7,6 +7,7 @@ import User from "../models/User.js";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import Vendor from "../models/vendorModels/Vendor.js";
+
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -667,6 +668,121 @@ export const deliveryResetPassword = async (req, res) => {
         res.status(500).json({ success: false, message: "Password reset failed." });
     }
 };
+
+/* ═══════════════════════════════════════════════════
+   VENDOR OTP - SEND OTP (POST /api/vendor/send-otp)
+═══════════════════════════════════════════════════ */
+export const sendVendorOtp = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email?.trim()) return res.status(400).json({ success: false, message: "Email is required" });
+
+        let user = await User.findOne({ email: sanitizeEmail(email) }).select("+emailOtp +emailOtpExpires +emailOtpAttempts");
+
+        if (!user) {
+            // Create placeholder vendor user
+            user = await User.create({
+                name: "Vendor Applicant",
+                email: sanitizeEmail(email),
+                role: "vendor",
+                isEmailVerified: false,
+            });
+        } else if (user.role !== "vendor") {
+            return res.status(400).json({ success: false, message: "Email linked to different role" });
+        }
+
+        const otp = generateOtp();
+        user.emailOtp = otp;
+        user.emailOtpExpires = Date.now() + OTP_EXPIRY_MS;
+        user.emailOtpAttempts = 0;
+        await user.save({ validateBeforeSave: false });
+
+        sendEmailBackground(buildVendorOtpEmail(user.email, user.name, otp));
+        res.json({ success: true, message: "OTP sent for vendor verification", email: user.email });
+
+    } catch (err) {
+        console.error("[sendVendorOtp]", err);
+        res.status(500).json({ success: false, message: "OTP send failed" });
+    }
+};
+
+/* ═══════════════════════════════════════════════════
+   VENDOR OTP - VERIFY FOR REGISTER (POST /api/vendor/verify-otp-register)
+═══════════════════════════════════════════════════ */
+export const verifyVendorOtpRegister = async (req, res) => {
+    try {
+        const { email, otp, formData } = req.body; // formData = shop details JSON
+
+        const user = await User.findOne({ email: sanitizeEmail(email), role: "vendor" })
+            .select("+emailOtp +emailOtpExpires +emailOtpAttempts");
+
+        if (!user) return res.status(404).json({ success: false, message: "Vendor session not found" });
+
+        // OTP validation (reuse logic)
+        if ((user.emailOtpAttempts || 0) >= MAX_OTP_ATTEMPTS || user.emailOtpExpires < Date.now() ||
+            !crypto.timingSafeEqual(Buffer.from(user.emailOtp.toString()), Buffer.from(otp.toString()))) {
+            user.emailOtpAttempts = (user.emailOtpAttempts || 0) + 1;
+            await user.save();
+            return res.status(400).json({ success: false, message: "Invalid OTP" });
+        }
+
+        // OTP OK → create vendor
+        user.name = formData.ownerName || user.name;
+        user.phone = formData.phone || user.phone;
+        user.isEmailVerified = true;
+        user.emailOtp = undefined;
+        user.emailOtpExpires = undefined;
+        user.emailOtpAttempts = 0;
+        await user.save();
+
+        // Call registerVendor logic (simulate req.body/files)
+        const mockReq = { body: formData, user: { _id: user._id }, files: req.files };
+        const vendorRes = await registerVendor(mockReq, res);
+        if (vendorRes.success) {
+            const token = generateToken(user._id, user.role);
+            res.json({ success: true, token, user: safeUserPayload(user, token), vendor: vendorRes.vendor });
+        } else {
+            res.status(400).json(vendorRes);
+        }
+
+    } catch (err) {
+        console.error("[verifyVendorOtpRegister]", err);
+        res.status(500).json({ success: false, message: "Register failed" });
+    }
+};
+
+/* ═══════════════════════════════════════════════════
+   VENDOR OTP - LOGIN (POST /api/vendor/login-otp)
+═══════════════════════════════════════════════════ */
+export const vendorOtpLogin = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        const user = await User.findOne({ email: sanitizeEmail(email), role: "vendor" })
+            .select("+emailOtp +emailOtpExpires +emailOtpAttempts");
+
+        if (!user) return res.status(401).json({ success: false, message: "Vendor not found" });
+
+        // OTP check
+        if ((user.emailOtpAttempts || 0) >= MAX_OTP_ATTEMPTS || user.emailOtpExpires < Date.now() ||
+            !crypto.timingSafeEqual(Buffer.from(user.emailOtp.toString()), Buffer.from(otp.toString()))) {
+            return res.status(400).json({ success: false, message: "Invalid OTP" });
+        }
+
+        user.emailOtp = undefined;
+        user.emailOtpExpires = undefined;
+        user.emailOtpAttempts = 0;
+        await user.save();
+
+        const token = generateToken(user._id, user.role);
+        res.json({ success: true, token, user: safeUserPayload(user, token) });
+
+    } catch (err) {
+        console.error("[vendorOtpLogin]", err);
+        res.status(500).json({ success: false, message: "Login failed" });
+    }
+};
+
 
 /* ═══════════════════════════════════════════════════
    REFRESH TOKEN

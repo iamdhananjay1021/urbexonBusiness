@@ -1,5 +1,7 @@
 /**
- * deliveryController.js — Production v3.0
+ * deliveryController.js — Production v3.1
+ * ✅ FIXED: Removed delivery.provider: LOCAL_RIDER filter from getDeliveryOrders
+ * ✅ FIXED: handleRiderAccept now checks orderMode instead of provider
  * ✅ OTP delivery confirmation (generate + verify)
  * ✅ Atomic order accept via Assignment Engine
  * ✅ GPS tracking (Redis-first, MongoDB fallback)
@@ -21,17 +23,16 @@ import { handleRiderAccept, handleRiderReject, handleRiderCancel } from "../../s
 import { sendOrderStatusPush } from "../../services/fcmService.js";
 
 const genOtp = () => String(Math.floor(1000 + Math.random() * 9000));
-const DELIVERY_EARNING_BASE = 25;     // ₹25 base per delivery
-const DELIVERY_EARNING_PER_KM = 5;    // ₹5 per km
-const DELIVERY_EARNING_MIN = 25;      // minimum ₹25
-const DELIVERY_EARNING_MAX = 120;     // cap ₹120
+const DELIVERY_EARNING_BASE = 25;
+const DELIVERY_EARNING_PER_KM = 5;
+const DELIVERY_EARNING_MIN = 25;
+const DELIVERY_EARNING_MAX = 120;
 
 const calcDeliveryEarning = (distanceKm = 0) => {
     const earning = DELIVERY_EARNING_BASE + (distanceKm * DELIVERY_EARNING_PER_KM);
     return Math.min(Math.max(Math.round(earning), DELIVERY_EARNING_MIN), DELIVERY_EARNING_MAX);
 };
 
-// Haversine formula for distance in km
 const haversineKm = (lat1, lng1, lat2, lng2) => {
     const toRad = d => (d * Math.PI) / 180;
     const R = 6371;
@@ -103,20 +104,26 @@ export const toggleOnlineStatus = async (req, res) => {
 };
 
 // ── GET /api/delivery/orders ─────────────────────────────
+// ✅ FIXED: Removed "delivery.provider": "LOCAL_RIDER" filter
+// Orders are now fetched by orderMode + status only
 export const getDeliveryOrders = async (req, res) => {
     try {
         const db = await DeliveryBoy.findOne({ userId: req.user._id });
         if (!db) return res.status(404).json({ success: false, message: "Not registered" });
 
-        // Available orders = READY_FOR_PICKUP with no rider assigned
+        // ✅ FIXED: No provider filter — any URBEXON_HOUR unassigned READY_FOR_PICKUP order
         const availableRaw = await Order.find({
+            orderMode: "URBEXON_HOUR",
             orderStatus: "READY_FOR_PICKUP",
             "delivery.assignedTo": null,
-        }).sort({ createdAt: -1 }).limit(30).lean();
+            // ✅ REMOVED: "delivery.provider": "LOCAL_RIDER" — was blocking orders
+        })
+            .limit(30)
+            .lean();
 
-        // Add distance from rider's location if available and sort nearby first
         const riderLat = db.location?.lat;
         const riderLng = db.location?.lng;
+
         const available = availableRaw.map(o => {
             let distanceFromRider = null;
             if (riderLat && riderLng) {
@@ -126,15 +133,16 @@ export const getDeliveryOrders = async (req, res) => {
             }
             return { ...o, distanceFromRider };
         });
-        // Sort by distance (nearest first) if rider location available
+
         if (riderLat && riderLng) {
             available.sort((a, b) => (a.distanceFromRider || 999) - (b.distanceFromRider || 999));
         }
 
-        // My active orders
+        // ✅ FIXED: My active orders — removed LOCAL_RIDER filter
         const myOrders = await Order.find({
+            orderMode: "URBEXON_HOUR",
             "delivery.assignedTo": db._id,
-            orderStatus: { $in: ["OUT_FOR_DELIVERY", "DELIVERED"] },
+            orderStatus: { $in: ["READY_FOR_PICKUP", "OUT_FOR_DELIVERY", "DELIVERED"] },
         }).sort({ createdAt: -1 }).limit(30).lean();
 
         const stats = {
@@ -155,6 +163,7 @@ export const getDeliveryOrders = async (req, res) => {
             status: db.status,
         });
     } catch (err) {
+        console.error("[getDeliveryOrders]", err);
         res.status(500).json({ success: false, message: "Failed to fetch orders" });
     }
 };
@@ -165,7 +174,6 @@ export const acceptOrder = async (req, res) => {
         const db = await DeliveryBoy.findOne({ userId: req.user._id });
         if (!db || db.status !== "approved") return res.status(403).json({ success: false, message: "Account not approved" });
 
-        // Use assignment engine for atomic accept (first-write-wins)
         const result = await handleRiderAccept(req.params.id, db._id, req.user._id);
         if (!result.success) {
             return res.status(409).json({ success: false, message: result.message || "Order is not available for pickup" });
@@ -173,8 +181,6 @@ export const acceptOrder = async (req, res) => {
 
         const order = result.order;
 
-        // Generate OTP for delivery confirmation — use atomic $set to avoid
-        // version conflicts with the findOneAndUpdate inside handleRiderAccept
         const otp = genOtp();
         await Order.findByIdAndUpdate(order._id, {
             $set: {
@@ -183,33 +189,20 @@ export const acceptOrder = async (req, res) => {
                 "deliveryOtp.verified": false,
             },
             $push: {
-                timeline: { status: "ASSIGNED", timestamp: new Date(), note: `Accepted by ${db.name}` },
+                timeline: { status: "RIDER_ASSIGNED", timestamp: new Date(), note: `Accepted by ${db.name}` },
             },
         });
 
-        // Notify customer with OTP
         if (order.user) {
             sendToUser(String(order.user), "order_status", {
-                orderId: order._id, status: "OUT_FOR_DELIVERY",
+                orderId: order._id, status: "RIDER_ASSIGNED",
                 riderName: db.name, riderPhone: db.phone,
-                message: `Your order is on the way! Delivery OTP: ${otp}`,
-                otp,
+                message: `Rider ${db.name} accepted your order. Will pick up soon!`,
             });
-            // FCM push to customer (if they have a token stored)
-            // The customer's FCM token would be fetched separately if needed
-            if (order.email) {
-                sendEmailBackground({
-                    to: order.email,
-                    subject: `Your Urbexon Delivery OTP: ${otp}`,
-                    html: `<div style="font-family:sans-serif;padding:24px;max-width:500px;margin:auto;background:#f7f4ee;border-radius:12px"><h2 style="color:#1a1740">Your Order is Out for Delivery!</h2><p>Rider: <strong>${db.name}</strong> (${db.phone})</p><div style="background:#fff;border:2px dashed #c9a84c;border-radius:10px;padding:20px;text-align:center;margin:20px 0"><div style="font-size:36px;font-weight:900;color:#1a1740;letter-spacing:12px">${otp}</div><div style="font-size:12px;color:#64748b;margin-top:8px">Share this OTP with the delivery partner to confirm delivery</div></div><p style="font-size:12px;color:#94a3b8">OTP valid for 2 hours</p></div>`,
-                    label: "Delivery/OTP",
-                });
-            }
         }
 
         res.json({ success: true, order, message: "Order accepted" });
 
-        // Send delivery assignment email to rider (non-blocking)
         if (db.email) {
             const mailData = deliveryAssignedEmail(db.name, order);
             sendEmailBackground({ to: db.email, subject: mailData.subject, html: mailData.html, label: "Delivery/Assigned" });
@@ -221,7 +214,6 @@ export const acceptOrder = async (req, res) => {
 };
 
 // ── PATCH /api/delivery/orders/:id/pickup ───────────────
-// Rider confirms they picked up the order from the store
 export const pickupOrder = async (req, res) => {
     try {
         const db = await DeliveryBoy.findOne({ userId: req.user._id });
@@ -232,26 +224,29 @@ export const pickupOrder = async (req, res) => {
         if (String(order.delivery?.assignedTo) !== String(db._id)) {
             return res.status(403).json({ success: false, message: "This order is not assigned to you" });
         }
-        if (order.orderStatus !== "OUT_FOR_DELIVERY") {
-            return res.status(400).json({ success: false, message: "Order must be in OUT_FOR_DELIVERY status" });
+        if (order.orderStatus !== "READY_FOR_PICKUP") {
+            return res.status(400).json({ success: false, message: `Order must be in READY_FOR_PICKUP status, currently ${order.orderStatus}` });
         }
 
+        order.orderStatus = "OUT_FOR_DELIVERY";
         order.delivery.pickedUpAt = new Date();
         order.delivery.status = "PICKED_UP";
+        const existing = order.statusTimeline?.toObject ? order.statusTimeline.toObject() : { ...order.statusTimeline };
+        order.statusTimeline = { ...existing, outForDeliveryAt: new Date() };
+        order.markModified("statusTimeline");
         order.timeline = order.timeline || [];
         order.timeline.push({ status: "PICKED_UP", timestamp: new Date(), note: `Picked up by ${db.name}` });
         await order.save();
 
-        // Notify customer
         if (order.user) {
             sendToUser(String(order.user), "order_status", {
-                orderId: order._id, status: "PICKED_UP",
+                orderId: order._id, status: "OUT_FOR_DELIVERY",
                 riderName: db.name, riderPhone: db.phone,
-                message: "Your order has been picked up and is on the way!",
+                message: `Your order is now out for delivery with ${db.name}!`,
             });
         }
 
-        res.json({ success: true, message: "Order picked up successfully" });
+        res.json({ success: true, message: "Order picked up and out for delivery", order: order.toObject() });
     } catch (err) {
         console.error("[pickupOrder]", err);
         res.status(500).json({ success: false, message: "Failed to mark pickup" });
@@ -259,7 +254,6 @@ export const pickupOrder = async (req, res) => {
 };
 
 // ── PATCH /api/delivery/orders/:id/deliver ──────────────
-// Body: { otp: "1234" }
 export const markDelivered = async (req, res) => {
     try {
         const db = await DeliveryBoy.findOne({ userId: req.user._id });
@@ -274,52 +268,71 @@ export const markDelivered = async (req, res) => {
             return res.status(400).json({ success: false, message: "Order is not out for delivery" });
         }
 
-        // OTP verification
         const { otp } = req.body;
         if (!otp) return res.status(400).json({ success: false, message: "OTP required for delivery confirmation" });
-
         if (!order.deliveryOtp?.code) return res.status(400).json({ success: false, message: "No OTP generated for this order" });
         if (new Date() > new Date(order.deliveryOtp.expiresAt)) return res.status(400).json({ success: false, message: "OTP expired. Contact admin." });
+
+        order.deliveryOtp.attempts = (order.deliveryOtp.attempts || 0) + 1;
+        if (order.deliveryOtp.attempts > 5) {
+            await order.save();
+            return res.status(429).json({ success: false, message: "Too many wrong attempts. Contact support." });
+        }
+
         if (String(order.deliveryOtp.code) !== String(otp.trim())) {
+            await order.save();
             return res.status(400).json({ success: false, message: "Incorrect OTP. Please get OTP from the customer." });
         }
 
-        // Mark delivered
-        order.orderStatus = "DELIVERED";
-        order.deliveryOtp.verified = true;
-        order.delivery.status = "DELIVERED";
-        order.statusTimeline = order.statusTimeline || {};
-        order.statusTimeline.deliveredAt = new Date();
-        order.timeline = order.timeline || [];
-        order.timeline.push({ status: "DELIVERED", timestamp: new Date(), note: `OTP verified, delivered by ${db.name}` });
-        if (order.payment?.method === "COD") {
-            order.payment.status = "PAID";
-            order.payment.paidAt = new Date();
-        }
-        await order.save();
+        const updated = await Order.findOneAndUpdate(
+            {
+                _id: req.params.id,
+                "delivery.assignedTo": db._id,
+                orderStatus: "OUT_FOR_DELIVERY",
+            },
+            {
+                $set: {
+                    orderStatus: "DELIVERED",
+                    "delivery.status": "DELIVERED",
+                    "deliveryOtp.verified": true,
+                    "deliveryOtp.attempts": order.deliveryOtp.attempts,
+                    "statusTimeline.deliveredAt": new Date(),
+                    ...(order.payment?.method === "COD" && {
+                        "payment.status": "PAID",
+                        "payment.paidAt": new Date(),
+                    }),
+                },
+                $push: {
+                    timeline: {
+                        status: "DELIVERED",
+                        timestamp: new Date(),
+                        note: `OTP verified, delivered by ${db.name}`,
+                    },
+                },
+            },
+            { new: true }
+        );
 
-        // Calculate distance-based earning
+        if (!updated) {
+            return res.status(400).json({ success: false, message: "Order already delivered or invalid state" });
+        }
+
         const distanceKm = order.delivery?.distanceKm || 0;
         const earning = calcDeliveryEarning(distanceKm);
 
-        // Update rider stats atomically (earnings + decrement activeOrders)
         await DeliveryBoy.findByIdAndUpdate(db._id, {
             $inc: {
-                todayDeliveries: 1, totalDeliveries: 1,
+                todayDeliveries: 1,
+                totalDeliveries: 1,
                 todayEarnings: earning,
                 totalEarnings: earning,
                 weekDeliveries: 1,
                 weekEarnings: earning,
                 activeOrders: -1,
             },
+            $max: { activeOrders: 0 },
         });
-        // Clamp activeOrders to 0 if it went negative
-        await DeliveryBoy.updateOne(
-            { _id: db._id, activeOrders: { $lt: 0 } },
-            { $set: { activeOrders: 0 } }
-        );
 
-        // Notify customer
         if (order.user) {
             sendToUser(String(order.user), "order_status", {
                 orderId: order._id, status: "DELIVERED",
@@ -343,7 +356,6 @@ export const updateRiderLocation = async (req, res) => {
         const numLat = Number(lat);
         const numLng = Number(lng);
 
-        // Update MongoDB (location + GeoJSON for $nearSphere)
         const db = await DeliveryBoy.findOneAndUpdate(
             { userId: req.user._id },
             {
@@ -354,7 +366,6 @@ export const updateRiderLocation = async (req, res) => {
         );
         if (!db) return res.status(404).json({ success: false, message: "Not found" });
 
-        // Save to Redis for fast access (TTL 2 min)
         if (isRedisUp()) {
             const redis = getRedis();
             try {
@@ -366,7 +377,6 @@ export const updateRiderLocation = async (req, res) => {
             } catch { /* non-fatal */ }
         }
 
-        // Update order deliveryLocation if orderId provided
         if (orderId) {
             await Order.findByIdAndUpdate(orderId, {
                 deliveryLocation: { type: "Point", coordinates: [numLng, numLat] },
@@ -402,7 +412,6 @@ export const getDeliveryEarnings = async (req, res) => {
         const thisWeek = deliveries.filter(o => new Date(o.createdAt) >= startOfWeek);
         const weekEarnings = thisWeek.reduce((sum, o) => sum + calcDeliveryEarning(o.delivery?.distanceKm || 0), 0);
 
-        // Weekly breakdown (last 7 days)
         const breakdown = [];
         for (let i = 6; i >= 0; i--) {
             const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
@@ -447,7 +456,7 @@ export const updateDeliveryProfile = async (req, res) => {
     } catch (err) { res.status(500).json({ success: false, message: "Failed" }); }
 };
 
-// ── PATCH /api/delivery/documents — Re-upload documents ──
+// ── PATCH /api/delivery/documents ───────────────────────
 export const updateDeliveryDocuments = async (req, res) => {
     try {
         const db = await DeliveryBoy.findOne({ userId: req.user._id });
@@ -482,14 +491,13 @@ export const updateDeliveryDocuments = async (req, res) => {
     }
 };
 
-// ── GET /api/delivery/orders/:id/rider-location (admin/user) ──
+// ── GET /api/delivery/orders/:id/rider-location ─────────
 export const getRiderLocationForOrder = async (req, res) => {
     try {
         const Order = (await import("../../models/Order.js")).default;
         const order = await Order.findById(req.params.id).select("delivery user").lean();
         if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
-        // Allow order owner or admin
         const isOwner = String(order.user) === String(req.user._id);
         const isAdmin = ["admin", "owner"].includes(req.user.role);
         if (!isOwner && !isAdmin) return res.status(403).json({ success: false, message: "Not authorized" });
@@ -497,7 +505,6 @@ export const getRiderLocationForOrder = async (req, res) => {
         if (!order.delivery?.assignedTo)
             return res.json({ success: true, available: false, message: "No rider assigned yet" });
 
-        // Try Redis first (faster, more recent)
         if (isRedisUp()) {
             const redis = getRedis();
             try {
@@ -506,26 +513,20 @@ export const getRiderLocationForOrder = async (req, res) => {
                     const loc = JSON.parse(cached);
                     const rider = await DeliveryBoy.findById(order.delivery.assignedTo).select("name phone isOnline").lean();
                     return res.json({
-                        success: true,
-                        available: true,
-                        source: "redis",
+                        success: true, available: true, source: "redis",
                         rider: {
                             name: rider?.name || loc.riderName || "",
                             phone: rider?.phone || "",
                             isOnline: rider?.isOnline ?? true,
-                            lat: loc.lat,
-                            lng: loc.lng,
-                            updatedAt: loc.updatedAt,
+                            lat: loc.lat, lng: loc.lng, updatedAt: loc.updatedAt,
                         },
                     });
                 }
-            } catch { /* fall through to MongoDB */ }
+            } catch { /* fall through */ }
         }
 
-        // Fallback to MongoDB
         const rider = await DeliveryBoy.findById(order.delivery.assignedTo)
-            .select("name phone location isOnline")
-            .lean();
+            .select("name phone location isOnline").lean();
         if (!rider) return res.json({ success: true, available: false });
 
         res.json({
@@ -533,11 +534,8 @@ export const getRiderLocationForOrder = async (req, res) => {
             available: !!(rider.location?.lat && rider.location?.lng),
             source: "mongodb",
             rider: {
-                name: rider.name,
-                phone: rider.phone,
-                isOnline: rider.isOnline,
-                lat: rider.location?.lat || null,
-                lng: rider.location?.lng || null,
+                name: rider.name, phone: rider.phone, isOnline: rider.isOnline,
+                lat: rider.location?.lat || null, lng: rider.location?.lng || null,
                 updatedAt: rider.location?.updatedAt || null,
             },
         });
@@ -551,9 +549,7 @@ export const rejectOrder = async (req, res) => {
     try {
         const db = await DeliveryBoy.findOne({ userId: req.user._id });
         if (!db) return res.status(404).json({ success: false, message: "Not registered" });
-
         await handleRiderReject(req.params.id, db._id);
-
         res.json({ success: true, message: "Order rejected" });
     } catch (err) {
         console.error("[rejectOrder]", err);
@@ -562,7 +558,6 @@ export const rejectOrder = async (req, res) => {
 };
 
 // ── PATCH /api/delivery/orders/:id/cancel ──────────────
-// Rider cancels during delivery (re-triggers assignment)
 export const cancelOrder = async (req, res) => {
     try {
         const db = await DeliveryBoy.findOne({ userId: req.user._id });
@@ -579,7 +574,6 @@ export const cancelOrder = async (req, res) => {
 
         const reason = req.body.reason || "";
         await handleRiderCancel(req.params.id, db._id, reason);
-
         res.json({ success: true, message: "Order cancelled. Reassignment in progress." });
     } catch (err) {
         console.error("[cancelOrder]", err);
@@ -588,21 +582,18 @@ export const cancelOrder = async (req, res) => {
 };
 
 // ── PATCH /api/delivery/fcm-token ──────────────────────
-// Save/update FCM push notification token
 export const saveFcmToken = async (req, res) => {
     try {
         const { token } = req.body;
         if (!token || typeof token !== "string") {
             return res.status(400).json({ success: false, message: "FCM token required" });
         }
-
         const db = await DeliveryBoy.findOneAndUpdate(
             { userId: req.user._id },
             { fcmToken: token.trim() },
             { new: true }
         );
         if (!db) return res.status(404).json({ success: false, message: "Not registered" });
-
         res.json({ success: true, message: "FCM token saved" });
     } catch (err) {
         console.error("[saveFcmToken]", err);
@@ -611,7 +602,6 @@ export const saveFcmToken = async (req, res) => {
 };
 
 // ── PATCH /api/delivery/orders/:id/status ──────────────
-// Update delivery status (rider workflow progression)
 export const updateDeliveryStatus = async (req, res) => {
     try {
         const db = await DeliveryBoy.findOne({ userId: req.user._id });
@@ -624,27 +614,22 @@ export const updateDeliveryStatus = async (req, res) => {
         }
 
         const { status } = req.body;
-        const allowed = ["ARRIVING_VENDOR", "PICKED_UP", "OUT_FOR_DELIVERY"];
+        const allowed = ["ARRIVING_VENDOR"];
         if (!allowed.includes(status)) {
-            return res.status(400).json({ success: false, message: `Invalid status. Use: ${allowed.join(", ")}` });
+            return res.status(400).json({
+                success: false,
+                message: `Invalid status. Use: ${allowed.join(", ")}. For PICKED_UP/OUT_FOR_DELIVERY, call PATCH /api/delivery/orders/:id/pickup`,
+            });
         }
 
         order.delivery.status = status;
         order.timeline = order.timeline || [];
         order.timeline.push({ status, timestamp: new Date(), note: `${status} by ${db.name}` });
-
-        if (status === "PICKED_UP") {
-            order.delivery.pickedUpAt = new Date();
-        }
-
         await order.save();
 
-        // Notify customer
         if (order.user) {
             const messages = {
                 ARRIVING_VENDOR: "Rider is heading to the store to pick up your order.",
-                PICKED_UP: "Your order has been picked up and is on the way!",
-                OUT_FOR_DELIVERY: "Your order is out for delivery!",
             };
             sendToUser(String(order.user), "order_status", {
                 orderId: order._id, status,

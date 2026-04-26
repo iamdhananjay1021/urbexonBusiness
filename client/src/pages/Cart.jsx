@@ -247,6 +247,7 @@ const Cart = () => {
                         className="cart-img"
                         src={item?.images?.[0]?.url || item?.image || "/placeholder.png"}
                         alt={item.name}
+                        loading="lazy"
                         onError={e => { e.target.src = "/placeholder.png"; }}
                       />
                     </Link>

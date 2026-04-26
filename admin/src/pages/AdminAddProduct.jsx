@@ -50,105 +50,174 @@ const DEFAULT_CUST_CONFIG = {
 ═══════════════════════════════════════════════════════════ */
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
-.ap * { box-sizing:border-box; font-family:'DM Sans',system-ui,sans-serif; }
+* { box-sizing:border-box; }
+.ap { font-family:'DM Sans',system-ui,-apple-system,sans-serif; color:#1a202c; }
 
-@keyframes ap-in   { from{opacity:0;transform:translateY(7px)} to{opacity:1;transform:none} }
+@keyframes ap-in   { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 @keyframes ap-spin { to{transform:rotate(360deg)} }
-@keyframes ap-pop  { from{opacity:0;transform:translateY(-10px) scale(.96)} to{opacity:1;transform:none} }
+@keyframes ap-pop  { from{opacity:0;transform:translateY(-12px) scale(.94)} to{opacity:1;transform:translateY(0) scale(1)} }
 
+/* ── INPUTS & SELECTS ── */
 .ap-inp {
-    width:100%; padding:10px 12px; background:#fff;
-    border:1.5px solid #e2e8f2; border-radius:9px; color:#18202e;
-    font-size:13.5px; outline:none; transition:border-color .15s,box-shadow .15s;
+    width:100%; padding:10px 12px; background:#fff; font-family:inherit;
+    border:1.5px solid #cbd5e1; border-radius:8px; color:#1a202c;
+    font-size:14px; outline:none; transition:all .2s;
 }
-.ap-inp::placeholder { color:#b0bbd0; }
-.ap-inp:focus  { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.12); }
-.ap-inp.err    { border-color:#f87171; box-shadow:0 0 0 3px rgba(248,113,113,.12); }
+.ap-inp::placeholder { color:#94a3b8; }
+.ap-inp:focus  { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.1), 0 1px 3px rgba(0,0,0,.08); }
+.ap-inp.err    { border-color:#dc2626; }
 
 .ap-sel {
     appearance:none; -webkit-appearance:none; cursor:pointer;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23b0bbd0'/%3E%3C/svg%3E");
-    background-repeat:no-repeat; background-position:right 12px center;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2364748b' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 11px center; padding-right:32px;
 }
 
+/* ── CHIPS & BUTTONS ── */
 .ap-chip {
-    height:32px; padding:0 12px; border:1.5px solid #e2e8f2; border-radius:7px;
-    background:#fff; color:#64748b; font-size:12px; font-weight:600;
-    cursor:pointer; transition:all .15s; white-space:nowrap;
+    height:34px; padding:0 12px; border:1.5px solid #e2e8f2; border-radius:8px;
+    background:#fff; color:#64748b; font-size:12px; font-weight:600; font-family:inherit;
+    cursor:pointer; transition:all .2s; white-space:nowrap;
 }
 .ap-chip:hover { border-color:#3b82f6; color:#3b82f6; background:#eff6ff; }
-.ap-chip.on    { background:#eff6ff; border-color:#3b82f6; color:#3b82f6; }
+.ap-chip.on    { background:#dbeafe; border-color:#3b82f6; color:#1e40af; box-shadow:0 1px 3px rgba(59,130,246,.2); }
+
+/* ── TABS ── */
+.ap-tabbar { display:flex; gap:4px; padding:10px 8px; background:linear-gradient(135deg,#f8fafc 0%,#f1f5f9 100%); border-radius:10px; overflow-x:auto; scrollbar-width:none; }
+.ap-tabbar::-webkit-scrollbar { display:none; }
 
 .ap-tab {
-    display:flex; align-items:center; gap:5px; padding:7px 13px;
-    font-size:12px; font-weight:600; border:1.5px solid transparent;
-    border-radius:8px; background:transparent; color:#64748b;
-    cursor:pointer; transition:all .15s; position:relative;
+    display:flex; align-items:center; justify-content:center; flex-direction:column; gap:3px; 
+    padding:8px 12px; font-size:11px; font-weight:600; font-family:inherit;
+    border:1.5px solid transparent; border-radius:7px; background:transparent; color:#64748b;
+    cursor:pointer; transition:all .2s; position:relative; white-space:nowrap; flex-shrink:0;
 }
-.ap-tab.on    { background:#fff; border-color:#e2e8f2; color:#1d4ed8; box-shadow:0 1px 4px rgba(0,0,0,.07); }
-.ap-tab:hover:not(.on) { background:#f1f5f9; color:#334155; }
-.ap-tab .dot  { width:7px; height:7px; border-radius:50%; background:#f87171; position:absolute; top:4px; right:4px; }
-.ap-tab .num  { min-width:16px; height:16px; border-radius:8px; font-size:9px; font-weight:800; display:flex; align-items:center; justify-content:center; background:#cbd5e1; color:#fff; transition:background .15s; }
-.ap-tab.on .num { background:#1d4ed8; }
+.ap-tab:hover:not(.on) { background:#fff; border-color:#e2e8f2; color:#475569; }
+.ap-tab.on {
+    background:#fff; border-color:#3b82f6; color:#1e40af; 
+    box-shadow:0 2px 8px rgba(59,130,246,.15); font-weight:700;
+}
+.ap-tab span:first-child { font-size:14px; line-height:1; }
+.ap-tab .dot { width:6px; height:6px; border-radius:50%; background:#ef4444; position:absolute; top:6px; right:6px; }
+.ap-tab .num { min-width:18px; height:18px; border-radius:6px; font-size:9px; font-weight:800; display:flex; align-items:center; justify-content:center; background:#cbd5e1; color:#fff; margin-left:2px; }
+.ap-tab.on .num { background:#3b82f6; }
 
+/* ── SLOTS & DROPS ── */
 .ap-slot {
-    aspect-ratio:1; background:#f8fafc; border:1.5px solid #e2e8f2;
-    border-radius:10px; overflow:hidden; position:relative; transition:border-color .15s;
+    aspect-ratio:1; background:#fafbfc; border:1.5px solid #e2e8f2;
+    border-radius:10px; overflow:hidden; position:relative; transition:all .2s;
 }
-.ap-slot:hover { border-color:#3b82f6; }
+.ap-slot:hover { border-color:#3b82f6; box-shadow:0 2px 8px rgba(59,130,246,.1); }
 
 .ap-drop {
-    border:2px dashed #cdd5e3; border-radius:10px; background:#f8fafc;
-    cursor:pointer; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; padding:20px;
+    border:2px dashed #cbd5e1; border-radius:10px; background:#fafbfc;
+    cursor:pointer; display:flex; flex-direction:column; gap:6px;
+    align-items:center; justify-content:center; padding:24px 16px;
     transition:all .2s; aspect-ratio:1;
 }
 .ap-drop:hover { border-color:#3b82f6; background:#eff6ff; }
 
-.ap-tog {
-    position:relative; width:42px; height:23px; border:none;
-    border-radius:12px; cursor:pointer; transition:background .2s; flex-shrink:0;
-}
-.ap-tog-dot {
-    position:absolute; top:2px; width:19px; height:19px; border-radius:50%;
-    background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.18); transition:left .2s;
-}
+/* ── TOGGLES ── */
+.ap-tog { position:relative; width:44px; height:24px; border:none; border-radius:12px; cursor:pointer; transition:background .25s; flex-shrink:0; background:#cbd5e1; }
+.ap-tog-dot { position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 2px 4px rgba(0,0,0,.15); transition:left .25s; }
 
-.g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-.g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
-@media(max-width:520px){ .g2,.g3{ grid-template-columns:1fr; } }
+/* ── GRIDS ── */
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
 
-.ap-sec { animation:ap-in .2s ease; }
+.ap-sec { animation:ap-in .3s ease; }
+.ap-hlrow { display:flex; gap:8px; align-items:center; }
 .ap-hlrow:hover .ap-hlrm { opacity:1 !important; }
-@media(max-width:520px){
-  .ap-hlrow { flex-wrap:wrap; }
-  .ap-hlrow select.ap-inp { flex:1 1 100% !important; }
-  .ap-imggrid { grid-template-columns:repeat(2,1fr) !important; }
-  .ap-actions { flex-wrap:wrap; }
-  .ap-actions .ap-submit { min-width:100%; order:1; }
-  .ap-tab span:nth-child(2) { font-size:11px; }
+.ap-imggrid { display:grid; grid-template-columns:repeat(3,1fr) !important; gap:12px; }
+.ap-actions { display:flex; gap:10px; align-items:center; }
+
+/* ── CARD ── */
+.ap-card { 
+    background:#fff; border:1.5px solid #e2e8f2; border-radius:12px; 
+    overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.05);
 }
+.ap-bar { height:4px; background:linear-gradient(90deg,#3b82f6 0%,#1e40af 100%); }
 
-.ap-card { background:#fff; border:1.5px solid #e2e8f2; border-radius:13px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.05); }
-.ap-bar  { height:3px; background:linear-gradient(90deg,#1d4ed8,#60a5fa); }
-
+/* ── BUTTONS ── */
 .ap-submit {
-    flex:2; padding:11px; background:#1d4ed8; color:#fff; border:none;
-    border-radius:9px; font-size:13.5px; font-weight:700; cursor:pointer;
-    display:flex; align-items:center; justify-content:center; gap:7px;
-    box-shadow:0 2px 10px rgba(29,78,216,.28); transition:all .15s;
+    flex:2; padding:12px 20px; background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);
+    color:#fff; border:none; border-radius:8px; font-size:13px; font-weight:700; 
+    font-family:inherit; cursor:pointer; display:flex; align-items:center; 
+    justify-content:center; gap:8px; box-shadow:0 4px 12px rgba(59,130,246,.3);
+    transition:all .2s;
 }
-.ap-submit:hover:not(:disabled) { background:#1e40af; }
-.ap-submit:disabled { background:#93c5fd; box-shadow:none; cursor:not-allowed; }
+.ap-submit:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 6px 16px rgba(59,130,246,.35); }
+.ap-submit:active:not(:disabled) { transform:translateY(0); }
+.ap-submit:disabled { background:#cbd5e1; box-shadow:none; cursor:not-allowed; }
 
+/* ── ERRORS & SUCCESS ── */
 .ap-errbanner {
-    margin:0 24px 16px; padding:11px 14px;
+    margin:0 20px 16px; padding:12px 14px;
     background:#fef2f2; border:1.5px solid #fecaca;
-    border-radius:9px; color:#dc2626; font-size:12.5px;
+    border-radius:8px; color:#991b1b; font-size:13px; font-weight:600;
 }
 .ap-discount {
-    display:flex; align-items:center; gap:12px; padding:10px 14px;
-    background:#f0fdf4; border:1.5px solid #bbf7d0; border-radius:9px;
+    display:flex; align-items:center; gap:12px; padding:12px 14px;
+    background:#f0fdf4; border-radius:8px;
+}
+
+/* ════════════════════════════════════════
+   RESPONSIVE DESIGN
+════════════════════════════════════════ */
+@media(max-width:900px) {
+    .g3 { grid-template-columns:1fr 1fr; }
+}
+
+@media(max-width:768px) {
+    .ap { padding:18px 12px 60px !important; }
+    .g2, .g3 { grid-template-columns:1fr !important; gap:14px; }
+    .ap-tabbar { gap:3px; padding:8px; }
+    .ap-tab { padding:7px 10px; font-size:10px; }
+    .ap-tab span:first-child { font-size:13px; }
+    .ap-tab .num { min-width:16px; height:16px; font-size:8px; }
+    .ap-imggrid { grid-template-columns:repeat(2,1fr) !important; gap:10px; }
+    .ap-card { border-radius:10px; }
+    .ap-submit { min-width:100%; order:1; flex:1; padding:11px 16px; }
+    .ap-actions { padding:12px 16px 20px !important; flex-wrap:wrap; }
+    .ap-inp, .ap-sel { font-size:14px; padding:9px 11px; }
+}
+
+@media(max-width:640px) {
+    .ap { padding:14px 10px 50px !important; }
+    .g2, .g3 { gap:12px; }
+    .ap-tab span:nth-child(2) { display:none; }
+    .ap-tab { padding:6px 8px; }
+    .ap-tabbar { gap:2px; }
+    .ap-imggrid { grid-template-columns:repeat(2,1fr) !important; gap:8px; }
+    .ap-slot { border-radius:8px; }
+    .ap-actions { padding:10px 12px 16px !important; gap:6px; }
+    .ap-actions button { font-size:12px; padding:9px 12px; }
+    .ap-chip { font-size:11px; padding:0 10px; height:32px; }
+    .ap-errbanner { margin:0 14px 12px; padding:10px 12px; font-size:12px; }
+    .ap-drop { padding:18px 12px; }
+    .ap-inp::placeholder { font-size:13px; }
+}
+
+@media(max-width:480px) {
+    .ap { padding:12px 8px 45px !important; }
+    .ap-tab { padding:5px 6px; font-size:9px; gap:2px; }
+    .ap-tab span:first-child { font-size:12px; }
+    .g2, .g3 { gap:10px; }
+    .ap-imggrid { gap:6px; }
+    .ap-actions { padding:8px 10px 14px !important; }
+    .ap-slot { min-height:70px; }
+    .ap-card { border-radius:8px; }
+}
+
+@media(max-width:380px) {
+    .ap { padding:10px 8px 40px !important; }
+    .ap-tab { padding:4px 5px; }
+    .ap-tabbar { gap:2px; padding:6px; }
+    .g2, .g3 { gap:8px; }
+    .ap-actions { padding:6px 8px 12px !important; gap:4px; }
+    .ap-slot { min-height:60px; }
+    .ap-drop { padding:16px 10px; }
+    .ap-imggrid { gap:5px; }
 }
 `;
 
@@ -177,7 +246,7 @@ const Toggle = ({ on, toggle, label, sub, accent = "#1d4ed8" }) => (
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "12px 14px", borderRadius: 10, cursor: "pointer",
         background: on ? "#eff6ff" : "#f8fafc",
-        border: `1.5px solid ${on ? accent : "#e2e8f2"}`,
+        border: `1.5px solid ${on ? accent : "#e2e8f2"} `,
         transition: "all .2s",
     }}>
         <div>
@@ -276,7 +345,7 @@ const AdminAddProduct = () => {
         if (!files.length) return;
         const merged = [...images, ...files];
         if (merged.length > 6) {
-            setTopErr(`Maximum 6 images allowed (tried ${merged.length})`);
+            setTopErr(`Maximum 6 images allowed(tried ${merged.length})`);
             return;
         }
         for (const f of merged) {
@@ -439,7 +508,7 @@ const AdminAddProduct = () => {
                     const imgMsg = imgErrs.map(e => typeof e === 'string' ? e : e.message).join(" | ");
                     setFErrs({ images: imgMsg });
                     setTab("images");
-                    setTopErr(`🖼️ ${imgMsg}`);
+                    setTopErr(`🖼️ ${imgMsg} `);
                 } else {
                     const mapped = {};
                     apiErrors.forEach(({ field, message }) => { if (field) mapped[field] = message; });
@@ -448,9 +517,9 @@ const AdminAddProduct = () => {
                         setFErrs(mapped);
                         const firstTab = FIELD_TAB[Object.keys(mapped)[0]];
                         if (firstTab) setTab(firstTab);
-                        setTopErr(`Server rejected ${apiErrors.length} field(s): ${apiErrors.map(e => e.field || e.message).join(", ")}`);
+                        setTopErr(`Server rejected ${apiErrors.length} field(s): ${apiErrors.map(e => e.field || e.message).join(", ")} `);
                     } else {
-                        setTopErr(`Validation error: ${apiErrors.map(e => e.message).join(", ")}`);
+                        setTopErr(`Validation error: ${apiErrors.map(e => e.message).join(", ")} `);
                     }
                 }
             } else {
@@ -482,7 +551,7 @@ const AdminAddProduct = () => {
                 </div>
             )}
 
-            <div style={{ maxWidth: 820, margin: "0 auto" }}>
+            <div style={{ width: "100%", maxWidth: 850, margin: "0 auto" }}>
 
                 {/* Header */}
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22 }}>
@@ -498,12 +567,12 @@ const AdminAddProduct = () => {
                     </div>
                 </div>
 
-                {/* Tab bar */}
-                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 14, background: "#e4e9f2", padding: 5, borderRadius: 11 }}>
+                {/* Tab bar - scrollable on mobile */}
+                <div className="ap-tabbar" style={{ marginBottom: 16 }}>
                     {SECTIONS.map((s, i) => (
                         <button key={s.id} type="button" onClick={() => setTab(s.id)}
                             className={`ap-tab${tab === s.id ? " on" : ""}`}>
-                            <span style={{ fontSize: 13 }}>{s.icon}</span>
+                            <span>{s.icon}</span>
                             <span>{s.label}</span>
                             <span className="num">{i + 1}</span>
                             {tabHasErr(s.id) && <span className="dot" />}
@@ -684,7 +753,7 @@ const AdminAddProduct = () => {
                                                 <FaRupeeSign size={10} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "#b0bbd0", pointerEvents: "none" }} />
                                                 <input type="number" name="price" value={form.price} onChange={handleChange}
                                                     placeholder="0" min="1"
-                                                    className={`ap-inp${fErrs.price ? " err" : ""}`} style={{ paddingLeft: 27 }} />
+                                                    className={`ap - inp${fErrs.price ? " err" : ""} `} style={{ paddingLeft: 27 }} />
                                             </div>
                                         </Field>
                                         <Field label="MRP (₹)" hint="compare-at" err={fErrs.mrp}>
@@ -692,7 +761,7 @@ const AdminAddProduct = () => {
                                                 <FaRupeeSign size={10} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "#b0bbd0", pointerEvents: "none" }} />
                                                 <input type="number" name="mrp" value={form.mrp} onChange={handleChange}
                                                     placeholder="0" min="1"
-                                                    className={`ap-inp${fErrs.mrp ? " err" : ""}`} style={{ paddingLeft: 27 }} />
+                                                    className={`ap - inp${fErrs.mrp ? " err" : ""} `} style={{ paddingLeft: 27 }} />
                                             </div>
                                         </Field>
                                     </div>
@@ -714,7 +783,7 @@ const AdminAddProduct = () => {
                                                 <input type="number" name="stock" value={form.stock} onChange={handleChange}
                                                     readOnly={selSizes.length > 0}
                                                     placeholder="0" min="0"
-                                                    className={`ap-inp${fErrs.stock ? " err" : ""}`} style={{ paddingLeft: 27, background: selSizes.length > 0 ? "#f1f5f9" : "#fff" }} />
+                                                    className={`ap - inp${fErrs.stock ? " err" : ""} `} style={{ paddingLeft: 27, background: selSizes.length > 0 ? "#f1f5f9" : "#fff" }} />
                                             </div>
                                             {form.stock !== "" && !fErrs.stock && (
                                                 <p style={{ fontSize: 11, marginTop: 3, fontWeight: 600, color: +form.stock > 0 ? "#059669" : "#ef4444" }}>
@@ -741,7 +810,7 @@ const AdminAddProduct = () => {
                                         <Field label="Deal Ends At" hint="optional" err={fErrs.dealEndsAt}>
                                             <input type="datetime-local" name="dealEndsAt" value={form.dealEndsAt}
                                                 onChange={handleChange}
-                                                className={`ap-inp${fErrs.dealEndsAt ? " err" : ""}`} />
+                                                className={`ap - inp${fErrs.dealEndsAt ? " err" : ""} `} />
                                             <p style={{ fontSize: 11, color: "#b0bbd0", marginTop: 2 }}>Leave blank for no expiry</p>
                                         </Field>
                                     )}
@@ -756,7 +825,7 @@ const AdminAddProduct = () => {
                                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                                             {ALL_SIZES.map(s => (
                                                 <button key={s} type="button" onClick={() => toggleSize(s)}
-                                                    className={`ap-chip${selSizes.includes(s) ? " on" : ""}`}>
+                                                    className={`ap - chip${selSizes.includes(s) ? " on" : ""} `}>
                                                     {s}
                                                 </button>
                                             ))}
@@ -843,7 +912,7 @@ const AdminAddProduct = () => {
                                             fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 20,
                                             color: previews.length >= 6 ? "#059669" : previews.length === 0 ? "#ef4444" : "#3b82f6",
                                             background: previews.length >= 6 ? "#f0fdf4" : previews.length === 0 ? "#fef2f2" : "#eff6ff",
-                                            border: `1px solid ${previews.length >= 6 ? "#bbf7d0" : previews.length === 0 ? "#fecaca" : "#bfdbfe"}`,
+                                            border: `1px solid ${previews.length >= 6 ? "#bbf7d0" : previews.length === 0 ? "#fecaca" : "#bfdbfe"} `,
                                         }}>
                                             {previews.length}/6
                                         </span>
@@ -890,15 +959,15 @@ const AdminAddProduct = () => {
                                     </div>
 
                                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                                        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: form.isCancellable ? "#f0fdf4" : "#fef2f2", border: `1.5px solid ${form.isCancellable ? "#bbf7d0" : "#fecaca"}`, borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                                        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: form.isCancellable ? "#f0fdf4" : "#fef2f2", border: `1.5px solid ${form.isCancellable ? "#bbf7d0" : "#fecaca"} `, borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
                                             <input type="checkbox" name="isCancellable" checked={form.isCancellable} onChange={e => setForm(p => ({ ...p, isCancellable: e.target.checked }))} />
                                             Cancellable
                                         </label>
-                                        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: form.isReturnable ? "#f0fdf4" : "#fef2f2", border: `1.5px solid ${form.isReturnable ? "#bbf7d0" : "#fecaca"}`, borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                                        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: form.isReturnable ? "#f0fdf4" : "#fef2f2", border: `1.5px solid ${form.isReturnable ? "#bbf7d0" : "#fecaca"} `, borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
                                             <input type="checkbox" name="isReturnable" checked={form.isReturnable} onChange={e => setForm(p => ({ ...p, isReturnable: e.target.checked }))} />
                                             Returnable
                                         </label>
-                                        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: form.isReplaceable ? "#f0fdf4" : "#fef2f2", border: `1.5px solid ${form.isReplaceable ? "#bbf7d0" : "#fecaca"}`, borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                                        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: form.isReplaceable ? "#f0fdf4" : "#fef2f2", border: `1.5px solid ${form.isReplaceable ? "#bbf7d0" : "#fecaca"} `, borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
                                             <input type="checkbox" name="isReplaceable" checked={form.isReplaceable} onChange={e => setForm(p => ({ ...p, isReplaceable: e.target.checked }))} />
                                             Replaceable
                                         </label>

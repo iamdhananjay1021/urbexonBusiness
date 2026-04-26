@@ -281,6 +281,18 @@ const orderSchema = new mongoose.Schema(
             cancelledAt: Date,
             returnRequestedAt: Date,
         },
+
+        // Append-only event log used by delivery flow.
+        timeline: {
+            type: [
+                {
+                    status: { type: String, default: "" },
+                    timestamp: { type: Date, default: Date.now },
+                    note: { type: String, default: "" },
+                },
+            ],
+            default: [],
+        },
     },
     { timestamps: true }
 );

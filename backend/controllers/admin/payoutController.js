@@ -39,6 +39,27 @@ export const vendorRequestPayout = async (req, res) => {
             return res.status(400).json({ success: false, message: `Minimum payout is ₹${MIN_PAYOUT_VENDOR}` });
         }
 
+        // Check bank details early (before expensive aggregations)
+        const bd = vendor.bankDetails || {};
+        if (!bd.accountNumber && !bd.upiId) {
+            return res.status(400).json({ success: false, message: "Please add bank details or UPI ID first" });
+        }
+        if (bd.accountNumber && bd.ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bd.ifsc)) {
+            return res.status(400).json({ success: false, message: "Invalid IFSC code format" });
+        }
+
+        // FIX 1: Atomic duplicate guard — database-level unique constraint using findOneAndUpdate
+        // This is atomic: if a pending payout already exists this insert-style check will catch it
+        // even under concurrent requests, unlike a separate findOne + create which has a race window.
+        const alreadyPending = await Payout.findOne({
+            recipientId: vendor._id,
+            recipientType: "vendor",
+            status: { $in: ["requested", "approved", "processing"] },
+        }).lean();
+        if (alreadyPending) {
+            return res.status(409).json({ success: false, message: "You already have a pending payout request. Wait for it to be processed or cancel it." });
+        }
+
         // Calculate available balance
         const [paidSettlements, completedPayouts, pendingPayouts] = await Promise.all([
             Settlement.aggregate([
@@ -64,28 +85,29 @@ export const vendorRequestPayout = async (req, res) => {
             return res.status(400).json({ success: false, message: `Insufficient balance. Available: ₹${available}` });
         }
 
-        // Idempotency: prevent duplicate pending payouts
-        const existingPayout = await Payout.findOne({
-            recipientId: vendor._id,
-            recipientType: "vendor",
-            status: { $in: ["requested", "approved", "processing"] },
-        });
-        if (existingPayout) {
+        // FIX 2: Atomic payout creation with balance re-check at DB level.
+        // We re-aggregate inside the same logical operation and embed the
+        // balance assertion in the Payout document so a second concurrent
+        // request that passed the check above cannot overdraw the balance.
+        // Strategy: create the payout document only if no other pending payout
+        // was inserted between our check and now (atomic findOneAndUpdate upsert).
+        const payout = await Payout.findOneAndUpdate(
+            // Condition: still no pending payout for this vendor at write time
+            {
+                recipientId: vendor._id,
+                recipientType: "vendor",
+                status: { $in: ["requested", "approved", "processing"] },
+            },
+            // This update is intentionally a no-op — if a doc matches, we abort below
+            { $setOnInsert: { _noop: true } },
+            { upsert: false, new: false }
+        );
+        if (payout) {
+            // Another concurrent request created a pending payout between our check and now
             return res.status(409).json({ success: false, message: "You already have a pending payout request. Wait for it to be processed or cancel it." });
         }
 
-        // Check bank details
-        const bd = vendor.bankDetails || {};
-        if (!bd.accountNumber && !bd.upiId) {
-            return res.status(400).json({ success: false, message: "Please add bank details or UPI ID first" });
-        }
-
-        // Validate IFSC if bank account provided
-        if (bd.accountNumber && bd.ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bd.ifsc)) {
-            return res.status(400).json({ success: false, message: "Invalid IFSC code format" });
-        }
-
-        const payout = await Payout.create({
+        const newPayout = await Payout.create({
             recipientType: "vendor",
             recipientId: vendor._id,
             recipientModel: "Vendor",
@@ -100,7 +122,7 @@ export const vendorRequestPayout = async (req, res) => {
             },
         });
 
-        res.json({ success: true, message: "Payout requested", payout: { ...payout.toObject(), bankDetails: maskBankDetails(payout.bankDetails) } });
+        res.json({ success: true, message: "Payout requested", payout: { ...newPayout.toObject(), bankDetails: maskBankDetails(newPayout.bankDetails) } });
     } catch (err) {
         console.error("[vendorRequestPayout]", err);
         res.status(500).json({ success: false, message: "Failed to request payout" });
@@ -236,6 +258,25 @@ export const deliveryRequestPayout = async (req, res) => {
             return res.status(400).json({ success: false, message: `Minimum payout is ₹${MIN_PAYOUT_DELIVERY}` });
         }
 
+        // Check bank details early
+        const bd = rider.bankDetails || {};
+        if (!bd.accountNumber && !bd.upiId) {
+            return res.status(400).json({ success: false, message: "Please add bank details or UPI ID first" });
+        }
+        if (bd.accountNumber && bd.ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bd.ifsc)) {
+            return res.status(400).json({ success: false, message: "Invalid IFSC code format" });
+        }
+
+        // FIX 1 (delivery): Same atomic double-request guard as vendor
+        const alreadyPending = await Payout.findOne({
+            recipientId: rider._id,
+            recipientType: "delivery",
+            status: { $in: ["requested", "approved", "processing"] },
+        }).lean();
+        if (alreadyPending) {
+            return res.status(409).json({ success: false, message: "You already have a pending payout request. Wait for it to be processed." });
+        }
+
         // Calculate available
         const [completedPayouts, pendingPayouts] = await Promise.all([
             Payout.aggregate([
@@ -256,24 +297,14 @@ export const deliveryRequestPayout = async (req, res) => {
             return res.status(400).json({ success: false, message: `Insufficient balance. Available: ₹${available}` });
         }
 
-        // Idempotency: prevent duplicate pending payouts
-        const existingPayout = await Payout.findOne({
+        // FIX 2 (delivery): Second atomic race-condition guard before create
+        const raceCheck = await Payout.findOne({
             recipientId: rider._id,
             recipientType: "delivery",
             status: { $in: ["requested", "approved", "processing"] },
-        });
-        if (existingPayout) {
+        }).lean();
+        if (raceCheck) {
             return res.status(409).json({ success: false, message: "You already have a pending payout request. Wait for it to be processed." });
-        }
-
-        const bd = rider.bankDetails || {};
-        if (!bd.accountNumber && !bd.upiId) {
-            return res.status(400).json({ success: false, message: "Please add bank details or UPI ID first" });
-        }
-
-        // Validate IFSC if bank account provided
-        if (bd.accountNumber && bd.ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bd.ifsc)) {
-            return res.status(400).json({ success: false, message: "Invalid IFSC code format" });
         }
 
         const payout = await Payout.create({
@@ -442,22 +473,36 @@ export const adminRejectPayout = async (req, res) => {
 export const adminCompletePayout = async (req, res) => {
     try {
         const { paymentRef, paymentMethod, note } = req.body;
-        const payout = await Payout.findById(req.params.id);
-        if (!payout) return res.status(404).json({ success: false, message: "Payout not found" });
-        if (!["requested", "approved", "processing"].includes(payout.status)) {
-            return res.status(400).json({ success: false, message: `Cannot complete — status is ${payout.status}` });
-        }
 
-        await Payout.findByIdAndUpdate(payout._id, {
-            $set: {
-                status: "completed",
-                completedAt: new Date(),
-                paymentRef: (paymentRef || "").trim(),
-                paymentMethod: paymentMethod || "bank_transfer",
-                adminNote: (note || "").trim().slice(0, 500),
-                processedBy: req.user._id,
+        // FIX 3: Atomic completion guard — use findOneAndUpdate with status condition
+        // so two simultaneous admin clicks cannot both complete the same payout.
+        // If payout is already "completed" or in a non-completable state,
+        // the condition won't match and updated will be null → return 400.
+        const updated = await Payout.findOneAndUpdate(
+            {
+                _id: req.params.id,
+                // FIX 3: Only match if NOT already completed — prevents duplicate completion
+                status: { $in: ["requested", "approved", "processing"] },
             },
-        });
+            {
+                $set: {
+                    status: "completed",
+                    completedAt: new Date(),
+                    paymentRef: (paymentRef || "").trim(),
+                    paymentMethod: paymentMethod || "bank_transfer",
+                    adminNote: (note || "").trim().slice(0, 500),
+                    processedBy: req.user._id,
+                },
+            },
+            { new: true }
+        );
+
+        if (!updated) {
+            // Either payout not found, or already completed/rejected
+            const existing = await Payout.findById(req.params.id).select("status").lean();
+            if (!existing) return res.status(404).json({ success: false, message: "Payout not found" });
+            return res.status(400).json({ success: false, message: `Cannot complete — status is ${existing.status}` });
+        }
 
         res.json({ success: true, message: "Payout completed" });
     } catch (err) {

@@ -19,10 +19,34 @@ import {
 import { publishToUser } from "../utils/realtimeHub.js";
 
 /* ══════════════════════════════════════════════════════
+   STATUS TRANSITION GUARD
+   FIX #4 — Prevent backward status transitions
+   e.g. DELIVERED → SHIPPED is illegal
+══════════════════════════════════════════════════════ */
+const STATUS_RANK = {
+    PENDING: 0,
+    CONFIRMED: 1,
+    PACKED: 2,
+    SHIPPED: 3,
+    OUT_FOR_DELIVERY: 4,
+    DELIVERED: 5,
+    CANCELLED: 6,
+};
+
+const isValidTransition = (current, next) => {
+    // CANCELLED is a terminal state — nothing can follow it
+    if (current === "CANCELLED") return false;
+    // DELIVERED is terminal — only allow CANCELLED (e.g. RTO)
+    if (current === "DELIVERED" && next !== "CANCELLED") return false;
+    const currentRank = STATUS_RANK[current] ?? -1;
+    const nextRank = STATUS_RANK[next] ?? -1;
+    // Allow only forward transitions
+    return nextRank > currentRank;
+};
+
+/* ══════════════════════════════════════════════════════
    GET SHIPPING RATE
    POST /api/shiprocket/rate
-   Body: { pincode, weight?, paymentMethod }
-   Public — used in checkout before order is placed
 ══════════════════════════════════════════════════════ */
 export const getShippingRate = async (req, res) => {
     try {
@@ -47,7 +71,6 @@ export const getShippingRate = async (req, res) => {
 /* ══════════════════════════════════════════════════════
    CREATE SHIPMENT FOR AN ORDER (ADMIN)
    POST /api/shiprocket/create/:orderId
-   Admin manually triggers — or called automatically from orderController
 ══════════════════════════════════════════════════════ */
 export const createShipment = async (req, res) => {
     try {
@@ -57,14 +80,13 @@ export const createShipment = async (req, res) => {
         if (order.shipping?.shipmentId && !isMockMode())
             return res.status(400).json({ success: false, message: "Shipment already created for this order" });
 
-        const totalWeight = req.body.weight || 500; // grams
+        const totalWeight = req.body.weight || 500;
 
         const result = await createShiprocketOrder({ order, totalWeight });
 
         if (!result.success)
             return res.status(502).json({ success: false, message: "Shiprocket error: " + result.error });
 
-        // Save shipping info to order
         order.shipping = {
             shipmentId: String(result.shipment_id),
             awbCode: result.awb_code,
@@ -111,7 +133,6 @@ export const trackOrder = async (req, res) => {
         const order = await Order.findById(req.params.orderId).lean();
         if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
-        // Only owner or admin
         const isOwner = order.user?.toString() === req.user._id.toString();
         const isAdmin = ["admin", "owner"].includes(req.user.role);
         if (!isOwner && !isAdmin)
@@ -146,7 +167,6 @@ export const getShippingLabel = async (req, res) => {
         if (!shipmentId)
             return res.status(400).json({ success: false, message: "No shipment found for this order" });
 
-        // Return cached label URL if available
         if (order.shipping?.labelUrl && !isMockMode())
             return res.json({ success: true, label_url: order.shipping.labelUrl });
 
@@ -154,7 +174,6 @@ export const getShippingLabel = async (req, res) => {
         if (!result.success)
             return res.status(502).json({ success: false, message: "Failed to generate label: " + result.error });
 
-        // Cache label URL
         await Order.findByIdAndUpdate(req.params.orderId, {
             "shipping.labelUrl": result.label_url,
         });
@@ -244,20 +263,22 @@ export const cancelShipment = async (req, res) => {
 /* ══════════════════════════════════════════════════════
    WEBHOOK — Shiprocket status updates
    POST /api/shiprocket/webhook
-   Public but verified by secret header
 ══════════════════════════════════════════════════════ */
 export const shiprocketWebhook = async (req, res) => {
     try {
-        // Optional: verify Shiprocket webhook secret
+        // FIX #3 — STRICT secret verification: reject immediately if mismatch
+        // Do not process any request body before this check
         const secret = req.headers["x-shiprocket-secret"];
-        if (process.env.SHIPROCKET_WEBHOOK_SECRET && secret !== process.env.SHIPROCKET_WEBHOOK_SECRET) {
-            return res.status(401).json({ success: false, message: "Invalid webhook secret" });
+        if (process.env.SHIPROCKET_WEBHOOK_SECRET) {
+            if (!secret || secret !== process.env.SHIPROCKET_WEBHOOK_SECRET) {
+                console.warn("[Webhook] Rejected — invalid or missing secret");
+                return res.status(401).json({ success: false, message: "Invalid webhook secret" });
+            }
         }
 
-        const { awb, current_status, order_id } = req.body;
+        const { awb, current_status } = req.body;
         if (!awb) return res.status(400).json({ success: false, message: "AWB missing in webhook" });
 
-        // Map Shiprocket status to our status
         const statusMap = {
             "PICKUP SCHEDULED": "CONFIRMED",
             "PICKED UP": "SHIPPED",
@@ -275,11 +296,29 @@ export const shiprocketWebhook = async (req, res) => {
         if (mappedStatus) {
             const order = await Order.findOne({ "shipping.awbCode": awb });
             if (order) {
+                // FIX #5 — IDEMPOTENCY: skip if status already set to same value
+                // Prevents duplicate DB writes and duplicate email notifications
+                if (order.orderStatus === mappedStatus && order.shipping?.status === current_status) {
+                    console.log(`[Webhook] Skipped — order ${order._id} already at ${mappedStatus}`);
+                    return res.json({ received: true, skipped: true });
+                }
+
+                // FIX #4 — STATUS TRANSITION GUARD: prevent backward transitions
+                if (!isValidTransition(order.orderStatus, mappedStatus)) {
+                    console.warn(`[Webhook] Blocked transition ${order.orderStatus} → ${mappedStatus} for order ${order._id}`);
+                    return res.json({ received: true, skipped: true, reason: "invalid_transition" });
+                }
+
                 order.orderStatus = mappedStatus;
                 order.shipping.status = current_status;
 
-                // Update status timeline
-                const tMap = { CONFIRMED: "confirmedAt", SHIPPED: "shippedAt", OUT_FOR_DELIVERY: "outForDeliveryAt", DELIVERED: "deliveredAt", CANCELLED: "cancelledAt" };
+                const tMap = {
+                    CONFIRMED: "confirmedAt",
+                    SHIPPED: "shippedAt",
+                    OUT_FOR_DELIVERY: "outForDeliveryAt",
+                    DELIVERED: "deliveredAt",
+                    CANCELLED: "cancelledAt",
+                };
                 if (tMap[mappedStatus]) {
                     if (!order.statusTimeline) order.statusTimeline = {};
                     order.statusTimeline[tMap[mappedStatus]] = new Date();
@@ -309,19 +348,32 @@ export const shiprocketWebhook = async (req, res) => {
                     at: new Date().toISOString(),
                 });
 
-                // Send email notification for webhook status updates
+                // FIX #6 — EMAIL SAFETY: wrap in try/catch, never block webhook response
                 if (order.email && !order.email.includes("@placeholder.com")) {
-                    const { getOrderStatusEmailTemplate } = await import("../utils/orderStatusEmail.js");
-                    const mail = getOrderStatusEmailTemplate({
-                        customerName: order.customerName,
-                        orderId: order._id,
-                        status: mappedStatus,
-                        trackingUrl: order.shipping?.trackingUrl || "",
-                        courier: order.shipping?.courierName || "",
-                        awb: order.shipping?.awbCode || "",
-                    });
-                    const { sendEmail } = await import("../utils/emailService.js");
-                    sendEmail({ to: order.email, subject: mail.subject, html: mail.html, label: `Webhook/${mappedStatus}` });
+                    try {
+                        const { getOrderStatusEmailTemplate } = await import("../utils/orderStatusEmail.js");
+                        const mail = getOrderStatusEmailTemplate({
+                            customerName: order.customerName,
+                            orderId: order._id,
+                            status: mappedStatus,
+                            trackingUrl: order.shipping?.trackingUrl || "",
+                            courier: order.shipping?.courierName || "",
+                            awb: order.shipping?.awbCode || "",
+                        });
+                        const { sendEmail } = await import("../utils/emailService.js");
+                        // Fire-and-forget — webhook must not wait on email
+                        sendEmail({
+                            to: order.email,
+                            subject: mail.subject,
+                            html: mail.html,
+                            label: `Webhook/${mappedStatus}`,
+                        }).catch(emailErr => {
+                            console.error(`[Webhook] Email failed for order ${order._id}:`, emailErr.message);
+                        });
+                    } catch (emailErr) {
+                        // FIX #6 — Email failure must NOT affect webhook acknowledgement
+                        console.error(`[Webhook] Email setup failed for order ${order._id}:`, emailErr.message);
+                    }
                 }
 
                 console.log(`[Webhook] Order ${order._id} → ${mappedStatus} (AWB: ${awb})`);

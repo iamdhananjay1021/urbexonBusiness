@@ -47,45 +47,20 @@ export const autoAssignDeliveryBoys = async () => {
 };
 
 // ══════════════════════════════════════════════════════
-// 2️⃣ CLEANUP: MARK STALE ASSIGNED ORDERS
+// 2️⃣ CLEANUP: MARK STALE ASSIGNED ORDERS (DISABLED - TOO DANGEROUS)
 // ══════════════════════════════════════════════════════
+// ⚠️ DISABLED: This job was auto-unassigning riders without admin confirmation.
+// This could silently corrupt order state (mark DELIVERED, lose tracking, etc).
+//
+// To safely handle stale assignments:
+// 1. Admin can manually unassign via admin panel
+// 2. Rider can manually cancel delivery
+// 3. Automated reassignment is NOT safe without explicit admin review
+//
+// If you need to handle stale assignments, add proper alerting first.
 export const updateDeliveryStatus = async () => {
-    try {
-        // UH orders assigned to a rider but stuck at READY_FOR_PICKUP for > 45 mins
-        const staleAssigned = await Order.find({
-            orderMode: 'URBEXON_HOUR',
-            orderStatus: 'READY_FOR_PICKUP',
-            'delivery.assignedTo': { $exists: true },
-            'delivery.assignedAt': { $lt: new Date(Date.now() - 45 * 60 * 1000) },
-        }).select('_id delivery').lean();
-
-        let updated = 0;
-        for (const order of staleAssigned) {
-            try {
-                // Unassign rider, decrement their active orders, re-trigger
-                await Order.findByIdAndUpdate(order._id, {
-                    $set: { 'delivery.status': 'PENDING' },
-                    $unset: { 'delivery.assignedTo': '', 'delivery.assignedAt': '' },
-                });
-                if (order.delivery?.assignedTo) {
-                    await DeliveryBoy.findByIdAndUpdate(order.delivery.assignedTo, {
-                        $inc: { activeOrders: -1 },
-                    }).catch(() => { });
-                }
-                startAssignment(order._id).catch(() => { });
-                logger.info(`🔄 Unassigned stale rider from UH order ${order._id}, re-triggering`);
-                updated++;
-            } catch (err) {
-                logger.warn(`Failed to update stale order ${order._id}`);
-            }
-        }
-
-        if (updated > 0) logger.info(`🚚 Cleaned up ${updated} stale UH delivery assignments`);
-        return { statusUpdates: updated };
-    } catch (err) {
-        logger.error('Update Delivery Status Error:', err);
-        throw { message: err.message };
-    }
+    // NOOP: Disabled for safety
+    return { statusUpdates: 0, disabled: true, reason: "Safety guard - manual admin review required" };
 };
 
 // ══════════════════════════════════════════════════════
