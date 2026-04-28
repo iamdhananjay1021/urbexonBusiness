@@ -54,7 +54,7 @@ export default function ContactUs() {
                         <InfoCard
                             icon="📧"
                             title="Email Us"
-                            line1="support@urbexon.com"
+                            line1="support@urbexon.in"
                             line2="For orders & general queries"
                         />
                         <InfoCard

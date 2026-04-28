@@ -25,11 +25,11 @@ const pincodeSchema = new mongoose.Schema(
             default: "coming_soon",
             index: true,
         },
-        area:     { type: String, trim: true },
-        city:     { type: String, trim: true, index: true },
+        area: { type: String, trim: true },
+        city: { type: String, trim: true, index: true },
         district: { type: String, trim: true },
-        state:    { type: String, trim: true },
-        country:  { type: String, default: "India" },
+        state: { type: String, trim: true },
+        country: { type: String, default: "India" },
 
         // ── Geo Coordinates (OPTIONAL — only set when lat/lng provided) ──
         // FIX: Don't store location at all if coordinates not provided
@@ -41,24 +41,25 @@ const pincodeSchema = new mongoose.Schema(
             },
             coordinates: {
                 type: [Number], // [longitude, latitude]
+                default: undefined,
             },
         },
 
         assignedVendors: [{ type: mongoose.Schema.Types.ObjectId, ref: "Vendor" }],
 
         expectedLaunchDate: { type: Date, default: null },
-        launchedAt:         { type: Date, default: null },
+        launchedAt: { type: Date, default: null },
 
-        waitlist:      [waitlistEntrySchema],
+        waitlist: [waitlistEntrySchema],
         waitlistCount: { type: Number, default: 0 },
-        totalOrders:   { type: Number, default: 0 },
-        isServicable:  { type: Boolean, default: false },
-        note:          { type: String, trim: true },
-        priority:      { type: Number, default: 0, index: true },
+        totalOrders: { type: Number, default: 0 },
+        isServicable: { type: Boolean, default: false },
+        note: { type: String, trim: true },
+        priority: { type: Number, default: 0, index: true },
     },
     {
         timestamps: true,
-        toJSON:   { virtuals: true },
+        toJSON: { virtuals: true },
         toObject: { virtuals: true },
     }
 );

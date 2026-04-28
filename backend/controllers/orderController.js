@@ -89,37 +89,54 @@ const checkFraud = async ({ userId, ip, amount, paymentId }) => {
    REALTIME ORDER STREAM (SSE)
    GET /api/orders/stream?token=JWT
 ══════════════════════════════════════════════ */
-export const streamMyOrderEvents = async (req, res) => {
+export const streamMyOrderEvents = (req, res) => {
     try {
-        const token = req.query?.token;
-        if (!token) return res.status(401).json({ success: false, message: "Token required" });
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const userId = decoded.id || decoded._id;
-        if (!userId) return res.status(401).json({ success: false, message: "Invalid token" });
-
+        // 🔥 MUST: SSE headers first
         res.setHeader("Content-Type", "text/event-stream");
-        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("Cache-Control", "no-cache");
         res.setHeader("Connection", "keep-alive");
+
         res.flushHeaders?.();
 
-        addUserStream(userId, res);
-        res.write(`event: connected\ndata: ${JSON.stringify({ ok: true, userId })}\n\n`);
+        let token = req.query?.token;
 
-        const heartbeat = setInterval(() => {
-            res.write(`event: ping\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`);
+        if (!token) {
+            res.write(`event: error\ndata: ${JSON.stringify({ message: "Token missing" })}\n\n`);
+            return res.end();
+        }
+
+        if (token.startsWith("Bearer ")) {
+            token = token.split(" ")[1];
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(token, process.env.JWT_SECRET);
+        } catch (err) {
+            res.write(`event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
+            return res.end();
+        }
+
+        const userId = decoded.id || decoded._id;
+
+        // ✅ connected event
+        res.write(`event: connected\ndata: ${JSON.stringify({ userId })}\n\n`);
+
+        // heartbeat
+        const interval = setInterval(() => {
+            res.write(`event: ping\ndata: ${Date.now()}\n\n`);
         }, 25000);
 
         req.on("close", () => {
-            clearInterval(heartbeat);
-            removeUserStream(userId, res);
+            clearInterval(interval);
             res.end();
         });
-    } catch {
-        res.status(401).json({ success: false, message: "Unauthorized stream access" });
+
+    } catch (err) {
+        console.error("SSE ERROR:", err);
+        res.end();
     }
 };
-
 /* ══════════════════════════════════════════════
    AUTO-CREATE SHIPROCKET SHIPMENT (async helper)
 ══════════════════════════════════════════════ */
@@ -1052,6 +1069,8 @@ export const updateOrderStatus = async (req, res) => {
 
         // Auto-create Settlement on DELIVERED — ONLY for vendor UH orders
         // [FIX-O1][FIX-O4] Ecommerce admin orders have vendorId: null — skip settlement
+        // ✅ BUG3 FIX: Use atomic $setOnInsert upsert — safe if vendor panel already created settlement
+        // FLOW: Admin marks DELIVERED only in exceptional cases; rider OTP flow is the normal path.
         if (status === "DELIVERED" && order.orderMode === "URBEXON_HOUR") {
             (async () => {
                 try {
@@ -1060,10 +1079,7 @@ export const updateOrderStatus = async (req, res) => {
                     const vendorIds = [...new Set(products.map(p => p.vendorId?.toString()).filter(Boolean))];
 
                     for (const vid of vendorIds) {
-                        const exists = await Settlement.findOne({ orderId: order._id, vendorId: vid });
-                        if (exists) continue;
-
-                        const vendor = await Vendor.findById(vid).select("commissionRate pendingSettlement").lean();
+                        const vendor = await Vendor.findById(vid).select("commissionRate").lean();
                         if (!vendor) continue;
 
                         const vendorProductIdStrs = products
@@ -1080,25 +1096,35 @@ export const updateOrderStatus = async (req, res) => {
                         const commissionAmount = Math.round((orderAmount * commissionRate) / 100);
                         const vendorEarning = Math.max(0, orderAmount - commissionAmount);
 
-                        await Settlement.create({
-                            vendorId: vid,
-                            orderId: order._id,
-                            orderAmount,
-                            commissionRate,
-                            commissionAmount,
-                            deliveryCharge: order.deliveryCharge || 0,
-                            platformFee: order.platformFee || 0,
-                            vendorEarning,
-                            status: "pending",
-                        });
-
-                        await Vendor.findByIdAndUpdate(vid, {
-                            $inc: {
-                                pendingSettlement: vendorEarning,
-                                totalRevenue: orderAmount,
-                                totalOrders: 1,
+                        // ✅ Atomic upsert — won't double-create if vendor panel already settled
+                        const result = await Settlement.updateOne(
+                            { orderId: order._id },
+                            {
+                                $setOnInsert: {
+                                    vendorId: vid,
+                                    orderId: order._id,
+                                    orderAmount,
+                                    commissionRate,
+                                    commissionAmount,
+                                    deliveryCharge: order.deliveryCharge || 0,
+                                    platformFee: order.platformFee || 0,
+                                    vendorEarning,
+                                    status: "pending",
+                                },
                             },
-                        });
+                            { upsert: true }
+                        );
+
+                        // Only update vendor stats if settlement was newly created
+                        if (result.upsertedCount > 0) {
+                            await Vendor.findByIdAndUpdate(vid, {
+                                $inc: {
+                                    pendingSettlement: vendorEarning,
+                                    totalRevenue: orderAmount,
+                                    totalOrders: 1,
+                                },
+                            });
+                        }
                     }
                 } catch (settleErr) {
                     console.error("[Settlement] Auto-create failed:", order._id, settleErr.message);

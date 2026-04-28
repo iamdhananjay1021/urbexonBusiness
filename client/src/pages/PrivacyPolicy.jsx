@@ -110,7 +110,7 @@ function ContactBox() {
     return (
         <div className="mt-3 bg-zinc-50 border border-zinc-200 rounded-xl p-5 text-sm text-gray-700 space-y-1">
             <p><strong>Urbexon</strong></p>
-            <p>Email: officialurbexon@gmail.com</p>
+            <p>Email: support@urbexon.in</p>
             <p>Phone: +91 88084 85840</p>
             <p>Sector 62, Noida</p>
             <p>Noida – 201309, Uttar Pradesh, India</p>

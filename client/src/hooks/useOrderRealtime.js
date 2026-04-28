@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { useAuth } from "../contexts/AuthContext";
+import api from "../api/axios";
 
 const getApiBase = () => {
     const apiUrl = import.meta.env.VITE_API_URL;
@@ -9,71 +11,91 @@ const getApiBase = () => {
     return "http://localhost:9000/api";
 };
 
+// Module-level circuit breaker (survives React unmount/remount loops)
+let globalSseFailures = 0;
+let globalSseBlockedUntil = 0;
+
+// Helper: Check if token is expired locally before firing network request
+const isTokenExpired = (token) => {
+    if (!token) return true;
+    try {
+        const payloadStr = token.split('.')[1];
+        if (!payloadStr) return true;
+        const payload = JSON.parse(atob(payloadStr));
+        return payload.exp * 1000 <= Date.now();
+    } catch {
+        return true;
+    }
+};
+
 export const useOrderRealtime = ({ enabled = true, onStatusUpdate }) => {
-    const retryRef = useRef(null);
+    const authContext = useAuth();
+    const tokenDep = authContext?.token || null;
     const sourceRef = useRef(null);
-    // FIX: track consecutive failures to stop infinite 401 loop
-    const failCountRef = useRef(0);
-    const MAX_RETRIES = 5;
 
     useEffect(() => {
-        if (!enabled) return undefined;
+        if (!enabled || !tokenDep) return undefined;
 
-        const authRaw = localStorage.getItem("auth");
-        const token = authRaw ? JSON.parse(authRaw)?.token : null;
-
-        // FIX: if no token at all, don't even try to connect
-        if (!token) return undefined;
+        let isMounted = true;
+        let timer = null;
 
         const connect = () => {
-            // FIX: stop retrying after MAX_RETRIES consecutive failures
-            // This prevents the infinite 401 loop seen in console
-            if (failCountRef.current >= MAX_RETRIES) {
-                console.warn("[OrderRealtime] Max retries reached — stopping SSE reconnect");
+            if (!isMounted) return;
+
+            // 1. Circuit Breaker Guard
+            if (Date.now() < globalSseBlockedUntil) {
                 return;
             }
 
-            const url = `${getApiBase()}/orders/stream?token=${encodeURIComponent(token)}`;
+            // 2. Pre-flight Expiry Guard (Prevents 401s from reaching network)
+            if (isTokenExpired(tokenDep)) {
+                console.warn("[OrderRealtime] Token expired locally. Aborting SSE.");
+                api.get("/auth/profile").catch(() => { }); // Trigger Axios refresh/logout
+                return;
+            }
+
+            const url = `${getApiBase()}/orders/stream?token=${encodeURIComponent(tokenDep)}`;
             const source = new EventSource(url);
             sourceRef.current = source;
 
             source.addEventListener("connected", () => {
-                // FIX: reset fail count on successful connection
-                failCountRef.current = 0;
+                globalSseFailures = 0; // Reset circuit breaker on success
             });
 
             source.addEventListener("order_status_updated", (event) => {
                 try {
                     const payload = JSON.parse(event.data);
-                    onStatusUpdate?.(payload);
-                } catch {
-                    // ignore invalid payload
-                }
+                    if (isMounted) onStatusUpdate?.(payload);
+                } catch { }
             });
 
             source.onerror = () => {
                 source.close();
                 sourceRef.current = null;
-                failCountRef.current += 1;
+                globalSseFailures += 1;
 
-                // FIX: if we've hit max retries, stop — no more reconnect attempts
-                if (failCountRef.current >= MAX_RETRIES) {
-                    console.warn("[OrderRealtime] SSE failed too many times — stopped retrying");
-                    return;
+                // Trip circuit breaker for 30s if backend repeatedly rejects
+                if (globalSseFailures >= 3) {
+                    globalSseBlockedUntil = Date.now() + 30000;
+                    console.error("[OrderRealtime] SSE failed repeatedly. Circuit breaker tripped.");
                 }
 
-                // Exponential backoff: 3s, 6s, 12s, 24s, 48s
-                const delay = Math.min(3000 * Math.pow(2, failCountRef.current - 1), 48000);
-                retryRef.current = setTimeout(connect, delay);
+                if (isMounted) {
+                    api.get("/auth/profile").catch(() => { });
+                }
             };
         };
 
-        connect();
+        // 3. Mount Debounce (Prevents thrashing spam)
+        timer = setTimeout(connect, 500);
 
         return () => {
-            clearTimeout(retryRef.current);
-            sourceRef.current?.close();
-            sourceRef.current = null;
+            isMounted = false;
+            clearTimeout(timer);
+            if (sourceRef.current) {
+                sourceRef.current.close();
+                sourceRef.current = null;
+            }
         };
-    }, [enabled]); // FIX: onStatusUpdate removed from deps — it causes reconnect on every render
+    }, [enabled, tokenDep]);
 };

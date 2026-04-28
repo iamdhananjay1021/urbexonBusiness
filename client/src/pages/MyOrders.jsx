@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useOrderRealtime } from "../hooks/useOrderRealtime";
 import { Link } from "react-router-dom";
@@ -24,6 +24,8 @@ const ECOM_FLOW = ["PLACED", "CONFIRMED", "PACKED", "SHIPPED", "OUT_FOR_DELIVERY
 const UH_FLOW = ["PLACED", "CONFIRMED", "PACKED", "READY_FOR_PICKUP", "OUT_FOR_DELIVERY", "DELIVERED"];
 const CANCELLABLE = ["PLACED", "CONFIRMED"];
 const STALE_MS = 60_000;
+// BUG FIX #6: Online payment methods — not just RAZORPAY
+const ONLINE_PAYMENT_METHODS = ["RAZORPAY", "UPI", "ONLINE", "STRIPE", "PAYTM"];
 
 const getItemImage = (item) => item.images?.[0]?.url || item.image || null;
 
@@ -31,10 +33,19 @@ const MyOrders = () => {
     const dispatch = useDispatch();
     const { token: authToken } = useAuth();
 
+    // BUG FIX #7: isMounted guard to prevent setState on unmounted component
+    const isMounted = useRef(true);
+    useEffect(() => {
+        isMounted.current = true;
+        return () => { isMounted.current = false; };
+    }, []);
+
+    // BUG FIX #3: useWebSocket only handles "new_order" now.
+    // "order_status_updated" is handled exclusively by useOrderRealtime to avoid double dispatch.
     useWebSocket(authToken, {
-        onMessage: (msg) => {
-            if (msg.type === "new_order" || msg.type === "order_status_updated") dispatch(getMyOrders());
-        },
+        onMessage: useCallback((msg) => {
+            if (msg.type === "new_order") dispatch(getMyOrders());
+        }, [dispatch]),
     });
 
     const { orders = [], status, error, lastFetched } = useSelector((s) => s.orders);
@@ -48,44 +59,74 @@ const MyOrders = () => {
     const [liveMessage, setLiveMessage] = useState("");
     const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
+    // BUG FIX #2: liveMessage auto-clear ref
+    const liveMessageTimer = useRef(null);
+
     useOrderRealtime({
         enabled: true,
-        onStatusUpdate: async (payload) => {
-            setLiveMessage(
-                `Live: Order #${String(payload.orderId).slice(-6).toUpperCase()} → ${String(payload.status || "updated").replaceAll("_", " ")}`
-            );
+        onStatusUpdate: useCallback(async (payload) => {
+            // Clear existing timer before setting new message
+            if (liveMessageTimer.current) clearTimeout(liveMessageTimer.current);
+
+            if (isMounted.current) {
+                setLiveMessage(
+                    `Live: Order #${String(payload.orderId).slice(-6).toUpperCase()} → ${String(payload.status || "updated").replaceAll("_", " ")}`
+                );
+                // BUG FIX #2: Auto-clear live message after 5 seconds
+                liveMessageTimer.current = setTimeout(() => {
+                    if (isMounted.current) setLiveMessage("");
+                }, 5000);
+            }
+
             await dispatch(getMyOrders());
-        },
+        }, [dispatch]),
     });
+
+    // Cleanup timer on unmount
+    useEffect(() => {
+        return () => {
+            if (liveMessageTimer.current) clearTimeout(liveMessageTimer.current);
+        };
+    }, []);
 
     useEffect(() => {
         const isStale = !lastFetched || Date.now() - lastFetched > STALE_MS;
-        if (isStale || (orders.length === 0 && status !== "loading")) dispatch(getMyOrders());
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        if (isStale || (orders.length === 0 && status !== "loading")) {
+            dispatch(getMyOrders());
+        }
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps — intentional: mount-only fetch
+
+    // BUG FIX #4 & #5: Tab switch resets all stale UI state
+    const handleTabChange = useCallback((tab) => {
+        setActiveTab(tab);
+        setActiveFilter("ALL");
+        setConfirmCancelId(null);   // BUG FIX #4: clear stale cancel dialog
+        setMobileFilterOpen(false); // BUG FIX #5: close mobile drawer
     }, []);
 
     const handleRefresh = async () => {
-        setRefreshing(true);
+        if (isMounted.current) setRefreshing(true);
         await dispatch(getMyOrders());
-        setRefreshing(false);
+        if (isMounted.current) setRefreshing(false);
     };
 
     const handleCancel = async (orderId) => {
         try {
-            setCancellingId(orderId);
+            if (isMounted.current) setCancellingId(orderId);
             await api.patch(`/orders/${orderId}/cancel`);
             dispatch(getMyOrders());
-            setConfirmCancelId(null);
+            if (isMounted.current) setConfirmCancelId(null);
         } catch (err) {
             alert(err.response?.data?.message || "Cancel failed");
         } finally {
-            setCancellingId(null);
+            // BUG FIX #7: guard before setState
+            if (isMounted.current) setCancellingId(null);
         }
     };
 
     const handleDownloadInvoice = async (orderId) => {
         try {
-            setDownloadingId(orderId);
+            if (isMounted.current) setDownloadingId(orderId);
             const response = await api.get(`/invoice/${orderId}/download`, { responseType: "blob" });
             const url = window.URL.createObjectURL(new Blob([response.data], { type: "application/pdf" }));
             const link = document.createElement("a");
@@ -98,7 +139,8 @@ const MyOrders = () => {
         } catch {
             alert("Failed to download invoice. Please try again.");
         } finally {
-            setDownloadingId(null);
+            // BUG FIX #7: guard before setState
+            if (isMounted.current) setDownloadingId(null);
         }
     };
 
@@ -107,7 +149,8 @@ const MyOrders = () => {
     const ecomCount = orders.filter((o) => (o.orderMode || "ECOMMERCE") === "ECOMMERCE").length;
     const uhCount = orders.filter((o) => o.orderMode === "URBEXON_HOUR").length;
     const isUHTab = activeTab === "URBEXON_HOUR";
-    const activeFlow = isUHTab ? UH_FLOW : ECOM_FLOW;
+    // BUG FIX #1: Removed unused `activeFlow` variable. Each order card uses its own `flow` variable
+    // based on that order's `orderMode` — which is correct since a single list can have mixed modes.
 
     if (status === "loading" && !refreshing && orders.length === 0)
         return (
@@ -160,6 +203,8 @@ const MyOrders = () => {
                 .mo-mode-tab.ecom .mo-mode-tab-count { background: #fef3c7; color: #d97706; }
                 .mo-mode-tab.uh .mo-mode-tab-count { background: #ede9fe; color: #7c3aed; }
                 .mo-uh-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: #ede9fe; color: #7c3aed; border: 1px solid #ddd6fe; }
+                .mo-live-msg { animation: fadeInSlide .3s ease; }
+                @keyframes fadeInSlide { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
             `}</style>
 
             <div className="mo-root">
@@ -168,14 +213,14 @@ const MyOrders = () => {
                 <div className="mo-mode-tabs">
                     <button
                         className={`mo-mode-tab ecom${activeTab === "ECOMMERCE" ? " active" : ""}`}
-                        onClick={() => { setActiveTab("ECOMMERCE"); setActiveFilter("ALL"); }}
+                        onClick={() => handleTabChange("ECOMMERCE")}
                     >
                         <FaShoppingBag size={13} /> Ecommerce
                         <span className="mo-mode-tab-count">{ecomCount}</span>
                     </button>
                     <button
                         className={`mo-mode-tab uh${activeTab === "URBEXON_HOUR" ? " active" : ""}`}
-                        onClick={() => { setActiveTab("URBEXON_HOUR"); setActiveFilter("ALL"); }}
+                        onClick={() => handleTabChange("URBEXON_HOUR")}
                     >
                         <FaBolt size={13} /> Urbexon Hour
                         <span className="mo-mode-tab-count">{uhCount}</span>
@@ -248,8 +293,14 @@ const MyOrders = () => {
                         {status === "failed" && error && (
                             <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2.5 rounded-lg text-sm">⚠️ {error}</div>
                         )}
+                        {/* BUG FIX #2: liveMessage auto-clears via timer — always shows fresh */}
                         {liveMessage && (
-                            <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2.5 rounded-lg text-xs font-semibold">{liveMessage}</div>
+                            <div className="mo-live-msg bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2.5 rounded-lg text-xs font-semibold flex items-center justify-between gap-2">
+                                <span>{liveMessage}</span>
+                                <button onClick={() => setLiveMessage("")} className="text-blue-400 hover:text-blue-600 transition shrink-0">
+                                    <FaTimes size={11} />
+                                </button>
+                            </div>
                         )}
 
                         {/* Empty states */}
@@ -292,16 +343,21 @@ const MyOrders = () => {
                             const cfg = STATUS_CONFIG[order.orderStatus] || STATUS_CONFIG.PLACED;
                             const canCancel = CANCELLABLE.includes(order.orderStatus);
                             const orderIsUH = order.orderMode === "URBEXON_HOUR";
+                            // BUG FIX #1: `flow` is correctly per-order (not from the dead `activeFlow`)
                             const flow = orderIsUH ? UH_FLOW : ECOM_FLOW;
                             const stepIdx = flow.indexOf(order.orderStatus);
                             const isCancelled = order.orderStatus === "CANCELLED";
                             const isDelivered = order.orderStatus === "DELIVERED";
                             const isDownloading = downloadingId === order._id;
 
-                            const payMethod = order.payment?.method || "COD";
-                            const payStatus = order.payment?.status || "PENDING";
-                            const isPaid = payMethod === "RAZORPAY" && payStatus === "PAID";
+                            const payMethod = order.payment?.method?.toUpperCase() || "COD";
+                            const payStatus = order.payment?.status?.toUpperCase() || "PENDING";
+                            // BUG FIX #6: isPaid handles all online methods, not just RAZORPAY
                             const isCOD = payMethod === "COD";
+                            const isPaid = !isCOD && ONLINE_PAYMENT_METHODS.includes(payMethod) && payStatus === "PAID";
+
+                            // BUG FIX #8: Don't render card if items array is empty
+                            if (!order.items?.length) return null;
 
                             return (
                                 <div key={order._id} className="bg-white rounded-lg border border-stone-200 overflow-hidden hover:shadow-sm transition-shadow">
@@ -339,11 +395,11 @@ const MyOrders = () => {
 
                                     {/* ── Items ── */}
                                     <div className="divide-y divide-stone-50">
-                                        {order.items?.map((item, idx) => {
+                                        {order.items.map((item, idx) => {
                                             const img = getItemImage(item);
                                             const qty = item.qty || item.quantity || 1;
                                             return (
-                                                <div key={idx} className="mo-item-row">
+                                                <div key={item._id || idx} className="mo-item-row">
                                                     <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg border border-stone-100 bg-stone-50 flex items-center justify-center shrink-0 overflow-hidden">
                                                         {img
                                                             ? <img src={img} alt={item.name} className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => (e.target.style.display = "none")} />

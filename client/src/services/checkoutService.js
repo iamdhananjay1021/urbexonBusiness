@@ -102,8 +102,10 @@ export const placeCODOrder = async ({ items, contact, address, pincode, delivery
         pincode: address.pincode,
         city: address.city || "",
         state: address.state || "",
-        latitude: address.lat,
-        longitude: address.lng,
+        // ✅ BUG2 FIX: address object uses latitude/longitude fields (not lat/lng)
+        // Also support both naming conventions for robustness
+        latitude: address.latitude || address.lat || null,
+        longitude: address.longitude || address.lng || null,
         paymentMethod: "COD",
         deliveryType,
         distanceKm,

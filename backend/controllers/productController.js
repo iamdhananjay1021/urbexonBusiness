@@ -18,6 +18,7 @@ import Product from "../models/Product.js";
 import { uploadToCloudinary } from "../config/cloudinary.js";
 import { sendRestockNotifications } from "./stockNotificationController.js";
 import { handlePriceChange, handleBackInStock } from "../services/productReminders.js";
+import Vendor from "../models/vendorModels/Vendor.js";
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -75,6 +76,19 @@ const safeDelCache = async (key) => {
     } catch (err) {
         console.warn(`[Cache] ⚠️  DEL failed for "${key}": ${err.message}`);
     }
+};
+
+const isValidPincode = (pin) => pin && typeof pin === "string" && /^\d{6}$/.test(pin.trim());
+
+const getValidVendorIdsForPincode = async (pincode) => {
+    if (!isValidPincode(pincode)) return null;
+    const vendors = await Vendor.find({
+        servicePincodes: pincode.trim(),
+        status: "approved",
+        isOpen: true,
+        isDeleted: false
+    }).select("_id").lean();
+    return vendors.map(v => v._id);
 };
 
 /* ════════════════════════════════════════
@@ -144,9 +158,9 @@ export const getProducts = async (req, res) => {
 
         const filter = { isActive: true };
 
-        if (productType) {
-            filter.productType = productType;
-        } else if (!searchRaw) {
+        if (productType === "urbexon_hour") {
+            filter.productType = "urbexon_hour";
+        } else {
             filter.productType = "ecommerce";
         }
 
@@ -272,7 +286,7 @@ export const getHomepageProducts = async (req, res) => {
 ════════════════════════════════════════ */
 export const getSuggestions = async (req, res) => {
     try {
-        const { q, productType } = req.query;
+        const { q, productType, pincode } = req.query;
         if (!q || q.trim().length < 2) return res.json([]);
 
         // [FIX-P9] Guard suggestion query length
@@ -280,19 +294,30 @@ export const getSuggestions = async (req, res) => {
 
         const regex = { $regex: escapeRegex(q.trim()), $options: "i" };
         const typeFilter = productType === "urbexon_hour" ? "urbexon_hour" : "ecommerce";
+        const validPin = isValidPincode(pincode) ? pincode.trim() : null;
 
         // [FIX-P6] Light cache for suggestions (30s — fast but not stale)
-        const cacheKey = `suggestions:${typeFilter}:${q.trim().slice(0, 30)}`;
+        const cacheKey = `suggestions:${typeFilter}:${q.trim().slice(0, 30)}:${validPin || "all"}`;
         const cached = await safeGetCache(cacheKey);
         if (cached) return res.json(cached);
 
         // CACHE MISS - proceed to DB
         console.log(`[Cache] ⚠️  MISS: ${cacheKey} (will fetch from DB)`);
 
-        const products = await Product.find({
+        const filter = {
             isActive: true, inStock: true, productType: typeFilter,
             $or: [{ name: regex }, { category: regex }, { brand: regex }],
-        }).select("name category brand slug images price mrp").limit(8).lean();
+        };
+
+        // Filter out products from unserviceable vendors if UH
+        if (typeFilter === "urbexon_hour" && validPin) {
+            const validVendorIds = await getValidVendorIdsForPincode(validPin);
+            if (!validVendorIds || validVendorIds.length === 0) return res.json([]);
+            filter.vendorId = { $in: validVendorIds };
+        }
+
+        const products = await Product.find(filter)
+            .select("name category brand slug images price mrp").limit(8).lean();
 
         await safeSetCache(cacheKey, products, 30);
         res.json(products);
@@ -307,26 +332,37 @@ export const getSuggestions = async (req, res) => {
 ════════════════════════════════════════ */
 export const getDeals = async (req, res) => {
     try {
-        const { category, sort = "newest", productType } = req.query;
+        const { category, sort = "newest", productType, pincode } = req.query;
 
         // [FIX-P3] Validated params
         const page = safeInt(req.query.page, 1, 1, 500);
         const limit = safeInt(req.query.limit, 20, 1, 50);
 
         const typeFilter = productType === "urbexon_hour" ? "urbexon_hour" : "ecommerce";
+        const validPin = isValidPincode(pincode) ? pincode.trim() : null;
 
         // [FIX-P4] Cache deals at 120s TTL
-        const cacheKey = `deals:${typeFilter}:${category || "_"}:${sort}:p${page}:l${limit}`;
+        const cacheKey = `deals:${typeFilter}:${category || "_"}:${sort}:${validPin || "all"}:p${page}:l${limit}`;
         const cached = await safeGetCache(cacheKey);
         if (cached) return res.json(cached);
 
         // CACHE MISS - proceed to DB
         console.log(`[Cache] ⚠️  MISS: ${cacheKey} (will fetch from DB)`);
 
+        let vendorFilter = {};
+        if (typeFilter === "urbexon_hour" && validPin) {
+            const validVendorIds = await getValidVendorIdsForPincode(validPin);
+            if (!validVendorIds || validVendorIds.length === 0) {
+                return res.json({ products: [], total: 0, page, totalPages: 0 });
+            }
+            vendorFilter = { vendorId: { $in: validVendorIds } };
+        }
+
         const filter = {
             isActive: true,
             isDeal: true,
             productType: typeFilter,
+            ...vendorFilter,
             $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: new Date() } }],
         };
         if (category) { const rx = slugToRegex(category); if (rx) filter.category = rx; }
@@ -361,7 +397,7 @@ export const getDeals = async (req, res) => {
 ════════════════════════════════════════ */
 export const getUrbexonHourProducts = async (req, res) => {
     try {
-        const { vendorId, category, search } = req.query;
+        const { vendorId, category, search, pincode } = req.query;
 
         // [FIX-P3] Validated params
         const page = safeInt(req.query.page, 1, 1, 500);
@@ -373,13 +409,32 @@ export const getUrbexonHourProducts = async (req, res) => {
             return res.status(400).json({ success: false, message: "Search query too long (max 50 characters)" });
         }
 
+        const validPin = isValidPincode(pincode) ? pincode.trim() : null;
+
         // [FIX-P6] Cache UH products listing
-        const cacheKey = `uh:products:${vendorId || "_"}:${category || "_"}:${searchRaw || "_"}:p${page}:l${limit}`;
+        const cacheKey = `uh:products:${vendorId || "_"}:${category || "_"}:${searchRaw || "_"}:${validPin || "_"}:p${page}:l${limit}`;
         const cached = await safeGetCache(cacheKey);
         if (cached) return res.json(cached);
 
         const filter = { productType: "urbexon_hour", isActive: true };
-        if (vendorId) filter.vendorId = vendorId;
+
+        if (validPin) {
+            const validVendorIds = await getValidVendorIdsForPincode(validPin);
+            if (!validVendorIds || validVendorIds.length === 0) {
+                return res.json({ products: [], total: 0, page, totalPages: 0, isServiceable: false });
+            }
+            if (vendorId) {
+                if (!validVendorIds.some(id => id.toString() === vendorId)) {
+                    return res.json({ products: [], total: 0, page, totalPages: 0, isServiceable: false });
+                }
+                filter.vendorId = vendorId;
+            } else {
+                filter.vendorId = { $in: validVendorIds };
+            }
+        } else if (vendorId) {
+            filter.vendorId = vendorId;
+        }
+
         if (category) { const rx = slugToRegex(category); if (rx) filter.category = rx; }
         if (searchRaw) filter.name = { $regex: escapeRegex(searchRaw), $options: "i" };
 
@@ -407,11 +462,28 @@ export const getUrbexonHourProducts = async (req, res) => {
 ════════════════════════════════════════ */
 export const getUrbexonHourHomepage = async (req, res) => {
     try {
-        const CACHE_KEY = "uh:homepage";
+        const { pincode } = req.query;
+        const validPin = isValidPincode(pincode) ? pincode.trim() : null;
+        const CACHE_KEY = `uh:homepage:${validPin || "all"}`;
         const cached = await safeGetCache(CACHE_KEY);
         if (cached) return res.json(cached);
 
-        const base = { isActive: true, productType: "urbexon_hour" };
+        let vendorFilter = {};
+        if (validPin) {
+            const validVendorIds = await getValidVendorIdsForPincode(validPin);
+            if (!validVendorIds || validVendorIds.length === 0) {
+                const emptyResult = {
+                    bestSellers: [], recommended: [], topDeals: [], trending: [], budgetPicks: [],
+                    categorySections: {}, categoryStats: [], stats: { totalProducts: 0, totalVendors: 0 },
+                    isServiceable: false
+                };
+                await safeSetCache(CACHE_KEY, emptyResult, 60);
+                return res.json(emptyResult);
+            }
+            vendorFilter = { vendorId: { $in: validVendorIds } };
+        }
+
+        const base = { isActive: true, productType: "urbexon_hour", ...vendorFilter };
         const selectFields = "name slug price mrp images category rating numReviews isFeatured brand inStock stock vendorId isDeal dealEndsAt tag prepTimeMinutes";
 
         const [bestSellers, recommended, topDeals, trending, budgetPicks, categories, totalProducts, totalVendors] = await Promise.all([
@@ -472,6 +544,7 @@ export const getUrbexonHourHomepage = async (req, res) => {
             categorySections: byCategory,
             categoryStats: categories,
             stats: { totalProducts, totalVendors },
+            isServiceable: true,
         };
 
         await safeSetCache(CACHE_KEY, result, 180);
@@ -488,12 +561,31 @@ export const getUrbexonHourHomepage = async (req, res) => {
 export const getUrbexonHourDeals = async (req, res) => {
     try {
         const limit = safeInt(req.query.limit, 12, 1, 50);
-        const { refresh = false } = req.query;
-        const cacheKey = "uh_flash_deals";
+        const { refresh = false, pincode } = req.query;
+        const validPin = isValidPincode(pincode) ? pincode.trim() : null;
+        const cacheKey = `uh_flash_deals:${validPin || "all"}`;
 
         if (!refresh) {
             const cached = await safeGetCache(cacheKey);
-            if (cached) return res.json(cached);
+            if (cached) {
+                // ✅ BUG5 FIX: Filter expired deals from cached response.
+                // Cache TTL is already set to nearest deal expiry, but clock skew can let
+                // a deal slip through. This ensures 100% accuracy at read time.
+                const nowMs = Date.now();
+                const liveProducts = (cached.products || []).filter(p =>
+                    !p.dealEndsAt || new Date(p.dealEndsAt).getTime() > nowMs
+                );
+                return res.json({ ...cached, products: liveProducts, totalDeals: liveProducts.length });
+            }
+        }
+
+        let vendorFilter = {};
+        if (validPin) {
+            const validVendorIds = await getValidVendorIdsForPincode(validPin);
+            if (!validVendorIds || validVendorIds.length === 0) {
+                return res.json({ success: true, products: [], totalDeals: 0, isServiceable: false });
+            }
+            vendorFilter = { vendorId: { $in: validVendorIds } };
         }
 
         const now = new Date();
@@ -503,6 +595,7 @@ export const getUrbexonHourDeals = async (req, res) => {
             isDeal: true,
             inStock: true,
             stock: { $gt: 0 },
+            ...vendorFilter,
             $and: [
                 { $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: now } }] },
                 { $or: [{ dealStartsAt: null }, { dealStartsAt: { $lte: now } }] },
@@ -674,7 +767,7 @@ export const adminGetAllProducts = async (req, res) => {
         const [products, total] = await Promise.all([
             Product.find(filter)
                 .populate("vendorId", "shopName")
-                .select("name slug category brand price mrp stock inStock isActive isDeal isFeatured productType vendorId createdAt")
+                .select("name slug category brand price mrp stock inStock isActive isDeal isFeatured productType vendorId createdAt images")
                 .sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
             Product.countDocuments(filter),
         ]);
@@ -716,7 +809,7 @@ export const adminCreateProduct = async (req, res) => {
         const price = toNum(body.price);
         const mrp = body.mrp ? toNum(body.mrp) : null;
         const cost = toNum(body.cost);
-        const stock = toNum(body.stock);
+        let stock = toNum(body.stock);
         const gstPercent = toNum(body.gstPercent);
 
         if (price <= 0) {
@@ -735,15 +828,34 @@ export const adminCreateProduct = async (req, res) => {
             }).filter(Boolean)
             : [];
 
+        if (sizes.length > 0) {
+            stock = sizes.reduce((sum, s) => sum + (s.stock || 0), 0);
+        }
+
+        let colorVariants = [];
+        try {
+            if (body.colorVariants) colorVariants = JSON.parse(body.colorVariants);
+        } catch { colorVariants = []; }
+
         const images = [];
         const imageErrors = [];
+        let fileIndex = 0;
 
         if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
             console.warn(`[adminCreateProduct] ⚠️ No image files received.`);
         } else {
             console.log(`[adminCreateProduct] 📁 Processing ${req.files.length} image file(s)`);
-            for (let i = 0; i < Math.min(6, req.files.length); i++) {
-                const file = req.files[i];
+
+            let mainImageCount = body.mainImageCount !== undefined ? Number(body.mainImageCount) : null;
+            if (mainImageCount === null || isNaN(mainImageCount)) {
+                let totalVariantImages = colorVariants.reduce((sum, v) => sum + (v.imageCount || 0), 0);
+                mainImageCount = req.files.length - totalVariantImages;
+            }
+            if (mainImageCount < 0) mainImageCount = 0;
+
+            for (let i = 0; i < mainImageCount; i++) {
+                if (fileIndex >= req.files.length) break;
+                const file = req.files[fileIndex++];
                 try {
                     if (!file || !file.buffer) throw new Error(`File ${i + 1} is invalid or missing buffer`);
                     const result = await uploadToCloudinary(file.buffer, "products");
@@ -761,6 +873,24 @@ export const adminCreateProduct = async (req, res) => {
                     imageErrors.push(`Image ${i + 1}: ${err.message}`);
                     console.error(`[adminCreateProduct] ❌ Image ${i + 1}: ${err.message}`);
                 }
+            }
+
+            for (const variant of colorVariants) {
+                variant.images = [];
+                for (let i = 0; i < (variant.imageCount || 0); i++) {
+                    if (fileIndex < req.files.length) {
+                        const file = req.files[fileIndex++];
+                        try {
+                            const result = await uploadToCloudinary(file.buffer, "products");
+                            if (result?.secure_url) {
+                                variant.images.push({ url: result.secure_url, publicId: result.public_id || "" });
+                            }
+                        } catch (err) {
+                            console.error(`[adminCreateProduct] Variant image upload error:`, err.message);
+                        }
+                    }
+                }
+                delete variant.imageCount;
             }
         }
 
@@ -798,6 +928,7 @@ export const adminCreateProduct = async (req, res) => {
             highlightsArray: Array.isArray(body.highlightsArray) ? body.highlightsArray : [],
             images,
             stock,
+            colorVariants,
             inStock: stock > 0,
             isFeatured, isDeal, dealEndsAt,
             gstPercent, isCustomizable,
@@ -845,9 +976,19 @@ export const adminUpdateProduct = async (req, res) => {
         const parseBool = (val) => val === "true" || val === true;
         const safeNumber = (val, fallback = 0) => { const num = Number(val); return isNaN(num) ? fallback : num; };
 
+        let colorVariantsMeta = [];
+        try {
+            if (body.colorVariants) colorVariantsMeta = JSON.parse(body.colorVariants);
+        } catch { colorVariantsMeta = []; }
+
+        let fileIndex = 0;
+        const mainImageCount = Number(body.mainImageCount) || 0;
+
         if (req.files?.length) {
             const newImages = [];
-            for (const file of req.files.slice(0, 6)) {
+            for (let i = 0; i < mainImageCount; i++) {
+                if (fileIndex >= req.files.length) break;
+                const file = req.files[fileIndex++];
                 try {
                     const result = await uploadToCloudinary(file.buffer, "products");
                     if (result?.secure_url) {
@@ -856,6 +997,29 @@ export const adminUpdateProduct = async (req, res) => {
                 } catch { console.warn("⚠️ Image upload failed, skipping file"); }
             }
             if (newImages.length) product.images = newImages;
+        }
+
+        if (body.colorVariants !== undefined) {
+            if (colorVariantsMeta.length > 0) {
+                for (const variant of colorVariantsMeta) {
+                    const uploadedForVariant = [];
+                    for (let i = 0; i < (variant.imageCount || 0); i++) {
+                        if (fileIndex < req.files?.length) {
+                            const file = req.files[fileIndex++];
+                            try {
+                                const result = await uploadToCloudinary(file.buffer, "products");
+                                if (result?.secure_url) uploadedForVariant.push({ url: result.secure_url, publicId: result.public_id || "" });
+                            } catch { /* skip */ }
+                        }
+                    }
+                    variant.images = uploadedForVariant.length > 0 ? uploadedForVariant : (variant.existingImages || []);
+                    delete variant.imageCount;
+                    delete variant.existingImages;
+                }
+                product.colorVariants = colorVariantsMeta;
+            } else {
+                product.colorVariants = [];
+            }
         }
 
         const fieldMap = {
@@ -1043,7 +1207,24 @@ export const vendorCreateProduct = async (req, res) => {
             }
         }
 
-        const stock = Number(body.stock) || 0;
+        let sizes = [];
+        if (body.sizes) {
+            try {
+                const rawSizes = typeof body.sizes === "string" ? JSON.parse(body.sizes) : body.sizes;
+                if (Array.isArray(rawSizes)) {
+                    sizes = rawSizes.map(s => {
+                        if (typeof s === "string") return { size: s, stock: 0 };
+                        if (typeof s === "object" && s.size) return { size: String(s.size).trim(), stock: Number(s.stock) || 0 };
+                        return null;
+                    }).filter(Boolean);
+                }
+            } catch { sizes = []; }
+        }
+
+        let stock = Number(body.stock) || 0;
+        if (sizes.length > 0) {
+            stock = sizes.reduce((sum, s) => sum + (s.stock || 0), 0);
+        }
 
         let highlightsArray = [];
         try {
@@ -1060,6 +1241,7 @@ export const vendorCreateProduct = async (req, res) => {
             subcategory: body.subcategory || "",
             tags: body.tags ? body.tags.split(",").map(t => t.trim()).filter(Boolean) : [],
             images,
+            sizes,
             stock,
             inStock: stock > 0,
             highlightsArray,
@@ -1138,7 +1320,30 @@ export const vendorUpdateProduct = async (req, res) => {
             }
         }
 
-        if (body.stock !== undefined) {
+        if (body.sizes !== undefined) {
+            try {
+                const rawSizes = typeof body.sizes === "string" ? JSON.parse(body.sizes) : body.sizes;
+                if (Array.isArray(rawSizes)) {
+                    product.sizes = rawSizes.map(s => {
+                        if (typeof s === "string") return { size: s, stock: 0 };
+                        if (typeof s === "object") return { size: String(s.size || s.label || "").trim(), stock: Number(s.stock) || 0 };
+                        return null;
+                    }).filter(s => s && s.size);
+                } else {
+                    product.sizes = [];
+                }
+            } catch { product.sizes = []; }
+        }
+
+        if (product.sizes && product.sizes.length > 0) {
+            const wasOutOfStock = !product.inStock;
+            product.stock = product.sizes.reduce((sum, s) => sum + (s.stock || 0), 0);
+            product.inStock = product.stock > 0;
+            if (wasOutOfStock && product.inStock) {
+                sendRestockNotifications(product._id, product.name, product.slug);
+                handleBackInStock(product);
+            }
+        } else if (body.stock !== undefined) {
             const wasOutOfStock = !product.inStock;
             product.stock = Number(body.stock);
             product.inStock = product.stock > 0;

@@ -432,21 +432,14 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow }) => {
                     <h3 className="pc-name">{product.name}</h3>
 
                     {numReviews > 0 ? (
-                        <div className="pc-stars">
-                            {[1, 2, 3, 4, 5].map(s =>
-                                s <= Math.round(rating)
-                                    ? <FaStar key={s} size={9} style={STAR_FILLED} />
-                                    : <FaRegStar key={s} size={9} style={STAR_EMPTY} />
-                            )}
-                            <span className="pc-reviews">({numReviews})</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                            <span style={{ background: "#388e3c", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 5px", borderRadius: 3, display: "flex", alignItems: "center", gap: 3 }}>
+                                {rating.toFixed(1)} <FaStar size={8} />
+                            </span>
+                            <span style={{ fontSize: 11, color: "#878787", fontWeight: 500 }}>({numReviews})</span>
                         </div>
                     ) : (
-                        <div className="pc-stars">
-                            <div style={{ background: "#16a34a", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 3, display: "flex", alignItems: "center", gap: 3 }}>
-                                4.0 <FaStar size={8} />
-                            </div>
-                            <span className="pc-reviews">(0 reviews)</span>
-                        </div>
+                        <div style={{ marginBottom: 6 }} />
                     )}
 
                     <div className="pc-stock">

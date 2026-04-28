@@ -1,15 +1,36 @@
-# Urbexon Vendor Order Status 400 Fix - Production Ready ✅
+# ProductDetails.jsx Temporal Dead Zone Fix
 
-## Steps:
-- [x] Create TODO.md with plan
-- [x] 1. Add validateBody middleware ✅ (now catches invalid status early)
-- [x] 2. Add logging ✅ (status: 'READY_FOR_PICKUP' passing validation)
-- [x] 3. Fix transition validation ✅ (added log + clarified READY_FOR_PICKUP for standard orders)
-- [x] 4. Complete task
+## Issue
+`ReferenceError: Cannot access 'product' before initialization` at line 189
 
-## Changes Made:
-- Added `validateBody({ status: { required: true, enum: [...] } })` middleware to catch invalid status early with clear error.
-- Added server-side trim/toUpperCase + debug logging to handle frontend issues (case/whitespace).
-- Production-safe: No breaking changes, just input sanitization + validation.
+## Root Cause
+`useRecentlyViewed(product?.productType)` executes during render - `product` is null until API loads.
 
-Status: Fixed and production ready
+## Fix Applied
+```js
+// BEFORE (broken)
+const { trackView } = useRecentlyViewed(product?.productType || "ecommerce");
+
+// AFTER (fixed)
+const [productType, setProductType] = useState("ecommerce");
+useEffect(() => {
+  if (prod) {
+    setProductType(prod.productType || "ecommerce");
+    trackView(prod);
+  }
+}, [prod]);
+```
+
+✅ **React Hook Rules Followed**
+- Hook calls stable during render  
+- productType set post-API only
+- No closure traps
+
+## Test
+1. Navigate `/products/any-id`
+2. No more TDZ error ✅
+3. Recently Viewed works for both UH + Ecommerce
+4. Hot reload stable
+
+**Status: FIXED** - Component renders without errors! 🚀
+

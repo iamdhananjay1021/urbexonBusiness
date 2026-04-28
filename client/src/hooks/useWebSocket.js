@@ -11,11 +11,26 @@ const WS_BASE = import.meta.env.VITE_WS_URL
         (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
         ? "ws://localhost:9000" : "wss://api.urbexon.in");
 
+// Module-level circuit breaker
+let globalWsFailures = 0;
+let globalWsBlockedUntil = 0;
+
+const isTokenExpired = (token) => {
+    if (!token) return true;
+    try {
+        const payloadStr = token.split('.')[1];
+        if (!payloadStr) return true;
+        return JSON.parse(atob(payloadStr)).exp * 1000 <= Date.now();
+    } catch {
+        return true;
+    }
+};
+
 export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {}) => {
     const wsRef = useRef(null);
     const pingRef = useRef(null);
     const reconnectRef = useRef(null);
-    const reconnectCount = useRef(0);
+    const intentionalCloseRef = useRef(false);
     const backoffRef = useRef(3000);
     const [isConnected, setIsConnected] = useState(false);
     const [lastMessage, setLastMessage] = useState(null);
@@ -25,13 +40,16 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
         if (wsRef.current?.readyState === WebSocket.OPEN) return;
         if (document.hidden) return;
 
+        if (Date.now() < globalWsBlockedUntil) return;
+        if (isTokenExpired(token)) return;
+
         const wsUrl = `${WS_BASE}/ws?token=${token}`;
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
             setIsConnected(true);
-            reconnectCount.current = 0;
+            globalWsFailures = 0;
             backoffRef.current = 3000;
             console.log(`[Client WS] Connected to: ${WS_BASE}`);
             onConnect?.();
@@ -55,11 +73,19 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
         ws.onclose = () => {
             setIsConnected(false);
             clearInterval(pingRef.current);
+            wsRef.current = null;
             onDisconnect?.();
 
-            if (reconnectCount.current < 15) {
+            if (intentionalCloseRef.current) {
+                intentionalCloseRef.current = false;
+                return; // Component unmounted, don't trigger reconnect
+            }
+
+            globalWsFailures += 1;
+            if (globalWsFailures >= 5) globalWsBlockedUntil = Date.now() + 30000;
+
+            if (globalWsFailures < 15 && Date.now() >= globalWsBlockedUntil) {
                 const delay = backoffRef.current;
-                reconnectCount.current++;
                 backoffRef.current = Math.min(delay * 2, 60000);
                 reconnectRef.current = setTimeout(connect, delay);
             }
@@ -71,11 +97,13 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
     }, [token, onMessage, onConnect, onDisconnect]);
 
     const disconnect = useCallback(() => {
+        intentionalCloseRef.current = true;
         clearInterval(pingRef.current);
         clearTimeout(reconnectRef.current);
-        wsRef.current?.close();
-        wsRef.current = null;
-        reconnectCount.current = 99; // prevent reconnect
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+        }
     }, []);
 
     const send = useCallback((type, payload = {}) => {
@@ -85,12 +113,16 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
     }, []);
 
     useEffect(() => {
-        if (token) connect();
+        let timer = null;
+        if (token) {
+            // Debounce mount to prevent React thrashing
+            timer = setTimeout(connect, 500);
+        }
 
         // Reconnect when tab becomes visible
         const onVisChange = () => {
             if (!document.hidden && token && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) {
-                reconnectCount.current = 0;
+                globalWsFailures = 0;
                 backoffRef.current = 3000;
                 clearTimeout(reconnectRef.current);
                 connect();
@@ -99,6 +131,7 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
         document.addEventListener("visibilitychange", onVisChange);
 
         return () => {
+            clearTimeout(timer);
             document.removeEventListener("visibilitychange", onVisChange);
             disconnect();
         };

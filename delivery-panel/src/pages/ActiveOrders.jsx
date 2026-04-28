@@ -1,6 +1,14 @@
 /**
- * ActiveOrders — Production v4.0
+ * ActiveOrders — Production v4.1
  * Urbexon design + real-time WebSocket, FCM, GPS, OTP, status flow
+ *
+ * ✅ FIXED: DELIVERY_STEPS now matches actual backend delivery.status values:
+ *    RIDER_ASSIGNED → ARRIVING_VENDOR → OUT_FOR_DELIVERY → DELIVERED
+ *    Old code had "ASSIGNED" which never matched "RIDER_ASSIGNED" from backend,
+ *    causing "Heading to Store" button to never appear.
+ *
+ * ✅ FIXED: Removed dead "PICKED_UP → Start Delivery" step — after Bug4 fix,
+ *    /pickup endpoint directly sets OUT_FOR_DELIVERY, PICKED_UP never occurs.
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import api from "../api/axios";
@@ -9,25 +17,37 @@ import DeliveryMap from "../components/DeliveryMap";
 import { startAlert, stopAlert, playNotification } from "../utils/notificationSound";
 import useFcm from "../hooks/useFcm";
 
-/* ── GPS tracking ── */
+/* ── GPS tracking — watchPosition for real-time + 15s fallback ── */
 const useLocationTracking = (activeOrderId) => {
   const [pos, setPos] = useState(null);
   useEffect(() => {
-    if (!activeOrderId) { setPos(null); return; }
-    const send = () => {
-      if (!navigator.geolocation) return;
-      navigator.geolocation.getCurrentPosition(
-        ({ coords }) => {
-          setPos({ lat: coords.latitude, lng: coords.longitude });
-          api.patch("/delivery/location", { orderId: activeOrderId, lat: coords.latitude, lng: coords.longitude }).catch(() => { });
-        },
-        () => { },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
-      );
+    if (!activeOrderId || !navigator.geolocation) { setPos(null); return; }
+
+    const sendLocation = (lat, lng) => {
+      setPos({ lat, lng });
+      api.patch("/delivery/location", { orderId: activeOrderId, lat, lng }).catch(() => { });
     };
-    send();
-    const t = setInterval(send, 10000);
-    return () => clearInterval(t);
+
+    // Use watchPosition for real-time updates
+    const watchId = navigator.geolocation.watchPosition(
+      ({ coords }) => sendLocation(coords.latitude, coords.longitude),
+      () => { },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+    );
+
+    // Fallback: force an update every 15s even if no movement detected
+    const fallbackTimer = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => sendLocation(coords.latitude, coords.longitude),
+        () => { },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
+      );
+    }, 15000);
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+      clearInterval(fallbackTimer);
+    };
   }, [activeOrderId]);
   return pos;
 };
@@ -41,8 +61,15 @@ const STATUS_BADGE = {
   DELIVERED: { bg: G.green100, color: "#065f46", label: "Delivered" },
 };
 
-const DELIVERY_STEPS = ["ASSIGNED", "ARRIVING_VENDOR", "PICKED_UP", "OUT_FOR_DELIVERY"];
-const STEP_LABELS = { ASSIGNED: "Assigned", ARRIVING_VENDOR: "Heading to Store", PICKED_UP: "Picked Up", OUT_FOR_DELIVERY: "On the Way" };
+// ✅ FIXED: Actual backend delivery.status values (assignment engine sets RIDER_ASSIGNED, not ASSIGNED)
+// Flow: RIDER_ASSIGNED → ARRIVING_VENDOR → OUT_FOR_DELIVERY → DELIVERED
+const DELIVERY_STEPS = ["RIDER_ASSIGNED", "ARRIVING_VENDOR", "OUT_FOR_DELIVERY", "DELIVERED"];
+const STEP_LABELS = {
+  RIDER_ASSIGNED: "Assigned",
+  ARRIVING_VENDOR: "Heading to Store",
+  OUT_FOR_DELIVERY: "On the Way",
+  DELIVERED: "Delivered",
+};
 
 const ActiveOrders = () => {
   const [tab, setTab] = useState("available");
@@ -490,7 +517,9 @@ const ActiveOrders = () => {
                       </button>
                     )}
 
-                    {tab === "active" && order.delivery?.status === "ASSIGNED" && (
+                    {/* ✅ FIXED: Was checking "ASSIGNED" — backend sets "RIDER_ASSIGNED" from assignment engine.
+                         Old condition meant this button NEVER appeared. Rider was stuck. */}
+                    {tab === "active" && order.delivery?.status === "RIDER_ASSIGNED" && (
                       <button onClick={() => doAction(order._id, "status", { status: "ARRIVING_VENDOR" })} disabled={isWorking} style={{ flex: 1, padding: "10px 18px", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", background: G.blue600, color: G.white, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: isWorking ? 0.6 : 1 }}>
                         🏪 {isWorking ? "Updating…" : "Heading to Store"}
                       </button>
@@ -502,14 +531,12 @@ const ActiveOrders = () => {
                       </button>
                     )}
 
-                    {tab === "active" && order.delivery?.status === "PICKED_UP" && (
-                      <button onClick={() => doAction(order._id, "status", { status: "OUT_FOR_DELIVERY" })} disabled={isWorking} style={{ flex: 1, padding: "10px 18px", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", background: G.brand, color: G.white, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: isWorking ? 0.6 : 1 }}>
-                        🚚 {isWorking ? "Updating…" : "Start Delivery"}
-                      </button>
-                    )}
+                    {/* ✅ REMOVED: "PICKED_UP → Start Delivery" button — PICKED_UP status never occurs
+                         after Bug4 fix. /pickup endpoint now directly sets OUT_FOR_DELIVERY.
+                         OTP section below handles the OUT_FOR_DELIVERY confirmation. */}
 
                     {/* Cancel for early status orders */}
-                    {tab === "active" && order.delivery?.status && ["ASSIGNED", "ARRIVING_VENDOR"].includes(order.delivery.status) && (
+                    {tab === "active" && order.delivery?.status && ["RIDER_ASSIGNED", "ARRIVING_VENDOR"].includes(order.delivery.status) && (
                       <button
                         onClick={() => { if (window.confirm("Cancel this delivery? Order will be reassigned.")) doAction(order._id, "cancel"); }}
                         disabled={isWorking}

@@ -48,23 +48,51 @@ const Earnings = () => {
 
   const requestPayout = async () => {
     const amt = Number(payoutAmount);
-    if (!amt || amt < (payoutData?.minPayout || 500)) {
-      setPayoutMsg(`Minimum payout: ${fmt(payoutData?.minPayout || 500)}`);
+    const minPayout = payoutData?.minPayout || 500;
+    const availableBalance = payoutData?.balance?.available || 0;
+
+    // Validation 1: Amount must be a number
+    if (!amt) {
+      setPayoutMsg("❌ Please enter an amount");
       setTimeout(() => setPayoutMsg(""), 3000);
       return;
     }
+
+    // Validation 2: Minimum payout requirement
+    if (amt < minPayout) {
+      setPayoutMsg(`❌ Minimum payout: ${fmt(minPayout)}`);
+      setTimeout(() => setPayoutMsg(""), 3000);
+      return;
+    }
+
+    // Validation 3: Available balance check (BEFORE API call)
+    if (amt > availableBalance) {
+      setPayoutMsg(`❌ Insufficient balance. Available: ${fmt(availableBalance)}`);
+      setTimeout(() => setPayoutMsg(""), 4000);
+      return;
+    }
+
     setRequesting(true);
     try {
       const { data: res } = await api.post("/vendor/payouts/request", { amount: amt });
-      setPayoutMsg(res.message || "Payout requested!");
+      setPayoutMsg(res.message || "✅ Payout requested!");
       setPayoutAmount("");
-      const { data: fresh } = await api.get("/vendor/payouts");
-      setPayoutData(fresh);
+
+      // Refresh payout data on success
+      try {
+        const { data: fresh } = await api.get("/vendor/payouts");
+        setPayoutData(fresh);
+      } catch (refreshErr) {
+        console.warn("Failed to refresh payout data:", refreshErr);
+        // Don't show error for refresh failure
+      }
     } catch (err) {
-      setPayoutMsg(err.response?.data?.message || "Failed to request payout");
+      const errorMsg = err.response?.data?.message || err.message || "Failed to request payout";
+      setPayoutMsg(`❌ ${errorMsg}`);
+      console.error("Payout request error:", err.response?.status, errorMsg);
     } finally {
       setRequesting(false);
-      setTimeout(() => setPayoutMsg(""), 4000);
+      setTimeout(() => setPayoutMsg(""), 5000);
     }
   };
 
@@ -272,7 +300,22 @@ const Earnings = () => {
         <>
           {/* Balance + Request */}
           <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", padding: 24, marginBottom: 20 }}>
+
+
             <h3 style={{ fontSize: 15, fontWeight: 700, color: "#111827", margin: "0 0 16px" }}>Withdraw Earnings</h3>
+            {(!payoutData?.bankDetails?.accountNumber && !payoutData?.bankDetails?.upiId) && (
+              <div style={{ padding: "12px", background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 8, marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#f59e0b", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 12, fontWeight: 700, color: "#92400e", marginTop: 1 }} >!</div>
+                  <div>
+                    <div style={{ fontWeight: 600, color: "#92400e" }}>Add bank details to request payouts</div>
+                    <div style={{ fontSize: 12, color: "#d97706", marginTop: 2 }}>
+                      <a href="/bank-details" style={{ color: "#059669", textDecoration: "none", fontWeight: 600 }}>Set up bank/UPI →</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 16 }}>
               {[
                 { label: "Available", value: fmt(payoutData.balance?.available || 0), color: "#059669" },
@@ -296,7 +339,7 @@ const Earnings = () => {
               />
               <button
                 onClick={requestPayout}
-                disabled={requesting || (payoutData.balance?.available || 0) < (payoutData?.minPayout || 500)}
+                disabled={requesting}
                 style={{ padding: "10px 24px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: requesting ? 0.6 : 1, whiteSpace: "nowrap" }}
               >
                 {requesting ? "…" : "Request Payout"}

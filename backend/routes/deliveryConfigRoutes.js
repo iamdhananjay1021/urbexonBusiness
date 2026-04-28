@@ -14,6 +14,7 @@ import {
 import { calculateShippingRate } from "../utils/Shiprocketservice.js";
 import Pincode from "../models/vendorModels/Pincode.js";
 import DeliveryConfigModel from "../models/DeliveryConfig.js";
+import Vendor from "../models/vendorModels/Vendor.js";
 
 const router = Router();
 
@@ -47,7 +48,6 @@ router.post("/delivery/estimate", async (req, res) => {
         if (productType === "urbexon_hour") {
             // UH estimate — check pincode availability
             const pincodeDoc = await Pincode.findOne({ code: String(pincode).trim() })
-                .populate("assignedVendors", "shopName isOpen")
                 .lean();
 
             if (!pincodeDoc || pincodeDoc.status !== "active") {
@@ -60,7 +60,13 @@ router.post("/delivery/estimate", async (req, res) => {
                 });
             }
 
-            const activeVendors = (pincodeDoc.assignedVendors || []).filter(v => v.isOpen);
+            // Fetch active vendors dynamically
+            const activeVendors = await Vendor.find({
+                servicePincodes: String(pincode).trim(),
+                status: "approved",
+                isOpen: true,
+                isDeleted: false
+            }).select("_id").lean();
             return res.json({
                 success: true,
                 available: true,

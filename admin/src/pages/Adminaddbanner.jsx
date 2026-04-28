@@ -336,7 +336,8 @@ const AdminAddBanner = () => {
                     </form>
                 </div>
             </div>
-            );
+        </div>
+    );
 };
 
-            export default AdminAddBanner;
+export default AdminAddBanner;

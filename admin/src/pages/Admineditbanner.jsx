@@ -340,7 +340,8 @@ const AdminEditBanner = () => {
                     </form>
                 </div>
             </div>
-            );
+        </div>
+    );
 };
 
-            export default AdminEditBanner;
+export default AdminEditBanner;

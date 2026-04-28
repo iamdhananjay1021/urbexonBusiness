@@ -76,6 +76,13 @@ export const AuthProvider = ({ children }) => {
       // Step 1: Login via /auth/login
       const { data } = await api.post("/auth/login", { email, password });
 
+      // If email verification required, throw error with response attached
+      if (!data.token && data.requiresVerification) {
+        const err = new Error(data.message);
+        err.response = { status: 403, data: { requiresVerification: true, email: data.email, message: data.message } };
+        throw err;
+      }
+
       if (!data.token) {
         throw new Error("No token received from server");
       }
@@ -113,7 +120,7 @@ export const AuthProvider = ({ children }) => {
 
       return vendorProfile;
     } catch (err) {
-      console.error("[Auth] Login failed:", err);
+      console.error("[Auth] Login failed:", err.message);
       throw err;
     }
   };

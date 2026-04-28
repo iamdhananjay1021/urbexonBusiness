@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/adminApi";
-import { imgUrl } from "../utils/imageUrl";
 import {
     FaPlus, FaSync, FaEdit, FaTrash, FaSearch,
     FaBoxOpen, FaBoxes, FaChevronLeft, FaChevronRight, FaLink,
@@ -35,6 +34,11 @@ const STYLES = `
         box-shadow: 0 4px 20px rgba(37,99,235,0.1) !important;
         transform: translateY(-1px);
     }
+
+    .uk-img-wrap { overflow: hidden; }
+    .uk-img-wrap img { transition: transform 0.3s ease; }
+    .uk-prod-row:hover .uk-img-wrap img,
+    .uk-prod-card:hover .uk-img-wrap img { transform: scale(1.15); }
 
     .uk-action-btn { transition: all 0.15s ease; }
     .uk-action-btn:hover { opacity: 0.85; transform: scale(1.06); }
@@ -567,8 +571,7 @@ const AdminProducts = () => {
 
                             {/* Table Rows */}
                             {paginated.map((product, idx) => {
-                                const rawImg = product.images?.[0]?.url || product.image || null;
-                                const img = rawImg ? imgUrl.thumbnail(rawImg) : null;
+                                const img = product.images?.[0]?.url || product.image?.url || product.image || null;
 
                                 return (
                                     <div
@@ -588,7 +591,7 @@ const AdminProducts = () => {
                                             {pageStart + idx + 1}
                                         </div>
 
-                                        <div style={{
+                                        <div className="uk-img-wrap" style={{
                                             width: 38, height: 38,
                                             background: "#f8fafc", border: "1px solid #e2e8f0",
                                             borderRadius: 8, overflow: "hidden",
@@ -717,8 +720,7 @@ const AdminProducts = () => {
                         {/* ── MOBILE CARDS ── */}
                         <div className="uk-mobile-cards" style={{ display: "none" }}>
                             {paginated.map((product, idx) => {
-                                const rawImg = product.images?.[0]?.url || product.image || null;
-                                const img = rawImg ? imgUrl.thumbnail(rawImg) : null;
+                                const img = product.images?.[0]?.url || product.image?.url || product.image || null;
                                 const si = stockInfo(product);
 
                                 return (
@@ -739,7 +741,7 @@ const AdminProducts = () => {
                                         {/* Card Top Row — clickable to navigate */}
                                         <Link to={`/admin/products/${product._id}/edit`} style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 12 }}>
                                             {/* Image */}
-                                            <div style={{
+                                            <div className="uk-img-wrap" style={{
                                                 width: 56, height: 56, flexShrink: 0,
                                                 background: "#f8fafc", border: "1px solid #e2e8f0",
                                                 borderRadius: 10, overflow: "hidden",

@@ -171,11 +171,12 @@ export const activateVendorSubscription = async (req, res) => {
     try {
         const { plan, months = 1 } = req.body;
         const PLANS = {
+            starter: { monthlyFee: 0, maxProducts: 10 },
             basic: { monthlyFee: 499, maxProducts: 30 },
             standard: { monthlyFee: 999, maxProducts: 100 },
             premium: { monthlyFee: 1999, maxProducts: 500 },
         };
-        if (!PLANS[plan]) return res.status(400).json({ success: false, message: "Invalid plan. Use: basic, standard, premium" });
+        if (!PLANS[plan]) return res.status(400).json({ success: false, message: "Invalid plan. Use: starter, basic, standard, premium" });
 
         const numMonths = Number(months);
         if (!Number.isInteger(numMonths) || numMonths < 1 || numMonths > 24)

@@ -284,21 +284,52 @@ const Dashboard = () => {
                 </button>
             </div>
 
-            {/* Subscription warning */}
-            {vendor?.subscription && !vendor.subscription.isActive && (
-                <div style={{
-                    background: "#fef3c7", border: "1px solid #fcd34d",
-                    borderRadius: 12, padding: "12px 18px", marginBottom: 24,
-                    display: "flex", alignItems: "center", gap: 10, fontSize: 14,
-                }}>
-                    <FiAlertCircle size={18} color="#f59e0b" />
-                    <span style={{ color: "#78350f" }}>
-                        Subscription inactive.{" "}
-                        <Link to="/subscription" style={{ color: "#111827", fontWeight: 700 }}>Renew now</Link>
-                        {" "}to keep receiving orders.
-                    </span>
-                </div>
-            )}
+            {/* Subscription warning — inactive or expired */}
+            {vendor?.subscription && (() => {
+                const now = new Date();
+                const sub = vendor.subscription;
+                const isExpired = sub.expiryDate && new Date(sub.expiryDate) <= now;
+                const isInactive = !sub.isActive;
+                if (!isInactive && !isExpired) return null;
+                const daysLeft = sub.expiryDate
+                    ? Math.max(0, Math.ceil((new Date(sub.expiryDate) - now) / (1000 * 60 * 60 * 24)))
+                    : null;
+                const isExpiringSoon = sub.isActive && daysLeft !== null && daysLeft <= 7;
+
+                if (isExpired || (isInactive && !isExpiringSoon)) {
+                    return (
+                        <div style={{
+                            background: "#fee2e2", border: "1px solid #fca5a5",
+                            borderRadius: 12, padding: "14px 18px", marginBottom: 24,
+                            display: "flex", alignItems: "center", gap: 10, fontSize: 14,
+                        }}>
+                            <FiAlertCircle size={18} color="#dc2626" />
+                            <span style={{ color: "#7f1d1d", flex: 1 }}>
+                                <strong>Subscription {isExpired ? "expired" : "inactive"}.</strong>{" "}
+                                Products & orders are paused.{" "}
+                                <Link to="/subscription" style={{ color: "#dc2626", fontWeight: 700, textDecoration: "underline" }}>Renew now →</Link>
+                            </span>
+                        </div>
+                    );
+                }
+                if (isExpiringSoon) {
+                    return (
+                        <div style={{
+                            background: "#fef3c7", border: "1px solid #fcd34d",
+                            borderRadius: 12, padding: "12px 18px", marginBottom: 24,
+                            display: "flex", alignItems: "center", gap: 10, fontSize: 14,
+                        }}>
+                            <FiAlertCircle size={18} color="#f59e0b" />
+                            <span style={{ color: "#78350f" }}>
+                                Subscription expires in <strong>{daysLeft} day{daysLeft !== 1 ? "s" : ""}</strong>.{" "}
+                                <Link to="/subscription" style={{ color: "#111827", fontWeight: 700 }}>Renew now</Link>
+                                {" "}to avoid interruption.
+                            </span>
+                        </div>
+                    );
+                }
+                return null;
+            })()}
 
             {/* Stats */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>

@@ -44,24 +44,51 @@ const Earnings = () => {
 
   const requestPayout = async () => {
     const amt = Number(payoutAmount);
-    if (!amt || amt < (payoutData?.minPayout || 200)) {
-      setPayoutMsg(`Minimum payout: ${fmt(payoutData?.minPayout || 200)}`);
+    const minPayout = payoutData?.minPayout || 200;
+    const availableBalance = payoutData?.balance?.available || 0;
+
+    // Validation 1: Amount must be a number
+    if (!amt) {
+      setPayoutMsg("❌ Please enter an amount");
       setTimeout(() => setPayoutMsg(""), 3000);
       return;
     }
+
+    // Validation 2: Minimum payout requirement
+    if (amt < minPayout) {
+      setPayoutMsg(`❌ Minimum payout: ${fmt(minPayout)}`);
+      setTimeout(() => setPayoutMsg(""), 3000);
+      return;
+    }
+
+    // Validation 3: Available balance check (BEFORE API call)
+    if (amt > availableBalance) {
+      setPayoutMsg(`❌ Insufficient balance. Available: ${fmt(availableBalance)}`);
+      setTimeout(() => setPayoutMsg(""), 4000);
+      return;
+    }
+
     setRequesting(true);
     try {
       const { data: res } = await api.post("/delivery/payouts/request", { amount: amt });
-      setPayoutMsg(res.message || "Payout requested!");
+      setPayoutMsg(res.message || "✅ Payout requested!");
       setPayoutAmount("");
-      // Refresh payout data
-      const { data: fresh } = await api.get("/delivery/payouts");
-      setPayoutData(fresh);
+
+      // Refresh payout data on success
+      try {
+        const { data: fresh } = await api.get("/delivery/payouts");
+        setPayoutData(fresh);
+      } catch (refreshErr) {
+        console.warn("Failed to refresh payout data:", refreshErr);
+        // Don't show error for refresh failure
+      }
     } catch (err) {
-      setPayoutMsg(err.response?.data?.message || "Failed to request payout");
+      const errorMsg = err.response?.data?.message || err.message || "Failed to request payout";
+      setPayoutMsg(`❌ ${errorMsg}`);
+      console.error("Payout request error:", err.response?.status, errorMsg);
     } finally {
       setRequesting(false);
-      setTimeout(() => setPayoutMsg(""), 4000);
+      setTimeout(() => setPayoutMsg(""), 5000);
     }
   };
 

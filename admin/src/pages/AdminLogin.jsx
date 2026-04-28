@@ -336,7 +336,7 @@ const AdminLogin = () => {
                                 type="email"
                                 value={form.email}
                                 onChange={(e) => { form.setEmail(e.target.value); form.clearError(); }}
-                                placeholder="admin@urbexon.com"
+                                placeholder="admin@urbexon.in"
                                 autoComplete="email"
                             />
 

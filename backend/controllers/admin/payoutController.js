@@ -44,8 +44,31 @@ export const vendorRequestPayout = async (req, res) => {
         if (!bd.accountNumber && !bd.upiId) {
             return res.status(400).json({ success: false, message: "Please add bank details or UPI ID first" });
         }
-        if (bd.accountNumber && bd.ifsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bd.ifsc)) {
-            return res.status(400).json({ success: false, message: "Invalid IFSC code format" });
+        // Only validate IFSC format if account number is provided AND IFSC is provided
+        if (bd.accountNumber && bd.ifsc) {
+            const ifscCode = bd.ifsc?.trim()?.toUpperCase();
+
+            // Check if user used letter O instead of zero
+            if (ifscCode.includes("O") && ifscCode.length === 11) {
+                const corrected = ifscCode.replace(/O/g, "0");
+                if (/^[A-Z]{4}0[A-Z0-9]{6}$/.test(corrected)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Invalid IFSC: contains letter "O" instead of digit "0". Did you mean: ${corrected}?`
+                    });
+                }
+            }
+
+            if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifscCode)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid IFSC format. Must be: 4 letters + 0 (zero) + 6 characters. Example: SBIN0001234"
+                });
+            }
+        }
+        // If account number is provided but IFSC is missing, warn (but don't block)
+        if (bd.accountNumber && !bd.ifsc) {
+            console.warn(`[vendorRequestPayout] Vendor ${vendor._id} has account number but no IFSC code`);
         }
 
         // FIX 1: Atomic duplicate guard — database-level unique constraint using findOneAndUpdate

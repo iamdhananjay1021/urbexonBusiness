@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import api from "../api/adminApi";
 import { FiTag, FiPlus, FiEdit2, FiTrash2, FiToggleLeft, FiToggleRight, FiX, FiSave } from "react-icons/fi";
+import useDebounce from "../hooks/useDebounce";
 
 const T = { blue: "#2563eb", bg: "#f8fafc", white: "#fff", border: "#e2e8f0", text: "#1e293b", muted: "#475569", hint: "#94a3b8", green: "#10b981", red: "#ef4444", amber: "#f59e0b" };
 
@@ -19,21 +20,18 @@ const AdminCoupons = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-
-  const searchTimer = useRef(null);
+  const debouncedSearch = useDebounce(search, 300);
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get(`/coupons/admin?search=${encodeURIComponent(search)}&limit=50`);
+      const { data } = await api.get(`/coupons/admin?search=${encodeURIComponent(debouncedSearch)}&limit=50`);
       setCoupons(data.coupons || []);
     } catch (err) { console.error("Coupons load failed:", err); }
     finally { setLoading(false); }
-  }, [search]);
+  }, [debouncedSearch]);
 
   useEffect(() => {
-    clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => { load(); }, 300);
-    return () => clearTimeout(searchTimer.current);
+    load();
   }, [load]);
 
   const openNew = () => { setError(""); setForm({ ...EMPTY }); };

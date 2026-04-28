@@ -119,10 +119,21 @@ const getVendorTransitions = (order) => {
     };
 };
 
+/**
+ * ✅ BUG3 FIX: ensureVendorSettlement — Atomic upsert via $setOnInsert
+ *
+ * FLOW OWNERSHIP:
+ *   - Vendor marks: PLACED→CONFIRMED→PACKED→READY_FOR_PICKUP  (vendor's responsibility)
+ *   - Rider marks:  PICKED_UP→OUT_FOR_DELIVERY→DELIVERED      (rider's responsibility, OTP-gated)
+ *   - Admin:        Force-assign / exceptional override only
+ *
+ * RACE CONDITION FIX:
+ *   Old code: findOne() + create() — two ops, race window between them.
+ *   New code: updateOne($setOnInsert, upsert:true) — single atomic op.
+ *   MongoDB guarantees only ONE insert wins; subsequent calls are no-ops.
+ *   Vendor $inc stats only run when settlement is newly created (upsertedCount > 0).
+ */
 const ensureVendorSettlement = async ({ order, vendorId, vendorProductIds }) => {
-    const exists = await Settlement.findOne({ orderId: order._id, vendorId }).lean();
-    if (exists) return;
-
     const vendorProductIdSet = new Set(vendorProductIds.map(String));
     const vendorItems = (order.items || []).filter((item) => vendorProductIdSet.has(String(item.productId)));
     const orderAmount = vendorItems.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.qty || item.quantity || 0)), 0);
@@ -133,25 +144,35 @@ const ensureVendorSettlement = async ({ order, vendorId, vendorProductIds }) => 
     const commissionAmount = Math.round((orderAmount * commissionRate) / 100);
     const vendorEarning = Math.max(0, orderAmount - commissionAmount);
 
-    await Settlement.create({
-        vendorId,
-        orderId: order._id,
-        orderAmount,
-        commissionRate,
-        commissionAmount,
-        deliveryCharge: 0,
-        platformFee: 0,
-        vendorEarning,
-        status: "pending",
-    });
-
-    await Vendor.findByIdAndUpdate(vendorId, {
-        $inc: {
-            pendingSettlement: vendorEarning,
-            totalRevenue: orderAmount,
-            totalOrders: 1,
+    // ✅ Atomic upsert — safe against race conditions from vendor + admin both marking DELIVERED
+    const result = await Settlement.updateOne(
+        { orderId: order._id },   // unique index on orderId prevents duplicates
+        {
+            $setOnInsert: {
+                vendorId,
+                orderId: order._id,
+                orderAmount,
+                commissionRate,
+                commissionAmount,
+                deliveryCharge: 0,
+                platformFee: 0,
+                vendorEarning,
+                status: "pending",
+            },
         },
-    }).catch(() => { });
+        { upsert: true }
+    );
+
+    // Only increment vendor stats if we ACTUALLY created the settlement (not a duplicate)
+    if (result.upsertedCount > 0) {
+        await Vendor.findByIdAndUpdate(vendorId, {
+            $inc: {
+                pendingSettlement: vendorEarning,
+                totalRevenue: orderAmount,
+                totalOrders: 1,
+            },
+        }).catch(() => { });
+    }
 };
 
 const buildVendorScopedOrder = (order, vendorProductIdSet) => {
@@ -310,6 +331,22 @@ export const getVendorOrderById = async (req, res) => {
 };
 
 // PATCH /api/vendor/orders/:id/status
+/**
+ * FLOW OWNERSHIP — WHO UPDATES WHAT:
+ *
+ * URBEXON HOUR (Zepto-style):
+ *   Vendor  → PLACED → CONFIRMED → PACKED → READY_FOR_PICKUP   (vendor panel)
+ *   System  → auto-assigns nearest rider when READY_FOR_PICKUP   (automatic)
+ *   Rider   → accepts → OUT_FOR_DELIVERY → DELIVERED (OTP)       (delivery app)
+ *   Admin   → force-assign, cancel, exception override only
+ *
+ * ECOMMERCE (Flipkart-style):
+ *   Admin   → CONFIRMED → PACKED → SHIPPED (Shiprocket) → DELIVERED
+ *   Vendor  → read-only view of their product orders
+ *
+ * Vendor CANNOT mark OUT_FOR_DELIVERY or DELIVERED for LOCAL_RIDER orders.
+ * Only VENDOR_SELF delivery allows vendor to do door delivery (with OTP).
+ */
 export const updateOrderStatus = async (req, res) => {
     try {
         const { id } = req.params;

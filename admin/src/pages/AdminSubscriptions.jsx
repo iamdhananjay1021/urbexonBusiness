@@ -4,6 +4,8 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import adminApi from "../api/adminApi";
+import useDebounce from "../hooks/useDebounce";
+import { FiCreditCard, FiAward, FiCheckCircle, FiXCircle, FiClock } from "react-icons/fi";
 
 const PLANS = {
   starter: { label: "Starter", price: 0, products: 10, color: "#6b7280" },
@@ -34,7 +36,8 @@ const AdminSubscriptions = () => {
   const [msg, setMsg] = useState({ text: "", type: "" });
   const [activating, setActivating] = useState(null);
   const [filter, setFilter] = useState("all");
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const search = useDebounce(searchInput, 400);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [expandedId, setExpandedId] = useState(null);
@@ -60,6 +63,10 @@ const AdminSubscriptions = () => {
   }, [filter, search, page]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   const activatePlan = async (vendorId, plan, months = 1) => {
     setActivating(vendorId);
@@ -133,7 +140,7 @@ const AdminSubscriptions = () => {
         ))}
         <input
           type="text" placeholder="Search vendor..."
-          value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+          value={searchInput} onChange={e => setSearchInput(e.target.value)}
           style={{ marginLeft: "auto", padding: "7px 14px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, width: 200 }}
         />
       </div>
@@ -192,39 +199,82 @@ const AdminSubscriptions = () => {
                       )}
                     </div>
                   </div>
-                  {/* Expanded: Payment History */}
-                  {isExpanded && sub.payments?.length > 0 && (
-                    <div style={{ padding: "0 20px 16px", background: "#fafbfc" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 8 }}>Payment History</div>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                        <thead>
-                          <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
-                            {["Date", "Amount", "Method", "Months", "Status", "Reference"].map(h => (
-                              <th key={h} style={{ padding: "6px 10px", textAlign: "left", color: "#6b7280", fontWeight: 600, fontSize: 11 }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sub.payments.slice().reverse().map((p, i) => (
-                            <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                              <td style={{ padding: "6px 10px" }}>{new Date(p.date).toLocaleDateString("en-IN")}</td>
-                              <td style={{ padding: "6px 10px", fontWeight: 700 }}>{fmt(p.amount)}</td>
-                              <td style={{ padding: "6px 10px", textTransform: "capitalize" }}>{p.method === "free_trial" ? "Trial" : p.method}</td>
-                              <td style={{ padding: "6px 10px" }}>{p.months}</td>
-                              <td style={{ padding: "6px 10px" }}>
-                                <span style={{
-                                  padding: "2px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700,
-                                  background: p.status === "success" ? "#d1fae5" : p.status === "failed" ? "#fee2e2" : "#fef3c7",
-                                  color: p.status === "success" ? "#065f46" : p.status === "failed" ? "#b91c1c" : "#92400e",
-                                }}>{p.status || "—"}</span>
-                              </td>
-                              <td style={{ padding: "6px 10px", fontSize: 11, color: "#6b7280", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {p.razorpayPaymentId || p.reference || "—"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                  {/* Expanded Details */}
+                  {isExpanded && (
+                    <div style={{ padding: "16px 20px 20px", background: "#fafbfc", borderTop: "1px solid #f1f5f9" }}>
+                      <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+
+                        {/* Subscription Info Card */}
+                        <div style={{ flex: "1 1 250px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
+                          <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8 }}>
+                            <FiAward size={16} color="#6366f1" /> Subscription Details
+                          </h4>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                              <span style={{ color: "#64748b" }}>Current Plan</span>
+                              <span style={{ fontWeight: 700, color: "#1e293b", textTransform: "capitalize", background: "#f1f5f9", padding: "2px 8px", borderRadius: 6 }}>{sub.plan}</span>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                              <span style={{ color: "#64748b" }}>Max Products</span>
+                              <span style={{ fontWeight: 600, color: "#1e293b" }}>{PLANS[sub.plan]?.products || "—"}</span>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                              <span style={{ color: "#64748b" }}>Start Date</span>
+                              <span style={{ fontWeight: 600, color: "#1e293b" }}>{sub.startDate ? new Date(sub.startDate).toLocaleDateString("en-IN") : "—"}</span>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                              <span style={{ color: "#64748b" }}>Expiry Date</span>
+                              <span style={{ fontWeight: 600, color: "#1e293b" }}>{sub.expiryDate ? new Date(sub.expiryDate).toLocaleDateString("en-IN") : "—"}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Payment History */}
+                        <div style={{ flex: "2 1 400px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
+                          <h4 style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8 }}>
+                            <FiCreditCard size={16} color="#10b981" /> Payment History
+                          </h4>
+                          {sub.payments?.length > 0 ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                              {sub.payments.slice().reverse().map((p, i) => (
+                                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 10, flexWrap: "wrap", gap: 12 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: p.method === "free_trial" ? "#fef3c7" : "#e0e7ff", color: p.method === "free_trial" ? "#d97706" : "#3b82f6", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                      {p.method === "free_trial" ? <FiAward size={16} /> : <FiCreditCard size={16} />}
+                                    </div>
+                                    <div>
+                                      <div style={{ fontSize: 14, fontWeight: 800, color: "#1e293b", marginBottom: 2 }}>{fmt(p.amount)}</div>
+                                      <div style={{ fontSize: 11, color: "#64748b", fontWeight: 500 }}>
+                                        {new Date(p.date).toLocaleDateString("en-IN")} · <span style={{ textTransform: "capitalize" }}>{p.method === "free_trial" ? "Free Trial" : p.method}</span>
+                                        {p.months ? ` (${p.months} mo)` : ""}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div style={{ textAlign: "right" }}>
+                                    <span style={{
+                                      display: "inline-flex", alignItems: "center", gap: 5,
+                                      padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, textTransform: "capitalize",
+                                      background: p.status === "success" ? "#d1fae5" : p.status === "failed" ? "#fee2e2" : "#fef3c7",
+                                      color: p.status === "success" ? "#065f46" : p.status === "failed" ? "#b91c1c" : "#92400e",
+                                    }}>
+                                      {p.status === "success" ? <FiCheckCircle size={12} /> : p.status === "failed" ? <FiXCircle size={12} /> : <FiClock size={12} />}
+                                      {p.status || "Pending"}
+                                    </span>
+                                    <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 6, fontFamily: "'Courier New', monospace", fontWeight: 600 }}>
+                                      {p.razorpayPaymentId || p.reference || "No Reference ID"}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ padding: "30px 20px", textAlign: "center", color: "#94a3b8", fontSize: 13, background: "#f8fafc", borderRadius: 10, border: "1px dashed #e2e8f0" }}>
+                              No payment records found
+                            </div>
+                          )}
+                        </div>
+
+                      </div>
                     </div>
                   )}
                 </div>
@@ -234,18 +284,16 @@ const AdminSubscriptions = () => {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 16 }}>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-            <button key={p} onClick={() => setPage(p)}
-              style={{
-                padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
-                border: page === p ? "1.5px solid #111827" : "1px solid #d1d5db",
-                background: page === p ? "#111827" : "#fff",
-                color: page === p ? "#fff" : "#374151",
-              }}>
-              {p}
-            </button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 20 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            style={{ padding: "6px 12px", background: "#fff", border: "1px solid #d1d5db", borderRadius: 7, fontSize: 13, color: "#374151", cursor: "pointer", opacity: page === 1 ? 0.4 : 1 }}>
+            ← Prev
+          </button>
+          <span style={{ fontSize: 13, color: "#475569" }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+            style={{ padding: "6px 12px", background: "#fff", border: "1px solid #d1d5db", borderRadius: 7, fontSize: 13, color: "#374151", cursor: "pointer", opacity: page === totalPages ? 0.4 : 1 }}>
+            Next →
+          </button>
         </div>
       )}
     </div>

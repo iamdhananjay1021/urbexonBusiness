@@ -42,9 +42,7 @@ export const checkPincode = async (req, res) => {
         const cached = await safeGetCache(cacheKey);
         if (cached) return res.json(cached);
 
-        const pincode = await Pincode.findOne({ code: code.trim() })
-            .populate("assignedVendors", "shopName shopLogo rating isOpen acceptingOrders shopDescription")
-            .lean();
+        const pincode = await Pincode.findOne({ code: code.trim() }).lean();
 
         let result;
         let cacheTTL = 120; // default 2 min
@@ -65,7 +63,13 @@ export const checkPincode = async (req, res) => {
             };
             cacheTTL = 120;
         } else {
-            const activeVendors = (pincode.assignedVendors || []).filter((v) => v.isOpen);
+            // Fetch active vendors dynamically based on their servicePincodes array
+            const activeVendors = await Vendor.find({
+                servicePincodes: code.trim(),
+                status: "approved",
+                isOpen: true,
+                isDeleted: false
+            }).select("shopName shopLogo rating isOpen city").lean();
             result = {
                 available: true,
                 status: "active",
@@ -169,10 +173,18 @@ export const getAllPincodes = async (req, res) => {
             Pincode.find(filter)
                 .sort({ priority: -1, createdAt: -1 })
                 .skip(skip).limit(limit)
-                .populate("assignedVendors", "shopName shopLogo")
                 .lean(),
             Pincode.countDocuments(filter),
         ]);
+
+        // Dynamically attach vendors to each pincode for the admin view
+        const codes = pincodes.map(p => p.code);
+        const vendors = await Vendor.find({ servicePincodes: { $in: codes }, isDeleted: false, status: "approved" })
+            .select("shopName shopLogo servicePincodes").lean();
+
+        pincodes.forEach(p => {
+            p.assignedVendors = vendors.filter(v => v.servicePincodes && v.servicePincodes.includes(p.code));
+        });
 
         const result = { success: true, pincodes, total, page, pages: Math.ceil(total / limit) };
         await safeSetCache(cacheKey, result, 60);
@@ -186,27 +198,36 @@ export const getAllPincodes = async (req, res) => {
 /* ── ADMIN: Create pincode ─────────────────────────────────────────── */
 export const createPincode = async (req, res) => {
     try {
-        const { code, status, area, city, district, state, priority, expectedLaunchDate } = req.body;
+        const { code, status, area, city, district, state, priority, expectedLaunchDate, location } = req.body;
         if (!code || !/^\d{6}$/.test(code)) {
             return res.status(400).json({ success: false, message: "Valid 6-digit pincode is required" });
+        }
+
+        const insertData = {
+            code,
+            status: status || "coming_soon",
+            area: area?.trim() || "",
+            city: city?.trim() || "",
+            district: district?.trim() || "",
+            state: state?.trim() || "",
+            priority: Number(priority) || 0,
+            expectedLaunchDate: expectedLaunchDate ? new Date(expectedLaunchDate) : null,
+        };
+
+        // FIX: Extract location if provided, format correctly for MongoDB 2dsphere index
+        if (location && Array.isArray(location.coordinates) && location.coordinates.length === 2 && location.coordinates[0] !== null) {
+            insertData.location = {
+                type: "Point",
+                coordinates: [Number(location.coordinates[0]), Number(location.coordinates[1])]
+            };
         }
 
         // [FIX-PM4] Atomic upsert with $setOnInsert (preserved — prevents race on concurrent admin creates)
         const result = await Pincode.findOneAndUpdate(
             { code },
-            {
-                $setOnInsert: {
-                    code,
-                    status: status || "coming_soon",
-                    area: area?.trim() || "",
-                    city: city?.trim() || "",
-                    district: district?.trim() || "",
-                    state: state?.trim() || "",
-                    priority: Number(priority) || 0,
-                    expectedLaunchDate: expectedLaunchDate ? new Date(expectedLaunchDate) : null,
-                },
-            },
-            { upsert: true, new: true, rawResult: true }
+            { $setOnInsert: insertData },
+            // FIX: Replaced `rawResult` with `includeResultMetadata` to resolve Mongoose Deprecation Warning
+            { upsert: true, new: true, includeResultMetadata: true }
         );
 
         if (result.lastErrorObject?.updatedExisting) {
@@ -234,8 +255,16 @@ export const updatePincode = async (req, res) => {
         const fields = ["status", "area", "city", "district", "state", "priority", "expectedLaunchDate", "note"];
         fields.forEach((f) => { if (req.body[f] !== undefined) pincode[f] = req.body[f]; });
 
-        if (req.body.assignedVendors !== undefined) {
-            pincode.assignedVendors = req.body.assignedVendors;
+        // FIX: Support updating location properly
+        if (req.body.location !== undefined) {
+            if (req.body.location && Array.isArray(req.body.location.coordinates) && req.body.location.coordinates.length === 2 && req.body.location.coordinates[0] !== null) {
+                pincode.location = {
+                    type: "Point",
+                    coordinates: [Number(req.body.location.coordinates[0]), Number(req.body.location.coordinates[1])]
+                };
+            } else {
+                pincode.location = undefined;
+            }
         }
 
         await pincode.save();

@@ -1,6 +1,9 @@
 /**
  * useFcm.js — Hook for FCM push notification setup in delivery panel
  * Registers service worker, gets token, saves to backend, listens for foreground messages
+ *
+ * ✅ RE-RENDER FIX: onNewOrder is stored in a ref so the FCM listener
+ * is NOT re-registered on every parent render (was causing listener churn).
  */
 import { useEffect, useRef, useCallback } from "react";
 import api from "../api/axios";
@@ -9,6 +12,9 @@ import { startAlert } from "../utils/notificationSound";
 
 const useFcm = ({ onNewOrder } = {}) => {
     const registered = useRef(false);
+    // ✅ FIX: Keep latest callback in ref — avoids FCM effect re-running on every render
+    const onNewOrderRef = useRef(onNewOrder);
+    useEffect(() => { onNewOrderRef.current = onNewOrder; }, [onNewOrder]);
 
     const registerToken = useCallback(async () => {
         if (registered.current) return;
@@ -30,11 +36,11 @@ const useFcm = ({ onNewOrder } = {}) => {
     useEffect(() => {
         registerToken();
 
-        // Listen for foreground FCM messages
+        // Listen for foreground FCM messages — always reads latest onNewOrder via ref
         const unsubscribe = onForegroundMessage((payload) => {
             const data = payload.data || {};
-            if (data.type === "NEW_ORDER" && onNewOrder) {
-                onNewOrder({
+            if (data.type === "NEW_ORDER" && onNewOrderRef.current) {
+                onNewOrderRef.current({
                     orderId: data.orderId,
                     amount: Number(data.amount || 0),
                     items: Number(data.items || 0),
@@ -50,7 +56,7 @@ const useFcm = ({ onNewOrder } = {}) => {
             const { type, orderId } = event.data || {};
             if (type === "FCM_ACCEPT_ORDER" && orderId) {
                 api.patch(`/delivery/orders/${orderId}/accept`)
-                    .then(() => onNewOrder?.({ accepted: true, orderId }))
+                    .then(() => onNewOrderRef.current?.({ accepted: true, orderId }))
                     .catch(err => console.warn("[FCM] Accept failed:", err.message));
             }
             if (type === "FCM_REJECT_ORDER" && orderId) {
@@ -69,7 +75,7 @@ const useFcm = ({ onNewOrder } = {}) => {
                 navigator.serviceWorker.removeEventListener("message", handleSwMessage);
             }
         };
-    }, [registerToken, onNewOrder]);
+    }, [registerToken]); // ✅ No onNewOrder dep — ref handles latest value
 };
 
 export default useFcm;

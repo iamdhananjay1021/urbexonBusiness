@@ -192,6 +192,7 @@ vendorSchema.pre("save", function (next) {
 
 // ── Static: find active vendors for a pincode ────────────────
 vendorSchema.statics.findActiveForPincode = function (pincode) {
+    const now = new Date();
     return this.find({
         servicePincodes: pincode,
         status: "approved",
@@ -199,12 +200,13 @@ vendorSchema.statics.findActiveForPincode = function (pincode) {
         acceptingOrders: true,
         isDeleted: false,
         "subscription.isActive": true,
-        "subscription.expiryDate": { $gt: new Date() },
+        "subscription.expiryDate": { $gt: now },
     }).select("shopName shopLogo shopCategory rating totalOrders preparationTime deliveryMode");
 };
 
 // ── Static: find nearby vendors by geo (maxDist in meters) ───
 vendorSchema.statics.findNearby = function (lng, lat, maxDistMeters = 10000, { category, limit = 30 } = {}) {
+    const now = new Date();
     const filter = {
         location: {
             $nearSphere: {
@@ -217,6 +219,8 @@ vendorSchema.statics.findNearby = function (lng, lat, maxDistMeters = 10000, { c
         acceptingOrders: true,
         isDeleted: false,
         "location.coordinates": { $ne: [0, 0] },
+        "subscription.isActive": true,
+        "subscription.expiryDate": { $gt: now },
     };
     if (category) filter.shopCategory = category;
     return this.find(filter)

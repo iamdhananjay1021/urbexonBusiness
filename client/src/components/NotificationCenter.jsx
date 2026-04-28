@@ -1,247 +1,393 @@
-/**
- * NotificationCenter.jsx — Bell icon + dropdown for user notifications
- * Shows unread count badge, notification list, mark as read, click-to-navigate
- */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaBell, FaCheck, FaTrash, FaTimes } from "react-icons/fa";
+import {
+    FaBell,
+    FaCheck,
+    FaFireAlt,
+    FaGift,
+    FaShoppingCart,
+    FaTag,
+    FaTimes,
+    FaTrash,
+} from "react-icons/fa";
+import { useAuth } from "../contexts/AuthContext";
 import api from "../api/axios";
 
-const NotificationCenter = () => {
+const TYPE_STYLES = {
+    price_drop: {
+        icon: FaTag,
+        iconClass: "bg-emerald-100 text-emerald-700",
+    },
+    back_in_stock: {
+        icon: FaGift,
+        iconClass: "bg-blue-100 text-blue-700",
+    },
+    deal_alert: {
+        icon: FaFireAlt,
+        iconClass: "bg-orange-100 text-orange-700",
+    },
+    wishlist_reminder: {
+        icon: FaBell,
+        iconClass: "bg-pink-100 text-pink-700",
+    },
+    cart_reminder: {
+        icon: FaShoppingCart,
+        iconClass: "bg-amber-100 text-amber-700",
+    },
+    general: {
+        icon: FaBell,
+        iconClass: "bg-slate-100 text-slate-700",
+    },
+};
+
+const NotificationCenter = ({ variant = "desktop" }) => {
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const isEnabled = Boolean(user?._id);
+    const isMobile = variant === "mobile";
+
     const [open, setOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [unread, setUnread] = useState(0);
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(false);
-    const dropRef = useRef(null);
 
-    // Fetch unread count on mount
-    useEffect(() => {
-        const fetchCount = async () => {
-            try {
-                const { data } = await api.get("/user-notifications/unread-count");
-                setUnread(data.count || 0);
-            } catch { /* silent */ }
-        };
-        fetchCount();
-        const interval = setInterval(fetchCount, 60000); // Poll every 60s
-        return () => clearInterval(interval);
-    }, []);
+    const rootRef = useRef(null);
 
-    // Listen for real-time WebSocket notifications
-    useEffect(() => {
-        const handler = (e) => {
-            if (e.detail?.type) {
-                setUnread(prev => prev + 1);
-                // Prepend to list if dropdown is open
-                if (open) {
-                    setNotifications(prev => [{
-                        _id: Date.now().toString(),
-                        ...e.detail,
-                        isRead: false,
-                        createdAt: new Date().toISOString(),
-                    }, ...prev]);
-                }
-            }
-        };
-        window.addEventListener("ux-notification", handler);
-        return () => window.removeEventListener("ux-notification", handler);
-    }, [open]);
+    const refreshUnread = useCallback(async () => {
+        if (!isEnabled) {
+            setUnread(0);
+            return;
+        }
 
-    // Close on outside click
-    useEffect(() => {
-        if (!open) return;
-        const handler = (e) => {
-            if (dropRef.current && !dropRef.current.contains(e.target)) setOpen(false);
-        };
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, [open]);
+        try {
+            const { data } = await api.get("/user-notifications/unread-count");
+            setUnread(typeof data?.count === "number" ? data.count : 0);
+        } catch {
+            // Keep the last known badge state on transient failures.
+        }
+    }, [isEnabled]);
 
     const fetchNotifications = useCallback(async (pg = 1) => {
+        if (!isEnabled) return;
+
         setLoading(true);
         try {
             const { data } = await api.get(`/user-notifications?page=${pg}&limit=15`);
-            if (pg === 1) {
-                setNotifications(data.notifications || []);
-            } else {
-                setNotifications(prev => [...prev, ...(data.notifications || [])]);
-            }
-            setHasMore(data.page < data.totalPages);
+            const nextNotifications = Array.isArray(data?.notifications) ? data.notifications : [];
+            const totalPages = Math.max(1, data?.totalPages || data?.pages || 1);
+
+            setNotifications((prev) => (pg === 1 ? nextNotifications : [...prev, ...nextNotifications]));
+            setHasMore(pg < totalPages);
             setPage(pg);
-        } catch { /* silent */ }
-        setLoading(false);
-    }, []);
+
+            if (typeof data?.unreadCount === "number") {
+                setUnread(data.unreadCount);
+            }
+        } catch {
+            if (pg === 1) {
+                setNotifications([]);
+                setHasMore(false);
+            }
+        } finally {
+            setLoading(false);
+        }
+    }, [isEnabled]);
+
+    useEffect(() => {
+        if (!isEnabled) {
+            setOpen(false);
+            setNotifications([]);
+            setUnread(0);
+            setPage(1);
+            setHasMore(false);
+            return;
+        }
+
+        refreshUnread();
+
+        const interval = setInterval(refreshUnread, 60000);
+
+        let focusTimeout;
+        const handleFocus = () => {
+            clearTimeout(focusTimeout);
+            // Delay request by 2 seconds to prevent rapid spam when switching tabs
+            focusTimeout = setTimeout(refreshUnread, 2000);
+        };
+        window.addEventListener("focus", handleFocus);
+        document.addEventListener("visibilitychange", handleFocus);
+
+        return () => {
+            clearInterval(interval);
+            clearTimeout(focusTimeout);
+            window.removeEventListener("focus", handleFocus);
+            document.removeEventListener("visibilitychange", handleFocus);
+        };
+    }, [isEnabled, refreshUnread]);
+
+    useEffect(() => {
+        if (!isEnabled) return;
+
+        const handleRealtimeNotification = () => {
+            refreshUnread();
+            if (open) {
+                fetchNotifications(1);
+            }
+        };
+
+        window.addEventListener("ux-notification", handleRealtimeNotification);
+        return () => window.removeEventListener("ux-notification", handleRealtimeNotification);
+    }, [fetchNotifications, isEnabled, open, refreshUnread]);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const handleOutsideClick = (event) => {
+            if (rootRef.current && !rootRef.current.contains(event.target)) {
+                setOpen(false);
+            }
+        };
+
+        const handleEscape = (event) => {
+            if (event.key === "Escape") {
+                setOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleOutsideClick);
+        document.addEventListener("keydown", handleEscape);
+
+        return () => {
+            document.removeEventListener("mousedown", handleOutsideClick);
+            document.removeEventListener("keydown", handleEscape);
+        };
+    }, [open]);
 
     const handleOpen = () => {
+        if (!isEnabled) {
+            navigate("/login");
+            return;
+        }
+
         if (!open) {
             fetchNotifications(1);
         }
-        setOpen(!open);
+        setOpen((prev) => !prev);
     };
 
     const markRead = async (id) => {
+        const target = notifications.find((item) => item._id === id);
+        if (!target || target.isRead) return;
+
         try {
             await api.put(`/user-notifications/${id}/read`);
-            setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
-            setUnread(prev => Math.max(0, prev - 1));
-        } catch { /* silent */ }
+            setNotifications((prev) =>
+                prev.map((item) => (item._id === id ? { ...item, isRead: true } : item))
+            );
+            setUnread((prev) => Math.max(0, prev - 1));
+        } catch {
+            // Silent retry candidate; the next refresh will resync.
+        }
     };
 
     const markAllRead = async () => {
         try {
             await api.put("/user-notifications/read-all");
-            setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+            setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
             setUnread(0);
-        } catch { /* silent */ }
+        } catch {
+            // Silent retry candidate; the next refresh will resync.
+        }
     };
 
-    const handleClick = (n) => {
-        if (!n.isRead) markRead(n._id);
-        if (n.link) {
-            navigate(n.link);
+    const handleNotificationClick = async (notification) => {
+        if (!notification?.isRead) {
+            await markRead(notification._id);
+        }
+
+        if (notification?.link) {
+            navigate(notification.link);
             setOpen(false);
         }
     };
 
-    const deleteNotification = async (e, id) => {
-        e.stopPropagation();
+    const deleteNotification = async (event, notification) => {
+        event.stopPropagation();
+
         try {
-            await api.delete(`/user-notifications/${id}`);
-            setNotifications(prev => prev.filter(n => n._id !== id));
-        } catch { /* silent */ }
-    };
-
-    const timeAgo = (date) => {
-        const s = Math.floor((Date.now() - new Date(date)) / 1000);
-        if (s < 60) return "Just now";
-        if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-        if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-        return `${Math.floor(s / 86400)}d ago`;
-    };
-
-    const typeIcon = (type) => {
-        switch (type) {
-            case "price_drop": return "📉";
-            case "back_in_stock": return "🎉";
-            case "deal_alert": return "🔥";
-            case "wishlist_reminder": return "💫";
-            case "cart_reminder": return "🛒";
-            default: return "🔔";
+            await api.delete(`/user-notifications/${notification._id}`);
+            setNotifications((prev) => prev.filter((item) => item._id !== notification._id));
+            if (!notification.isRead) {
+                setUnread((prev) => Math.max(0, prev - 1));
+            }
+        } catch {
+            // Silent retry candidate; the next refresh will resync.
         }
     };
 
+    const timeAgo = (date) => {
+        const timestamp = new Date(date).getTime();
+        if (Number.isNaN(timestamp)) return "Just now";
+
+        const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+        if (seconds < 60) return "Just now";
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        return `${Math.floor(seconds / 86400)}d ago`;
+    };
+
+    const buttonClassName = isMobile
+        ? "w-10 h-10 border-none bg-transparent rounded flex items-center justify-center text-white cursor-pointer relative hover:bg-white/10 transition-colors"
+        : "flex items-center gap-1.5 bg-transparent border-none cursor-pointer px-2.5 py-1.5 rounded text-[13px] font-semibold text-white hover:bg-white/10 transition-colors whitespace-nowrap relative";
+
+    const dropdownClassName = isMobile
+        ? "fixed left-2 right-2 top-[3.9rem] max-h-[min(28rem,calc(100vh-5rem))] bg-white rounded-2xl shadow-2xl border border-gray-100 z-[950] overflow-hidden flex flex-col"
+        : "absolute right-0 top-full mt-2 w-[22rem] max-h-[28rem] bg-white rounded-2xl shadow-2xl border border-gray-100 z-[950] overflow-hidden flex flex-col";
+
     return (
-        <div className="nc-wrap" ref={dropRef}>
-            <button className="ux-icon-btn" onClick={handleOpen} aria-label="Notifications">
-                <FaBell size={20} color="#374151" />
+        <div className="relative flex-shrink-0" ref={rootRef}>
+            <button
+                type="button"
+                className={buttonClassName}
+                onClick={handleOpen}
+                aria-label="Notifications"
+                aria-expanded={open}
+            >
+                <FaBell size={18} className="shrink-0 text-white" />
                 {unread > 0 && (
-                    <span className="ux-badge ux-badge-red">{unread > 9 ? "9+" : unread}</span>
+                    <span className="absolute -top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center shadow-sm">
+                        {unread > 99 ? "99+" : unread}
+                    </span>
                 )}
-                <span className="ux-icon-btn-lbl">Alerts</span>
+                {!isMobile && (
+                    <span className="hidden xl:inline text-[13px] font-semibold">Notifications</span>
+                )}
             </button>
 
             {open && (
-                <div className="nc-drop">
-                    <div className="nc-head">
-                        <h4>Notifications</h4>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                            {unread > 0 && (
-                                <button className="nc-mark-all" onClick={markAllRead}>
-                                    <FaCheck size={10} /> Mark all read
+                <div className={dropdownClassName}>
+                    <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-gray-50">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <h4 className="text-base font-bold text-gray-900">Notifications</h4>
+                                <p className="text-xs text-gray-500 mt-0.5">Your latest account alerts</p>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                                {unread > 0 && (
+                                    <button
+                                        type="button"
+                                        className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                                        onClick={markAllRead}
+                                    >
+                                        <FaCheck size={10} />
+                                        Mark all
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-xl transition-colors"
+                                    onClick={() => setOpen(false)}
+                                    aria-label="Close notifications"
+                                >
+                                    <FaTimes size={14} />
                                 </button>
-                            )}
-                            <button className="nc-close" onClick={() => setOpen(false)}>
-                                <FaTimes size={14} />
-                            </button>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="nc-list">
-                        {notifications.length === 0 && !loading && (
-                            <div className="nc-empty">No notifications yet</div>
-                        )}
-                        {notifications.map(n => (
-                            <div
-                                key={n._id}
-                                className={`nc-item${n.isRead ? "" : " nc-unread"}`}
-                                onClick={() => handleClick(n)}
-                            >
-                                <span className="nc-emoji">{typeIcon(n.type)}</span>
-                                <div className="nc-body">
-                                    <div className="nc-title">{n.title}</div>
-                                    <div className="nc-msg">{n.message}</div>
-                                    <div className="nc-time">{timeAgo(n.createdAt)}</div>
+                    <div className="flex-1 overflow-y-auto">
+                        {!loading && notifications.length === 0 ? (
+                            <div className="px-6 py-12 text-center">
+                                <div className="w-12 h-12 mx-auto rounded-full bg-slate-100 text-slate-500 flex items-center justify-center">
+                                    <FaBell size={18} />
                                 </div>
-                                {n.image && <img className="nc-img" src={n.image} alt="" />}
-                                <button className="nc-del" onClick={(e) => deleteNotification(e, n._id)}>
-                                    <FaTrash size={10} />
-                                </button>
+                                <p className="text-sm font-semibold text-gray-700 mt-3">No notifications yet</p>
+                                <p className="text-xs text-gray-500 mt-1">New price drops and alerts will appear here.</p>
                             </div>
-                        ))}
-                        {hasMore && (
-                            <button className="nc-more" onClick={() => fetchNotifications(page + 1)} disabled={loading}>
-                                {loading ? "Loading..." : "Load more"}
-                            </button>
+                        ) : (
+                            notifications.map((notification) => {
+                                const config = TYPE_STYLES[notification.type] || TYPE_STYLES.general;
+                                const Icon = config.icon;
+
+                                return (
+                                    <div
+                                        key={notification._id}
+                                        className={`flex gap-3 p-4 cursor-pointer transition-colors border-b border-gray-50 last:border-b-0 hover:bg-gray-50 group relative ${notification.isRead ? "bg-white" : "bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-200"}`}
+                                        onClick={() => handleNotificationClick(notification)}
+                                    >
+                                        <span className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${config.iconClass}`}>
+                                            <Icon size={14} />
+                                        </span>
+
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="text-sm font-semibold text-gray-900 truncate">
+                                                        {notification.title}
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 leading-5 mt-1 break-words">
+                                                        {notification.message}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="p-2 text-gray-400 opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all"
+                                                    onClick={(event) => deleteNotification(event, notification)}
+                                                    aria-label="Delete notification"
+                                                >
+                                                    <FaTrash size={12} />
+                                                </button>
+                                            </div>
+
+                                            <div className="flex items-center justify-between gap-3 mt-2">
+                                                <span className="text-xs text-gray-500 font-medium">
+                                                    {timeAgo(notification.createdAt)}
+                                                </span>
+                                                {!notification.isRead && (
+                                                    <span className="text-[10px] font-bold uppercase tracking-wide text-blue-600">
+                                                        New
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {notification.image && (
+                                            <img
+                                                className="w-12 h-12 rounded-xl object-cover flex-shrink-0 shadow-sm ring-1 ring-gray-200/70"
+                                                src={notification.image}
+                                                alt=""
+                                                onError={(event) => {
+                                                    event.currentTarget.style.display = "none";
+                                                }}
+                                            />
+                                        )}
+                                    </div>
+                                );
+                            })
+                        )}
+
+                        {loading && (
+                            <div className="px-6 py-4 flex items-center justify-center gap-2 text-sm text-gray-500">
+                                <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                                Loading notifications...
+                            </div>
                         )}
                     </div>
+
+                    {hasMore && (
+                        <button
+                            type="button"
+                            className="w-full py-3 text-sm font-semibold text-blue-600 hover:bg-blue-50 border-t border-gray-100 transition-colors disabled:opacity-50 disabled:cursor-default"
+                            onClick={() => fetchNotifications(page + 1)}
+                            disabled={loading}
+                        >
+                            View more
+                        </button>
+                    )}
                 </div>
             )}
-
-            <style>{`
-                .nc-wrap { position: relative; }
-                .nc-drop {
-                    position: absolute; top: calc(100% + 8px); right: -20px;
-                    width: 360px; max-height: 480px; background: #fff;
-                    border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.15);
-                    z-index: 9999; overflow: hidden;
-                    display: flex; flex-direction: column;
-                }
-                .nc-head {
-                    display: flex; justify-content: space-between; align-items: center;
-                    padding: 14px 16px; border-bottom: 1px solid #f0f0f0;
-                }
-                .nc-head h4 { margin: 0; font-size: 16px; font-weight: 700; color: #111; }
-                .nc-mark-all {
-                    background: none; border: none; color: #2563eb; font-size: 12px;
-                    cursor: pointer; display: flex; align-items: center; gap: 4px; font-weight: 600;
-                }
-                .nc-close { background: none; border: none; cursor: pointer; color: #9ca3af; padding: 4px; }
-                .nc-list { overflow-y: auto; flex: 1; }
-                .nc-empty { padding: 40px 16px; text-align: center; color: #9ca3af; font-size: 14px; }
-                .nc-item {
-                    display: flex; align-items: flex-start; gap: 10px;
-                    padding: 12px 16px; cursor: pointer; transition: background .15s;
-                    position: relative; border-bottom: 1px solid #f9f9f9;
-                }
-                .nc-item:hover { background: #f8fafc; }
-                .nc-unread { background: #eff6ff; }
-                .nc-unread:hover { background: #dbeafe; }
-                .nc-emoji { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
-                .nc-body { flex: 1; min-width: 0; }
-                .nc-title { font-size: 13px; font-weight: 700; color: #111; margin-bottom: 2px; }
-                .nc-msg { font-size: 12px; color: #6b7280; line-height: 1.4; }
-                .nc-time { font-size: 11px; color: #9ca3af; margin-top: 4px; }
-                .nc-img { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
-                .nc-del {
-                    position: absolute; top: 8px; right: 8px;
-                    background: none; border: none; color: #d1d5db; cursor: pointer;
-                    opacity: 0; transition: opacity .15s;
-                }
-                .nc-item:hover .nc-del { opacity: 1; }
-                .nc-del:hover { color: #ef4444; }
-                .nc-more {
-                    display: block; width: 100%; padding: 12px;
-                    background: none; border: none; border-top: 1px solid #f0f0f0;
-                    color: #2563eb; font-size: 13px; font-weight: 600; cursor: pointer;
-                }
-                .nc-more:hover { background: #f8fafc; }
-                @media (max-width: 480px) {
-                    .nc-drop { width: calc(100vw - 16px); right: -60px; }
-                }
-            `}</style>
         </div>
     );
 };

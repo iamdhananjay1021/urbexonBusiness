@@ -268,14 +268,14 @@ const AdminVendorDetail = () => {
             )}
 
             {/* Bank Details */}
-            {vendor.bankDetails?.accountNumber && (
+            {(vendor.bankDetails?.accountNumber || vendor.bankDetails?.upiId || vendor.bankDetails?.accountHolder || vendor.bankDetails?.ifsc || vendor.bankDetails?.bankName) && (
                 <Section title="Bank Details">
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px,1fr))", gap: 14 }}>
-                        <InfoRow label="Account Holder" value={vendor.bankDetails.accountHolder} />
-                        <InfoRow label="Account Number" value={vendor.bankDetails.accountNumber} />
-                        <InfoRow label="IFSC" value={vendor.bankDetails.ifsc} />
-                        <InfoRow label="Bank" value={vendor.bankDetails.bankName} />
-                        <InfoRow label="UPI ID" value={vendor.bankDetails.upiId} />
+                        <InfoRow label="Account Holder" value={vendor.bankDetails?.accountHolder} />
+                        <InfoRow label="Account Number" value={vendor.bankDetails?.accountNumber} />
+                        <InfoRow label="IFSC" value={vendor.bankDetails?.ifsc} />
+                        <InfoRow label="Bank" value={vendor.bankDetails?.bankName} />
+                        <InfoRow label="UPI ID" value={vendor.bankDetails?.upiId} />
                     </div>
                 </Section>
             )}

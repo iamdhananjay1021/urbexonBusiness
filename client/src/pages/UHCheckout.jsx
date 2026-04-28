@@ -20,12 +20,6 @@ import SEO from "../components/SEO";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
-const STEPS = [
-    { id: 1, label: "Contact", icon: <FaUser size={11} /> },
-    { id: 2, label: "Address", icon: <FaMapMarkerAlt size={11} /> },
-    { id: 3, label: "Payment", icon: <FaCreditCard size={11} /> },
-];
-
 const LABEL_ICONS = { Home: <FaHome size={10} />, Work: <FaBriefcase size={10} />, Other: <FaMapMarkerAlt size={10} /> };
 
 const UHCheckout = () => {
@@ -72,324 +66,270 @@ const UHCheckout = () => {
 
             {/* Header */}
             <header className="uhck-header">
-                <button className="uhck-back" onClick={() => navigate("/uh-cart")}>
-                    <FaArrowLeft size={14} />
-                </button>
-                <div className="uhck-header-brand">
-                    <FaBolt size={12} className="uhck-bolt" />
-                    <span>Urbexon Hour Checkout</span>
-                </div>
-                <div className="uhck-secure">
-                    <FaLock size={10} /> Secure
+                <div className="uhck-header-inner">
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                        <button className="uhck-back" onClick={() => navigate("/uh-cart")}>
+                            <FaArrowLeft size={16} />
+                        </button>
+                        <div className="uhck-header-brand">
+                            <i>Urbexon</i><span style={{ color: "#ffe500", marginLeft: 4 }}>Hour</span>
+                        </div>
+                    </div>
+                    <div className="uhck-secure">
+                        <FaShieldAlt size={14} /> 100% SECURE
+                    </div>
                 </div>
             </header>
-
-            {/* Steps */}
-            <div className="uhck-steps">
-                {STEPS.map((s) => (
-                    <div
-                        key={s.id}
-                        className={`uhck-step${step === s.id ? " active" : ""}${step > s.id ? " done" : ""}`}
-                        onClick={() => step > s.id && setStep(s.id)}
-                    >
-                        <div className="uhck-step-circle">
-                            {step > s.id ? <FaCheckCircle size={14} /> : s.icon}
-                        </div>
-                        <span className="uhck-step-label">{s.label}</span>
-                    </div>
-                ))}
-            </div>
 
             <div className="uhck-layout">
                 {/* Main content */}
                 <div className="uhck-main">
                     {error && <div className="uhck-error">{error}</div>}
 
-                    {/* STEP 1: Contact */}
-                    {step === 1 && (
-                        <div className="uhck-card">
-                            <h2 className="uhck-card-title"><FaUser size={13} /> Contact Details</h2>
-                            <div className="uhck-field">
-                                <label>Full Name</label>
-                                <input
-                                    type="text" value={contact.name}
-                                    onChange={(e) => setContact({ ...contact, name: e.target.value })}
-                                    placeholder="Your full name"
-                                    maxLength={100}
-                                />
+                    {/* STEP 1: CONTACT DETAILS */}
+                    <div className={`uhck-acc-card ${step === 1 ? "active" : ""}`}>
+                        <div className="uhck-acc-head">
+                            <div className="uhck-acc-title">
+                                <span className="uhck-acc-num">1</span>
+                                CONTACT DETAILS
+                                {step > 1 && <FaCheckCircle size={16} className="uhck-acc-check" />}
                             </div>
-                            <div className="uhck-field">
-                                <label>Phone Number</label>
-                                <div className="uhck-phone-row">
-                                    <span className="uhck-prefix">+91</span>
-                                    <input
-                                        type="tel" value={contact.phone}
-                                        onChange={(e) => setContact({ ...contact, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
-                                        placeholder="10-digit mobile number"
-                                        maxLength={10} inputMode="numeric"
-                                    />
-                                </div>
-                            </div>
-                            <div className="uhck-field">
-                                <label>Email <span className="uhck-opt">(optional)</span></label>
-                                <input
-                                    type="email" value={contact.email}
-                                    onChange={(e) => setContact({ ...contact, email: e.target.value })}
-                                    placeholder="your@email.com"
-                                />
-                            </div>
-                            <button className="uhck-btn-primary" onClick={handleContactContinue}>
-                                Continue to Address
-                            </button>
-                        </div>
-                    )}
-
-                    {/* STEP 2: Address */}
-                    {step === 2 && (
-                        <div className="uhck-card">
-                            <h2 className="uhck-card-title"><FaMapMarkerAlt size={13} /> Delivery Address</h2>
-                            <div className="uhck-eta-banner">
-                                <FaClock size={12} />
-                                <span>Express delivery: <strong>45–120 mins</strong></span>
-                            </div>
-
-                            {addrLoading ? (
-                                <div className="uhck-loading"><FaSpinner className="uhck-spin" /> Loading addresses…</div>
-                            ) : (
-                                <>
-                                    {addresses.length > 0 && (
-                                        <div className="uhck-addr-list">
-                                            {addresses.map((addr) => (
-                                                <div
-                                                    key={addr._id}
-                                                    className={`uhck-addr${selectedAddrId === addr._id ? " selected" : ""}`}
-                                                    onClick={() => setSelectedAddrId(addr._id)}
-                                                >
-                                                    <div className="uhck-addr-radio">
-                                                        <div className={`uhck-radio${selectedAddrId === addr._id ? " on" : ""}`} />
-                                                    </div>
-                                                    <div className="uhck-addr-body">
-                                                        <div className="uhck-addr-top">
-                                                            <span className="uhck-addr-label">
-                                                                {LABEL_ICONS[addr.label] || LABEL_ICONS.Other} {addr.label}
-                                                            </span>
-                                                            {addr.isDefault && <span className="uhck-badge">Default</span>}
-                                                        </div>
-                                                        <div className="uhck-addr-name">{addr.name} · {addr.phone}</div>
-                                                        <div className="uhck-addr-line">
-                                                            {addr.house}, {addr.area}
-                                                            {addr.landmark ? `, ${addr.landmark}` : ""}
-                                                            , {addr.city}, {addr.state} - {addr.pincode}
-                                                        </div>
-                                                        <div className="uhck-addr-actions">
-                                                            <button onClick={(e) => { e.stopPropagation(); setEditingAddr(addr); setShowAddForm(true); }}>
-                                                                <FaEdit size={10} /> Edit
-                                                            </button>
-                                                            {!addr.isDefault && (
-                                                                <button onClick={(e) => { e.stopPropagation(); handleSetDefault(addr._id); }}>
-                                                                    Set Default
-                                                                </button>
-                                                            )}
-                                                            {deleteConfirmId === addr._id ? (
-                                                                <button className="uhck-del-confirm" onClick={(e) => { e.stopPropagation(); handleDeleteAddress(addr._id); }}>
-                                                                    Confirm Delete
-                                                                </button>
-                                                            ) : (
-                                                                <button onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(addr._id); }}>
-                                                                    <FaTrash size={10} /> Delete
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {!showAddForm ? (
-                                        <button className="uhck-add-addr" onClick={() => { setEditingAddr(null); setShowAddForm(true); }}>
-                                            <FaPlus size={11} /> Add New Address
-                                        </button>
-                                    ) : (
-                                        <AddressFormInline
-                                            initial={editingAddr}
-                                            saving={savingAddr}
-                                            onSave={(form) => editingAddr ? handleEditAddress(form) : handleAddAddress(form)}
-                                            onCancel={() => { setShowAddForm(false); setEditingAddr(null); }}
-                                        />
-                                    )}
-
-                                    <button
-                                        className="uhck-btn-primary"
-                                        onClick={handleAddressContinue}
-                                        disabled={!selectedAddress}
-                                    >
-                                        Continue to Payment
-                                    </button>
-                                </>
+                            {step > 1 && (
+                                <button className="uhck-acc-change" onClick={() => setStep(1)}>CHANGE</button>
                             )}
                         </div>
-                    )}
-
-                    {/* STEP 3: Payment */}
-                    {step === 3 && (
-                        <div className="uhck-card">
-                            <h2 className="uhck-card-title"><FaCreditCard size={13} /> Payment Method</h2>
-
-                            {/* Delivery summary */}
-                            <div className="uhck-delivery-info">
-                                <div className="uhck-di-row">
-                                    <FaMapMarkerAlt size={11} />
-                                    <span>{selectedAddress?.name} · {selectedAddress?.house}, {selectedAddress?.city} - {selectedAddress?.pincode}</span>
-                                    <button className="uhck-change" onClick={() => setStep(2)}>Change</button>
-                                </div>
-                                <div className="uhck-di-row">
-                                    <FaClock size={11} />
-                                    <span>Express: <strong>45–120 mins</strong></span>
-                                </div>
+                        {step > 1 && (
+                            <div className="uhck-acc-summary">
+                                <span style={{ fontWeight: 600, marginRight: 8 }}>{contact.name}</span>
+                                +91 {contact.phone}
                             </div>
-
-                            {/* Payment options */}
-                            <div className="uhck-pay-options">
-                                <div
-                                    className={`uhck-pay-opt${paymentMethod === "online" ? " active" : ""}`}
-                                    onClick={() => selectPaymentMethod("online")}
-                                >
-                                    <div className={`uhck-radio${paymentMethod === "online" ? " on" : ""}`} />
-                                    <FaCreditCard size={14} />
-                                    <div>
-                                        <div className="uhck-pay-title">Pay Online</div>
-                                        <div className="uhck-pay-sub">UPI, Cards, Net Banking, Wallets</div>
+                        )}
+                        {step === 1 && (
+                            <div className="uhck-acc-body">
+                                <div className="uhck-field-row">
+                                    <div className="uhck-field">
+                                        <input type="text" value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} placeholder="Full Name" />
                                     </div>
-                                    <span className="uhck-recommended">Recommended</span>
+                                    <div className="uhck-field">
+                                        <input type="tel" value={contact.phone} onChange={(e) => setContact({ ...contact, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })} placeholder="10-digit mobile number" maxLength={10} inputMode="numeric" />
+                                    </div>
                                 </div>
-                                {codChecking ? (
-                                    <div className="uhck-pay-opt" style={{ opacity: 0.6 }}>
-                                        <FaSpinner size={14} className="uhck-spin" />
-                                        <div>
-                                            <div className="uhck-pay-title">Checking COD…</div>
-                                        </div>
-                                    </div>
-                                ) : codAvailable ? (
-                                    <div
-                                        className={`uhck-pay-opt${paymentMethod === "cod" ? " active" : ""}`}
-                                        onClick={() => selectPaymentMethod("cod")}
-                                    >
-                                        <div className={`uhck-radio${paymentMethod === "cod" ? " on" : ""}`} />
-                                        <FaMoneyBillWave size={14} />
-                                        <div>
-                                            <div className="uhck-pay-title">Cash on Delivery</div>
-                                            <div className="uhck-pay-sub">Pay when your order arrives</div>
-                                        </div>
-                                    </div>
-                                ) : codStatus === "coming_soon" ? (
-                                    <div className="uhck-pay-opt" style={{ opacity: 0.5, cursor: "default" }}>
-                                        <FaMoneyBillWave size={14} />
-                                        <div>
-                                            <div className="uhck-pay-title" style={{ color: "var(--muted, #78716c)" }}>Cash on Delivery</div>
-                                            <div className="uhck-pay-sub">Coming soon to your area</div>
-                                        </div>
-                                    </div>
-                                ) : codStatus ? (
-                                    <div className="uhck-pay-opt" style={{ opacity: 0.5, cursor: "default" }}>
-                                        <FaMoneyBillWave size={14} />
-                                        <div>
-                                            <div className="uhck-pay-title" style={{ color: "var(--muted, #78716c)" }}>Cash on Delivery</div>
-                                            <div className="uhck-pay-sub">Not available for your pincode</div>
-                                        </div>
-                                    </div>
+                                <div className="uhck-field" style={{ maxWidth: 300, marginTop: 16 }}>
+                                    <input type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="Email (Optional)" />
+                                </div>
+                                <button className="uhck-btn-primary" style={{ marginTop: 24 }} onClick={handleContactContinue}>CONTINUE</button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* STEP 2: DELIVERY ADDRESS */}
+                    <div className={`uhck-acc-card ${step === 2 ? "active" : ""}`}>
+                        <div className="uhck-acc-head">
+                            <div className="uhck-acc-title">
+                                <span className="uhck-acc-num">2</span>
+                                DELIVERY ADDRESS
+                                {step > 2 && <FaCheckCircle size={16} className="uhck-acc-check" />}
+                            </div>
+                            {step > 2 && (
+                                <button className="uhck-acc-change" onClick={() => setStep(2)}>CHANGE</button>
+                            )}
+                        </div>
+                        {step > 2 && selectedAddress && (
+                            <div className="uhck-acc-summary">
+                                <span style={{ fontWeight: 600, marginRight: 8 }}>{selectedAddress.name}</span>
+                                {selectedAddress.house}, {selectedAddress.area}, {selectedAddress.city} - <span style={{ fontWeight: 600 }}>{selectedAddress.pincode}</span>
+                            </div>
+                        )}
+                        {step === 2 && (
+                            <div className="uhck-acc-body" style={{ background: "#f5faff" }}>
+                                {addrLoading ? (
+                                    <div className="uhck-loading"><FaSpinner className="uhck-spin" /> Loading addresses…</div>
                                 ) : (
-                                    <div
-                                        className={`uhck-pay-opt${paymentMethod === "cod" ? " active" : ""}`}
-                                        onClick={() => selectPaymentMethod("cod")}
-                                    >
-                                        <div className={`uhck-radio${paymentMethod === "cod" ? " on" : ""}`} />
-                                        <FaMoneyBillWave size={14} />
-                                        <div>
-                                            <div className="uhck-pay-title">Cash on Delivery</div>
-                                            <div className="uhck-pay-sub">Pay when your order arrives</div>
-                                        </div>
-                                    </div>
+                                    <>
+                                        {addresses.length > 0 && (
+                                            <div className="uhck-addr-list">
+                                                {addresses.map((addr) => (
+                                                    <div key={addr._id} className={`uhck-addr ${selectedAddrId === addr._id ? "selected" : ""}`} onClick={() => setSelectedAddrId(addr._id)}>
+                                                        <div className={`uhck-radio ${selectedAddrId === addr._id ? "on" : ""}`} />
+                                                        <div className="uhck-addr-body">
+                                                            <div className="uhck-addr-top">
+                                                                <span className="uhck-addr-label">{addr.label}</span>
+                                                                <span className="uhck-addr-name" style={{ fontWeight: 600, marginLeft: 8 }}>{addr.name}</span>
+                                                                <span className="uhck-addr-phone" style={{ fontWeight: 600, marginLeft: 8 }}>{addr.phone}</span>
+                                                            </div>
+                                                            <div className="uhck-addr-line">{addr.house}, {addr.area}{addr.landmark ? `, ${addr.landmark}` : ""}, {addr.city}, {addr.state} - <span style={{ fontWeight: 600 }}>{addr.pincode}</span></div>
+
+                                                            {selectedAddrId === addr._id && (
+                                                                <button className="uhck-btn-primary" style={{ marginTop: 16 }} onClick={handleAddressContinue}>DELIVER HERE</button>
+                                                            )}
+
+                                                            <div className="uhck-addr-actions" style={{ marginTop: selectedAddrId === addr._id ? 16 : 8 }}>
+                                                                <button onClick={(e) => { e.stopPropagation(); setEditingAddr(addr); setShowAddForm(true); }}>EDIT</button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {!showAddForm ? (
+                                            <button className="uhck-add-addr" onClick={() => { setEditingAddr(null); setShowAddForm(true); }}>
+                                                <FaPlus size={11} style={{ marginRight: 6 }} /> Add a new address
+                                            </button>
+                                        ) : (
+                                            <div style={{ background: "#fff", padding: 16, border: "1px solid #e0e0e0", marginTop: 16 }}>
+                                                <AddressFormInline
+                                                    initial={editingAddr}
+                                                    saving={savingAddr}
+                                                    onSave={(form) => editingAddr ? handleEditAddress(form) : handleAddAddress(form)}
+                                                    onCancel={() => { setShowAddForm(false); setEditingAddr(null); }}
+                                                />
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
+                        )}
+                    </div>
 
-                            {/* Pricing */}
-                            {pricingLoading ? (
-                                <div className="uhck-loading"><FaSpinner className="uhck-spin" /> Calculating…</div>
-                            ) : pricing && (
-                                <div className="uhck-pricing">
-                                    <div className="uhck-pr-row"><span>Items Total</span><span>{fmt(pricing.itemsTotal)}</span></div>
-                                    <div className="uhck-pr-row">
-                                        <span>Delivery</span>
-                                        <span className={pricing.deliveryCharge === 0 ? "uhck-free" : ""}>
-                                            {pricing.deliveryCharge === 0 ? "FREE" : fmt(pricing.deliveryCharge)}
-                                        </span>
-                                    </div>
-                                    <div className="uhck-pr-row"><span>Platform Fee</span><span>{fmt(pricing.platformFee)}</span></div>
-                                    {pricing.couponDiscount > 0 && (
-                                        <div className="uhck-pr-row uhck-discount">
-                                            <span>Coupon Discount</span><span>-{fmt(pricing.couponDiscount)}</span>
-                                        </div>
-                                    )}
-                                    <div className="uhck-pr-divider" />
-                                    <div className="uhck-pr-row uhck-pr-total">
-                                        <span>Total</span><span>{fmt(pricing.finalTotal)}</span>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Place order */}
-                            {paymentMethod && (
-                                <button
-                                    className="uhck-btn-primary"
-                                    onClick={paymentMethod === "cod" ? handleCOD : handlePayOnline}
-                                    disabled={loading || payState === "processing"}
-                                >
-                                    {loading || payState === "processing" ? (
-                                        <><FaSpinner className="uhck-spin" /> Processing…</>
-                                    ) : (
-                                        `Place Order — ${fmt(finalTotal)}`
-                                    )}
-                                </button>
-                            )}
-
-                            {payState === "failed" && (
-                                <div className="uhck-error" style={{ marginTop: 10 }}>
-                                    Payment failed. Please try again.
-                                </div>
+                    {/* STEP 3: ORDER SUMMARY */}
+                    <div className={`uhck-acc-card ${step === 3 ? "active" : ""}`}>
+                        <div className="uhck-acc-head">
+                            <div className="uhck-acc-title">
+                                <span className="uhck-acc-num">3</span>
+                                ORDER SUMMARY
+                                {step > 3 && <FaCheckCircle size={16} className="uhck-acc-check" />}
+                            </div>
+                            {step > 3 && (
+                                <button className="uhck-acc-change" onClick={() => setStep(3)}>CHANGE</button>
                             )}
                         </div>
-                    )}
+                        {step > 3 && (
+                            <div className="uhck-acc-summary">
+                                <b>{checkoutItems.length} Item{checkoutItems.length > 1 ? "s" : ""}</b>
+                            </div>
+                        )}
+                        {step === 3 && (
+                            <div className="uhck-acc-body" style={{ padding: 0 }}>
+                                {checkoutItems.map((item) => (
+                                    <div key={item._id} className="uhck-sum-item">
+                                        <div className="uhck-sum-img-wrap">
+                                            <img src={item.images?.[0]?.url || item.image?.url || item.image || "/placeholder.png"} alt={item.name} loading="lazy" />
+                                        </div>
+                                        <div className="uhck-sum-details">
+                                            <div className="uhck-sum-name">{item.name}</div>
+                                            <div className="uhck-sum-qty">Qty: {item.quantity}</div>
+                                            <div className="uhck-sum-price-row">
+                                                <span className="uhck-sum-price">{fmt(item.price * item.quantity)}</span>
+                                                {item.mrp > item.price && <span className="uhck-sum-mrp">{fmt(item.mrp * item.quantity)}</span>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                                <div style={{ padding: "16px 24px", background: "#f5faff", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                                    <span style={{ fontSize: 13, color: "#212121" }}>Order confirmation email will be sent to <b>{contact.email || "your email"}</b></span>
+                                    <button className="uhck-btn-primary" onClick={() => setStep(4)}>CONTINUE</button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* STEP 4: PAYMENT OPTIONS */}
+                    <div className={`uhck-acc-card ${step === 4 ? "active" : ""}`}>
+                        <div className="uhck-acc-head">
+                            <div className="uhck-acc-title">
+                                <span className="uhck-acc-num">4</span>
+                                PAYMENT OPTIONS
+                            </div>
+                        </div>
+                        {step === 4 && (
+                            <div className="uhck-acc-body" style={{ padding: 0 }}>
+                                <div className="uhck-pay-options">
+                                    {/* Online */}
+                                    <div className={`uhck-pay-row ${paymentMethod === "online" ? "active" : ""}`} onClick={() => selectPaymentMethod("online")}>
+                                        <div className={`uhck-radio ${paymentMethod === "online" ? "on" : ""}`} />
+                                        <div className="uhck-pay-info">
+                                            <span className="uhck-pay-title">UPI, Wallets, Credit / Debit Card</span>
+                                            <span className="uhck-pay-sub">Fast & Secure Payments</span>
+                                        </div>
+                                        {paymentMethod === "online" && (
+                                            <div className="uhck-pay-action">
+                                                <button className="uhck-btn-primary" onClick={handlePayOnline} disabled={loading || payState === "processing"}>
+                                                    {loading || payState === "processing" ? "Processing..." : `PAY ${fmt(finalTotal)}`}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* COD */}
+                                    <div className={`uhck-pay-row ${paymentMethod === "cod" ? "active" : ""} ${!codAvailable && !codChecking ? "disabled" : ""}`} onClick={() => codAvailable && selectPaymentMethod("cod")}>
+                                        <div className={`uhck-radio ${paymentMethod === "cod" ? "on" : ""}`} />
+                                        <div className="uhck-pay-info">
+                                            <span className="uhck-pay-title">Cash on Delivery</span>
+                                            {codChecking ? (
+                                                <span className="uhck-pay-sub">Checking availability...</span>
+                                            ) : codAvailable ? (
+                                                <span className="uhck-pay-sub">Pay at your doorstep</span>
+                                            ) : (
+                                                <span className="uhck-pay-sub" style={{ color: "#ff6161" }}>Not available for this location</span>
+                                            )}
+                                        </div>
+                                        {paymentMethod === "cod" && codAvailable && (
+                                            <div className="uhck-pay-action">
+                                                <button className="uhck-btn-primary" onClick={handleCOD} disabled={loading || payState === "processing"}>
+                                                    {loading || payState === "processing" ? "Processing..." : `PLACE ORDER`}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Sidebar: Order Summary */}
                 <div className="uhck-sidebar">
-                    <div className="uhck-side-card">
-                        <div className="uhck-side-title">
-                            <FaBolt size={12} className="uhck-bolt" /> Order Summary
-                        </div>
-                        {checkoutItems.map((item) => (
-                            <div key={item._id} className="uhck-side-item">
-                                <img
-                                    src={item.images?.[0]?.url || item.image?.url || item.image || "/placeholder.png"}
-                                    alt={item.name} className="uhck-side-img"
-                                    loading="lazy"
-                                    onError={(e) => { e.target.src = "/placeholder.png"; }}
-                                />
-                                <div className="uhck-side-item-info">
-                                    <div className="uhck-side-item-name">{item.name}</div>
-                                    <div className="uhck-side-item-qty">Qty: {item.quantity}</div>
+                    <div className="uhck-price-card">
+                        <div className="uhck-price-title">PRICE DETAILS</div>
+                        {pricingLoading ? (
+                            <div className="uhck-loading" style={{ padding: 24 }}><FaSpinner className="uhck-spin" /> Calculating…</div>
+                        ) : pricing ? (
+                            <div className="uhck-price-body">
+                                <div className="uhck-price-row">
+                                    <span>Price ({checkoutItems.length} item{checkoutItems.length > 1 ? "s" : ""})</span>
+                                    <span>{fmt(pricing.itemsTotal)}</span>
                                 </div>
-                                <div className="uhck-side-item-price">{fmt(item.price * item.quantity)}</div>
+                                <div className="uhck-price-row">
+                                    <span>Delivery Charges</span>
+                                    <span style={{ color: pricing.deliveryCharge === 0 ? "#388e3c" : "#212121" }}>
+                                        {pricing.deliveryCharge === 0 ? "FREE" : fmt(pricing.deliveryCharge)}
+                                    </span>
+                                </div>
+                                <div className="uhck-price-row">
+                                    <span>Platform Fee</span>
+                                    <span>{fmt(pricing.platformFee)}</span>
+                                </div>
+                                {pricing.couponDiscount > 0 && (
+                                    <div className="uhck-price-row" style={{ color: "#388e3c" }}>
+                                        <span>Coupon Discount</span>
+                                        <span>−{fmt(pricing.couponDiscount)}</span>
+                                    </div>
+                                )}
+                                <div className="uhck-price-total">
+                                    <span>Amount Payable</span>
+                                    <span>{fmt(pricing.finalTotal)}</span>
+                                </div>
+                                {pricing.couponDiscount > 0 && (
+                                    <div style={{ color: "#388e3c", fontSize: 13, fontWeight: 600, marginTop: 12 }}>
+                                        Your Total Savings on this order {fmt(pricing.couponDiscount)}
+                                    </div>
+                                )}
                             </div>
-                        ))}
-                        <div className="uhck-side-total">
-                            <span>Total</span>
-                            <span>{fmt(finalTotal)}</span>
-                        </div>
-                        <div className="uhck-side-eta">
-                            <FaClock size={11} /> 45–120 min delivery
-                        </div>
+                        ) : null}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, justifyContent: "center", color: "#878787", fontSize: 12, fontWeight: 600 }}>
+                        <FaShieldAlt size={16} /> Safe and Secure Payments
                     </div>
                 </div>
             </div>
@@ -483,118 +423,92 @@ const AddressFormInline = ({ initial, saving, onSave, onCancel }) => {
 
 /* ── CSS ─────────────────────────────────────────────── */
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-.uhck-root{min-height:100vh;background:#f1f5f9;font-family:'DM Sans',sans-serif}
+.uhck-root{min-height:100vh;background:#f1f3f6;font-family:'Roboto',sans-serif;padding-bottom:60px}
 
-.uhck-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;text-align:center;gap:10px}
-.uhck-empty h2{font-size:20px;font-weight:700;color:#1e293b}
-.uhck-empty p{font-size:14px;color:#64748b}
+.uhck-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;text-align:center;gap:10px;font-family:'Roboto',sans-serif}
+.uhck-empty h2{font-size:20px;font-weight:700;color:#212121}
+.uhck-empty p{font-size:14px;color:#878787}
+.uhck-btn-primary{background:#fb641b;color:#fff;border:none;padding:14px 32px;font-size:14px;font-weight:500;border-radius:2px;cursor:pointer;box-shadow:0 1px 2px 0 rgba(0,0,0,0.2);text-transform:uppercase;font-family:inherit}
+.uhck-btn-primary:disabled{opacity:0.6;cursor:not-allowed}
 
-.uhck-header{display:flex;align-items:center;gap:12px;background:#1a1740;color:#fff;padding:14px clamp(16px,3vw,40px)}
-.uhck-back{background:none;border:none;color:#fff;cursor:pointer;padding:6px}
-.uhck-header-brand{flex:1;font-size:15px;font-weight:800;display:flex;align-items:center;gap:6px}
-.uhck-bolt{color:#f59e0b}
-.uhck-secure{display:flex;align-items:center;gap:4px;font-size:11px;color:rgba(255,255,255,.6)}
+.uhck-header{background:#2874f0;color:#fff;height:60px;display:flex;align-items:center;}
+.uhck-header-inner{max-width:1100px;margin:0 auto;width:100%;padding:0 16px;display:flex;justify-content:space-between;align-items:center}
+.uhck-back{background:none;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.uhck-header-brand{font-size:20px;letter-spacing:0.5px}
+.uhck-secure{font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px;letter-spacing:0.5px}
 
-.uhck-steps{display:flex;justify-content:center;gap:0;background:#fff;padding:14px 24px;border-bottom:1px solid #e8e4d9}
-.uhck-step{display:flex;align-items:center;gap:6px;padding:6px 16px;cursor:default;opacity:.4;transition:opacity .15s}
-.uhck-step.active,.uhck-step.done{opacity:1;cursor:pointer}
-.uhck-step-circle{width:28px;height:28px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:12px}
-.uhck-step.active .uhck-step-circle{background:#1a1740;color:#fff}
-.uhck-step.done .uhck-step-circle{background:#059669;color:#fff}
-.uhck-step-label{font-size:12px;font-weight:600;color:#1e293b}
-@media(max-width:480px){.uhck-step-label{display:none}}
+.uhck-layout{max-width:1000px;margin:24px auto;display:grid;grid-template-columns:1fr 300px;gap:16px;padding:0 16px;align-items:start}
+@media(max-width:860px){.uhck-layout{grid-template-columns:1fr;gap:12px}}
 
-.uhck-layout{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr 340px;gap:16px;padding:16px clamp(16px,3vw,40px)}
-@media(max-width:768px){.uhck-layout{grid-template-columns:1fr}.uhck-sidebar{display:none}}
+.uhck-main{display:flex;flex-direction:column;gap:16px}
+.uhck-acc-card{background:#fff;border-radius:2px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.2)}
+.uhck-acc-head{display:flex;justify-content:space-between;align-items:center;padding:14px 24px;background:#fff}
+.uhck-acc-card.active .uhck-acc-head{background:#2874f0;color:#fff}
+.uhck-acc-title{display:flex;align-items:center;gap:16px;font-size:16px;font-weight:500;color:#878787}
+.uhck-acc-card.active .uhck-acc-title{color:#fff;font-weight:500}
+.uhck-acc-num{width:24px;height:24px;background:#f0f0f0;color:#2874f0;display:flex;align-items:center;justify-content:center;border-radius:2px;font-size:13px;font-weight:500}
+.uhck-acc-card.active .uhck-acc-num{background:#fff;color:#2874f0}
+.uhck-acc-check{color:#2874f0;margin-left:8px}
+.uhck-acc-change{background:#fff;color:#2874f0;border:1px solid #e0e0e0;padding:6px 16px;border-radius:2px;font-size:13px;font-weight:500;cursor:pointer;text-transform:uppercase}
 
-.uhck-main{display:flex;flex-direction:column;gap:12px}
-.uhck-card{background:#fff;border:1px solid #e8e4d9;border-radius:10px;padding:20px}
-.uhck-card-title{font-size:15px;font-weight:800;color:#1e293b;display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.uhck-acc-summary{padding:0 24px 16px 64px;font-size:14px;color:#212121}
+.uhck-acc-body{padding:16px 24px 24px 64px}
+@media(max-width:600px){
+    .uhck-acc-head{padding:14px 16px}
+    .uhck-acc-summary{padding:0 16px 16px 56px}
+    .uhck-acc-body{padding:16px 16px 24px 16px}
+}
 
-.uhck-field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
-.uhck-field label{font-size:12px;font-weight:600;color:#475569}
-.uhck-field input{padding:11px 12px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:14px;color:#1e293b;outline:none;font-family:'DM Sans',sans-serif;transition:border-color .15s}
-.uhck-field input:focus{border-color:#1a1740}
-.uhck-opt{font-weight:400;color:#94a3b8}
-.uhck-phone-row{display:flex;gap:0}
-.uhck-prefix{display:flex;align-items:center;padding:11px 10px;background:#f8fafc;border:1.5px solid #e2e8f0;border-right:none;border-radius:7px 0 0 7px;font-size:13px;font-weight:600;color:#64748b}
-.uhck-phone-row input{border-radius:0 7px 7px 0;flex:1}
+.uhck-field-row{display:flex;gap:16px;flex-wrap:wrap}
+.uhck-field{flex:1;min-width:240px}
+.uhck-field input{width:100%;padding:12px 16px;border:1px solid #e0e0e0;border-radius:2px;font-size:14px;outline:none;font-family:inherit;transition:border-color .2s}
+.uhck-field input:focus{border-color:#2874f0}
 
-.uhck-error{background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 12px;font-size:12px;color:#dc2626;font-weight:500;margin-bottom:10px}
+.uhck-addr-list{display:flex;flex-direction:column;gap:12px}
+.uhck-addr{display:flex;gap:16px;padding:16px;border:1px solid #e0e0e0;border-radius:2px;background:#fff;cursor:pointer;transition:background .2s}
+.uhck-addr:hover{background:#f5faff}
+.uhck-addr.selected{background:#f5faff}
+.uhck-radio{width:18px;height:18px;border-radius:50%;border:2px solid #ccc;margin-top:2px;flex-shrink:0}
+.uhck-radio.on{border:5px solid #2874f0}
+.uhck-addr-body{flex:1}
+.uhck-addr-top{margin-bottom:6px;font-size:14px;color:#212121}
+.uhck-addr-label{background:#f0f0f0;color:#878787;font-size:10px;font-weight:500;padding:2px 6px;border-radius:2px;text-transform:uppercase}
+.uhck-addr-line{font-size:14px;color:#212121;line-height:1.5}
+.uhck-addr-actions button{background:none;border:none;color:#2874f0;font-size:13px;font-weight:500;cursor:pointer;text-transform:uppercase;font-family:inherit}
 
-.uhck-btn-primary{width:100%;padding:14px;background:#1a1740;color:#fff;border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px}
-.uhck-btn-primary:hover{background:#252060}
-.uhck-btn-primary:disabled{opacity:.5;cursor:not-allowed}
-.uhck-btn-secondary{padding:10px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;font-size:13px;font-weight:600;color:#475569;cursor:pointer;font-family:'DM Sans',sans-serif}
+.uhck-add-addr{display:flex;align-items:center;gap:12px;padding:16px;background:#fff;border:1px solid #e0e0e0;color:#2874f0;font-size:14px;font-weight:500;cursor:pointer;border-radius:2px;width:100%;font-family:inherit}
 
-.uhck-loading{display:flex;align-items:center;gap:8px;padding:20px;justify-content:center;font-size:13px;color:#64748b}
-.uhck-spin{animation:uhck-sp .7s linear infinite}
-@keyframes uhck-sp{to{transform:rotate(360deg)}}
+.uhck-sum-item{display:flex;gap:16px;padding:24px;border-bottom:1px solid #f0f0f0}
+.uhck-sum-img-wrap{width:80px;height:80px;flex-shrink:0;text-align:center}
+.uhck-sum-img-wrap img{max-width:100%;max-height:100%;object-fit:contain}
+.uhck-sum-details{flex:1}
+.uhck-sum-name{font-size:14px;color:#212121;margin-bottom:8px;line-height:1.4}
+.uhck-sum-qty{font-size:12px;color:#878787;margin-bottom:12px}
+.uhck-sum-price-row{display:flex;align-items:center;gap:8px}
+.uhck-sum-price{font-size:16px;font-weight:500;color:#212121}
+.uhck-sum-mrp{font-size:14px;color:#878787;text-decoration:line-through}
 
-.uhck-eta-banner{display:flex;align-items:center;gap:6px;background:#ecfdf5;border-radius:6px;padding:8px 10px;margin-bottom:14px;font-size:12px;color:#065f46}
-
-.uhck-addr-list{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
-.uhck-addr{display:flex;gap:12px;padding:12px;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;transition:border-color .15s}
-.uhck-addr.selected{border-color:#1a1740;background:#faf9ff}
-.uhck-addr-radio{padding-top:2px}
-.uhck-radio{width:18px;height:18px;border-radius:50%;border:2px solid #d1d5db;transition:all .15s}
-.uhck-radio.on{border-color:#1a1740;border-width:5px}
-.uhck-addr-body{flex:1;min-width:0}
-.uhck-addr-top{display:flex;align-items:center;gap:6px;margin-bottom:3px}
-.uhck-addr-label{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#1a1740;text-transform:uppercase;letter-spacing:.3px}
-.uhck-badge{font-size:9px;background:#ecfdf5;color:#059669;padding:2px 6px;border-radius:4px;font-weight:700}
-.uhck-addr-name{font-size:13px;font-weight:600;color:#1e293b;margin-bottom:2px}
-.uhck-addr-line{font-size:12px;color:#64748b;line-height:1.4}
-.uhck-addr-actions{display:flex;gap:10px;margin-top:6px}
-.uhck-addr-actions button{background:none;border:none;font-size:11px;color:#64748b;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif;font-weight:600;padding:0}
-.uhck-addr-actions button:hover{color:#1a1740}
-.uhck-del-confirm{color:#ef4444!important}
-
-.uhck-add-addr{display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;border:1.5px dashed #c9a84c;border-radius:8px;background:none;color:#1a1740;font-weight:700;font-size:13px;cursor:pointer;width:100%;font-family:'DM Sans',sans-serif;margin-bottom:12px}
-
-.uhck-addr-form{padding:14px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px}
-.uhck-addr-form h3{font-size:14px;font-weight:700;color:#1e293b;margin-bottom:10px}
-.uhck-addr-labels{display:flex;gap:6px;margin-bottom:12px}
-.uhck-label-chip{display:flex;align-items:center;gap:4px;padding:6px 12px;border:1px solid #e2e8f0;border-radius:16px;background:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;color:#475569}
-.uhck-label-chip.active{background:#1a1740;color:#fff;border-color:#1a1740}
-.uhck-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.uhck-form-grid .full{grid-column:1/-1}
-@media(max-width:480px){.uhck-form-grid{grid-template-columns:1fr}}
-.uhck-form-btns{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
-
-.uhck-delivery-info{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:14px}
-.uhck-di-row{display:flex;align-items:center;gap:8px;font-size:12px;color:#475569;margin-bottom:4px}
-.uhck-di-row:last-child{margin-bottom:0}
-.uhck-change{background:none;border:none;color:#2563eb;font-size:11px;font-weight:700;cursor:pointer;margin-left:auto;font-family:'DM Sans',sans-serif}
-
-.uhck-pay-options{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
-.uhck-pay-opt{display:flex;align-items:center;gap:10px;padding:14px;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;transition:border-color .15s}
-.uhck-pay-opt.active{border-color:#1a1740;background:#faf9ff}
-.uhck-pay-title{font-size:13px;font-weight:700;color:#1e293b}
-.uhck-pay-sub{font-size:11px;color:#64748b}
-.uhck-recommended{margin-left:auto;font-size:10px;background:#ecfdf5;color:#059669;padding:2px 8px;border-radius:10px;font-weight:700}
-
-.uhck-pricing{margin-bottom:12px}
-.uhck-pr-row{display:flex;justify-content:space-between;font-size:13px;color:#475569;margin-bottom:6px}
-.uhck-free{color:#16a34a;font-weight:700}
-.uhck-discount{color:#16a34a}
-.uhck-pr-divider{border-top:1px dashed #e8e4d9;margin:8px 0}
-.uhck-pr-total{font-size:15px;font-weight:800;color:#1e293b}
+.uhck-pay-options{display:flex;flex-direction:column}
+.uhck-pay-row{display:flex;align-items:flex-start;gap:16px;padding:16px 24px;border-bottom:1px solid #f0f0f0;cursor:pointer}
+.uhck-pay-row.disabled{opacity:0.5;cursor:not-allowed}
+.uhck-pay-info{flex:1;display:flex;flex-direction:column;gap:4px}
+.uhck-pay-title{font-size:15px;color:#212121}
+.uhck-pay-sub{font-size:12px;color:#878787}
+.uhck-pay-action{width:100%;margin-top:16px}
 
 .uhck-sidebar{}
-.uhck-side-card{background:#fff;border:1px solid #e8e4d9;border-radius:10px;padding:16px;position:sticky;top:16px}
-.uhck-side-title{font-size:14px;font-weight:800;color:#1e293b;display:flex;align-items:center;gap:6px;margin-bottom:12px}
-.uhck-side-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9}
-.uhck-side-item:last-of-type{border-bottom:none}
-.uhck-side-img{width:48px;height:48px;border-radius:6px;object-fit:cover;flex-shrink:0}
-.uhck-side-item-info{flex:1;min-width:0}
-.uhck-side-item-name{font-size:12px;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.uhck-side-item-qty{font-size:11px;color:#64748b}
-.uhck-side-item-price{font-size:13px;font-weight:700;color:#1e293b;flex-shrink:0}
-.uhck-side-total{display:flex;justify-content:space-between;font-size:15px;font-weight:800;color:#1e293b;padding-top:10px;border-top:1px dashed #e8e4d9;margin-top:8px}
-.uhck-side-eta{display:flex;align-items:center;gap:6px;background:#ecfdf5;border-radius:6px;padding:7px 10px;margin-top:10px;font-size:11px;color:#065f46;font-weight:600}
+.uhck-price-card{background:#fff;border-radius:2px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.2);position:sticky;top:16px}
+.uhck-price-title{padding:14px 24px;border-bottom:1px solid #f0f0f0;font-size:16px;font-weight:500;color:#878787;text-transform:uppercase}
+.uhck-price-body{padding:24px}
+.uhck-price-row{display:flex;justify-content:space-between;font-size:15px;color:#212121;margin-bottom:16px}
+.uhck-price-total{display:flex;justify-content:space-between;font-size:18px;font-weight:500;color:#212121;padding-top:16px;border-top:1px dashed #e0e0e0;margin-top:8px}
+
+.uhck-error{background:#ffebe8;color:#ff6161;padding:12px 24px;font-size:14px;border-radius:2px;margin-bottom:16px}
+.uhck-loading{display:flex;align-items:center;gap:10px;font-size:14px;color:#878787}
+.uhck-spin{animation:uhck-sp .8s linear infinite}
+@keyframes uhck-sp{to{transform:rotate(360deg)}}
 
 .uhck-mobile-sum-toggle{display:none;position:fixed;bottom:0;left:0;right:0;background:#1a1740;color:#fff;padding:12px 16px;z-index:50;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;cursor:pointer}
 @media(max-width:768px){.uhck-mobile-sum-toggle{display:flex}}

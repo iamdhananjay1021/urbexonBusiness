@@ -27,6 +27,14 @@ const Login = () => {
       await login(form.email, form.password);
       navigate("/dashboard");
     } catch (err) {
+      // Check if email verification is required (403 with requiresVerification)
+      if (err.response?.status === 403 && err.response?.data?.requiresVerification) {
+        navigate("/verify-email", {
+          state: { email: form.email }
+        });
+        return;
+      }
+
       setError(err.response?.data?.message || err.message || "Login failed. Check your credentials.");
     } finally {
       setLoading(false);

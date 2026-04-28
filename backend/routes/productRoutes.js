@@ -3,7 +3,7 @@ import multer from "multer";
 import rateLimit from "express-rate-limit";
 
 import { protect, adminOnly } from "../middlewares/authMiddleware.js";
-import { protectVendor, requireApprovedVendor } from "../middlewares/vendorMiddleware.js";
+import { protectVendor, requireApprovedVendor, requireActiveSubscription } from "../middlewares/vendorMiddleware.js";
 
 import {
     getProducts,
@@ -138,6 +138,7 @@ router.post(
     "/vendor",
     protectVendor,
     requireApprovedVendor,
+    requireActiveSubscription,
     writeLimiter,
     upload.array("images", 4),
     vendorCreateProduct
@@ -147,6 +148,7 @@ router.put(
     "/vendor/:id",
     protectVendor,
     requireApprovedVendor,
+    requireActiveSubscription,
     writeLimiter,
     upload.array("images", 4),
     vendorUpdateProduct
@@ -156,6 +158,7 @@ router.delete(
     "/vendor/:id",
     protectVendor,
     requireApprovedVendor,
+    requireActiveSubscription,
     writeLimiter,
     vendorDeleteProduct
 );

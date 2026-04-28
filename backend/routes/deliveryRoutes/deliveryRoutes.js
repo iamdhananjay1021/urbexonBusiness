@@ -1,7 +1,10 @@
 /**
- * deliveryRoutes.js — v3.0 with validation + assignment engine
+ * deliveryRoutes.js — v3.1
+ * ✅ GPS location rate limiter (max 120/min — prevents update spam)
+ * ✅ Pincode-based delivery area validation on register
  */
 import express from "express";
+import rateLimit from "express-rate-limit";
 import multer from "multer";
 import { validateBody } from "../../middlewares/validate.js";
 import { protect, deliveryOnly } from "../../middlewares/authMiddleware.js";
@@ -41,7 +44,9 @@ router.get("/orders", protect, deliveryOnly, getDeliveryOrders);
 router.patch("/orders/:id/accept", protect, deliveryOnly, acceptOrder);
 router.patch("/orders/:id/pickup", protect, deliveryOnly, pickupOrder);
 router.patch("/orders/:id/deliver", protect, deliveryOnly, validateBody({ otp: { required: true, minLength: 4, maxLength: 6 } }), markDelivered);
-router.patch("/location", protect, deliveryOnly, validateBody({ lat: { required: true, type: 'number' }, lng: { required: true, type: 'number' } }), updateRiderLocation);
+// GPS location updates — allow high frequency (every 5-15s per rider)
+const locationLimiter = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?._id?.toString() || req.ip });
+router.patch("/location", protect, deliveryOnly, locationLimiter, validateBody({ lat: { required: true, type: 'number' }, lng: { required: true, type: 'number' } }), updateRiderLocation);
 router.get("/earnings", protect, deliveryOnly, getDeliveryEarnings);
 router.patch("/profile", protect, deliveryOnly, updateDeliveryProfile);
 router.patch("/documents", protect, deliveryOnly, docUpload, updateDeliveryDocuments);

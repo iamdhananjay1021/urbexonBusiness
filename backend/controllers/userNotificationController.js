@@ -39,6 +39,7 @@ export const getNotifications = async (req, res) => {
             total,
             unreadCount,
             page,
+            totalPages: Math.ceil(total / limit),
             pages: Math.ceil(total / limit),
         });
     } catch (err) {

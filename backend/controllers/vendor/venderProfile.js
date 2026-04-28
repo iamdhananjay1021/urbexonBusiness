@@ -5,6 +5,7 @@
 import Vendor from "../../models/vendorModels/Vendor.js";
 import Pincode from "../../models/vendorModels/Pincode.js";
 import { uploadToCloudinary } from "../../config/cloudinary.js";
+import { delCacheByPrefix } from "../../utils/Cache.js";
 
 // GET /api/vendor/me
 export const getMyProfile = async (req, res) => {
@@ -18,11 +19,15 @@ export const getMyProfile = async (req, res) => {
 };
 
 // PUT /api/vendor/me
+// ✅ BUG6 FIX: email, phone, ownerName are READ-ONLY — tied to User account.
+// Only shop-level fields can be updated here.
 export const updateMyProfile = async (req, res) => {
     try {
         const vendor = await Vendor.findById(req.vendor._id);
         if (!vendor) return res.status(404).json({ success: false, message: "Vendor not found" });
 
+        // Whitelist only safe, updatable vendor-profile fields.
+        // email / phone / ownerName deliberately excluded — those belong to the User model.
         const updatable = ["shopDescription", "shopCategory", "whatsapp", "alternatePhone", "address", "servicePincodes", "bankDetails", "deliveryMode", "acceptingOrders"];
         updatable.forEach((field) => {
             if (req.body[field] !== undefined) {
@@ -60,6 +65,15 @@ export const updateMyProfile = async (req, res) => {
         }
 
         await vendor.save();
+
+        // Invalidate pincode caches so changes to service areas appear instantly
+        try {
+            await delCacheByPrefix("pincode:");
+            await delCacheByPrefix("uh:"); // UH products & homepage might change
+        } catch (e) {
+            console.warn("[Cache] Failed to invalidate pincode cache on vendor update");
+        }
+
         res.json({ success: true, vendor, message: "Profile updated" });
     } catch (err) {
         console.error("[updateMyProfile]", err);

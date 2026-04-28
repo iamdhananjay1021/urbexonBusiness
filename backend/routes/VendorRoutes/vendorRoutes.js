@@ -36,28 +36,9 @@ import {
     getSubscriptionPaymentHistory,
 } from "../../controllers/vendor/vendorSubscriptionPayment.js";
 import { getVendorOrders, getVendorOrderById, updateOrderStatus } from "../../controllers/vendor/vendorOrders.js";
-import {
-    getAllVendors, getVendorDetail,
-    approveVendor, rejectVendor, suspendVendor,
-    updateCommission, deleteVendor,
-    getAllDeliveryBoys, updateDeliveryBoyStatus, getOnlineRiders,
-    activateVendorSubscription, deactivateVendorSubscription,
-    adminGetAllSubscriptions, updateDeliveryDocStatus,
-} from "../../controllers/admin/vendorApproval.js";
-import {
-    getAllPincodes, createPincode, updatePincode,
-    deletePincode, checkPincode, joinWaitlist,
-} from "../../controllers/admin/pincodeManager.js";
-import {
-    getAllSettlements, processWeeklySettlements,
-    markSettlementPaid, markBatchPaid,
-} from "../../controllers/admin/settlementManager.js";
-import {
-    vendorRequestPayout, vendorGetPayouts, vendorCancelPayout,
-    adminGetAllPayouts, adminApprovePayout, adminRejectPayout, adminCompletePayout,
-} from "../../controllers/admin/payoutController.js";
-import { getDashboardStats, getMapData } from "../../controllers/admin/dashboardController.js";
-import { protect, adminOnly } from "../../middlewares/authMiddleware.js";
+import { updateVendorBankDetails } from "../../controllers/vendor/bankDetailsController.js";
+import { vendorRequestPayout, vendorGetPayouts, vendorCancelPayout } from "../../controllers/admin/payoutController.js";
+import { protect } from "../../middlewares/authMiddleware.js";
 import { validateBody } from "../../middlewares/validate.js";
 import { protectVendor, requireApprovedVendor, requireActiveSubscription } from "../../middlewares/vendorMiddleware.js";
 
@@ -87,22 +68,20 @@ const docUpload = upload.fields([
 const router = express.Router();
 
 // ── Public ────────────────────────────────────────────────────────────────────
-router.get("/pincode/check/:code", checkPincode);
-router.post("/pincode/waitlist", joinWaitlist);
-router.get("/vendor/featured", getFeaturedVendors);
-router.get("/vendor/nearby", getNearbyVendors);
-router.get("/vendor/store/:slug", getVendorStore);
+router.get("/featured", getFeaturedVendors);
+router.get("/nearby", getNearbyVendors);
+router.get("/store/:slug", getVendorStore);
 
 // ── Vendor OTP Flow (Public)
-router.post("/vendor/send-otp", validateBody({ email: { required: true, type: "email" } }), sendVendorOtp);
-router.post("/vendor/verify-otp-register", validateBody({ email: { required: true, type: "email" }, otp: { required: true, minLength: 6, maxLength: 6 } }), verifyVendorOtpRegister);
-router.post("/vendor/login-otp", validateBody({ email: { required: true, type: "email" }, otp: { required: true, minLength: 6, maxLength: 6 } }), vendorOtpLogin);
+router.post("/send-otp", validateBody({ email: { required: true, type: "email" } }), sendVendorOtp);
+router.post("/verify-otp-register", validateBody({ email: { required: true, type: "email" }, otp: { required: true, minLength: 6, maxLength: 6 } }), verifyVendorOtpRegister);
+router.post("/login-otp", validateBody({ email: { required: true, type: "email" }, otp: { required: true, minLength: 6, maxLength: 6 } }), vendorOtpLogin);
 
 
 
 // ── Vendor Registration (PROTECTED — user must be logged in) ────────────────────
 router.post(
-    "/vendor/register",
+    "/register",
     protect,  // ✅ REQUIRED: User must be authenticated with valid JWT
     docUpload,
     validateBody({
@@ -115,109 +94,38 @@ router.post(
 );
 
 // ── Vendor Status (needs user JWT — not vendor JWT) ───────────────────────────
-router.get("/vendor/status", protect, getVendorStatus);
+router.get("/status", protect, getVendorStatus);
 
 // ── Vendor Profile ────────────────────────────────────────────────────────────
-router.get("/vendor/me", protectVendor, getMyProfile);
-router.put("/vendor/me", protectVendor, requireApprovedVendor, docUpload, updateMyProfile);
-router.patch("/vendor/toggle-shop", protectVendor, requireApprovedVendor, toggleShopOpen);
-router.patch("/vendor/location", protectVendor, requireApprovedVendor, updateLocation);
+router.get("/me", protectVendor, getMyProfile);
+router.put("/me", protectVendor, requireApprovedVendor, docUpload, updateMyProfile);
+router.patch("/toggle-shop", protectVendor, requireApprovedVendor, toggleShopOpen);
+router.patch("/location", protectVendor, requireApprovedVendor, updateLocation);
 
 // ── Vendor Orders ─────────────────────────────────────────────────────────────
-router.get("/vendor/orders", protectVendor, requireApprovedVendor, requireActiveSubscription, getVendorOrders);
-router.get("/vendor/orders/:id", protectVendor, requireApprovedVendor, requireActiveSubscription, getVendorOrderById);
-router.patch("/vendor/orders/:id/status", protectVendor, requireApprovedVendor, requireActiveSubscription, validateBody({ status: { required: true, enum: ["CONFIRMED", "PACKED", "READY_FOR_PICKUP", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"] } }), updateOrderStatus);
+router.get("/orders", protectVendor, requireApprovedVendor, requireActiveSubscription, getVendorOrders);
+router.get("/orders/:id", protectVendor, requireApprovedVendor, requireActiveSubscription, getVendorOrderById);
+router.patch("/orders/:id/status", protectVendor, requireApprovedVendor, requireActiveSubscription, validateBody({ status: { required: true, enum: ["CONFIRMED", "PACKED", "READY_FOR_PICKUP", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"] } }), updateOrderStatus);
 
 // ── Vendor Earnings ───────────────────────────────────────────────────────────
-router.get("/vendor/earnings", protectVendor, requireApprovedVendor, getEarnings);
-router.get("/vendor/earnings/weekly", protectVendor, requireApprovedVendor, getWeeklyEarnings);
-router.get("/vendor/subscription", protectVendor, getSubscription);
-router.post("/vendor/subscription/request-change", protectVendor, requireApprovedVendor, requestPlanChange);
-router.post("/vendor/subscription/cancel-request", protectVendor, requireApprovedVendor, cancelPlanChangeRequest);
+router.get("/earnings", protectVendor, requireApprovedVendor, requireActiveSubscription, getEarnings);
+router.get("/earnings/weekly", protectVendor, requireApprovedVendor, requireActiveSubscription, getWeeklyEarnings);
+router.get("/subscription", protectVendor, getSubscription);
+router.post("/subscription/request-change", protectVendor, requireApprovedVendor, requestPlanChange);
+router.post("/subscription/cancel-request", protectVendor, requireApprovedVendor, cancelPlanChangeRequest);
 
 // ── Vendor Subscription Payment (Razorpay) ────────────────────────────────
-router.get("/vendor/subscription/plans", protectVendor, getSubscriptionPlans);
-router.post("/vendor/subscription/create-order", protectVendor, requireApprovedVendor, createSubscriptionOrder);
-router.post("/vendor/subscription/verify-payment", protectVendor, requireApprovedVendor, verifySubscriptionPayment);
-router.post("/vendor/subscription/payment-failed", protectVendor, requireApprovedVendor, handleSubscriptionPaymentFailure);
-router.get("/vendor/subscription/payment-history", protectVendor, getSubscriptionPaymentHistory);
+router.get("/subscription/plans", protectVendor, getSubscriptionPlans);
+router.post("/subscription/create-order", protectVendor, requireApprovedVendor, createSubscriptionOrder);
+router.post("/subscription/verify-payment", protectVendor, requireApprovedVendor, verifySubscriptionPayment);
+router.post("/subscription/payment-failed", protectVendor, requireApprovedVendor, handleSubscriptionPaymentFailure);
+router.get("/subscription/payment-history", protectVendor, getSubscriptionPaymentHistory);
 // ── Vendor Payouts ────────────────────────────────────────────────────────
-router.get("/vendor/payouts", protectVendor, requireApprovedVendor, vendorGetPayouts);
-router.post("/vendor/payouts/request", protectVendor, requireApprovedVendor, vendorRequestPayout);
-router.patch("/vendor/payouts/:id/cancel", protectVendor, requireApprovedVendor, vendorCancelPayout);
-// ── Admin: Dashboard ──────────────────────────────────────────────────────────
-router.get("/admin/dashboard", protect, adminOnly, getDashboardStats);
-router.get("/admin/map-data", protect, adminOnly, getMapData);
+router.get("/payouts", protectVendor, requireApprovedVendor, vendorGetPayouts);
+router.post("/payouts/request", protectVendor, requireApprovedVendor, vendorRequestPayout);
+router.patch("/payouts/:id/cancel", protectVendor, requireApprovedVendor, vendorCancelPayout);
 
-// ── Admin: Vendors ────────────────────────────────────────────────────────────
-router.get("/admin/vendors", protect, adminOnly, getAllVendors);
-router.get("/admin/vendors/:id", protect, adminOnly, getVendorDetail);
-router.patch("/admin/vendors/:id/approve", protect, adminOnly, approveVendor);
-router.patch("/admin/vendors/:id/reject", protect, adminOnly, rejectVendor);
-router.patch("/admin/vendors/:id/suspend", protect, adminOnly, suspendVendor);
-router.patch("/admin/vendors/:id/commission", protect, adminOnly, updateCommission);
-router.delete("/admin/vendors/:id", protect, adminOnly, deleteVendor);
-router.post("/admin/vendors/:id/subscription", protect, adminOnly, activateVendorSubscription);
-router.patch("/admin/vendors/:id/subscription/deactivate", protect, adminOnly, deactivateVendorSubscription);
-router.get("/admin/subscriptions", protect, adminOnly, adminGetAllSubscriptions);
-
-// ── Admin: Pincodes ───────────────────────────────────────────────────────────
-router.get("/admin/pincodes", protect, adminOnly, getAllPincodes);
-router.post("/admin/pincodes", protect, adminOnly, createPincode);
-router.put("/admin/pincodes/:id", protect, adminOnly, updatePincode);
-router.delete("/admin/pincodes/:id", protect, adminOnly, deletePincode);
-
-// ── Admin: Settlements ────────────────────────────────────────────────────────
-router.get("/admin/settlements", protect, adminOnly, getAllSettlements);
-router.post("/admin/settlements/process", protect, adminOnly, processWeeklySettlements);
-router.patch("/admin/settlements/:id/paid", protect, adminOnly, markSettlementPaid);
-router.patch("/admin/settlements/batch/:batchId/paid", protect, adminOnly, markBatchPaid);
-
-// ── Admin: Payouts ────────────────────────────────────────────────────────
-router.get("/admin/payouts", protect, adminOnly, adminGetAllPayouts);
-router.patch("/admin/payouts/:id/approve", protect, adminOnly, adminApprovePayout);
-router.patch("/admin/payouts/:id/reject", protect, adminOnly, adminRejectPayout);
-router.patch("/admin/payouts/:id/complete", protect, adminOnly, adminCompletePayout);
-
-// ── Admin: Delivery Boys ──────────────────────────────────────────────────────
-router.get("/admin/delivery-boys", protect, adminOnly, getAllDeliveryBoys);
-router.get("/admin/delivery-boys/online", protect, adminOnly, getOnlineRiders);
-router.patch("/admin/delivery-boys/:id/status", protect, adminOnly, updateDeliveryBoyStatus);
-router.patch("/admin/delivery-boys/:id/document-status", protect, adminOnly, updateDeliveryDocStatus);
-
-// ── Admin: Smart Assignment Engine ────────────────────────────────────────────
-router.post("/admin/orders/:id/assign-rider", protect, adminOnly, async (req, res) => {
-    try {
-        const { adminForceAssign } = await import("../../services/assignmentEngine.js");
-        const { riderId } = req.body;
-        if (!riderId) return res.status(400).json({ success: false, message: "riderId required" });
-        const result = await adminForceAssign(req.params.id, riderId);
-        if (!result.success) return res.status(400).json(result);
-        res.json({ success: true, message: `Assigned to ${result.rider?.name}`, order: result.order });
-    } catch (err) {
-        console.error("[adminForceAssign]", err);
-        res.status(500).json({ success: false, message: "Failed to assign" });
-    }
-});
-
-router.post("/admin/orders/:id/start-assignment", protect, adminOnly, async (req, res) => {
-    try {
-        const { startAssignment } = await import("../../services/assignmentEngine.js");
-        await startAssignment(req.params.id);
-        res.json({ success: true, message: "Assignment engine started" });
-    } catch (err) {
-        console.error("[startAssignment]", err);
-        res.status(500).json({ success: false, message: "Failed to start assignment" });
-    }
-});
-
-router.get("/admin/assignments/active", protect, adminOnly, async (req, res) => {
-    try {
-        const { getActiveAssignments } = await import("../../services/assignmentEngine.js");
-        res.json({ success: true, assignments: getActiveAssignments() });
-    } catch (err) {
-        res.status(500).json({ success: false, message: "Failed" });
-    }
-});
+// ── Vendor Bank Details ──────────────────────────────────────────────────────
+router.patch("/bank-details", protectVendor, requireApprovedVendor, updateVendorBankDetails);
 
 export default router;

@@ -11,25 +11,31 @@ import DeliveryMap from "../components/DeliveryMap";
 import { startAlert, stopAlert, playNotification } from "../utils/notificationSound";
 import useFcm from "../hooks/useFcm";
 
-/* ── GPS tracking — sends location every 10s when order active ── */
+/* ── GPS tracking — watchPosition realtime + 15s fallback ── */
 const useLocationTracking = (activeOrderId) => {
   const [pos, setPos] = useState(null);
   useEffect(() => {
-    if (!activeOrderId) { setPos(null); return; }
-    const send = () => {
-      if (!navigator.geolocation) return;
-      navigator.geolocation.getCurrentPosition(
-        ({ coords }) => {
-          setPos({ lat: coords.latitude, lng: coords.longitude });
-          api.patch("/delivery/location", { orderId: activeOrderId, lat: coords.latitude, lng: coords.longitude }).catch(() => { });
-        },
-        () => { },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
-      );
+    if (!activeOrderId || !navigator.geolocation) { setPos(null); return; }
+    const sendLocation = (lat, lng) => {
+      setPos({ lat, lng });
+      api.patch("/delivery/location", { orderId: activeOrderId, lat, lng }).catch(() => { });
     };
-    send();
-    const t = setInterval(send, 10000);
-    return () => clearInterval(t);
+    const watchId = navigator.geolocation.watchPosition(
+      ({ coords }) => sendLocation(coords.latitude, coords.longitude),
+      () => { },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+    );
+    const fallbackTimer = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => sendLocation(coords.latitude, coords.longitude),
+        () => { },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
+      );
+    }, 15000);
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+      clearInterval(fallbackTimer);
+    };
   }, [activeOrderId]);
   return pos;
 };

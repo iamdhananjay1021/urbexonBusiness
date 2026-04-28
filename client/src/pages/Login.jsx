@@ -149,10 +149,11 @@ const Login = () => {
             }
             redirectAfterAuth(data);
         } catch (err) {
+            console.log("[Login] Auth Error Caught:", err?.response?.data || err);
             const msg = err?.response?.data?.message || "Login failed";
-            if (err?.response?.data?.requiresVerification) {
+            if (err?.response?.data?.requiresVerification || msg.toLowerCase().includes("verify") || msg.toLowerCase().includes("otp")) {
                 setOtpStep(true);
-                setError("");
+                setError(msg); // Error clear karne ke bajaye message dikhayen taaki user ko pata chale OTP kahan gaya hai
             } else {
                 setError(msg);
             }

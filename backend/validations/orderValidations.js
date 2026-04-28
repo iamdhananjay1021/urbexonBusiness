@@ -349,23 +349,28 @@ export const validatePaymentMethod = async (method, pincode, orderChannel = "eco
 ───────────────────────────────────────────────────────────── */
 export const validateDeliveryServiceability = (deliveryType, latitude, longitude) => {
     if (deliveryType === "URBEXON_HOUR") {
-        if (!latitude || !longitude)
-            throw new Error("Location (latitude/longitude) required for Urbexon Hour delivery");
-
         if (!DELIVERY_CONFIG.URBEXON_HOUR?.ENABLED)
             throw new Error("Urbexon Hour delivery is currently unavailable");
 
-        // Server-side distance calculation — DO NOT TRUST client distanceKm
         const shopLat = DELIVERY_CONFIG.SHOP_LAT;
         const shopLng = DELIVERY_CONFIG.SHOP_LNG;
+
+        // ✅ BUG2 FIX: lat/lng is optional for UH orders.
+        // If not provided (e.g. browser geo permission denied), we fallback to shop
+        // coordinates so order placement doesn't fail. The assignment engine also
+        // falls back to SHOP_LAT/LNG when order coords are missing.
+        const orderLat = latitude ? Number(latitude) : shopLat;
+        const orderLng = longitude ? Number(longitude) : shopLng;
+
+        // Server-side distance calculation — DO NOT TRUST client distanceKm
         const toRad = (d) => (d * Math.PI) / 180;
         const R = 6371;
-        const dLat = toRad(Number(latitude) - shopLat);
-        const dLon = toRad(Number(longitude) - shopLng);
+        const dLat = toRad(orderLat - shopLat);
+        const dLon = toRad(orderLng - shopLng);
         const a =
             Math.sin(dLat / 2) ** 2 +
             Math.cos(toRad(shopLat)) *
-            Math.cos(toRad(Number(latitude))) *
+            Math.cos(toRad(orderLat)) *
             Math.sin(dLon / 2) ** 2;
         const realDistanceKm =
             Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;

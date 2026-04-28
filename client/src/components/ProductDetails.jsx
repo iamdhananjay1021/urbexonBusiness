@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import api from "../api/axios";
 import { useCart } from "../hooks/useCart";
@@ -135,6 +135,50 @@ const RatingBar = ({ star, count, pct }) => (
     </div>
 );
 
+/* ─── Variant Selector ──────────────────────────────────── */
+const VariantSelector = ({ variants, currentProductId }) => {
+    if (!variants || variants.length <= 1) return null;
+
+    const grouped = variants.reduce((acc, v) => {
+        if (!v.variantOptions || !Array.isArray(v.variantOptions)) return acc;
+        v.variantOptions.forEach(opt => {
+            if (!acc[opt.type]) acc[opt.type] = [];
+            acc[opt.type].push({ _id: v._id, slug: v.slug, value: opt.value, thumbnail: v.images?.[0]?.url });
+        });
+        return acc;
+    }, {});
+
+    return (
+        <div style={{ marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f0f0f0" }}>
+            {Object.entries(grouped).map(([type, options]) => (
+                <div key={type} style={{ marginBottom: 12 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: "#212121", marginBottom: 10, textTransform: "capitalize" }}>
+                        More {type} Options
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                        {options.map((variant, idx) => {
+                            const isCurrent = variant._id === currentProductId;
+                            const isColor = type.toLowerCase() === 'color';
+                            const isHex = isColor && /^#([0-9A-F]{3}){1,2}$/i.test(variant.value);
+
+                            if (isColor) {
+                                return (
+                                    <Link key={`${variant._id}-${idx}`} to={`/products/${variant.slug || variant._id}`} title={`View color: ${variant.value}`} style={{ width: 44, height: 44, borderRadius: '4px', background: isHex ? variant.value : '#f5f5f5', border: `2px solid ${isCurrent ? '#2874f0' : '#e0e0e0'}`, cursor: 'pointer', boxShadow: isCurrent ? '0 0 0 1px #fff, 0 0 0 2px #2874f0' : 'none', transition: 'all .2s', backgroundImage: !isHex && variant.thumbnail ? `url(${variant.thumbnail})` : 'none', backgroundSize: 'cover', backgroundPosition: 'top center', display: 'inline-block' }} />
+                                );
+                            }
+                            return (
+                                <Link key={`${variant._id}-${idx}`} to={`/products/${variant.slug || variant._id}`} style={{ padding: "6px 12px", border: `1px solid ${isCurrent ? '#2874f0' : '#e0e0e0'}`, borderRadius: 4, background: isCurrent ? "#f0f5ff" : "#fff", color: isCurrent ? "#2874f0" : "#212121", fontSize: 13, fontWeight: 600, textDecoration: "none", display: "inline-block" }}>
+                                    {variant.value}
+                                </Link>
+                            );
+                        })}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
 /* ═══════════════════════════════════════════════════════════
    MAIN COMPONENT
 ═══════════════════════════════════════════════════════════ */
@@ -142,7 +186,8 @@ const ProductDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { addItem, cartItems } = useCart();
-    const { trackView } = useRecentlyViewed();
+    const [productType, setProductType] = useState("ecommerce");
+    const { trackView } = useRecentlyViewed(productType);
     const { user } = useAuth();
 
     /* ── State ── */
@@ -185,7 +230,12 @@ const ProductDetails = () => {
     const hasDiscount = useMemo(() => mrpValue && mrpValue > Number(product?.price), [mrpValue, product?.price]);
     const savedAmount = useMemo(() => hasDiscount ? mrpValue - Number(product.price) : 0, [hasDiscount, mrpValue, product?.price]);
     const discountPct = useMemo(() => hasDiscount ? Math.round(((mrpValue - Number(product.price)) / mrpValue) * 100) : null, [hasDiscount, mrpValue, product?.price]);
-    const avgRating = useMemo(() => product?.rating || 0, [product?.rating]);
+    const avgRating = useMemo(() => {
+        if (reviews && reviews.length > 0) {
+            return reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length;
+        }
+        return product?.rating || 0;
+    }, [reviews, product?.rating]);
 
     const ratingBars = useMemo(() => [5, 4, 3, 2, 1].map(star => ({
         star,
@@ -236,6 +286,7 @@ const ProductDetails = () => {
                 setSelectedSize("");
 
                 const { data: prod } = await api.get(`/products/${id}`, { signal: ctrl.signal });
+                setProductType(prod?.productType || "ecommerce");
                 setProduct(prod);
 
                 // Track recently viewed
@@ -419,139 +470,168 @@ const ProductDetails = () => {
             )}
             {/* ── Global CSS ── */}
             <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');
-                @keyframes mcSlideDown { from{opacity:0;transform:translateY(-18px)} to{opacity:1;transform:translateY(0)} }
-                @keyframes spin        { to{transform:rotate(360deg)} }
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');
 
-                /* ═══ BASE STYLES (DESKTOP) ═══ */
-                .pd-tab { padding:12px 20px; font-size:13px; font-weight:600; border:none; background:none; cursor:pointer; border-bottom:3px solid transparent; color:#878787; white-space:nowrap; transition:all .2s; }
-                .pd-tab.active { color:#2874f0; border-bottom-color:#2874f0; }
-                .pd-tab:hover  { color:#2874f0; }
+@keyframes mcSlideDown { from{opacity:0;transform:translateY(-18px)} to{opacity:1;transform:translateY(0)} }
+@keyframes spin { to{transform:rotate(360deg)} }
 
-                .pd-size { min-width:52px; height:44px; padding:0 14px; border:1px solid #e0e0e0; font-size:13px; font-weight:600; cursor:pointer; background:#fff; border-radius:4px; transition:all .2s; color:#212121; }
-                .pd-size:hover:not(:disabled) { border-color:#2874f0; color:#2874f0; }
-                .pd-size.active { border:2px solid #212121; background:#fff; color:#212121; font-weight:700; }
-                .pd-size.oos    { color:#ccc; cursor:not-allowed; background:#fafafa; text-decoration:line-through; }
+/* ═══ BASE ═══ */
+.pd-tab {
+  padding:12px 20px;
+  font-size:13px;
+  font-weight:600;
+  border:none;
+  background:none;
+  cursor:pointer;
+  border-bottom:3px solid transparent;
+  color:#878787;
+  transition:.2s;
+}
+.pd-tab.active { color:#2874f0; border-bottom-color:#2874f0; }
 
-                .pd-btn { display:flex; align-items:center; justify-content:center; gap:8px; height:52px; flex:1; font-size:14px; font-weight:700; border:none; border-radius:4px; cursor:pointer; transition:all .15s; text-transform:uppercase; letter-spacing:.04em; }
-                .pd-btn:active { transform:scale(.98); }
-                .pd-cart { background:#ff9f00; color:#fff; }
-                .pd-cart:hover { background:#f09000; }
-                .pd-cart.in-cart { background:#e8f5e9; color:#388e3c; }
-                .pd-buy  { background:#fb641b; color:#fff; }
-                .pd-buy:hover { background:#e55a10; }
+.pd-size {
+  min-width:50px;
+  height:42px;
+  padding:0 12px;
+  border:1px solid #e0e0e0;
+  font-size:12px;
+  font-weight:600;
+  cursor:pointer;
+  background:#fff;
+  border-radius:4px;
+}
+.pd-size.active { border:2px solid #212121; }
+.pd-size.oos { color:#ccc; cursor:not-allowed; text-decoration:line-through; }
 
-                .pd-thumb { width:72px; height:72px; border:2px solid transparent; border-radius:4px; overflow:hidden; cursor:pointer; flex-shrink:0; background:#fafafa; transition:border-color .15s; }
-                .pd-thumb.active { border-color:#2874f0; }
-                .pd-thumb:hover  { border-color:#bbb; }
+.pd-btn {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  height:48px;
+  flex:1;
+  font-size:13px;
+  font-weight:700;
+  border:none;
+  border-radius:4px;
+  cursor:pointer;
+}
+.pd-cart { background:#ff9f00; color:#fff; }
+.pd-buy { background:#fb641b; color:#fff; }
 
-                .pd-share-btn { position:absolute; top:12px; right:12px; z-index:10; display:flex; align-items:center; gap:6px; background:rgba(255,255,255,.95); border:none; border-radius:20px; padding:7px 14px; font-size:11px; font-weight:700; color:#212121; box-shadow:0 2px 8px rgba(0,0,0,.18); cursor:pointer; transition:all .2s; }
-                .pd-share-btn:hover { background:#fff; box-shadow:0 4px 16px rgba(0,0,0,.22); }
+.pd-thumb {
+  width:64px;
+  height:64px;
+  border:2px solid transparent;
+  border-radius:4px;
+  overflow:hidden;
+  cursor:pointer;
+  background:#fafafa;
+}
+.pd-thumb.active { border-color:#2874f0; }
 
-                .pd-trust { display:flex; align-items:center; gap:8px; padding:12px 0; font-size:12px; color:#555; border-bottom:1px solid #f0f0f0; }
+/* 🔥 FIXED HERO IMAGE (MAIN ISSUE) */
+.pd-hero-img {
+  aspect-ratio:3/4;
+  background:#fafafa;
+  border:1px solid #f0f0f0;
+  border-radius:4px;
+  overflow:hidden;
+  cursor:zoom-in;
+  position:relative;
 
-                /* ═══ TABLET (1024px and below) ═══ */
-                @media (max-width: 1024px) {
-                    .pd-main-grid { grid-template-columns: 1fr 1.1fr !important; gap: 0 !important; }
-                    .pd-img-wrap { padding: 20px 16px !important; }
-                    .pd-info-wrap { padding: 20px 20px !important; }
-                    h1.pd-title { font-size: 1.2rem !important; }
-                    .pd-btn { height: 48px !important; font-size: 13px !important; }
-                    .pd-thumb { width: 64px !important; height: 64px !important; }
-                    .pd-size { min-width: 48px !important; height: 40px !important; padding: 0 12px !important; font-size: 12px !important; }
-                }
+  display:flex;
+  align-items:center;
+  justify-content:center;  /* ✅ CENTER FIX */
+}
 
-                /* ═══ MEDIUM TABLET (768px) ═══ */
-                @media (max-width: 768px) {
-                    .pd-main-grid  { grid-template-columns: 1fr !important; gap: 0 !important; }
-                    .pd-img-wrap {
-                        border-radius: 0 !important;
-                        border-left: none !important;
-                        border-right: none !important;
-                        border-bottom: 1px solid #f0f0f0 !important;
-                        padding: 16px 14px !important;
-                    }
-                    .pd-info-wrap  { padding: 16px 14px !important; }
-                    .pd-page-wrap  { padding: 0 !important; margin: 0 !important; border-radius: 0 !important; }
-                    .pd-breadcrumb { padding: 10px 14px !important; }
-                    
-                    .pd-thumb { width: 56px !important; height: 56px !important; }
-                    .pd-btn { height: 44px !important; font-size: 12px !important; gap: 6px !important; }
-                    .pd-size { min-width: 44px !important; height: 36px !important; padding: 0 10px !important; font-size: 11px !important; }
-                    
-                    h1.pd-title { font-size: 1.1rem !important; }
-                    .pd-share-btn { top: 10px !important; right: 10px !important; padding: 5px 12px !important; font-size: 10px !important; }
-                    
-                    .pd-tab { padding: 10px 16px !important; font-size: 12px !important; }
-                    .pd-trust { font-size: 11px !important; gap: 6px !important; }
-                }
+.pd-hero-img img {
+  width:100%;
+  height:100%;
+  object-fit:contain;     /* ✅ NO LEFT SHIFT */
+  object-position:center;
+  transition:.3s;
+}
 
-                /* ═══ SMALL TABLET / LARGE PHONE (640px) ═══ */
-                @media (max-width: 640px) {
-                    .pd-main-grid { grid-template-columns: 1fr !important; }
-                    .pd-img-wrap { padding: 12px 12px !important; }
-                    .pd-info-wrap { padding: 12px 12px !important; }
-                    .pd-page-wrap { margin: 0 !important; border-radius: 0 !important; }
-                    
-                    .pd-thumb { width: 50px !important; height: 50px !important; gap: 6px !important; }
-                    .pd-btn { height: 42px !important; font-size: 11px !important; }
-                    .pd-size { min-width: 40px !important; height: 34px !important; padding: 0 8px !important; font-size: 10px !important; }
-                    
-                    h1.pd-title { font-size: 1rem !important; line-height: 1.3 !important; }
-                    .pd-breadcrumb { padding: 8px 12px !important; }
-                    .pd-page-wrap { padding: 0 !important; }
-                    
-                    .pd-tab { padding: 8px 14px !important; font-size: 11px !important; }
-                    .pd-trust { font-size: 10px !important; padding: 8px 0 !important; }
-                    .pd-share-btn { padding: 4px 10px !important; font-size: 9px !important; }
-                }
+.pd-share-btn {
+  position:absolute;
+  top:10px;
+  right:10px;
+  background:#fff;
+  border:none;
+  border-radius:20px;
+  padding:6px 12px;
+  font-size:11px;
+  font-weight:700;
+  cursor:pointer;
+}
 
-                /* ═══ PHONE (480px and below) ═══ */
-                @media (max-width: 480px) {
-                    .pd-main-grid { grid-template-columns: 1fr !important; gap: 0 !important; }
-                    .pd-img-wrap {
-                        border-radius: 0 !important;
-                        border: none !important;
-                        padding: 10px 10px !important;
-                        border-bottom: 1px solid #f0f0f0 !important;
-                    }
-                    .pd-info-wrap { padding: 10px 10px !important; }
-                    .pd-page-wrap { padding: 0 !important; margin: 0 !important; border-radius: 0 !important; }
-                    .pd-breadcrumb { padding: 8px 10px !important; font-size: 12px !important; }
-                    
-                    /* Typography Scaling */
-                    h1.pd-title { font-size: 0.95rem !important; line-height: 1.25 !important; margin-bottom: 8px !important; }
-                    .pd-category { font-size: 10px !important; margin-bottom: 4px !important; }
-                    
-                    /* Price Scaling */
-                    .pd-price-large { font-size: 1.4rem !important; }
-                    .pd-price-old { font-size: 0.9rem !important; }
-                    .pd-price-off { font-size: 0.85rem !important; }
-                    
-                    /* Image Gallery */
-                    .pd-hero-img { max-height: 300px !important; }
-                    .pd-thumb { width: 45px !important; height: 45px !important; gap: 4px !important; }
-                    .pd-thumb-wrap { gap: 6px !important; }
-                    
-                    /* Buttons */
-                    .pd-btn { height: 40px !important; font-size: 10px !important; gap: 4px !important; padding: 0 8px !important; }
-                    .pd-size { min-width: 36px !important; height: 32px !important; padding: 0 6px !important; font-size: 9px !important; }
-                    
-                    /* Tabs */
-                    .pd-tab { padding: 8px 12px !important; font-size: 10px !important; }
-                    .pd-tabs-wrap { padding-left: 10px !important; }
-                    .pd-tab-content { padding: 16px 10px !important; }
-                    
-                    /* Trust strip */
-                    .pd-trust { font-size: 9px !important; padding: 6px 0 !important; gap: 6px !important; }
-                    
-                    /* Share button */
-                    .pd-share-btn { top: 8px !important; right: 8px !important; padding: 3px 8px !important; font-size: 8px !important; }
-                    
-                    /* Accordions */
-                    .pd-accordion { margin-top: 12px !important; }
-                }
-            `}</style>
+.pd-trust {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:10px 0;
+  font-size:12px;
+  border-bottom:1px solid #f0f0f0;
+}
+
+/* ═══ TABLET ═══ */
+@media (max-width:1024px){
+  .pd-main-grid{ grid-template-columns:1fr 1fr !important; }
+}
+
+/* ═══ MOBILE ═══ */
+@media (max-width:768px){
+
+  .pd-main-grid{ grid-template-columns:1fr !important; }
+
+  .pd-img-wrap{
+    padding:14px !important;
+    border-bottom:1px solid #f0f0f0;
+  }
+
+  .pd-info-wrap{ padding:14px !important; }
+
+  .pd-thumb{ width:52px; height:52px; }
+
+  .pd-btn{
+    height:42px;
+    font-size:12px;
+  }
+
+  h1.pd-title{
+    font-size:1rem;
+  }
+}
+
+/* ═══ SMALL PHONE ═══ */
+@media (max-width:480px){
+
+  .pd-img-wrap{ padding:10px !important; }
+
+  .pd-hero-img{
+    max-height:280px;
+  }
+
+  .pd-thumb{
+    width:44px;
+    height:44px;
+  }
+
+  .pd-btn{
+    height:38px;
+    font-size:10px;
+  }
+
+  h1.pd-title{
+    font-size:0.95rem;
+  }
+
+  .pd-trust{
+    font-size:10px;
+  }
+}
+`}</style>
 
             <div style={{ background: "#f1f3f6", minHeight: "100vh" }}>
 
@@ -673,6 +753,11 @@ const ProductDetails = () => {
                             <div style={{ marginTop: 6, marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #f0f0f0" }}>
                                 <DeliveryEstimate productPrice={Number(product.price) || 0} productWeight={product.weight || 500} />
                             </div>
+
+                            {/* Variants Selector */}
+                            {product.allVariants && product.allVariants.length > 1 && (
+                                <VariantSelector variants={product.allVariants} currentProductId={product._id} />
+                            )}
 
                             {/* Stock */}
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>

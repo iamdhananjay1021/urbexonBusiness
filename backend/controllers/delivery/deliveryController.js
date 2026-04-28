@@ -105,18 +105,23 @@ export const toggleOnlineStatus = async (req, res) => {
 
 // ── GET /api/delivery/orders ─────────────────────────────
 // ✅ FIXED: Removed "delivery.provider": "LOCAL_RIDER" filter
-// Orders are now fetched by orderMode + status only
+// ✅ FIXED: Filter by rider's servicePincodes if set (pincode-based delivery area)
 export const getDeliveryOrders = async (req, res) => {
     try {
         const db = await DeliveryBoy.findOne({ userId: req.user._id });
         if (!db) return res.status(404).json({ success: false, message: "Not registered" });
 
-        // ✅ FIXED: No provider filter — any URBEXON_HOUR unassigned READY_FOR_PICKUP order
+        // Build pincode filter — if rider has assigned pincodes, only show those orders
+        const pincodeFilter = {};
+        if (db.servicePincodes && db.servicePincodes.length > 0) {
+            pincodeFilter["deliveryAddress.pincode"] = { $in: db.servicePincodes };
+        }
+
         const availableRaw = await Order.find({
             orderMode: "URBEXON_HOUR",
             orderStatus: "READY_FOR_PICKUP",
             "delivery.assignedTo": null,
-            // ✅ REMOVED: "delivery.provider": "LOCAL_RIDER" — was blocking orders
+            ...pincodeFilter,
         })
             .limit(30)
             .lean();
@@ -214,12 +219,15 @@ export const acceptOrder = async (req, res) => {
 };
 
 // ── PATCH /api/delivery/orders/:id/pickup ───────────────
+// Flow: Rider reaches vendor, picks up order → OUT_FOR_DELIVERY
+// OTP is sent to customer so they can verify delivery at doorstep
 export const pickupOrder = async (req, res) => {
     try {
         const db = await DeliveryBoy.findOne({ userId: req.user._id });
         if (!db) return res.status(404).json({ success: false, message: "Not registered" });
 
-        const order = await Order.findById(req.params.id);
+        // Select OTP field so we can send it to customer
+        const order = await Order.findById(req.params.id).select("+deliveryOtp.code");
         if (!order) return res.status(404).json({ success: false, message: "Order not found" });
         if (String(order.delivery?.assignedTo) !== String(db._id)) {
             return res.status(403).json({ success: false, message: "This order is not assigned to you" });
@@ -228,9 +236,11 @@ export const pickupOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: `Order must be in READY_FOR_PICKUP status, currently ${order.orderStatus}` });
         }
 
+        // ✅ BUG4 FIX: delivery.status must match orderStatus (OUT_FOR_DELIVERY, not PICKED_UP)
+        // "PICKED_UP" is an internal event — admin dashboard checks delivery.status for display
         order.orderStatus = "OUT_FOR_DELIVERY";
         order.delivery.pickedUpAt = new Date();
-        order.delivery.status = "PICKED_UP";
+        order.delivery.status = "OUT_FOR_DELIVERY";  // ✅ FIXED: was "PICKED_UP" — caused wrong status in admin
         const existing = order.statusTimeline?.toObject ? order.statusTimeline.toObject() : { ...order.statusTimeline };
         order.statusTimeline = { ...existing, outForDeliveryAt: new Date() };
         order.markModified("statusTimeline");
@@ -238,11 +248,19 @@ export const pickupOrder = async (req, res) => {
         order.timeline.push({ status: "PICKED_UP", timestamp: new Date(), note: `Picked up by ${db.name}` });
         await order.save();
 
+        // ✅ BUG1 FIX: Send OTP to customer in pickup notification
+        // Customer needs OTP to verify delivery at doorstep
+        const otpForCustomer = order.deliveryOtp?.code || null;
+
         if (order.user) {
             sendToUser(String(order.user), "order_status", {
-                orderId: order._id, status: "OUT_FOR_DELIVERY",
-                riderName: db.name, riderPhone: db.phone,
+                orderId: order._id,
+                status: "OUT_FOR_DELIVERY",
+                riderName: db.name,
+                riderPhone: db.phone,
                 message: `Your order is now out for delivery with ${db.name}!`,
+                // ✅ FIXED: OTP now included so customer can see it without refreshing
+                otp: otpForCustomer,
             });
         }
 
@@ -330,8 +348,13 @@ export const markDelivered = async (req, res) => {
                 weekEarnings: earning,
                 activeOrders: -1,
             },
-            $max: { activeOrders: 0 },
         });
+        // ✅ BUG7 FIX: $inc and $max cannot be applied to same field atomically in one update.
+        // Separate floor update prevents activeOrders from going negative.
+        await DeliveryBoy.updateOne(
+            { _id: db._id, activeOrders: { $lt: 0 } },
+            { $set: { activeOrders: 0 } }
+        );
 
         if (order.user) {
             sendToUser(String(order.user), "order_status", {
@@ -400,9 +423,23 @@ export const getDeliveryEarnings = async (req, res) => {
         const db = await DeliveryBoy.findOne({ userId: req.user._id }).lean();
         if (!db) return res.status(404).json({ success: false, message: "Not found" });
 
-        const startOfWeek = new Date();
-        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-        startOfWeek.setHours(0, 0, 0, 0);
+        // ✅ IST timezone offset: UTC+5:30 = 330 minutes
+        const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+        const getISTDayBounds = (daysAgo = 0) => {
+            const nowUTC = Date.now();
+            const nowIST = new Date(nowUTC + IST_OFFSET_MS);
+            nowIST.setUTCHours(0, 0, 0, 0); // midnight IST
+            const startIST = new Date(nowIST.getTime() - daysAgo * 86400000);
+            const endIST = new Date(startIST.getTime() + 86400000);
+            // Convert back to UTC for DB queries
+            return {
+                start: new Date(startIST.getTime() - IST_OFFSET_MS),
+                end: new Date(endIST.getTime() - IST_OFFSET_MS),
+            };
+        };
+
+        const startOfWeek = getISTDayBounds(new Date(Date.now() + IST_OFFSET_MS).getUTCDay()).start;
 
         const deliveries = await Order.find({
             "delivery.assignedTo": db._id,
@@ -412,17 +449,17 @@ export const getDeliveryEarnings = async (req, res) => {
         const thisWeek = deliveries.filter(o => new Date(o.createdAt) >= startOfWeek);
         const weekEarnings = thisWeek.reduce((sum, o) => sum + calcDeliveryEarning(o.delivery?.distanceKm || 0), 0);
 
+        // ✅ TIMEZONE FIX: Use IST day bounds for daily breakdown
         const breakdown = [];
         for (let i = 6; i >= 0; i--) {
-            const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
-            const next = new Date(d); next.setDate(next.getDate() + 1);
+            const { start, end } = getISTDayBounds(i);
             const dayOrders = deliveries.filter(o => {
                 const t = new Date(o.createdAt);
-                return t >= d && t < next;
+                return t >= start && t < end;
             });
             breakdown.push({
-                day: d.toLocaleDateString("en-IN", { weekday: "short" }),
-                date: d.toISOString().split("T")[0],
+                day: start.toLocaleDateString("en-IN", { weekday: "short", timeZone: "Asia/Kolkata" }),
+                date: new Date(start.getTime() + IST_OFFSET_MS).toISOString().split("T")[0],
                 deliveries: dayOrders.length,
                 earnings: dayOrders.reduce((sum, o) => sum + calcDeliveryEarning(o.delivery?.distanceKm || 0), 0),
             });
@@ -618,7 +655,15 @@ export const updateDeliveryStatus = async (req, res) => {
         if (!allowed.includes(status)) {
             return res.status(400).json({
                 success: false,
-                message: `Invalid status. Use: ${allowed.join(", ")}. For PICKED_UP/OUT_FOR_DELIVERY, call PATCH /api/delivery/orders/:id/pickup`,
+                message: `Invalid status. Use: ${allowed.join(", ")}. For pickup/delivery, call the respective endpoints.`,
+            });
+        }
+
+        // ✅ Guard: Don't allow status update on terminal orders
+        if (["DELIVERED", "CANCELLED"].includes(order.orderStatus)) {
+            return res.status(400).json({
+                success: false,
+                message: `Order is already ${order.orderStatus} — cannot update delivery status`,
             });
         }
 

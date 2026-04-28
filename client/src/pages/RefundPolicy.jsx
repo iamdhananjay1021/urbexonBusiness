@@ -196,12 +196,12 @@ export default function RefundPolicy() {
                                     <p className="text-emerald-600 text-xs">+91 88084 85840</p>
                                 </div>
                             </a>
-                            <a href="mailto:officialurbexon@gmail.com"
+                            <a href="mailto:support@urbexon.in"
                                 className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4 hover:bg-blue-100 transition-colors">
                                 <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center text-white text-lg">✉️</div>
                                 <div>
                                     <p className="font-bold text-blue-800 text-sm">Email Support</p>
-                                    <p className="text-blue-600 text-xs">officialurbexon@gmail.com</p>
+                                    <p className="text-blue-600 text-xs">support@urbexon.in</p>
                                 </div>
                             </a>
                         </div>

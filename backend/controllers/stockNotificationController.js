@@ -8,7 +8,7 @@
  */
 import StockNotification from "../models/StockNotification.js";
 import Product from "../models/Product.js";
-import { sendEmailBackground } from "../utils/emailService.js";
+import { sendEmail } from "../utils/emailService.js";
 
 /* ════════════════════════════════════════
    PUBLIC — Subscribe to restock notification
@@ -120,7 +120,7 @@ export const sendRestockNotifications = async (productId, productName, productSl
 
         // Send emails in background (non-blocking)
         for (const sub of subscribers) {
-            sendEmailBackground({
+            sendEmail({
                 to: sub.email,
                 subject: `🎉 "${productName}" is back in stock!`,
                 html: `
@@ -144,7 +144,7 @@ export const sendRestockNotifications = async (productId, productName, productSl
                     </div>
                 `,
                 label: "RestockAlert",
-            });
+            }).catch(e => console.error("Mail Error:", e));
         }
 
         // Mark all as notified
