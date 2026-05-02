@@ -26,6 +26,7 @@ const getSuggestedSizes = (categoryName) => {
     if (lowerCat.match(/grocery|food|tea|coffee|sugar|rice|dal|dry fruit|powder/)) return SIZE_TEMPLATES.weight;
     return SIZE_TEMPLATES.apparel_top;
 };
+
 const GST_RATES = ["0", "5", "12", "18", "28"];
 const HIGHLIGHT_KEYS = [
     "Fabric", "Sleeve", "Pattern", "Color", "Pack of", "Collar", "Fit",
@@ -36,20 +37,12 @@ const HIGHLIGHT_KEYS = [
 
 const PRODUCT_TYPE_CONFIG = {
     ecommerce: {
-        label: "E-Commerce",
-        icon: "🛍️",
-        color: "#2563eb",
-        bg: "#eff6ff",
-        border: "#bfdbfe",
+        label: "E-Commerce", icon: "🛍️", color: "#2563eb", bg: "#eff6ff", border: "#bfdbfe",
         sections: ["basic", "pricing", "variants", "details", "images", "policy", "seo"],
         hint: "Standard online store product — no prep time needed",
     },
     urbexon_hour: {
-        label: "Urbexon Hour",
-        icon: "⚡",
-        color: "#d97706",
-        bg: "#fffbeb",
-        border: "#fde68a",
+        label: "Urbexon Hour", icon: "⚡", color: "#d97706", bg: "#fffbeb", border: "#fde68a",
         sections: ["basic", "pricing", "variants", "details", "images", "policy", "quick"],
         hint: "Fast delivery product — vendor managed, prep time required",
     },
@@ -92,10 +85,21 @@ const DEFAULT_FORM = {
     prepTimeMinutes: "10", maxOrderQty: "10", vendorId: "",
 };
 
+/**
+ * v2.1: Each color variant now has price + mrp fields
+ * price: "" = use base product price
+ * mrp:   "" = use base product mrp
+ */
 const DEFAULT_COLOR_VARIANT = () => ({
     id: Date.now() + Math.random(),
-    name: "", hex: "#000000", images: [], previews: [],
-    stock: "0", isDefault: false,
+    name: "",
+    hex: "#000000",
+    images: [],
+    previews: [],
+    stock: "0",
+    price: "",   // ← NEW: empty = inherit base price
+    mrp: "",     // ← NEW: empty = inherit base mrp
+    isDefault: false,
 });
 
 /* ─────────────────────────────────────────────────────────
@@ -113,7 +117,6 @@ const GLOBAL_CSS = `
   color:#0f172a;
 }
 
-/* ── Typography ── */
 .pf-page-title { font-size:22px; font-weight:800; letter-spacing:-.03em; color:#0f172a; }
 .pf-page-sub   { font-size:12px; font-weight:600; color:#6366f1; text-transform:uppercase; letter-spacing:.08em; margin-bottom:4px; }
 .pf-sec-label  { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:#94a3b8; padding-bottom:12px; border-bottom:1px solid #f1f5f9; margin-bottom:18px; }
@@ -121,7 +124,6 @@ const GLOBAL_CSS = `
 .pf-field-hint  { font-size:11px; color:#94a3b8; margin-left:5px; font-weight:400; text-transform:none; letter-spacing:0; }
 .pf-field-err   { font-size:11px; color:#dc2626; font-weight:600; margin-top:4px; }
 
-/* ── Card ── */
 .pf-card {
   background:#fff;
   border:1px solid #e2e8f0;
@@ -131,7 +133,6 @@ const GLOBAL_CSS = `
 }
 .pf-card-accent { height:3px; }
 
-/* ── Inputs ── */
 .pf-inp {
   width:100%; padding:10px 13px;
   background:#fafbfc; border:1.5px solid #e2e8f0;
@@ -152,7 +153,6 @@ const GLOBAL_CSS = `
   padding-right:36px;
 }
 
-/* ── Chips ── */
 .pf-chip {
   height:32px; padding:0 12px;
   border:1.5px solid #e2e8f0; border-radius:8px;
@@ -164,7 +164,6 @@ const GLOBAL_CSS = `
 .pf-chip:hover:not(.on) { border-color:#6366f1; color:#6366f1; background:#eef2ff; }
 .pf-chip.on { background:#eef2ff; border-color:#6366f1; color:#4f46e5; }
 
-/* ── Toggle ── */
 .pf-tog-wrap {
   display:flex; align-items:center; justify-content:space-between;
   padding:12px 14px; border-radius:12px; cursor:pointer;
@@ -179,7 +178,6 @@ const GLOBAL_CSS = `
   transition:left .2s; }
 .pf-tog.on .pf-tog-dot { left:21px; }
 
-/* ── Tabs ── */
 .pf-tabbar {
   display:flex; gap:2px; padding:6px;
   background:#f1f5f9; border-radius:12px;
@@ -201,7 +199,6 @@ const GLOBAL_CSS = `
 .pf-tab-dot { width:6px; height:6px; border-radius:50%; background:#ef4444;
   position:absolute; top:5px; right:5px; }
 
-/* ── Image grid / slot / drop ── */
 .pf-imgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
 .pf-slot {
   aspect-ratio:1; background:#fafbfc; border:1.5px solid #e2e8f0;
@@ -234,7 +231,7 @@ const GLOBAL_CSS = `
 }
 .pf-img-del:hover { background:#ef4444; }
 
-/* ── Variant card ── */
+/* ── Variant card v2.1 ── */
 .pf-variant-card {
   border:1.5px solid #e2e8f0; border-radius:14px;
   background:#fafbfc; padding:16px; transition:all .18s;
@@ -242,14 +239,7 @@ const GLOBAL_CSS = `
 }
 .pf-variant-card.default { border-color:#6366f1; background:#eef2ff; }
 .pf-variant-card:hover { border-color:#c7d2fe; }
-.pf-color-swatch {
-  width:36px; height:36px; border-radius:50%; border:3px solid #fff;
-  box-shadow:0 0 0 2px #e2e8f0; cursor:pointer; transition:all .15s;
-  display:inline-block; flex-shrink:0;
-}
-.pf-color-swatch:hover { box-shadow:0 0 0 3px #6366f1; }
 
-/* ── Highlights row ── */
 .pf-hl-row { display:flex; gap:8px; align-items:center; }
 .pf-hl-row:hover .pf-hl-rm { opacity:1!important; }
 .pf-hl-rm {
@@ -260,7 +250,6 @@ const GLOBAL_CSS = `
   opacity:0; transition:opacity .15s; flex-shrink:0; font-size:10px;
 }
 
-/* ── Action bar ── */
 .pf-actions { display:flex; gap:8px; align-items:center; padding:14px 24px 22px; }
 .pf-btn-ghost {
   flex:1; padding:11px; background:#fff;
@@ -290,21 +279,18 @@ const GLOBAL_CSS = `
 .pf-btn-submit:active:not(:disabled) { transform:translateY(0); }
 .pf-btn-submit:disabled { background:#e2e8f0; color:#94a3b8; box-shadow:none; cursor:not-allowed; }
 
-/* ── Error banner ── */
 .pf-errbanner {
   margin:0 22px 16px; padding:12px 14px;
   background:#fef2f2; border:1.5px solid #fecaca;
   border-radius:10px; color:#991b1b; font-size:12px; font-weight:600;
 }
 
-/* ── Discount badge ── */
 .pf-discount-row {
   display:flex; align-items:center; gap:12px;
   padding:12px 14px; background:#f0fdf4;
   border-radius:10px; border:1px solid #bbf7d0;
 }
 
-/* ── Toast ── */
 .pf-toast {
   position:fixed; top:18px; left:50%; transform:translateX(-50%);
   z-index:99999; padding:11px 22px; border-radius:10px;
@@ -316,7 +302,6 @@ const GLOBAL_CSS = `
 .pf-toast.ok  { background:#059669; color:#fff; }
 .pf-toast.err { background:#dc2626; color:#fff; }
 
-/* ── Product type picker ── */
 .pf-type-opt {
   flex:1; padding:14px 16px; border-radius:13px;
   border:2px solid #e2e8f0; background:#fafbfc;
@@ -325,11 +310,9 @@ const GLOBAL_CSS = `
 .pf-type-opt:hover { border-color:#a5b4fc; background:#eef2ff; }
 .pf-type-opt.on { border-color:var(--t-color); background:var(--t-bg); }
 
-/* ── Grids ── */
 .g2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
 
-/* ── Animations ── */
 @keyframes pf-in  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 @keyframes pf-pop { from{opacity:0;transform:translateX(-50%) scale(.93)} to{opacity:1;transform:translateX(-50%) scale(1)} }
 @keyframes pf-spin{ to{transform:rotate(360deg)} }
@@ -337,7 +320,13 @@ const GLOBAL_CSS = `
 .pf-spin { width:14px;height:14px;border:2.5px solid rgba(255,255,255,.3);
   border-top-color:#fff;border-radius:50%;animation:pf-spin .7s linear infinite; }
 
-/* ── Responsive ── */
+/* ── Variant price badge ── */
+.pf-variant-price-note {
+  font-size:10px; color:#6366f1; font-weight:600;
+  background:#eef2ff; padding:2px 7px; border-radius:4px;
+  margin-top:4px; display:inline-block;
+}
+
 @media(max-width:768px){
   .g2,.g3 { grid-template-columns:1fr!important; gap:12px; }
   .pf-imgrid { grid-template-columns:repeat(2,1fr); }
@@ -400,7 +389,6 @@ const SectionLabel = ({ children }) => (
 const AdminAddProduct = () => {
     const navigate = useNavigate();
 
-    /* ── State ── */
     const [productType, setProductType] = useState("ecommerce");
     const [form, setForm] = useState({ ...DEFAULT_FORM });
     const [tab, setTab] = useState("basic");
@@ -411,7 +399,6 @@ const AdminAddProduct = () => {
     const [categories, setCategories] = useState([]);
     const [hlTemplate, setHlTemplate] = useState([]);
 
-    /* Pricing & Stock */
     const [selSizes, setSelSizes] = useState([]);
     const selSizesRef = useRef([]);
     useEffect(() => { selSizesRef.current = selSizes; }, [selSizes]);
@@ -419,18 +406,13 @@ const AdminAddProduct = () => {
     const [availableSizes, setAvailableSizes] = useState([...SIZE_TEMPLATES.apparel_top]);
     const [newSize, setNewSize] = useState("");
 
-    /* Highlights */
     const [hls, setHls] = useState([{ key: "", value: "" }]);
-
-    /* Main images */
     const [mainImages, setMainImages] = useState([]);
     const [mainPreviews, setMainPreviews] = useState([]);
 
-    /* Color Variants */
     const [colorVariants, setColorVariants] = useState([]);
     const [enableVariants, setEnableVariants] = useState(false);
 
-    /* Customization */
     const [custConfig, setCustConfig] = useState({
         allowText: true, allowImage: true, allowNote: true,
         textLabel: "Name / Message", textPlaceholder: "e.g. Happy Birthday!",
@@ -439,16 +421,12 @@ const AdminAddProduct = () => {
         extraPrice: 0,
     });
 
-    const fileInputRef = useRef(null);
-
-    /* ── Load categories ── */
     useEffect(() => {
         fetchAllCategories()
             .then(r => setCategories(r.data?.categories || r.data || []))
             .catch(() => { });
     }, []);
 
-    /* ── Load highlight template when category changes ── */
     useEffect(() => {
         if (!form.category) { setHlTemplate([]); return; }
         api.get(`/categories/highlight-template?category=${encodeURIComponent(form.category)}`)
@@ -460,7 +438,6 @@ const AdminAddProduct = () => {
             .catch(() => setHlTemplate([]));
     }, [form.category]);
 
-    /* ── Sync dynamic sizes when category changes ── */
     useEffect(() => {
         const catObj = categories.find(c => c.value === form.category || c.slug === form.category || c.name === form.category);
         const catName = catObj ? catObj.name : form.category;
@@ -468,10 +445,8 @@ const AdminAddProduct = () => {
         setAvailableSizes(Array.from(new Set([...suggested, ...selSizesRef.current])));
     }, [form.category, categories]);
 
-    /* ── Sync product type → tabs ── */
     const sections = PRODUCT_TYPE_CONFIG[productType].sections;
 
-    /* ── Helpers ── */
     const showToast = (type, msg) => {
         setToast({ type, msg });
         setTimeout(() => setToast(null), 3200);
@@ -498,7 +473,6 @@ const AdminAddProduct = () => {
 
     const tabIdx = sections.indexOf(tab);
 
-    /* ── Size helpers ── */
     const toggleSize = s => setSelSizes(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s]);
     const updateSizeStock = (size, val) => {
         const n = Math.max(0, parseInt(val) || 0);
@@ -516,21 +490,15 @@ const AdminAddProduct = () => {
         if (e) e.preventDefault();
         const val = newSize.trim();
         if (!val) return;
-        if (!availableSizes.includes(val)) {
-            setAvailableSizes(p => [...p, val]);
-        }
-        if (!selSizes.includes(val)) {
-            setSelSizes(p => [...p, val]);
-        }
+        if (!availableSizes.includes(val)) setAvailableSizes(p => [...p, val]);
+        if (!selSizes.includes(val)) setSelSizes(p => [...p, val]);
         setNewSize("");
     };
 
-    /* ── Highlight helpers ── */
     const addHL = () => setHls(p => [...p, { key: "", value: "" }]);
     const removeHL = i => setHls(p => p.filter((_, j) => j !== i));
     const updateHL = (i, f, v) => setHls(p => p.map((h, j) => j === i ? { ...h, [f]: v } : h));
 
-    /* ── Main image helpers ── */
     const handleMainImgs = e => {
         const files = Array.from(e.target.files);
         if (!files.length) return;
@@ -548,7 +516,6 @@ const AdminAddProduct = () => {
         setMainPreviews(p => p.filter((_, j) => j !== i));
     };
 
-    /* ── Color variant helpers ── */
     const addVariant = () => setColorVariants(p => [
         ...p,
         { ...DEFAULT_COLOR_VARIANT(), isDefault: p.length === 0 },
@@ -570,8 +537,16 @@ const AdminAddProduct = () => {
     const handleVariantImages = (id, e) => {
         const files = Array.from(e.target.files);
         if (!files.length) return;
-        updateVariant(id, "images", files);
-        updateVariant(id, "previews", files.map(f => URL.createObjectURL(f)));
+        setColorVariants(p => p.map(v => {
+            if (v.id === id) {
+                return {
+                    ...v,
+                    images: [...v.images, ...files],
+                    previews: [...v.previews, ...files.map(f => URL.createObjectURL(f))]
+                };
+            }
+            return v;
+        }));
     };
 
     /* ── SUBMIT ── */
@@ -579,7 +554,6 @@ const AdminAddProduct = () => {
         e.preventDefault();
         setFErrs({}); setTopErr("");
 
-        /* Client validation */
         const fe = {};
         if (!form.name.trim()) fe.name = "Required";
         if (!form.price || +form.price <= 0) fe.price = "Enter valid price";
@@ -590,6 +564,12 @@ const AdminAddProduct = () => {
             fe.images = "At least 1 image required";
         if (productType === "urbexon_hour" && !form.vendorId?.trim())
             fe.vendorId = "Vendor ID required for UH";
+
+        // Validate variants
+        if (enableVariants && colorVariants.length > 0) {
+            const badVariant = colorVariants.find(v => !v.name.trim());
+            if (badVariant) fe.colorVariants = "All color variants must have a name";
+        }
 
         if (Object.keys(fe).length) {
             setFErrs(fe);
@@ -603,14 +583,11 @@ const AdminAddProduct = () => {
             setLoading(true);
             const fd = new FormData();
 
-            /* Required */
             fd.append("name", form.name.trim());
             fd.append("category", form.category);
             fd.append("price", String(+form.price));
-            fd.append("stock", String(+form.stock));
             fd.append("productType", productType);
 
-            /* Optional strings */
             [["description", form.description], ["mrp", form.mrp], ["brand", form.brand],
             ["sku", form.sku], ["weight", form.weight], ["origin", form.origin],
             ["returnPolicy", form.returnPolicy], ["shippingInfo", form.shippingInfo],
@@ -619,7 +596,6 @@ const AdminAddProduct = () => {
             ["metaDesc", form.metaDesc], ["nonReturnableReason", form.nonReturnableReason],
             ].forEach(([k, v]) => { const s = v?.toString().trim(); if (s) fd.append(k, s); });
 
-            /* Numbers / booleans */
             fd.append("gstPercent", String(+form.gstPercent || 0));
             fd.append("isFeatured", form.isFeatured ? "true" : "false");
             fd.append("isDeal", form.isDeal ? "true" : "false");
@@ -631,23 +607,18 @@ const AdminAddProduct = () => {
             fd.append("replacementWindow", String(+form.replacementWindow || 7));
             fd.append("cancelWindow", String(+form.cancelWindow || 0));
 
-            /* Deal date */
             if (form.isDeal && form.dealEndsAt?.trim()) {
                 const d = new Date(form.dealEndsAt);
                 if (!isNaN(d.getTime())) fd.append("dealEndsAt", d.toISOString());
             }
 
-            /* Tags */
             const tagsArr = form.tags.split(",").map(t => t.trim()).filter(Boolean);
             if (tagsArr.length) fd.append("tags", JSON.stringify(tagsArr));
 
-            /* Customization config */
             if (form.isCustomizable) fd.append("customizationConfig", JSON.stringify(custConfig));
 
-            /* Sizes */
             fd.append("sizes", JSON.stringify(selSizes.map(s => ({ size: s, stock: sizeStockMap[s] || 0 }))));
 
-            /* Highlights */
             const validHls = hls.filter(h => h.key.trim() && h.value.trim());
             if (validHls.length) {
                 const obj = {};
@@ -656,23 +627,32 @@ const AdminAddProduct = () => {
                 fd.append("highlightsArray", JSON.stringify(validHls.map(h => ({ title: h.key.trim(), value: h.value.trim() }))));
             }
 
-            /* Main images */
+            // Main images
             mainImages.forEach(img => fd.append("images", img));
             fd.append("mainImageCount", mainImages.length);
 
-            /* Color variants */
-            if (enableVariants && colorVariants.length) {
+            // Color variants — v2.1: include price + mrp per variant
+            if (enableVariants && colorVariants.length > 0) {
                 const varMeta = colorVariants.map(v => ({
-                    name: v.name, hex: v.hex, stock: +v.stock || 0, isDefault: v.isDefault,
+                    name: v.name,
+                    hex: v.hex,
+                    stock: +v.stock || 0,
+                    price: v.price !== "" ? +v.price : null,   // null = inherit base
+                    mrp: v.mrp !== "" ? +v.mrp : null,         // null = inherit base
+                    isDefault: v.isDefault,
                     imageCount: v.images.length,
                 }));
                 fd.append("colorVariants", JSON.stringify(varMeta));
-                colorVariants.forEach((v, vi) => {
-                    v.images.forEach(img => fd.append(`images`, img));
+                colorVariants.forEach(v => {
+                    v.images.forEach(img => fd.append("images", img));
                 });
+
+                // Stock is derived from variants — send 0 (backend auto-calculates)
+                fd.append("stock", "0");
+            } else {
+                fd.append("stock", String(+form.stock));
             }
 
-            /* UH-specific */
             if (productType === "urbexon_hour") {
                 fd.append("prepTimeMinutes", String(+form.prepTimeMinutes || 10));
                 fd.append("maxOrderQty", String(+form.maxOrderQty || 10));
@@ -705,17 +685,12 @@ const AdminAddProduct = () => {
         }
     };
 
-    /* ── Type config ── */
     const tc = PRODUCT_TYPE_CONFIG[productType];
 
-    /* ═══════════════════════════════════════════════════════
-       RENDER
-    ═══════════════════════════════════════════════════════ */
     return (
         <div className="pf-root" style={{ padding: "24px 14px 80px" }}>
             <style>{GLOBAL_CSS}</style>
 
-            {/* Toast */}
             {toast && (
                 <div className={`pf-toast ${toast.type}`}>
                     {toast.type === "ok" ? "✓" : "✕"} {toast.msg}
@@ -724,7 +699,7 @@ const AdminAddProduct = () => {
 
             <div style={{ maxWidth: 880, margin: "0 auto" }}>
 
-                {/* ── Header ── */}
+                {/* Header */}
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22 }}>
                     <button
                         type="button" onClick={() => navigate("/admin/products")}
@@ -743,7 +718,7 @@ const AdminAddProduct = () => {
                     </div>
                 </div>
 
-                {/* ── Product Type Selector ── */}
+                {/* Product Type Selector */}
                 <div className="pf-card" style={{ marginBottom: 14 }}>
                     <div className="pf-card-accent" style={{ background: `linear-gradient(90deg,${tc.color},${tc.color}88)` }} />
                     <div style={{ padding: "16px 20px" }}>
@@ -778,9 +753,9 @@ const AdminAddProduct = () => {
                     </div>
                 </div>
 
-                {/* ── Tab bar ── */}
+                {/* Tab bar */}
                 <div className="pf-tabbar" style={{ marginBottom: 12 }}>
-                    {sections.map((sid, i) => {
+                    {sections.map((sid) => {
                         const meta = SECTION_META[sid];
                         return (
                             <button
@@ -802,7 +777,7 @@ const AdminAddProduct = () => {
 
                         <div style={{ padding: "22px 24px 6px" }}>
 
-                            {/* ══════════════ BASIC INFO ══════════════ */}
+                            {/* ══ BASIC INFO ══ */}
                             {tab === "basic" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SectionLabel>Basic Information</SectionLabel>
@@ -821,27 +796,22 @@ const AdminAddProduct = () => {
 
                                     <div className="g2">
                                         <Field label="Brand" hint="optional">
-                                            <input name="brand" value={form.brand} onChange={hc}
-                                                placeholder="e.g. Urbexon" className="pf-inp" />
+                                            <input name="brand" value={form.brand} onChange={hc} placeholder="e.g. Urbexon" className="pf-inp" />
                                         </Field>
                                         <Field label="SKU / Code" hint="optional">
-                                            <input name="sku" value={form.sku} onChange={hc}
-                                                placeholder="e.g. UX-KRT-001" className="pf-inp" />
+                                            <input name="sku" value={form.sku} onChange={hc} placeholder="e.g. UX-KRT-001" className="pf-inp" />
                                         </Field>
                                     </div>
 
                                     <div className="g3">
                                         <Field label="Color" hint="primary">
-                                            <input name="color" value={form.color} onChange={hc}
-                                                placeholder="Navy Blue" className="pf-inp" />
+                                            <input name="color" value={form.color} onChange={hc} placeholder="Navy Blue" className="pf-inp" />
                                         </Field>
                                         <Field label="Material">
-                                            <input name="material" value={form.material} onChange={hc}
-                                                placeholder="Cotton" className="pf-inp" />
+                                            <input name="material" value={form.material} onChange={hc} placeholder="Cotton" className="pf-inp" />
                                         </Field>
                                         <Field label="Occasion">
-                                            <input name="occasion" value={form.occasion} onChange={hc}
-                                                placeholder="Casual" className="pf-inp" />
+                                            <input name="occasion" value={form.occasion} onChange={hc} placeholder="Casual" className="pf-inp" />
                                         </Field>
                                     </div>
 
@@ -869,26 +839,17 @@ const AdminAddProduct = () => {
                                     </Field>
 
                                     <div className="g2">
-                                        <Toggle
-                                            on={form.isFeatured}
+                                        <Toggle on={form.isFeatured}
                                             toggle={() => setForm(p => ({ ...p, isFeatured: !p.isFeatured }))}
-                                            label="⭐ Featured Product"
-                                            sub="Shown prominently on homepage"
-                                            color="#f59e0b" bg="#fffbeb"
-                                        />
-                                        <Toggle
-                                            on={form.isCustomizable}
+                                            label="⭐ Featured Product" sub="Shown prominently on homepage"
+                                            color="#f59e0b" bg="#fffbeb" />
+                                        <Toggle on={form.isCustomizable}
                                             toggle={() => setForm(p => ({ ...p, isCustomizable: !p.isCustomizable }))}
-                                            label="🎨 Customizable"
-                                            sub="Customer can add design/text"
-                                        />
+                                            label="🎨 Customizable" sub="Customer can add design/text" />
                                     </div>
 
                                     {form.isCustomizable && (
-                                        <div style={{
-                                            background: "#fafbfc", border: "1.5px solid #e2e8f0",
-                                            borderRadius: 13, padding: 16, display: "flex", flexDirection: "column", gap: 12
-                                        }}>
+                                        <div style={{ background: "#fafbfc", border: "1.5px solid #e2e8f0", borderRadius: 13, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
                                             <p style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5" }}>🎨 Customization Options</p>
                                             <Toggle on={custConfig.allowText}
                                                 toggle={() => setCustConfig(p => ({ ...p, allowText: !p.allowText }))}
@@ -899,11 +860,6 @@ const AdminAddProduct = () => {
                                                         <input value={custConfig.textLabel}
                                                             onChange={e => setCustConfig(p => ({ ...p, textLabel: e.target.value }))}
                                                             placeholder="Name / Message" className="pf-inp" />
-                                                    </Field>
-                                                    <Field label="Placeholder">
-                                                        <input value={custConfig.textPlaceholder}
-                                                            onChange={e => setCustConfig(p => ({ ...p, textPlaceholder: e.target.value }))}
-                                                            placeholder="e.g. Happy Birthday!" className="pf-inp" />
                                                     </Field>
                                                     <Field label="Max Length">
                                                         <input type="number" min="1" max="500" value={custConfig.textMaxLength}
@@ -928,18 +884,21 @@ const AdminAddProduct = () => {
                                 </div>
                             )}
 
-                            {/* ══════════════ PRICING & STOCK ══════════════ */}
+                            {/* ══ PRICING ══ */}
                             {tab === "pricing" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SectionLabel>Pricing & Stock</SectionLabel>
 
+                                    <div style={{ padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10 }}>
+                                        <p style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>
+                                            💡 This is the <strong>base price</strong>. If color variants have different prices, set them in the Variants tab.
+                                        </p>
+                                    </div>
+
                                     <div className="g2">
                                         <Field label="Selling Price (₹)" required err={fErrs.price}>
                                             <div style={{ position: "relative" }}>
-                                                <span style={{
-                                                    position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
-                                                    color: "#94a3b8", fontSize: 13, pointerEvents: "none"
-                                                }}>₹</span>
+                                                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 13, pointerEvents: "none" }}>₹</span>
                                                 <input type="number" name="price" value={form.price} onChange={hc}
                                                     placeholder="0" min="1"
                                                     className={`pf-inp${fErrs.price ? " err" : ""}`} style={{ paddingLeft: 28 }} />
@@ -947,10 +906,7 @@ const AdminAddProduct = () => {
                                         </Field>
                                         <Field label="MRP (₹)" hint="compare-at price" err={fErrs.mrp}>
                                             <div style={{ position: "relative" }}>
-                                                <span style={{
-                                                    position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
-                                                    color: "#94a3b8", fontSize: 13, pointerEvents: "none"
-                                                }}>₹</span>
+                                                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 13, pointerEvents: "none" }}>₹</span>
                                                 <input type="number" name="mrp" value={form.mrp} onChange={hc}
                                                     placeholder="0" min="1"
                                                     className={`pf-inp${fErrs.mrp ? " err" : ""}`} style={{ paddingLeft: 28 }} />
@@ -963,38 +919,30 @@ const AdminAddProduct = () => {
                                             <span style={{ color: "#059669", fontWeight: 800, fontSize: 22 }}>{discPct}%</span>
                                             <div>
                                                 <p style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>Discount Applied</p>
-                                                <p style={{ fontSize: 11, color: "#64748b" }}>
-                                                    Customer saves ₹{(+form.mrp - +form.price).toLocaleString("en-IN")}
-                                                </p>
+                                                <p style={{ fontSize: 11, color: "#64748b" }}>Customer saves ₹{(+form.mrp - +form.price).toLocaleString("en-IN")}</p>
                                             </div>
                                         </div>
                                     )}
 
                                     <div className="g2">
                                         <Field label="Stock Quantity" required err={fErrs.stock}
-                                            hint={selSizes.length ? "auto-calculated from sizes" : undefined}>
+                                            hint={enableVariants ? "auto from variants" : selSizes.length ? "auto from sizes" : undefined}>
                                             <div style={{ position: "relative" }}>
-                                                <span style={{
-                                                    position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
-                                                    color: "#94a3b8", fontSize: 12, pointerEvents: "none"
-                                                }}>📦</span>
+                                                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 12, pointerEvents: "none" }}>📦</span>
                                                 <input type="number" name="stock" value={form.stock} onChange={hc}
-                                                    readOnly={selSizes.length > 0} placeholder="0" min="0"
+                                                    readOnly={selSizes.length > 0 || enableVariants}
+                                                    placeholder="0" min="0"
                                                     className={`pf-inp${fErrs.stock ? " err" : ""}`}
-                                                    style={{ paddingLeft: 30, background: selSizes.length > 0 ? "#f1f5f9" : undefined }} />
+                                                    style={{ paddingLeft: 30, background: (selSizes.length > 0 || enableVariants) ? "#f1f5f9" : undefined }} />
                                             </div>
                                             {form.stock !== "" && !fErrs.stock && (
-                                                <p style={{
-                                                    fontSize: 11, fontWeight: 600, marginTop: 2,
-                                                    color: +form.stock > 0 ? "#059669" : "#ef4444"
-                                                }}>
+                                                <p style={{ fontSize: 11, fontWeight: 600, marginTop: 2, color: +form.stock > 0 ? "#059669" : "#ef4444" }}>
                                                     {+form.stock > 0 ? `✓ In Stock — ${form.stock} units` : "✕ Out of Stock"}
                                                 </p>
                                             )}
                                         </Field>
                                         <Field label="GST Rate">
-                                            <select name="gstPercent" value={form.gstPercent} onChange={hc}
-                                                className="pf-inp pf-sel">
+                                            <select name="gstPercent" value={form.gstPercent} onChange={hc} className="pf-inp pf-sel">
                                                 {GST_RATES.map(r => <option key={r} value={r}>{r}% GST</option>)}
                                             </select>
                                         </Field>
@@ -1002,21 +950,18 @@ const AdminAddProduct = () => {
 
                                     <Toggle on={form.isDeal}
                                         toggle={() => setForm(p => ({ ...p, isDeal: !p.isDeal, dealEndsAt: "" }))}
-                                        label="⚡ Mark as Deal"
-                                        sub="Appears in Deals / Flash Deals section"
-                                        color="#d97706" bg="#fffbeb"
-                                    />
+                                        label="⚡ Mark as Deal" sub="Appears in Deals / Flash Deals section"
+                                        color="#d97706" bg="#fffbeb" />
 
                                     {form.isDeal && (
-                                        <Field label="Deal Ends At" hint="leave blank for no expiry" err={fErrs.dealEndsAt}>
-                                            <input type="datetime-local" name="dealEndsAt" value={form.dealEndsAt} onChange={hc}
-                                                className={`pf-inp${fErrs.dealEndsAt ? " err" : ""}`} />
+                                        <Field label="Deal Ends At" hint="leave blank for no expiry">
+                                            <input type="datetime-local" name="dealEndsAt" value={form.dealEndsAt} onChange={hc} className="pf-inp" />
                                         </Field>
                                     )}
                                 </div>
                             )}
 
-                            {/* ══════════════ VARIANTS ══════════════ */}
+                            {/* ══ VARIANTS ══ */}
                             {tab === "variants" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                                     <SectionLabel>Color Variants & Sizes</SectionLabel>
@@ -1037,7 +982,7 @@ const AdminAddProduct = () => {
                                                 value={newSize}
                                                 onChange={e => setNewSize(e.target.value)}
                                                 onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddCustomSize(); } }}
-                                                placeholder="Add custom size (e.g. 8, 42, 6GB)"
+                                                placeholder="Add custom size"
                                                 className="pf-inp"
                                                 style={{ maxWidth: 200, padding: "8px 12px" }}
                                             />
@@ -1046,27 +991,16 @@ const AdminAddProduct = () => {
                                             </button>
                                         </div>
                                         {selSizes.length > 0 && (
-                                            <>
-                                                <p style={{ fontSize: 11, color: "#6366f1", fontWeight: 600, marginBottom: 8 }}>Per-size stock:</p>
-                                                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                                                    {selSizes.map(s => (
-                                                        <div key={s} style={{
-                                                            display: "flex", alignItems: "center", gap: 8,
-                                                            background: "#fafbfc", border: "1.5px solid #e2e8f0",
-                                                            borderRadius: 9, padding: "6px 10px"
-                                                        }}>
-                                                            <span style={{ fontSize: 12, fontWeight: 700, color: "#475569", minWidth: 36 }}>{s}</span>
-                                                            <input type="number" min="0" value={sizeStockMap[s] ?? 0}
-                                                                onChange={e => updateSizeStock(s, e.target.value)}
-                                                                style={{
-                                                                    width: 60, padding: "5px 8px", border: "1.5px solid #e2e8f0",
-                                                                    borderRadius: 7, fontSize: 12, textAlign: "center",
-                                                                    outline: "none", fontFamily: "inherit"
-                                                                }} />
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </>
+                                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                                                {selSizes.map(s => (
+                                                    <div key={s} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fafbfc", border: "1.5px solid #e2e8f0", borderRadius: 9, padding: "6px 10px" }}>
+                                                        <span style={{ fontSize: 12, fontWeight: 700, color: "#475569", minWidth: 36 }}>{s}</span>
+                                                        <input type="number" min="0" value={sizeStockMap[s] ?? 0}
+                                                            onChange={e => updateSizeStock(s, e.target.value)}
+                                                            style={{ width: 60, padding: "5px 8px", border: "1.5px solid #e2e8f0", borderRadius: 7, fontSize: 12, textAlign: "center", outline: "none", fontFamily: "inherit" }} />
+                                                    </div>
+                                                ))}
+                                            </div>
                                         )}
                                     </div>
 
@@ -1077,40 +1011,40 @@ const AdminAddProduct = () => {
                                             if (!enableVariants && colorVariants.length === 0) addVariant();
                                         }}
                                         label="🎨 Multiple Color Variants"
-                                        sub="Add different color options with separate images and stock"
+                                        sub="Add different colors with separate price, stock and images"
                                     />
+
+                                    {fErrs.colorVariants && (
+                                        <p className="pf-field-err">⚠ {fErrs.colorVariants}</p>
+                                    )}
 
                                     {enableVariants && (
                                         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                                            <p style={{ fontSize: 11, color: "#94a3b8" }}>
-                                                Add each color variant with its images, name, and stock quantity. The default variant shows first.
-                                            </p>
+                                            <div style={{ padding: "10px 14px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10 }}>
+                                                <p style={{ fontSize: 11, color: "#92400e", fontWeight: 600 }}>
+                                                    💡 Leave Price/MRP blank to inherit base product price. Only fill if this color has a different price.
+                                                </p>
+                                            </div>
 
                                             {colorVariants.map((v, vi) => (
                                                 <div key={v.id}
                                                     className={`pf-variant-card${v.isDefault ? " default" : ""}`}
                                                 >
-                                                    {/* Variant header */}
-                                                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                                                    {/* Row 1: Color swatch + Name + Default/Remove */}
+                                                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                                                         <div style={{ position: "relative" }}>
                                                             <input
                                                                 type="color" value={v.hex}
                                                                 onChange={e => updateVariant(v.id, "hex", e.target.value)}
                                                                 style={{ opacity: 0, position: "absolute", inset: 0, cursor: "pointer", border: "none" }}
                                                             />
-                                                            <div className="pf-color-swatch" style={{ background: v.hex }} />
+                                                            <div style={{ width: 36, height: 36, borderRadius: "50%", background: v.hex, border: "3px solid #fff", boxShadow: "0 0 0 2px #e2e8f0", cursor: "pointer" }} />
                                                         </div>
                                                         <input
                                                             value={v.name}
                                                             onChange={e => updateVariant(v.id, "name", e.target.value)}
-                                                            placeholder={`Color ${vi + 1} name (e.g. Navy Blue)`}
+                                                            placeholder={`Color name (e.g. Navy Blue)`}
                                                             className="pf-inp" style={{ flex: 1 }}
-                                                        />
-                                                        <input
-                                                            type="number" min="0" value={v.stock}
-                                                            onChange={e => updateVariant(v.id, "stock", e.target.value)}
-                                                            placeholder="Stock"
-                                                            className="pf-inp" style={{ width: 90 }}
                                                         />
                                                         <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
                                                             <button type="button"
@@ -1126,23 +1060,56 @@ const AdminAddProduct = () => {
                                                             </button>
                                                             {colorVariants.length > 1 && (
                                                                 <button type="button" onClick={() => removeVariant(v.id)}
-                                                                    style={{
-                                                                        padding: "3px 10px", fontSize: 10, fontWeight: 700,
-                                                                        border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer",
-                                                                        background: "#fef2f2", color: "#dc2626"
-                                                                    }}>
+                                                                    style={{ padding: "3px 10px", fontSize: 10, fontWeight: 700, border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", background: "#fef2f2", color: "#dc2626" }}>
                                                                     Remove
                                                                 </button>
                                                             )}
                                                         </div>
                                                     </div>
 
-                                                    {/* Variant images */}
+                                                    {/* Row 2: Price + MRP + Stock — v2.1 NEW */}
+                                                    <div className="g3" style={{ marginBottom: 12 }}>
+                                                        <Field label="Price (₹)" hint="blank = base price">
+                                                            <div style={{ position: "relative" }}>
+                                                                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 12, pointerEvents: "none" }}>₹</span>
+                                                                <input
+                                                                    type="number" min="0"
+                                                                    value={v.price}
+                                                                    onChange={e => updateVariant(v.id, "price", e.target.value)}
+                                                                    placeholder={form.price || "Base"}
+                                                                    className="pf-inp"
+                                                                    style={{ paddingLeft: 24, fontSize: 13 }}
+                                                                />
+                                                            </div>
+                                                        </Field>
+                                                        <Field label="MRP (₹)" hint="blank = base MRP">
+                                                            <div style={{ position: "relative" }}>
+                                                                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 12, pointerEvents: "none" }}>₹</span>
+                                                                <input
+                                                                    type="number" min="0"
+                                                                    value={v.mrp}
+                                                                    onChange={e => updateVariant(v.id, "mrp", e.target.value)}
+                                                                    placeholder={form.mrp || "Base"}
+                                                                    className="pf-inp"
+                                                                    style={{ paddingLeft: 24, fontSize: 13 }}
+                                                                />
+                                                            </div>
+                                                        </Field>
+                                                        <Field label="Stock">
+                                                            <input
+                                                                type="number" min="0"
+                                                                value={v.stock}
+                                                                onChange={e => updateVariant(v.id, "stock", e.target.value)}
+                                                                placeholder="0"
+                                                                className="pf-inp"
+                                                            />
+                                                        </Field>
+                                                    </div>
+
+                                                    {/* Row 3: Variant images */}
                                                     <div>
-                                                        <p style={{ fontSize: 11, fontWeight: 600, color: "#64748b", marginBottom: 8 }}>
-                                                            Images for this color:
-                                                        </p>
-                                                        <div className="pf-imgrid" style={{ gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+                                                        <p style={{ fontSize: 11, fontWeight: 600, color: "#64748b", marginBottom: 8 }}>Images for this color:</p>
+                                                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
                                                             {v.previews.map((src, pi) => (
                                                                 <div key={pi} className="pf-slot">
                                                                     <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -1175,11 +1142,8 @@ const AdminAddProduct = () => {
                                                     display: "flex", alignItems: "center", gap: 6, justifyContent: "center",
                                                     padding: "10px 16px", border: "2px dashed #c7d2fe",
                                                     borderRadius: 12, background: "none", cursor: "pointer",
-                                                    color: "#6366f1", fontWeight: 700, fontSize: 13, fontFamily: "inherit",
-                                                    transition: "all .15s"
-                                                }}
-                                                onMouseEnter={e => { e.currentTarget.style.background = "#eef2ff"; e.currentTarget.style.borderColor = "#818cf8"; }}
-                                                onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.borderColor = "#c7d2fe"; }}>
+                                                    color: "#6366f1", fontWeight: 700, fontSize: 13, fontFamily: "inherit"
+                                                }}>
                                                 + Add Color Variant
                                             </button>
                                         </div>
@@ -1187,11 +1151,10 @@ const AdminAddProduct = () => {
                                 </div>
                             )}
 
-                            {/* ══════════════ DETAILS ══════════════ */}
+                            {/* ══ DETAILS ══ */}
                             {tab === "details" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                                     <SectionLabel>Product Details & Specifications</SectionLabel>
-
                                     <Field label="Product Highlights" hint="key specs shown on product page">
                                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                             {hls.map((h, i) => (
@@ -1211,55 +1174,41 @@ const AdminAddProduct = () => {
                                                 </div>
                                             ))}
                                             <button type="button" onClick={addHL}
-                                                style={{
-                                                    alignSelf: "flex-start", display: "flex", alignItems: "center",
-                                                    gap: 5, fontSize: 12, fontWeight: 600, color: "#6366f1",
-                                                    background: "none", border: "none", cursor: "pointer", padding: "3px 0"
-                                                }}>
+                                                style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#6366f1", background: "none", border: "none", cursor: "pointer", padding: "3px 0" }}>
                                                 + Add Highlight
                                             </button>
                                         </div>
                                     </Field>
-
                                     <div className="g2">
                                         <Field label="Weight" hint="for shipping calc">
-                                            <input name="weight" value={form.weight} onChange={hc}
-                                                placeholder="e.g. 250g" className="pf-inp" />
+                                            <input name="weight" value={form.weight} onChange={hc} placeholder="e.g. 250g" className="pf-inp" />
                                         </Field>
                                         <Field label="Country of Origin">
-                                            <input name="origin" value={form.origin} onChange={hc}
-                                                placeholder="e.g. India" className="pf-inp" />
+                                            <input name="origin" value={form.origin} onChange={hc} placeholder="e.g. India" className="pf-inp" />
                                         </Field>
                                     </div>
                                 </div>
                             )}
 
-                            {/* ══════════════ IMAGES ══════════════ */}
+                            {/* ══ IMAGES ══ */}
                             {tab === "images" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SectionLabel>Product Images</SectionLabel>
-
                                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                                         <div>
-                                            <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", marginBottom: 3 }}>
-                                                Main Product Images
-                                            </p>
-                                            <p style={{ fontSize: 11, color: "#94a3b8" }}>
-                                                First image = main thumbnail · Max 6 · 5MB each · Square crop recommended
-                                            </p>
+                                            <p style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", marginBottom: 3 }}>Main Product Images</p>
+                                            <p style={{ fontSize: 11, color: "#94a3b8" }}>First image = main thumbnail · Max 6 · 5MB each</p>
                                         </div>
                                         <span style={{
                                             fontSize: 12, fontWeight: 700, padding: "3px 12px", borderRadius: 20,
-                                            color: mainPreviews.length === 0 ? "#dc2626" : mainPreviews.length >= 6 ? "#059669" : "#4f46e5",
-                                            background: mainPreviews.length === 0 ? "#fef2f2" : mainPreviews.length >= 6 ? "#f0fdf4" : "#eef2ff",
-                                            border: `1px solid ${mainPreviews.length === 0 ? "#fecaca" : mainPreviews.length >= 6 ? "#bbf7d0" : "#c7d2fe"}`,
+                                            color: mainPreviews.length === 0 ? "#dc2626" : "#4f46e5",
+                                            background: mainPreviews.length === 0 ? "#fef2f2" : "#eef2ff",
+                                            border: `1px solid ${mainPreviews.length === 0 ? "#fecaca" : "#c7d2fe"}`,
                                         }}>
                                             {mainPreviews.length}/6
                                         </span>
                                     </div>
-
                                     {fErrs.images && <p className="pf-field-err">⚠ {fErrs.images}</p>}
-
                                     <div className="pf-imgrid">
                                         {mainPreviews.map((src, i) => (
                                             <div key={i} className="pf-slot">
@@ -1277,185 +1226,99 @@ const AdminAddProduct = () => {
                                             </label>
                                         )}
                                     </div>
-
                                     {enableVariants && colorVariants.length > 0 && (
-                                        <div style={{
-                                            marginTop: 8, padding: 14, background: "#fffbeb",
-                                            border: "1px solid #fde68a", borderRadius: 12
-                                        }}>
-                                            <p style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>
-                                                💡 Color Variants Active
-                                            </p>
+                                        <div style={{ marginTop: 8, padding: 14, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12 }}>
+                                            <p style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>💡 Color Variants Active</p>
                                             <p style={{ fontSize: 11, color: "#78350f", marginTop: 4 }}>
-                                                You have {colorVariants.length} color variant(s). Upload variant images in the Variants tab.
-                                                Images here will be used as fallback / generic product shots.
+                                                Upload variant-specific images in the Variants tab. These main images are used as fallback.
                                             </p>
                                         </div>
                                     )}
                                 </div>
                             )}
 
-                            {/* ══════════════ POLICY ══════════════ */}
+                            {/* ══ POLICY ══ */}
                             {tab === "policy" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SectionLabel>Cancellation, Return & Replacement Policy</SectionLabel>
-
-                                    <div style={{
-                                        padding: "12px 14px", background: "#eff6ff",
-                                        border: "1px solid #bfdbfe", borderRadius: 10, marginBottom: 4
-                                    }}>
-                                        <p style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>
-                                            📋 Configure product-level policies. These override store defaults for this product.
-                                        </p>
-                                    </div>
-
                                     <div className="g3">
-                                        {[
-                                            ["isCancellable", "Cancellable"],
-                                            ["isReturnable", "Returnable"],
-                                            ["isReplaceable", "Replaceable"],
-                                        ].map(([field, label]) => (
-                                            <label key={field} style={{
-                                                display: "flex", alignItems: "center", gap: 9,
-                                                padding: "11px 14px", borderRadius: 11, cursor: "pointer", fontSize: 13, fontWeight: 700,
-                                                background: form[field] ? "#f0fdf4" : "#fef2f2",
-                                                border: `1.5px solid ${form[field] ? "#bbf7d0" : "#fecaca"}`,
-                                                transition: "all .15s",
-                                            }}>
-                                                <input type="checkbox" name={field} checked={form[field]}
-                                                    onChange={e => setForm(p => ({ ...p, [field]: e.target.checked }))} />
+                                        {[["isCancellable", "Cancellable"], ["isReturnable", "Returnable"], ["isReplaceable", "Replaceable"]].map(([field, label]) => (
+                                            <label key={field} style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 14px", borderRadius: 11, cursor: "pointer", fontSize: 13, fontWeight: 700, background: form[field] ? "#f0fdf4" : "#fef2f2", border: `1.5px solid ${form[field] ? "#bbf7d0" : "#fecaca"}`, transition: "all .15s" }}>
+                                                <input type="checkbox" name={field} checked={form[field]} onChange={e => setForm(p => ({ ...p, [field]: e.target.checked }))} />
                                                 {label}
                                             </label>
                                         ))}
                                     </div>
-
                                     <div className="g3">
-                                        <Field label="Cancel Window (hours)" hint="0 = until packed">
-                                            <input name="cancelWindow" value={form.cancelWindow} onChange={hc}
-                                                type="number" min="0" max="72" placeholder="0" className="pf-inp" />
+                                        <Field label="Cancel Window (hours)">
+                                            <input name="cancelWindow" value={form.cancelWindow} onChange={hc} type="number" min="0" max="72" placeholder="0" className="pf-inp" />
                                         </Field>
-                                        <Field label="Return Window (days)" hint="after delivery">
-                                            <input name="returnWindow" value={form.returnWindow} onChange={hc}
-                                                type="number" min="0" max="30" placeholder="7" className="pf-inp" />
+                                        <Field label="Return Window (days)">
+                                            <input name="returnWindow" value={form.returnWindow} onChange={hc} type="number" min="0" max="30" placeholder="7" className="pf-inp" />
                                         </Field>
                                         <Field label="Replacement Window (days)">
-                                            <input name="replacementWindow" value={form.replacementWindow} onChange={hc}
-                                                type="number" min="0" max="30" placeholder="7" className="pf-inp" />
+                                            <input name="replacementWindow" value={form.replacementWindow} onChange={hc} type="number" min="0" max="30" placeholder="7" className="pf-inp" />
                                         </Field>
                                     </div>
-
                                     {!form.isReturnable && (
-                                        <Field label="Non-Returnable Reason" hint="shown to customer">
-                                            <input name="nonReturnableReason" value={form.nonReturnableReason} onChange={hc}
-                                                placeholder="e.g. Hygiene product, Perishable item" className="pf-inp" />
+                                        <Field label="Non-Returnable Reason">
+                                            <input name="nonReturnableReason" value={form.nonReturnableReason} onChange={hc} placeholder="e.g. Hygiene product" className="pf-inp" />
                                         </Field>
                                     )}
                                 </div>
                             )}
 
-                            {/* ══════════════ SEO & SHIPPING ══════════════ */}
+                            {/* ══ SEO ══ */}
                             {tab === "seo" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SectionLabel>SEO & Shipping</SectionLabel>
-
-                                    <div style={{
-                                        padding: "10px 14px", background: "#eff6ff",
-                                        border: "1px solid #bfdbfe", borderRadius: 10
-                                    }}>
-                                        <p style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>
-                                            💡 Leave blank to auto-generate from product name & description.
-                                        </p>
-                                    </div>
-
-                                    <Field label="Meta Title" hint="~60 chars recommended">
-                                        <input name="metaTitle" value={form.metaTitle} onChange={hc}
-                                            placeholder="Buy Premium Silk Kurta | Urbexon" className="pf-inp" />
-                                        {form.metaTitle && (
-                                            <p style={{
-                                                fontSize: 10, marginTop: 2,
-                                                color: form.metaTitle.length > 60 ? "#dc2626" : "#94a3b8"
-                                            }}>
-                                                {form.metaTitle.length}/60 chars
-                                            </p>
-                                        )}
+                                    <Field label="Meta Title" hint="~60 chars">
+                                        <input name="metaTitle" value={form.metaTitle} onChange={hc} placeholder="Buy Premium Silk Kurta | Urbexon" className="pf-inp" />
                                     </Field>
-
-                                    <Field label="Meta Description" hint="~160 chars recommended">
-                                        <textarea name="metaDesc" value={form.metaDesc} onChange={hc}
-                                            placeholder="Brief description for Google search snippets…"
-                                            rows={3} className="pf-inp" style={{ resize: "none", lineHeight: 1.6 }} />
-                                        {form.metaDesc && (
-                                            <p style={{
-                                                fontSize: 10, marginTop: 2,
-                                                color: form.metaDesc.length > 160 ? "#dc2626" : "#94a3b8"
-                                            }}>
-                                                {form.metaDesc.length}/160 chars
-                                            </p>
-                                        )}
+                                    <Field label="Meta Description" hint="~160 chars">
+                                        <textarea name="metaDesc" value={form.metaDesc} onChange={hc} rows={3} className="pf-inp" style={{ resize: "none", lineHeight: 1.6 }} />
                                     </Field>
-
-                                    <div style={{ height: 1, background: "#f1f5f9" }} />
-
                                     <div className="g2">
                                         <Field label="Return Policy">
-                                            <select name="returnPolicy" value={form.returnPolicy} onChange={hc}
-                                                className="pf-inp pf-sel">
+                                            <select name="returnPolicy" value={form.returnPolicy} onChange={hc} className="pf-inp pf-sel">
                                                 <option value="0">No Returns</option>
                                                 <option value="7">7 Days</option>
                                                 <option value="15">15 Days</option>
                                                 <option value="30">30 Days</option>
                                             </select>
                                         </Field>
-                                        <Field label="Shipping Info" hint="optional">
-                                            <input name="shippingInfo" value={form.shippingInfo} onChange={hc}
-                                                placeholder="Ships in 2–3 business days" className="pf-inp" />
+                                        <Field label="Shipping Info">
+                                            <input name="shippingInfo" value={form.shippingInfo} onChange={hc} placeholder="Ships in 2–3 business days" className="pf-inp" />
                                         </Field>
                                     </div>
                                 </div>
                             )}
 
-                            {/* ══════════════ QUICK COMMERCE (UH ONLY) ══════════════ */}
+                            {/* ══ QUICK COMMERCE ══ */}
                             {tab === "quick" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SectionLabel>Quick Commerce Settings (Urbexon Hour)</SectionLabel>
-
-                                    <div style={{
-                                        padding: "12px 14px", background: "#fffbeb",
-                                        border: "1px solid #fde68a", borderRadius: 10
-                                    }}>
-                                        <p style={{ fontSize: 11, color: "#92400e", fontWeight: 600 }}>
-                                            ⚡ These settings apply only to Urbexon Hour fast-delivery products.
-                                        </p>
-                                    </div>
-
-                                    <Field label="Vendor ID" required err={fErrs.vendorId}
-                                        hint="MongoDB ObjectId of the vendor managing this product">
+                                    <Field label="Vendor ID" required err={fErrs.vendorId}>
                                         <input name="vendorId" value={form.vendorId} onChange={hc}
                                             placeholder="e.g. 64a1b2c3d4e5f678901234ab"
                                             className={`pf-inp${fErrs.vendorId ? " err" : ""}`} />
                                     </Field>
-
                                     <div className="g2">
-                                        <Field label="Prep Time (minutes)" hint="how long to pack">
-                                            <input name="prepTimeMinutes" value={form.prepTimeMinutes} onChange={hc}
-                                                type="number" min="1" max="120" placeholder="10" className="pf-inp" />
+                                        <Field label="Prep Time (minutes)">
+                                            <input name="prepTimeMinutes" value={form.prepTimeMinutes} onChange={hc} type="number" min="1" max="120" placeholder="10" className="pf-inp" />
                                         </Field>
-                                        <Field label="Max Order Qty" hint="per order limit">
-                                            <input name="maxOrderQty" value={form.maxOrderQty} onChange={hc}
-                                                type="number" min="1" max="100" placeholder="10" className="pf-inp" />
+                                        <Field label="Max Order Qty">
+                                            <input name="maxOrderQty" value={form.maxOrderQty} onChange={hc} type="number" min="1" max="100" placeholder="10" className="pf-inp" />
                                         </Field>
                                     </div>
                                 </div>
                             )}
 
-                        </div>{/* end padding div */}
+                        </div>
 
-                        {/* ── Error Banner ── */}
                         {topErr && (
                             <div className="pf-errbanner" style={{ marginTop: 8 }}>
-                                <p style={{ fontWeight: 700, marginBottom: Object.keys(fErrs).length ? 6 : 0 }}>
-                                    ⚠ {topErr}
-                                </p>
+                                <p style={{ fontWeight: 700, marginBottom: Object.keys(fErrs).length ? 6 : 0 }}>⚠ {topErr}</p>
                                 {Object.keys(fErrs).length > 0 && (
                                     <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11, lineHeight: 1.8 }}>
                                         {Object.entries(fErrs).map(([f, msg]) => (
@@ -1466,31 +1329,21 @@ const AdminAddProduct = () => {
                             </div>
                         )}
 
-                        {/* ── Actions ── */}
                         <div className="pf-actions">
-                            <button type="button" className="pf-btn-nav"
-                                disabled={tabIdx <= 0}
+                            <button type="button" className="pf-btn-nav" disabled={tabIdx <= 0}
                                 onClick={() => setTab(sections[tabIdx - 1])}>←</button>
-                            <button type="button" className="pf-btn-nav"
-                                disabled={tabIdx >= sections.length - 1}
+                            <button type="button" className="pf-btn-nav" disabled={tabIdx >= sections.length - 1}
                                 onClick={() => setTab(sections[tabIdx + 1])}>→</button>
-
-                            <button type="button" className="pf-btn-ghost"
-                                onClick={() => navigate("/admin/products")}>Cancel</button>
-
+                            <button type="button" className="pf-btn-ghost" onClick={() => navigate("/admin/products")}>Cancel</button>
                             <button type="submit" disabled={loading} className="pf-btn-submit">
-                                {loading
-                                    ? <><div className="pf-spin" /> Publishing…</>
-                                    : <>✦ Publish Product</>
-                                }
+                                {loading ? <><div className="pf-spin" /> Publishing…</> : <>✦ Publish Product</>}
                             </button>
                         </div>
                     </div>
                 </form>
 
-                {/* ── Progress indicator ── */}
                 <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 14 }}>
-                    {sections.map((sid, i) => (
+                    {sections.map(sid => (
                         <div key={sid} style={{
                             width: sid === tab ? 20 : 6, height: 6, borderRadius: 3,
                             background: tabHasErr(sid) ? "#ef4444" : sid === tab ? tc.color : "#e2e8f0",
@@ -1498,7 +1351,6 @@ const AdminAddProduct = () => {
                         }} />
                     ))}
                 </div>
-
             </div>
         </div>
     );

@@ -94,6 +94,13 @@ export const createProductSchema = z.object({
             extraPrice: z.coerce.number().min(0).default(0),
         }).optional()
     ),
+
+    // Images meta (required for dynamic variant uploads)
+    mainImageCount: z.coerce.number().min(0).optional(),
+    colorVariants: z.preprocess(
+        safeJsonParse,
+        z.array(z.any()).default([])
+    ),
 });
 
 /* ─── Update Schema (all fields optional) ─────────────── */

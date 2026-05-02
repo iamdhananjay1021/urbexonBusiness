@@ -453,7 +453,9 @@ const Admin = () => {
 
     useEffect(() => {
         fetchUnreadCount();
-        const interval = setInterval(fetchUnreadCount, 30000);
+        // Polling interval increased from 30s to 5 mins (300000ms) to stop terminal log spam.
+        // WebSockets (wsHandler) will instantly handle real-time notifications anyway.
+        const interval = setInterval(fetchUnreadCount, 300000);
         return () => clearInterval(interval);
     }, [fetchUnreadCount]);
 

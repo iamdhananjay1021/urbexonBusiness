@@ -40,7 +40,7 @@ const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
         fileSize: 5 * 1024 * 1024, // 5MB
-        files: 6,
+        files: 20, // Increased limit to allow variant images
     },
     fileFilter: (_req, file, cb) => {
         if (!file.mimetype.startsWith("image/")) {
@@ -101,7 +101,7 @@ router.post(
     protect,
     adminOnly,
     writeLimiter,
-    upload.array("images", 6),
+    upload.any(),
     logFiles,
     validate(createProductSchema),
     adminCreateProduct
@@ -112,7 +112,7 @@ router.put(
     protect,
     adminOnly,
     writeLimiter,
-    upload.array("images", 6),
+    upload.any(),
     logFiles,
     validate(updateProductSchema),
     adminUpdateProduct
@@ -140,7 +140,7 @@ router.post(
     requireApprovedVendor,
     requireActiveSubscription,
     writeLimiter,
-    upload.array("images", 4),
+    upload.any(),
     vendorCreateProduct
 );
 
@@ -150,7 +150,7 @@ router.put(
     requireApprovedVendor,
     requireActiveSubscription,
     writeLimiter,
-    upload.array("images", 4),
+    upload.any(),
     vendorUpdateProduct
 );
 

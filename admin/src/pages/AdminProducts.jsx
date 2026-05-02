@@ -192,6 +192,7 @@ const AdminProducts = () => {
             fd.append("price", product.price);
             fd.append("category", product.category);
             fd.append("stock", newStock);
+            fd.append("productType", product.productType || "ecommerce");
             fd.append("isCustomizable", product.isCustomizable ? "true" : "false");
             fd.append("sizes", JSON.stringify(product.sizes || []));
             fd.append("highlights", JSON.stringify(
@@ -627,6 +628,14 @@ const AdminProducts = () => {
                                             ) : (
                                                 <span style={{ fontSize: 10, color: "#f59e0b", marginTop: 3, display: "block" }}>⚠ no slug</span>
                                             )}
+                                            {/* 🔥 COLOR DOTS FOR DESKTOP */}
+                                            {product.colorVariants && product.colorVariants.length > 0 && (
+                                                <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                                                    {product.colorVariants.map((c, i) => (
+                                                        <div key={i} title={c.name} style={{ width: 12, height: 12, borderRadius: "50%", background: c.hex || "#ccc", border: "1px solid #e2e8f0" }} />
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div>
@@ -781,6 +790,14 @@ const AdminProducts = () => {
                                                             maxWidth: 140,
                                                         }}>
                                                             <FaLink size={7} /> {product.slug}
+                                                        </div>
+                                                    )}
+                                                    {/* 🔥 COLOR DOTS FOR MOBILE */}
+                                                    {product.colorVariants && product.colorVariants.length > 0 && (
+                                                        <div style={{ display: "flex", gap: 3, alignItems: "center", marginLeft: 4 }}>
+                                                            {product.colorVariants.map((c, idx) => (
+                                                                <div key={idx} title={c.name} style={{ width: 10, height: 10, borderRadius: "50%", background: c.hex || "#ccc", border: "1px solid #e2e8f0" }} />
+                                                            ))}
                                                         </div>
                                                     )}
                                                 </div>

@@ -310,20 +310,22 @@ export const deleteCategory = async (req, res) => {
 /* ── GET HIGHLIGHT TEMPLATE FOR CATEGORY ── */
 export const getCategoryHighlightTemplate = async (req, res) => {
     try {
-        const { name } = req.query;
-        if (!name) return res.status(400).json({ success: false, message: "Category name required" });
+        const queryParam = req.query.name || req.query.category;
+        if (!queryParam) return res.status(400).json({ success: false, message: "Category name or slug required" });
 
         // [FIX-C7] Guard name length
-        if (name.trim().length > 80) {
+        if (queryParam.trim().length > 80) {
             return res.status(400).json({ success: false, message: "Category name too long" });
         }
 
         // [FIX-C7] Cache highlight templates (300s)
-        const cacheKey = `categories:highlight:${name.trim()}`;
+        const cacheKey = `categories:highlight:${queryParam.trim()}`;
         const cached = await safeGetCache(cacheKey);
         if (cached !== null) return res.json(cached);
 
-        const cat = await Category.findOne({ name }).select("highlightTemplate name").lean();
+        const cat = await Category.findOne({
+            $or: [{ name: queryParam }, { slug: queryParam }]
+        }).select("highlightTemplate name").lean();
         const result = { highlightTemplate: cat?.highlightTemplate || [] };
 
         await safeSetCache(cacheKey, result, 300);

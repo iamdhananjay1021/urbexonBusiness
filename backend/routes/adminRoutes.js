@@ -6,7 +6,13 @@ import {
     updatePincode,
     deletePincode,
 } from '../controllers/admin/pincodeManager.js';
-import { getUnreadCount } from '../controllers/admin/notificationController.js';
+import {
+    getUnreadCount,
+    getNotifications,
+    markAllAsRead,
+    markAsRead,
+    cleanOldNotifications
+} from '../controllers/admin/notificationController.js';
 import schedulerRoutes from './schedulerRoutes.js';
 import {
     getAllVendors, getVendorDetail, approveVendor, rejectVendor, suspendVendor,
@@ -101,8 +107,11 @@ router.get("/assignments/active", async (req, res) => {
 });
 
 // Notification Routes
-// Matches GET /api/admin/notifications/unread
+router.get('/notifications', getNotifications);
 router.get('/notifications/unread', getUnreadCount);
+router.put('/notifications/read-all', markAllAsRead);
+router.put('/notifications/:id/read', markAsRead);
+router.delete('/notifications/clean', cleanOldNotifications);
 
 // Scheduler routes (from original server.js)
 router.use(schedulerRoutes);

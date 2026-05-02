@@ -1,201 +1,628 @@
-/**
- * LocationContext.jsx — Global location state for Urbexon
- * - Auto-detects on first visit via GPS + reverse geocoding
- * - Extracts clean structured address (locality, city, state, pincode)
- * - Filters out highway names and non-human-readable labels
- * - Fallback: manual pincode entry
- * - Persists in localStorage
- * - Provides global state for navbar, product filtering, delivery checks
- */
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
 
 const LocationContext = createContext(null);
-const STORAGE_KEY = "ux_location_v2";
+const STORAGE_KEY = "ux_location_v5";
 
-/* ── Helpers ── */
-const HIGHWAY_PATTERN = /^(NH|SH|MDR|ODR|MH|AH)\s*\d/i;
-const ROAD_PATTERN = /^(National Highway|State Highway|Highway|Road No|Route)\s/i;
+/* ═══════════════════════════════════════════════════════════════════════
+   CONFIGURATION & CONSTANTS
+   ═══════════════════════════════════════════════════════════════════════ */
 
-/** Filter unreadable address components */
+const CONFIG = {
+    // Accuracy thresholds (in meters)
+    // Desktop: Stricter (requires better accuracy due to no GPS)
+    // Mobile: Relaxed (GPS devices are less accurate in buildings)
+    ACCURACY_THRESHOLD: {
+        mobile: 150, // meters for mobile
+        desktop: 5000, // ✅ FIX: Desktop uses IP/WiFi - accuracy can be very poor (km range), so threshold relaxed
+    },
+
+    // Geolocation timeout settings
+    TIMEOUT_MS: 15000, // 15 seconds
+    MAX_RETRIES: 2,
+
+    // Reverse geocoding providers
+    GEOCODING_PROVIDER: "google", // "google" or "nominatim"
+    // Set GOOGLE_MAPS_API_KEY in .env.local or leave blank for Nominatim fallback
+    GOOGLE_MAPS_API_KEY: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+};
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UTILITY HELPERS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Detect if device is mobile based on user agent and screen size
+ */
+const isMobileDevice = () => {
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    const mobilePattern = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i;
+    const isMobileUA = mobilePattern.test(userAgent.toLowerCase());
+    const isMobileSize = window.innerWidth < 768; // Tailwind md breakpoint
+    return isMobileUA || isMobileSize;
+};
+
+/**
+ * Get appropriate accuracy threshold based on device type
+ */
+const getAccuracyThreshold = () => {
+    return isMobileDevice()
+        ? CONFIG.ACCURACY_THRESHOLD.mobile
+        : CONFIG.ACCURACY_THRESHOLD.desktop;
+};
+
+/**
+ * Validate Indian pincode format
+ */
+const isValidPincode = (p) => /^[1-9]\d{5}$/.test(String(p).trim());
+
+/**
+ * Clean address labels (remove highways, generic roads, etc.)
+ */
 const cleanLabel = (val) => {
     if (!val) return "";
-    if (HIGHWAY_PATTERN.test(val)) return "";
-    if (ROAD_PATTERN.test(val)) return "";
-    if (/^\d{1,3}[A-Z]?$/.test(val)) return ""; // bare route numbers like "13A"
+    const highways = /^(NH|SH|MDR|ODR|MH|AH)\s*\d/i;
+    const roads = /^(National Highway|State Highway|Highway|Road No|Route)\s/i;
+    const numbers = /^\d{1,3}[A-Z]?$/;
+
+    if (highways.test(val) || roads.test(val) || numbers.test(val)) return "";
     return val.trim();
 };
 
-/** Extract structured address from Nominatim response */
-const parseNominatimAddress = (data) => {
-    const a = data?.address || {};
+/**
+ * Parse address from Google Maps or Nominatim response
+ */
+const parseAddress = (data, source = "nominatim") => {
+    if (source === "google") {
+        return parseGoogleAddress(data);
+    } else {
+        return parseNominatimAddress(data);
+    }
+};
 
-    // Locality: prefer suburb > neighbourhood > hamlet > village > town > city_district
-    const localityRaw = a.suburb || a.neighbourhood || a.hamlet || a.village || a.town || a.city_district || "";
-    const locality = cleanLabel(localityRaw);
+/**
+ * Parse address from Google Maps Geocoding API
+ */
+const parseGoogleAddress = (results) => {
+    if (!results || !results.length) {
+        return {
+            locality: "",
+            city: "Unknown",
+            state: "",
+            pincode: "",
+            label: "Your location",
+            fullLabel: "Your location",
+        };
+    }
 
-    // City
-    const cityRaw = a.city || a.town || a.state_district || a.county || "";
-    const city = cleanLabel(cityRaw) || "Unknown";
+    const addressComponents = results[0].address_components || [];
+    const componentMap = {};
 
-    // State
-    const state = a.state || "";
+    addressComponents.forEach((comp) => {
+        const types = comp.types || [];
+        if (types.includes("locality")) componentMap.locality = comp.long_name;
+        if (types.includes("administrative_area_level_2")) componentMap.district = comp.long_name;
+        if (types.includes("administrative_area_level_1")) componentMap.state = comp.short_name;
+        if (types.includes("postal_code")) componentMap.pincode = comp.long_name;
+    });
 
-    // Pincode (postcode)
-    const pincode = a.postcode || "";
+    const locality = cleanLabel(componentMap.locality || "");
+    const city = componentMap.district || componentMap.locality || "Unknown";
+    const state = componentMap.state || "";
+    const pincode = componentMap.pincode || "";
 
-    // Build readable label
     const parts = [locality, city, state].filter(Boolean);
-    const label = parts.length > 0 ? parts.join(", ") : "Your location";
+    const label = parts.length ? parts.join(", ") : "Your location";
     const fullLabel = pincode ? `${label}, ${pincode}` : label;
 
     return { locality, city, state, pincode, label, fullLabel };
 };
 
-/** Reverse geocode coordinates using Nominatim */
-const reverseGeocode = async (lat, lng) => {
+/**
+ * Parse address from Nominatim response
+ */
+const parseNominatimAddress = (data) => {
+    const a = data?.address || {};
+
+    const locality = cleanLabel(
+        a.suburb || a.neighbourhood || a.hamlet || a.village || a.town || a.city_district || ""
+    );
+
+    const city =
+        cleanLabel(a.city || a.town || a.state_district || a.county || "") || "Unknown";
+
+    const state = a.state || "";
+    const pincode = a.postcode || "";
+
+    const parts = [locality, city, state].filter(Boolean);
+    const label = parts.length ? parts.join(", ") : "Your location";
+    const fullLabel = pincode ? `${label}, ${pincode}` : label;
+
+    return { locality, city, state, pincode, label, fullLabel };
+};
+
+/**
+ * Reverse geocode using Google Maps API
+ */
+const reverseGeocodeGoogle = async (lat, lng) => {
     try {
-        const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=18`,
+        if (!CONFIG.GOOGLE_MAPS_API_KEY) {
+            console.warn("Google Maps API key not configured. Falling back to Nominatim.");
+            return reverseGeocodeNominatim(lat, lng);
+        }
+
+        const response = await fetch(
+            `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${CONFIG.GOOGLE_MAPS_API_KEY}&components=country:IN`,
             { headers: { "Accept-Language": "en" } }
         );
-        const data = await res.json();
-        return parseNominatimAddress(data);
-    } catch {
-        return { locality: "", city: "Unknown", state: "", pincode: "", label: "Your location", fullLabel: "Your location" };
+
+        const data = await response.json();
+
+        if (data.status === "OK" && data.results?.length) {
+            return parseAddress(data.results, "google");
+        }
+
+        return {
+            locality: "",
+            city: "Unknown",
+            state: "",
+            pincode: "",
+            label: "Your location",
+            fullLabel: "Your location",
+        };
+    } catch (error) {
+        console.error("Google Maps reverse geocoding failed:", error);
+        return reverseGeocodeNominatim(lat, lng);
     }
 };
 
-/** Validate Indian pincode format */
-const isValidPincode = (p) => /^[1-9]\d{5}$/.test(String(p).trim());
+/**
+ * Reverse geocode using Nominatim
+ */
+const reverseGeocodeNominatim = async (lat, lng) => {
+    try {
+        const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=18`,
+            {
+                headers: { "Accept-Language": "en", "User-Agent": "LocationApp/1.0" },
+            }
+        );
+
+        const data = await response.json();
+        return parseAddress(data, "nominatim");
+    } catch (error) {
+        console.error("Nominatim reverse geocoding failed:", error);
+        return {
+            locality: "",
+            city: "Unknown",
+            state: "",
+            pincode: "",
+            label: "Your location",
+            fullLabel: "Your location",
+        };
+    }
+};
+
+/**
+ * Main reverse geocoding function
+ */
+const reverseGeocode = async (lat, lng) => {
+    if (CONFIG.GEOCODING_PROVIDER === "google" && CONFIG.GOOGLE_MAPS_API_KEY) {
+        return reverseGeocodeGoogle(lat, lng);
+    }
+    return reverseGeocodeNominatim(lat, lng);
+};
+
+/**
+ * Lookup pincode using Nominatim
+ */
+const lookupPincode = async (pincode) => {
+    try {
+        const response = await fetch(
+            `https://nominatim.openstreetmap.org/search?postalcode=${pincode}&country=India&format=json&addressdetails=1&limit=1`,
+            { headers: { "User-Agent": "LocationApp/1.0" } }
+        );
+
+        const results = await response.json();
+
+        if (results?.length) {
+            const a = results[0].address || {};
+
+            const city =
+                cleanLabel(a.city || a.town || a.state_district || a.county || "") ||
+                "Unknown";
+
+            const state = a.state || "";
+            const locality =
+                cleanLabel(a.suburb || a.neighbourhood || a.village || a.town || "") ||
+                "";
+
+            const label = [locality, city, state].filter(Boolean).join(", ");
+
+            return {
+                lat: parseFloat(results[0].lat),
+                lng: parseFloat(results[0].lon),
+                locality,
+                city,
+                state,
+                pincode,
+                label,
+                fullLabel: `${label}, ${pincode}`,
+            };
+        }
+
+        return {
+            lat: null,
+            lng: null,
+            locality: "",
+            city: "",
+            state: "",
+            pincode,
+            label: `Pincode: ${pincode}`,
+            fullLabel: `Pincode: ${pincode}`,
+        };
+    } catch (error) {
+        console.error("Pincode lookup failed:", error);
+        return null;
+    }
+};
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LOCATION PROVIDER COMPONENT
+   ═══════════════════════════════════════════════════════════════════════ */
 
 export const LocationProvider = ({ children }) => {
-    const [locationData, setLocationData] = useState(null); // { lat, lng, locality, city, state, pincode, label, fullLabel }
+    // ──────── State ────────
+    const [locationData, setLocationData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [status, setStatus] = useState("idle"); // idle | detecting | success | failed
     const [modalOpen, setModalOpen] = useState(false);
+    const [deviceType, setDeviceType] = useState("desktop"); // mobile | desktop
 
-    // Load from localStorage on mount
-    useEffect(() => {
+    // ──────── Refs for guards ────────
+    const isDetectingRef = useRef(false);
+    const detectionAbortRef = useRef(null);
+
+    /* ═════════════════════════════════════════════════════════════════════
+       STORAGE OPERATIONS
+       ═════════════════════════════════════════════════════════════════════ */
+
+    const saveToStorage = useCallback((data) => {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        } catch (error) {
+            console.warn("Failed to save location to storage:", error);
+        }
+    }, []);
+
+    const loadFromStorage = useCallback(() => {
         try {
             const saved = localStorage.getItem(STORAGE_KEY);
-            if (saved) {
-                setLocationData(JSON.parse(saved));
-            } else {
-                // Auto-detect on first visit
-                detectLocation();
-            }
-        } catch {
-            detectLocation();
+            return saved ? JSON.parse(saved) : null;
+        } catch (error) {
+            console.warn("Failed to load location from storage:", error);
+            return null;
         }
     }, []);
 
-    /** Detect location via browser GPS */
+    /* ═════════════════════════════════════════════════════════════════════
+       GEOLOCATION DETECTION WITH RETRY LOGIC
+       ═════════════════════════════════════════════════════════════════════ */
+
+    /**
+     * Fetch location from browser.
+     * 
+     * Mobile: GPS with accuracy filter + retry logic
+     * Desktop: IP/WiFi based — accuracy check SKIPPED (can be 200km+),
+     *          first result accepted directly for city-level detection.
+     */
+    const fetchAccurateLocation = useCallback(
+        (attempt = 1) => {
+            // ──── Guard: Browser support check ────
+            if (!navigator.geolocation) {
+                setStatus("failed");
+                setError("Geolocation not supported on this browser");
+                setLoading(false);
+                isDetectingRef.current = false;
+                return;
+            }
+
+            // ──── Guard: HTTPS check ────
+            if (!window.isSecureContext) {
+                setStatus("failed");
+                setError("Location requires HTTPS connection");
+                setLoading(false);
+                isDetectingRef.current = false;
+                return;
+            }
+
+            const isMobile = isMobileDevice();
+
+            // ──── Retry exhausted → show pincode fallback (mobile only) ────
+            // Desktop: retries not needed since we accept any accuracy
+            if (isMobile && attempt > CONFIG.MAX_RETRIES) {
+                setStatus("failed");
+                setLoading(false);
+                isDetectingRef.current = false;
+
+                if (!locationData) {
+                    setError("Unable to detect location accurately. Please enter your pincode.");
+                    setModalOpen(true);
+                }
+
+                return;
+            }
+
+            // ──── Setup geolocation options ────
+            // Desktop: enableHighAccuracy false → faster IP-based result
+            // Mobile:  enableHighAccuracy true  → uses GPS
+            const geoOptions = {
+                enableHighAccuracy: isMobile,
+                timeout: CONFIG.TIMEOUT_MS,
+                maximumAge: 0,
+            };
+
+            // ──── Request current position ────
+            navigator.geolocation.getCurrentPosition(
+                async (pos) => {
+                    const { latitude, longitude, accuracy } = pos.coords;
+
+                    console.log(
+                        `Location detected (attempt ${attempt}): ${accuracy.toFixed(2)}m accuracy ` +
+                        `(device: ${isMobile ? "mobile" : "desktop"})`
+                    );
+
+                    // ──── Accuracy filter: Only for mobile (GPS devices) ────
+                    // Desktop IP-based accuracy can be 100km+ — skip check entirely
+                    if (isMobile) {
+                        const accuracyThreshold = CONFIG.ACCURACY_THRESHOLD.mobile;
+                        if (accuracy > accuracyThreshold) {
+                            console.log(`Mobile accuracy too low (${accuracy}m > ${accuracyThreshold}m). Retrying...`);
+                            fetchAccurateLocation(attempt + 1);
+                            return;
+                        }
+                    }
+
+                    // ──── Success: Reverse geocode ────
+                    try {
+                        const parsed = await reverseGeocode(latitude, longitude);
+
+                        const locationPayload = {
+                            lat: latitude,
+                            lng: longitude,
+                            accuracy: Math.round(accuracy),
+                            timestamp: new Date().toISOString(),
+                            source: isMobile ? "gps" : "ip",
+                            ...parsed,
+                        };
+
+                        setLocationData(locationPayload);
+                        saveToStorage(locationPayload);
+                        setStatus("success");
+                        setError("");
+                        setModalOpen(false);
+                        setLoading(false);
+                        isDetectingRef.current = false;
+                    } catch (geocodeError) {
+                        console.error("Reverse geocoding failed:", geocodeError);
+                        setError("Failed to identify location. Please try again.");
+                        setLoading(false);
+                        isDetectingRef.current = false;
+                    }
+                },
+
+                // ──── Error handler ────
+                (error) => {
+                    const errorMessage = getGeolocationErrorMessage(error, deviceType);
+                    console.warn(`Geolocation error (attempt ${attempt}):`, error.message);
+
+                    // ──── Permission denied: Show pincode fallback immediately ────
+                    if (error.code === error.PERMISSION_DENIED) {
+                        setStatus("failed");
+                        setError(errorMessage);
+                        setLoading(false);
+                        setModalOpen(true);
+                        isDetectingRef.current = false;
+                        return;
+                    }
+
+                    // ──── Timeout or unavailable: Retry ────
+                    if (error.code === error.TIMEOUT || error.code === error.POSITION_UNAVAILABLE) {
+                        console.log(`Geolocation ${error.code === error.TIMEOUT ? "timeout" : "unavailable"}. Retrying (${attempt}/${CONFIG.MAX_RETRIES})...`);
+                        fetchAccurateLocation(attempt + 1);
+                        return;
+                    }
+
+                    // ──── Unknown error: Retry ────
+                    console.log(`Unknown error: ${error.message}. Retrying (${attempt}/${CONFIG.MAX_RETRIES})...`);
+                    fetchAccurateLocation(attempt + 1);
+                },
+
+                geoOptions
+            );
+        },
+        [locationData, deviceType, saveToStorage]
+    );
+
+    /**
+     * User-facing function to initiate location detection.
+     *
+     * Desktop: IP-based location is ISP-dependent and can be 200km+ off.
+     *          Show pincode modal directly — accurate and instant.
+     * Mobile:  GPS is reliable. Try GPS first, show pincode on failure.
+     */
     const detectLocation = useCallback(() => {
-        if (!window.isSecureContext) {
-            setError("Location works only on HTTPS or localhost");
-            return;
-        }
-        if (!navigator.geolocation) {
-            setError("Geolocation not supported by your browser");
+        // ──── Guard: Already detecting ────
+        if (isDetectingRef.current) {
+            console.warn("Location detection already in progress");
             return;
         }
 
+        // ──── Desktop: Show pincode modal directly ────
+        // IP geolocation on desktop is unreliable (ISP server can be 200km+ away).
+        if (!isMobileDevice()) {
+            setStatus("failed");
+            setError("Please enter your pincode for accurate delivery location.");
+            setModalOpen(true);
+            return;
+        }
+
+        // ──── Mobile: Preliminary checks ────
+        if (!window.isSecureContext) {
+            setError("Location requires HTTPS connection");
+            setStatus("failed");
+            setModalOpen(true);
+            return;
+        }
+
+        if (!navigator.geolocation) {
+            setError("Geolocation not supported on this browser");
+            setStatus("failed");
+            setModalOpen(true);
+            return;
+        }
+
+        // ──── Begin GPS detection (mobile only) ────
+        isDetectingRef.current = true;
+        setStatus("detecting");
         setLoading(true);
         setError("");
 
-        navigator.geolocation.getCurrentPosition(
-            async (pos) => {
-                const { latitude, longitude } = pos.coords;
-                const parsed = await reverseGeocode(latitude, longitude);
-                const data = { lat: latitude, lng: longitude, ...parsed };
+        fetchAccurateLocation(1);
+    }, [fetchAccurateLocation]);
 
-                setLocationData(data);
-                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { }
-                setLoading(false);
-            },
-            (err) => {
-                const msg = err.code === 1 ? "Location permission denied" :
-                    err.code === 2 ? "Location unavailable" :
-                        err.code === 3 ? "Location request timed out" : "Could not get location";
-                setError(msg);
-                setLoading(false);
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
-        );
-    }, []);
+    /* ═════════════════════════════════════════════════════════════════════
+       FALLBACK: PINCODE DETECTION
+       ═════════════════════════════════════════════════════════════════════ */
 
-    /** Manually set pincode (fallback) */
-    const setPincode = useCallback(async (pincode) => {
-        if (!isValidPincode(pincode)) {
-            setError("Enter a valid 6-digit pincode");
-            return false;
-        }
-        setLoading(true);
+    const setPincode = useCallback(
+        async (pincode) => {
+            if (!isValidPincode(pincode)) {
+                setError("Invalid pincode. Please enter a valid 6-digit Indian pincode.");
+                return false;
+            }
+
+            setLoading(true);
+            setError("");
+
+            try {
+                const locationPayload = await lookupPincode(pincode);
+
+                if (!locationPayload) {
+                    throw new Error("Pincode lookup failed");
+                }
+
+                locationPayload.timestamp = new Date().toISOString();
+                locationPayload.source = "pincode";
+                locationPayload.accuracy = null;
+
+                setLocationData(locationPayload);
+                saveToStorage(locationPayload);
+                setStatus("success");
+                setLoading(false);
+                setModalOpen(false);
+
+                return true;
+            } catch (error) {
+                console.error("Pincode lookup error:", error);
+                setError("Could not find location for this pincode. Please try another.");
+                setLoading(false);
+                return false;
+            }
+        },
+        [saveToStorage]
+    );
+
+    /* ═════════════════════════════════════════════════════════════════════
+       MANUAL LOCATION CONTROL
+       ═════════════════════════════════════════════════════════════════════ */
+
+    const setLocation = useCallback(
+        (data) => {
+            const locationPayload = {
+                ...data,
+                timestamp: new Date().toISOString(),
+                source: data.source || "manual",
+            };
+
+            setLocationData(locationPayload);
+            saveToStorage(locationPayload);
+            setStatus("success");
+            setError("");
+        },
+        [saveToStorage]
+    );
+
+    const clearLocation = useCallback(() => {
+        setLocationData(null);
+        setStatus("idle");
         setError("");
 
         try {
-            // Forward geocode pincode to get city/state
-            const res = await fetch(
-                `https://nominatim.openstreetmap.org/search?postalcode=${pincode}&country=India&format=json&addressdetails=1&limit=1`,
-                { headers: { "Accept-Language": "en" } }
-            );
-            const results = await res.json();
-            if (results?.length > 0) {
-                const a = results[0].address || {};
-                const city = cleanLabel(a.city || a.town || a.state_district || a.county || "") || "Unknown";
-                const state = a.state || "";
-                const locality = cleanLabel(a.suburb || a.neighbourhood || a.village || a.town || "") || "";
-                const parts = [locality, city, state].filter(Boolean);
-                const label = parts.join(", ");
-
-                const data = {
-                    lat: parseFloat(results[0].lat),
-                    lng: parseFloat(results[0].lon),
-                    locality, city, state, pincode,
-                    label, fullLabel: `${label}, ${pincode}`,
-                };
-                setLocationData(data);
-                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { }
-                setLoading(false);
-                return true;
-            }
-            // Pincode not found but still valid format — store it without geo data
-            const data = { lat: null, lng: null, locality: "", city: "", state: "", pincode, label: `Pincode: ${pincode}`, fullLabel: `Pincode: ${pincode}` };
-            setLocationData(data);
-            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { }
-            setLoading(false);
-            return true;
-        } catch {
-            setError("Could not verify pincode. Please try again.");
-            setLoading(false);
-            return false;
+            localStorage.removeItem(STORAGE_KEY);
+        } catch (error) {
+            console.warn("Failed to clear location storage:", error);
         }
     }, []);
 
-    /** Set full location data directly (e.g., from saved addresses) */
-    const setLocation = useCallback((data) => {
-        setLocationData(data);
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { }
-    }, []);
+    /* ═════════════════════════════════════════════════════════════════════
+       INITIALIZATION
+       ═════════════════════════════════════════════════════════════════════ */
 
-    /** Clear location */
-    const clearLocation = useCallback(() => {
-        setLocationData(null);
-        try { localStorage.removeItem(STORAGE_KEY); } catch { }
-    }, []);
+    useEffect(() => {
+        const mobile = isMobileDevice();
+        setDeviceType(mobile ? "mobile" : "desktop");
 
-    const value = useMemo(() => ({
-        locationData,
-        loading,
-        error,
-        modalOpen,
-        setModalOpen,
-        detectLocation,
-        setPincode,
-        setLocation,
-        clearLocation,
-        isValidPincode,
-    }), [locationData, loading, error, modalOpen, detectLocation, setPincode, setLocation, clearLocation]);
+        const saved = loadFromStorage();
+
+        if (saved) {
+            // Saved location exists — use silently, don't open modal
+            setLocationData(saved);
+            setStatus("success");
+            setModalOpen(false);
+        } else {
+            // No saved location — open modal to get user location
+            setStatus("idle");
+            setModalOpen(true);
+        }
+    }, [loadFromStorage]);
+
+    /* ═════════════════════════════════════════════════════════════════════
+       CONTEXT VALUE & EXPORT
+       ═════════════════════════════════════════════════════════════════════ */
+
+    const value = useMemo(
+        () => ({
+            locationData,
+            loading,
+            error,
+            status,
+            modalOpen,
+            deviceType,
+
+            setModalOpen,
+
+            detectLocation,
+            setPincode,
+            setLocation,
+            clearLocation,
+
+            isValidPincode,
+            isMobileDevice,
+        }),
+        [
+            locationData,
+            loading,
+            error,
+            status,
+            modalOpen,
+            deviceType,
+            detectLocation,
+            setPincode,
+            setLocation,
+            clearLocation,
+        ]
+    );
 
     return (
         <LocationContext.Provider value={value}>
@@ -204,10 +631,44 @@ export const LocationProvider = ({ children }) => {
     );
 };
 
-export const useLocation2 = () => {
-    const ctx = useContext(LocationContext);
-    if (!ctx) throw new Error("useLocation2 must be used within LocationProvider");
-    return ctx;
+/* ═══════════════════════════════════════════════════════════════════════
+   CUSTOM HOOK
+   ═════════════════════════════════════════════════════════════════════ */
+
+export const useLocation = () => {
+    const context = useContext(LocationContext);
+    if (!context) {
+        throw new Error("useLocation must be used within LocationProvider");
+    }
+    return context;
 };
 
+export const useLocation2 = useLocation;
+
 export default LocationContext;
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ERROR MESSAGE HELPER
+   ═════════════════════════════════════════════════════════════════════ */
+
+function getGeolocationErrorMessage(error, deviceType) {
+    switch (error.code) {
+        case error.PERMISSION_DENIED:
+            return deviceType === "mobile"
+                ? "Location permission denied. Please enable it in Settings > Apps > [AppName] and try again."
+                : "Location permission denied. Please enter pincode manually.";
+
+        case error.POSITION_UNAVAILABLE:
+            return deviceType === "mobile"
+                ? "Location services unavailable. Check if GPS and WiFi location are enabled in Settings."
+                : "Location unavailable. Please enter pincode.";
+
+        case error.TIMEOUT:
+            return deviceType === "mobile"
+                ? "Location detection timed out. Please ensure GPS has a clear view and try again."
+                : "Location detection timed out. Please enter pincode.";
+
+        default:
+            return "Unable to detect location. Please enter pincode manually.";
+    }
+}

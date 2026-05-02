@@ -3,9 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "../api/adminApi";
 import { fetchAllCategories } from "../api/categoryApi";
 
-/* ─────────────────────────────────────────────────────────
-   RE-USE CONSTANTS (same as AdminAddProduct)
-───────────────────────────────────────────────────────── */
+/* ─── Constants ─────────────────────────────────────────── */
 const SIZE_TEMPLATES = {
     apparel_top: ["XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "Free Size"],
     apparel_bottom: ["28", "30", "32", "34", "36", "38", "40", "42", "44"],
@@ -18,14 +16,15 @@ const SIZE_TEMPLATES = {
 
 const getSuggestedSizes = (categoryName) => {
     if (!categoryName) return SIZE_TEMPLATES.apparel_top;
-    const lowerCat = String(categoryName).toLowerCase();
-    if (lowerCat.match(/shoe|footwear|sneaker|sandal|slipper|boot/)) return SIZE_TEMPLATES.footwear;
-    if (lowerCat.match(/jeans|trouser|pant|short|track|bottom/)) return SIZE_TEMPLATES.apparel_bottom;
-    if (lowerCat.match(/phone|laptop|tablet|mobile|computer|pendrive|drive|storage/)) return [...SIZE_TEMPLATES.storage, ...SIZE_TEMPLATES.ram];
-    if (lowerCat.match(/perfume|shampoo|oil|wash|cream|lotion|liquid|beauty/)) return SIZE_TEMPLATES.volume;
-    if (lowerCat.match(/grocery|food|tea|coffee|sugar|rice|dal|dry fruit|powder/)) return SIZE_TEMPLATES.weight;
+    const lc = String(categoryName).toLowerCase();
+    if (lc.match(/shoe|footwear|sneaker|sandal|slipper|boot/)) return SIZE_TEMPLATES.footwear;
+    if (lc.match(/jeans|trouser|pant|short|track|bottom/)) return SIZE_TEMPLATES.apparel_bottom;
+    if (lc.match(/phone|laptop|tablet|mobile|computer|pendrive|drive|storage/)) return [...SIZE_TEMPLATES.storage, ...SIZE_TEMPLATES.ram];
+    if (lc.match(/perfume|shampoo|oil|wash|cream|lotion|liquid|beauty/)) return SIZE_TEMPLATES.volume;
+    if (lc.match(/grocery|food|tea|coffee|sugar|rice|dal|dry fruit|powder/)) return SIZE_TEMPLATES.weight;
     return SIZE_TEMPLATES.apparel_top;
 };
+
 const GST_RATES = ["0", "5", "12", "18", "28"];
 const HIGHLIGHT_KEYS = [
     "Fabric", "Sleeve", "Pattern", "Color", "Pack of", "Collar", "Fit",
@@ -71,7 +70,7 @@ const FIELD_TAB = {
     prepTimeMinutes: "quick", maxOrderQty: "quick", vendorId: "quick",
 };
 
-/* Same CSS as AdminAddProduct — in production extract to shared file */
+/* ─── CSS ───────────────────────────────────────────────── */
 const GLOBAL_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -146,9 +145,7 @@ const GLOBAL_CSS = `
 @media(max-width:480px){.pf-imgrid{grid-template-columns:repeat(2,1fr);gap:7px;}.pf-tab-label{display:none;}.pf-tab{padding:5px 7px;}}
 `;
 
-/* ─────────────────────────────────────────────────────────
-   TINY SHARED COMPONENTS
-───────────────────────────────────────────────────────── */
+/* ─── Shared Components ─────────────────────────────────── */
 const Field = ({ label, hint, err, required, children }) => (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         <div style={{ display: "flex", alignItems: "baseline" }}>
@@ -179,14 +176,14 @@ const Toggle = ({ on, toggle, label, sub, color = "#6366f1", bg = "#eef2ff" }) =
 
 const SL = ({ children }) => <p className="pf-sec-label">{children}</p>;
 
-/* ─────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════
    MAIN COMPONENT
-───────────────────────────────────────────────────────── */
+═══════════════════════════════════════════════════════════ */
 const AdminEditProduct = () => {
     const { id } = useParams();
     const navigate = useNavigate();
 
-    /* ── State ── */
+    /* ── Form State ── */
     const [productType, setProductType] = useState("ecommerce");
     const [form, setForm] = useState({
         name: "", description: "", price: "", mrp: "", category: "", subcategory: "",
@@ -196,8 +193,7 @@ const AdminEditProduct = () => {
         color: "", material: "", occasion: "", gstPercent: "0",
         isCancellable: true, isReturnable: true, isReplaceable: false,
         returnWindow: "7", replacementWindow: "7", cancelWindow: "0",
-        nonReturnableReason: "",
-        prepTimeMinutes: "10", maxOrderQty: "10", vendorId: "",
+        nonReturnableReason: "", prepTimeMinutes: "10", maxOrderQty: "10", vendorId: "",
     });
     const [custConfig, setCustConfig] = useState({
         allowText: true, allowImage: true, allowNote: true,
@@ -206,12 +202,12 @@ const AdminEditProduct = () => {
         extraPrice: 0,
     });
 
-    /* Images */
+    /* ── Images ── */
     const [curImgs, setCurImgs] = useState([]);
     const [newImages, setNewImages] = useState([]);
     const [newPreviews, setNewPreviews] = useState([]);
 
-    /* Sizes */
+    /* ── Sizes ── */
     const [selSizes, setSelSizes] = useState([]);
     const selSizesRef = useRef([]);
     useEffect(() => { selSizesRef.current = selSizes; }, [selSizes]);
@@ -219,15 +215,15 @@ const AdminEditProduct = () => {
     const [availableSizes, setAvailableSizes] = useState([...SIZE_TEMPLATES.apparel_top]);
     const [newSize, setNewSize] = useState("");
 
-    /* Highlights */
+    /* ── Highlights ── */
     const [hls, setHls] = useState([{ key: "", value: "" }]);
     const [hlTemplate, setHlTemplate] = useState([]);
 
-    /* Variants */
+    /* ── Color Variants ── */
     const [enableVariants, setEnableVariants] = useState(false);
     const [colorVariants, setColorVariants] = useState([]);
 
-    /* UI */
+    /* ── UI ── */
     const [tab, setTab] = useState("basic");
     const [fErrs, setFErrs] = useState({});
     const [topErr, setTopErr] = useState("");
@@ -251,7 +247,7 @@ const AdminEditProduct = () => {
             .catch(() => setHlTemplate([]));
     }, [form.category]);
 
-    /* ── Sync dynamic sizes when category changes ── */
+    /* ── Sync sizes on category change ── */
     useEffect(() => {
         const catObj = categories.find(c => c.value === form.category || c.slug === form.category || c.name === form.category);
         const catName = catObj ? catObj.name : form.category;
@@ -259,7 +255,7 @@ const AdminEditProduct = () => {
         setAvailableSizes(prev => Array.from(new Set([...suggested, ...selSizesRef.current])));
     }, [form.category, categories]);
 
-    /* ── Fetch product data ── */
+    /* ── Fetch product ── */
     useEffect(() => {
         (async () => {
             try {
@@ -331,21 +327,24 @@ const AdminEditProduct = () => {
                     setHls(entries.map(([key, value]) => ({ key, value })));
                 }
 
-                /* Color variants */
+                /* Color Variants — v2.1: include price + mrp */
                 if (data.colorVariants?.length) {
                     setEnableVariants(true);
                     setColorVariants(data.colorVariants.map((v, i) => ({
                         id: i + Date.now(),
                         name: v.name || "",
                         hex: v.hex || "#000000",
-                        stock: String(v.stock || 0),
+                        stock: String(v.stock ?? 0),
+                        price: v.price != null ? String(v.price) : "",   // "" = inherit base
+                        mrp: v.mrp != null ? String(v.mrp) : "",   // "" = inherit base
                         isDefault: v.isDefault || i === 0,
-                        images: [], previews: [],
+                        images: [],
+                        previews: [],
                         existingImages: v.images || [],
                     })));
                 }
 
-            } catch (err) {
+            } catch {
                 setTopErr("Failed to load product data. Please refresh.");
             } finally {
                 setPageLoad(false);
@@ -369,53 +368,47 @@ const AdminEditProduct = () => {
     const discPct = form.mrp && form.price && +form.mrp > +form.price
         ? Math.round(((+form.mrp - +form.price) / +form.mrp) * 100) : null;
 
-    const tabHasErr = id => {
-        const owned = Object.entries(FIELD_TAB).filter(([, t]) => t === id).map(([f]) => f);
+    const tabHasErr = sid => {
+        const owned = Object.entries(FIELD_TAB).filter(([, t]) => t === sid).map(([f]) => f);
         return owned.some(f => fErrs[f]);
     };
 
-    /* Sizes */
+    /* ── Sizes ── */
     const toggleSize = s => setSelSizes(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s]);
-    const updateSizeStock = (size, val) => {
-        const n = Math.max(0, parseInt(val) || 0);
-        setSizeStockMap(p => ({ ...p, [size]: n }));
-    };
+    const updateSizeStock = (size, val) => setSizeStockMap(p => ({ ...p, [size]: Math.max(0, parseInt(val) || 0) }));
 
     useEffect(() => {
         if (selSizes.length > 0) {
-            const totalStock = selSizes.reduce((acc, sz) => acc + (sizeStockMap[sz] || 0), 0);
-            setForm(f => ({ ...f, stock: String(totalStock) }));
+            const total = selSizes.reduce((acc, sz) => acc + (sizeStockMap[sz] || 0), 0);
+            setForm(f => ({ ...f, stock: String(total) }));
         }
     }, [selSizes, sizeStockMap]);
 
-    const handleAddCustomSize = (e) => {
+    const handleAddCustomSize = e => {
         if (e) e.preventDefault();
         const val = newSize.trim();
         if (!val) return;
-        if (!availableSizes.includes(val)) {
-            setAvailableSizes(p => [...p, val]);
-        }
-        if (!selSizes.includes(val)) {
-            setSelSizes(p => [...p, val]);
-        }
+        if (!availableSizes.includes(val)) setAvailableSizes(p => [...p, val]);
+        if (!selSizes.includes(val)) setSelSizes(p => [...p, val]);
         setNewSize("");
     };
 
-    /* Highlights */
+    /* ── Highlights ── */
     const addHL = () => setHls(p => [...p, { key: "", value: "" }]);
     const removeHL = i => setHls(p => p.filter((_, j) => j !== i));
     const updateHL = (i, f, v) => setHls(p => p.map((h, j) => j === i ? { ...h, [f]: v } : h));
 
-    /* New images */
+    /* ── New images ── */
     const handleNewImgs = e => {
         const files = Array.from(e.target.files);
         if (!files.length) return;
-        for (const f of files) {
+        const merged = [...newImages, ...files];
+        for (const f of merged) {
             if (f.size > 5 * 1048576) { setTopErr(`"${f.name}" exceeds 5MB`); return; }
         }
-        if (files.length > 6) { setTopErr("Max 6 images allowed"); return; }
-        setNewImages(files);
-        setNewPreviews(files.map(f => URL.createObjectURL(f)));
+        if (merged.length > 6) { setTopErr("Max 6 images allowed"); return; }
+        setNewImages(merged);
+        setNewPreviews([...newPreviews, ...files.map(f => URL.createObjectURL(f))]);
         setTopErr("");
     };
     const removeNewImg = i => {
@@ -423,28 +416,52 @@ const AdminEditProduct = () => {
         setNewPreviews(p => p.filter((_, j) => j !== i));
     };
 
-    /* Variants */
+    /* ── Variants ── */
     const addVariant = () => setColorVariants(p => [
         ...p, {
             id: Date.now(), name: "", hex: "#000000", stock: "0",
+            price: "", mrp: "",   // empty = inherit base
             isDefault: p.length === 0, images: [], previews: [], existingImages: []
         },
     ]);
+
     const updateVariant = (id, key, val) =>
         setColorVariants(p => p.map(v => v.id === id ? { ...v, [key]: val } : v));
+
     const setDefaultVariant = id =>
         setColorVariants(p => p.map(v => ({ ...v, isDefault: v.id === id })));
+
     const removeVariant = id =>
         setColorVariants(p => {
             const rem = p.filter(v => v.id !== id);
             if (rem.length > 0 && !rem.some(v => v.isDefault)) rem[0].isDefault = true;
             return rem;
         });
+
     const handleVariantImages = (id, e) => {
         const files = Array.from(e.target.files);
         if (!files.length) return;
-        updateVariant(id, "images", files);
-        updateVariant(id, "previews", files.map(f => URL.createObjectURL(f)));
+        setColorVariants(p => p.map(v => {
+            if (v.id === id) {
+                return {
+                    ...v,
+                    images: [...v.images, ...files],
+                    previews: [...v.previews, ...files.map(f => URL.createObjectURL(f))]
+                };
+            }
+            return v;
+        }));
+    };
+
+    const removeVariantImage = (variantId, imgIdx) => {
+        setColorVariants(p => p.map(v => {
+            if (v.id !== variantId) return v;
+            return {
+                ...v,
+                images: v.images.filter((_, j) => j !== imgIdx),
+                previews: v.previews.filter((_, j) => j !== imgIdx),
+            };
+        }));
     };
 
     /* ── SUBMIT ── */
@@ -458,6 +475,10 @@ const AdminEditProduct = () => {
         if (!form.category) fe.category = "Required";
         if (form.mrp && +form.mrp < +form.price) fe.mrp = "MRP must be ≥ price";
         if (form.stock === "" || +form.stock < 0) fe.stock = "Required (0 or more)";
+        if (enableVariants && colorVariants.length > 0) {
+            const bad = colorVariants.find(v => !v.name.trim());
+            if (bad) fe.colorVariants = "All color variants must have a name";
+        }
 
         if (Object.keys(fe).length) {
             setFErrs(fe);
@@ -474,15 +495,15 @@ const AdminEditProduct = () => {
             fd.append("name", form.name.trim());
             fd.append("category", form.category);
             fd.append("price", String(+form.price));
-            fd.append("stock", String(+form.stock));
+            fd.append("stock", enableVariants && colorVariants.length ? "0" : String(+form.stock));
             fd.append("productType", productType);
 
             [["description", form.description], ["mrp", form.mrp], ["brand", form.brand],
             ["sku", form.sku], ["weight", form.weight], ["origin", form.origin],
             ["returnPolicy", form.returnPolicy], ["shippingInfo", form.shippingInfo],
             ["material", form.material], ["color", form.color], ["occasion", form.occasion],
-            ["subcategory", form.subcategory], ["metaTitle", form.metaTitle], ["metaDesc", form.metaDesc],
-            ["nonReturnableReason", form.nonReturnableReason],
+            ["subcategory", form.subcategory], ["metaTitle", form.metaTitle],
+            ["metaDesc", form.metaDesc], ["nonReturnableReason", form.nonReturnableReason],
             ].forEach(([k, v]) => { const s = v?.toString().trim(); if (s) fd.append(k, s); });
 
             fd.append("gstPercent", String(+form.gstPercent || 0));
@@ -516,16 +537,28 @@ const AdminEditProduct = () => {
                 fd.append("highlightsArray", JSON.stringify(validHls.map(h => ({ title: h.key.trim(), value: h.value.trim() }))));
             }
 
+            /* Main images */
             newImages.forEach(img => fd.append("images", img));
+            fd.append("mainImageCount", String(newImages.length));
 
-            if (enableVariants && colorVariants.length) {
-                const meta = colorVariants.map(v => ({
-                    name: v.name, hex: v.hex, stock: +v.stock || 0, isDefault: v.isDefault,
+            /* Color Variants — v2.1: price + mrp per variant */
+            if (enableVariants && colorVariants.length > 0) {
+                const varMeta = colorVariants.map(v => ({
+                    name: v.name,
+                    hex: v.hex,
+                    stock: +v.stock || 0,
+                    price: v.price !== "" ? +v.price : null,    // null = inherit base
+                    mrp: v.mrp !== "" ? +v.mrp : null,    // null = inherit base
+                    isDefault: v.isDefault,
+                    imageCount: v.images.length,
+                    existingImages: v.existingImages || [],
                 }));
-                fd.append("colorVariants", JSON.stringify(meta));
-                colorVariants.forEach((v, vi) => {
-                    v.images.forEach(img => fd.append(`variantImages_${vi}`, img));
+                fd.append("colorVariants", JSON.stringify(varMeta));
+                colorVariants.forEach(v => {
+                    v.images.forEach(img => fd.append("images", img));
                 });
+            } else {
+                fd.append("colorVariants", JSON.stringify([]));
             }
 
             if (productType === "urbexon_hour") {
@@ -573,9 +606,9 @@ const AdminEditProduct = () => {
         </div>
     );
 
-    /* ═══════════════════════════════════════════════════════
+    /* ════════════════════════════════════════════════════════
        RENDER
-    ═══════════════════════════════════════════════════════ */
+    ════════════════════════════════════════════════════════ */
     return (
         <div className="pf-root" style={{ padding: "24px 14px 80px" }}>
             <style>{GLOBAL_CSS}</style>
@@ -588,15 +621,10 @@ const AdminEditProduct = () => {
 
             <div style={{ maxWidth: 880, margin: "0 auto" }}>
 
-                {/* ── Header ── */}
+                {/* Header */}
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22 }}>
                     <button type="button" onClick={() => navigate("/admin/products")}
-                        style={{
-                            width: 38, height: 38, borderRadius: 10, background: "#fff",
-                            border: "1.5px solid #e2e8f0", color: "#64748b", cursor: "pointer",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            flexShrink: 0, fontSize: 14, transition: "all .15s"
-                        }}
+                        style={{ width: 38, height: 38, borderRadius: 10, background: "#fff", border: "1.5px solid #e2e8f0", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 14, transition: "all .15s" }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = "#6366f1"; e.currentTarget.style.color = "#6366f1"; }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; }}>
                         ←
@@ -606,18 +634,13 @@ const AdminEditProduct = () => {
                         <h1 className="pf-page-title">Edit Product</h1>
                     </div>
                     <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{
-                            fontSize: 11, fontWeight: 700, textTransform: "uppercase",
-                            letterSpacing: ".07em", color: tc.color,
-                            background: tc.bg, border: `1px solid ${tc.border}`,
-                            padding: "4px 12px", borderRadius: 20
-                        }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em", color: tc.color, background: tc.bg, border: `1px solid ${tc.border}`, padding: "4px 12px", borderRadius: 20 }}>
                             {tc.icon} {tc.label}
                         </span>
                     </div>
                 </div>
 
-                {/* ── Tab bar ── */}
+                {/* Tab bar */}
                 <div className="pf-tabbar" style={{ marginBottom: 12 }}>
                     {sections.map(sid => {
                         const meta = SECTION_META[sid];
@@ -639,48 +662,28 @@ const AdminEditProduct = () => {
 
                         <div style={{ padding: "22px 24px 6px" }}>
 
-                            {/* BASIC */}
+                            {/* ══ BASIC ══ */}
                             {tab === "basic" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SL>Basic Information</SL>
-
                                     <Field label="Product Name" required err={fErrs.name}>
-                                        <input name="name" value={form.name} onChange={hc}
-                                            placeholder="e.g. Premium Cotton Kurta"
-                                            className={`pf-inp${fErrs.name ? " err" : ""}`} />
+                                        <input name="name" value={form.name} onChange={hc} placeholder="e.g. Premium Cotton Kurta" className={`pf-inp${fErrs.name ? " err" : ""}`} />
                                     </Field>
-
                                     <Field label="Description" hint="optional">
-                                        <textarea name="description" value={form.description} onChange={hc}
-                                            placeholder="Fabric, fit, occasion, care instructions…"
-                                            rows={3} className="pf-inp" style={{ resize: "vertical", lineHeight: 1.65 }} />
+                                        <textarea name="description" value={form.description} onChange={hc} placeholder="Fabric, fit, occasion, care instructions…" rows={3} className="pf-inp" style={{ resize: "vertical", lineHeight: 1.65 }} />
                                     </Field>
-
                                     <div className="g2">
-                                        <Field label="Brand">
-                                            <input name="brand" value={form.brand} onChange={hc} placeholder="Urbexon" className="pf-inp" />
-                                        </Field>
-                                        <Field label="SKU / Code">
-                                            <input name="sku" value={form.sku} onChange={hc} placeholder="UX-KRT-001" className="pf-inp" />
-                                        </Field>
+                                        <Field label="Brand"><input name="brand" value={form.brand} onChange={hc} placeholder="Urbexon" className="pf-inp" /></Field>
+                                        <Field label="SKU / Code"><input name="sku" value={form.sku} onChange={hc} placeholder="UX-KRT-001" className="pf-inp" /></Field>
                                     </div>
-
                                     <div className="g3">
-                                        <Field label="Color">
-                                            <input name="color" value={form.color} onChange={hc} placeholder="Navy Blue" className="pf-inp" />
-                                        </Field>
-                                        <Field label="Material">
-                                            <input name="material" value={form.material} onChange={hc} placeholder="Cotton" className="pf-inp" />
-                                        </Field>
-                                        <Field label="Occasion">
-                                            <input name="occasion" value={form.occasion} onChange={hc} placeholder="Casual" className="pf-inp" />
-                                        </Field>
+                                        <Field label="Color"><input name="color" value={form.color} onChange={hc} placeholder="Navy Blue" className="pf-inp" /></Field>
+                                        <Field label="Material"><input name="material" value={form.material} onChange={hc} placeholder="Cotton" className="pf-inp" /></Field>
+                                        <Field label="Occasion"><input name="occasion" value={form.occasion} onChange={hc} placeholder="Casual" className="pf-inp" /></Field>
                                     </div>
-
                                     <div className="g2">
                                         <Field label="Category" required err={fErrs.category}>
-                                            <select name="category" value={form.category} onChange={hc}
-                                                className={`pf-inp pf-sel${fErrs.category ? " err" : ""}`}>
+                                            <select name="category" value={form.category} onChange={hc} className={`pf-inp pf-sel${fErrs.category ? " err" : ""}`}>
                                                 <option value="">— Select Category —</option>
                                                 {categories.map(c => (
                                                     <option key={c._id || c.value} value={c.value || c.slug || c.name}>
@@ -689,91 +692,55 @@ const AdminEditProduct = () => {
                                                 ))}
                                             </select>
                                         </Field>
-                                        <Field label="Subcategory">
-                                            <input name="subcategory" value={form.subcategory} onChange={hc}
-                                                placeholder="e.g. Kurta Set" className="pf-inp" />
-                                        </Field>
+                                        <Field label="Subcategory"><input name="subcategory" value={form.subcategory} onChange={hc} placeholder="e.g. Kurta Set" className="pf-inp" /></Field>
                                     </div>
-
                                     <Field label="Tags" hint="comma-separated">
-                                        <input name="tags" value={form.tags} onChange={hc}
-                                            placeholder="kurta, ethnic, festive" className="pf-inp" />
+                                        <input name="tags" value={form.tags} onChange={hc} placeholder="kurta, ethnic, festive" className="pf-inp" />
                                     </Field>
-
                                     <div className="g2">
-                                        <Toggle on={form.isFeatured}
-                                            toggle={() => setForm(p => ({ ...p, isFeatured: !p.isFeatured }))}
-                                            label="⭐ Featured Product" sub="Shown on homepage"
-                                            color="#f59e0b" bg="#fffbeb" />
-                                        <Toggle on={form.isCustomizable}
-                                            toggle={() => setForm(p => ({ ...p, isCustomizable: !p.isCustomizable }))}
-                                            label="🎨 Customizable" sub="Customer can add design/text" />
+                                        <Toggle on={form.isFeatured} toggle={() => setForm(p => ({ ...p, isFeatured: !p.isFeatured }))} label="⭐ Featured Product" sub="Shown on homepage" color="#f59e0b" bg="#fffbeb" />
+                                        <Toggle on={form.isCustomizable} toggle={() => setForm(p => ({ ...p, isCustomizable: !p.isCustomizable }))} label="🎨 Customizable" sub="Customer can add design/text" />
                                     </div>
-
                                     {form.isCustomizable && (
-                                        <div style={{
-                                            background: "#fafbfc", border: "1.5px solid #e2e8f0",
-                                            borderRadius: 13, padding: 16, display: "flex", flexDirection: "column", gap: 12
-                                        }}>
+                                        <div style={{ background: "#fafbfc", border: "1.5px solid #e2e8f0", borderRadius: 13, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
                                             <p style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5" }}>🎨 Customization Options</p>
-                                            <Toggle on={custConfig.allowText}
-                                                toggle={() => setCustConfig(p => ({ ...p, allowText: !p.allowText }))}
-                                                label="Allow Custom Text" sub="Name / message input" />
+                                            <Toggle on={custConfig.allowText} toggle={() => setCustConfig(p => ({ ...p, allowText: !p.allowText }))} label="Allow Custom Text" sub="Name / message input" />
                                             {custConfig.allowText && (
                                                 <div className="g2" style={{ paddingLeft: 10 }}>
-                                                    <Field label="Text Label">
-                                                        <input value={custConfig.textLabel}
-                                                            onChange={e => setCustConfig(p => ({ ...p, textLabel: e.target.value }))}
-                                                            placeholder="Name / Message" className="pf-inp" />
-                                                    </Field>
-                                                    <Field label="Max Length">
-                                                        <input type="number" min="1" max="500" value={custConfig.textMaxLength}
-                                                            onChange={e => setCustConfig(p => ({ ...p, textMaxLength: +e.target.value || 100 }))}
-                                                            className="pf-inp" />
-                                                    </Field>
+                                                    <Field label="Text Label"><input value={custConfig.textLabel} onChange={e => setCustConfig(p => ({ ...p, textLabel: e.target.value }))} placeholder="Name / Message" className="pf-inp" /></Field>
+                                                    <Field label="Max Length"><input type="number" min="1" max="500" value={custConfig.textMaxLength} onChange={e => setCustConfig(p => ({ ...p, textMaxLength: +e.target.value || 100 }))} className="pf-inp" /></Field>
                                                 </div>
                                             )}
-                                            <Toggle on={custConfig.allowImage}
-                                                toggle={() => setCustConfig(p => ({ ...p, allowImage: !p.allowImage }))}
-                                                label="Allow Image Upload" sub="Customer uploads photo" />
-                                            <Toggle on={custConfig.allowNote}
-                                                toggle={() => setCustConfig(p => ({ ...p, allowNote: !p.allowNote }))}
-                                                label="Allow Special Notes" sub="Free-text instructions" />
+                                            <Toggle on={custConfig.allowImage} toggle={() => setCustConfig(p => ({ ...p, allowImage: !p.allowImage }))} label="Allow Image Upload" sub="Customer uploads photo" />
+                                            <Toggle on={custConfig.allowNote} toggle={() => setCustConfig(p => ({ ...p, allowNote: !p.allowNote }))} label="Allow Special Notes" sub="Free-text instructions" />
                                             <Field label="Extra Charge (₹)" hint="0 = free">
-                                                <input type="number" min="0" value={custConfig.extraPrice}
-                                                    onChange={e => setCustConfig(p => ({ ...p, extraPrice: +e.target.value || 0 }))}
-                                                    placeholder="0" className="pf-inp" style={{ maxWidth: 180 }} />
+                                                <input type="number" min="0" value={custConfig.extraPrice} onChange={e => setCustConfig(p => ({ ...p, extraPrice: +e.target.value || 0 }))} placeholder="0" className="pf-inp" style={{ maxWidth: 180 }} />
                                             </Field>
                                         </div>
                                     )}
                                 </div>
                             )}
 
-                            {/* PRICING */}
+                            {/* ══ PRICING ══ */}
                             {tab === "pricing" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SL>Pricing & Stock</SL>
+                                    <div style={{ padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10 }}>
+                                        <p style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>
+                                            💡 Yeh <strong>base price</strong> hai. Agar color variants alag price pe hain toh Variants tab mein set karo.
+                                        </p>
+                                    </div>
                                     <div className="g2">
                                         <Field label="Selling Price (₹)" required err={fErrs.price}>
                                             <div style={{ position: "relative" }}>
-                                                <span style={{
-                                                    position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
-                                                    color: "#94a3b8", fontSize: 13, pointerEvents: "none"
-                                                }}>₹</span>
-                                                <input type="number" name="price" value={form.price} onChange={hc}
-                                                    placeholder="0" min="1"
-                                                    className={`pf-inp${fErrs.price ? " err" : ""}`} style={{ paddingLeft: 28 }} />
+                                                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 13, pointerEvents: "none" }}>₹</span>
+                                                <input type="number" name="price" value={form.price} onChange={hc} placeholder="0" min="1" className={`pf-inp${fErrs.price ? " err" : ""}`} style={{ paddingLeft: 28 }} />
                                             </div>
                                         </Field>
                                         <Field label="MRP (₹)" hint="compare-at" err={fErrs.mrp}>
                                             <div style={{ position: "relative" }}>
-                                                <span style={{
-                                                    position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
-                                                    color: "#94a3b8", fontSize: 13, pointerEvents: "none"
-                                                }}>₹</span>
-                                                <input type="number" name="mrp" value={form.mrp} onChange={hc}
-                                                    placeholder="0" min="1"
-                                                    className={`pf-inp${fErrs.mrp ? " err" : ""}`} style={{ paddingLeft: 28 }} />
+                                                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 13, pointerEvents: "none" }}>₹</span>
+                                                <input type="number" name="mrp" value={form.mrp} onChange={hc} placeholder="0" min="1" className={`pf-inp${fErrs.mrp ? " err" : ""}`} style={{ paddingLeft: 28 }} />
                                             </div>
                                         </Field>
                                     </div>
@@ -782,194 +749,199 @@ const AdminEditProduct = () => {
                                             <span style={{ color: "#059669", fontWeight: 800, fontSize: 22 }}>{discPct}%</span>
                                             <div>
                                                 <p style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>Discount Applied</p>
-                                                <p style={{ fontSize: 11, color: "#64748b" }}>
-                                                    Customer saves ₹{(+form.mrp - +form.price).toLocaleString("en-IN")}
-                                                </p>
+                                                <p style={{ fontSize: 11, color: "#64748b" }}>Customer saves ₹{(+form.mrp - +form.price).toLocaleString("en-IN")}</p>
                                             </div>
                                         </div>
                                     )}
                                     <div className="g2">
-                                        <Field label="Stock Quantity" required err={fErrs.stock}
-                                            hint={selSizes.length ? "auto from sizes" : undefined}>
+                                        <Field label="Stock Quantity" required err={fErrs.stock} hint={selSizes.length ? "auto from sizes" : enableVariants ? "auto from variants" : undefined}>
                                             <input type="number" name="stock" value={form.stock} onChange={hc}
-                                                readOnly={selSizes.length > 0} placeholder="0" min="0"
+                                                readOnly={selSizes.length > 0 || enableVariants}
+                                                placeholder="0" min="0"
                                                 className={`pf-inp${fErrs.stock ? " err" : ""}`}
-                                                style={{ background: selSizes.length > 0 ? "#f1f5f9" : undefined }} />
+                                                style={{ background: (selSizes.length > 0 || enableVariants) ? "#f1f5f9" : undefined }} />
                                             {form.stock !== "" && !fErrs.stock && (
-                                                <p style={{
-                                                    fontSize: 11, fontWeight: 600, marginTop: 2,
-                                                    color: +form.stock > 0 ? "#059669" : "#ef4444"
-                                                }}>
+                                                <p style={{ fontSize: 11, fontWeight: 600, marginTop: 2, color: +form.stock > 0 ? "#059669" : "#ef4444" }}>
                                                     {+form.stock > 0 ? `✓ In Stock — ${form.stock} units` : "✕ Out of Stock"}
                                                 </p>
                                             )}
                                         </Field>
                                         <Field label="GST Rate">
-                                            <select name="gstPercent" value={form.gstPercent} onChange={hc}
-                                                className="pf-inp pf-sel">
+                                            <select name="gstPercent" value={form.gstPercent} onChange={hc} className="pf-inp pf-sel">
                                                 {GST_RATES.map(r => <option key={r} value={r}>{r}% GST</option>)}
                                             </select>
                                         </Field>
                                     </div>
-                                    <Toggle on={form.isDeal}
-                                        toggle={() => setForm(p => ({ ...p, isDeal: !p.isDeal, dealEndsAt: "" }))}
-                                        label="⚡ Mark as Deal" sub="Appears in Deals section"
-                                        color="#d97706" bg="#fffbeb" />
+                                    <Toggle on={form.isDeal} toggle={() => setForm(p => ({ ...p, isDeal: !p.isDeal, dealEndsAt: "" }))} label="⚡ Mark as Deal" sub="Appears in Deals section" color="#d97706" bg="#fffbeb" />
                                     {form.isDeal && (
                                         <Field label="Deal Ends At" hint="blank = no expiry">
-                                            <input type="datetime-local" name="dealEndsAt" value={form.dealEndsAt} onChange={hc}
-                                                className="pf-inp" />
+                                            <input type="datetime-local" name="dealEndsAt" value={form.dealEndsAt} onChange={hc} className="pf-inp" />
                                         </Field>
                                     )}
                                 </div>
                             )}
 
-                            {/* VARIANTS */}
+                            {/* ══ VARIANTS ══ */}
                             {tab === "variants" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                                     <SL>Color Variants & Sizes</SL>
 
+                                    {/* Sizes */}
                                     <div>
                                         <p style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 10 }}>AVAILABLE SIZES</p>
                                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
                                             {availableSizes.map(s => (
-                                                <button key={s} type="button" onClick={() => toggleSize(s)}
-                                                    className={`pf-chip${selSizes.includes(s) ? " on" : ""}`}>{s}</button>
+                                                <button key={s} type="button" onClick={() => toggleSize(s)} className={`pf-chip${selSizes.includes(s) ? " on" : ""}`}>{s}</button>
                                             ))}
                                         </div>
                                         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                                            <input
-                                                value={newSize}
-                                                onChange={e => setNewSize(e.target.value)}
+                                            <input value={newSize} onChange={e => setNewSize(e.target.value)}
                                                 onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddCustomSize(); } }}
-                                                placeholder="Add custom size (e.g. 8, 42, 6GB)"
-                                                className="pf-inp"
-                                                style={{ maxWidth: 200, padding: "8px 12px" }}
-                                            />
-                                            <button type="button" onClick={handleAddCustomSize} className="pf-btn-ghost" style={{ flex: "none", padding: "8px 16px" }}>
-                                                Add Size
-                                            </button>
+                                                placeholder="Add custom size" className="pf-inp" style={{ maxWidth: 200, padding: "8px 12px" }} />
+                                            <button type="button" onClick={handleAddCustomSize} className="pf-btn-ghost" style={{ flex: "none", padding: "8px 16px" }}>Add Size</button>
                                         </div>
                                         {selSizes.length > 0 && (
                                             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                                                 {selSizes.map(s => (
-                                                    <div key={s} style={{
-                                                        display: "flex", alignItems: "center", gap: 8,
-                                                        background: "#fafbfc", border: "1.5px solid #e2e8f0", borderRadius: 9, padding: "6px 10px"
-                                                    }}>
+                                                    <div key={s} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fafbfc", border: "1.5px solid #e2e8f0", borderRadius: 9, padding: "6px 10px" }}>
                                                         <span style={{ fontSize: 12, fontWeight: 700, color: "#475569", minWidth: 36 }}>{s}</span>
-                                                        <input type="number" min="0" value={sizeStockMap[s] ?? 0}
-                                                            onChange={e => updateSizeStock(s, e.target.value)}
-                                                            style={{
-                                                                width: 60, padding: "5px 8px", border: "1.5px solid #e2e8f0",
-                                                                borderRadius: 7, fontSize: 12, textAlign: "center",
-                                                                outline: "none", fontFamily: "inherit"
-                                                            }} />
+                                                        <input type="number" min="0" value={sizeStockMap[s] ?? 0} onChange={e => updateSizeStock(s, e.target.value)}
+                                                            style={{ width: 60, padding: "5px 8px", border: "1.5px solid #e2e8f0", borderRadius: 7, fontSize: 12, textAlign: "center", outline: "none", fontFamily: "inherit" }} />
                                                     </div>
                                                 ))}
                                             </div>
                                         )}
                                     </div>
 
+                                    {/* Color Variants Toggle */}
                                     <Toggle on={enableVariants}
                                         toggle={() => { setEnableVariants(p => !p); if (!enableVariants && colorVariants.length === 0) addVariant(); }}
                                         label="🎨 Multiple Color Variants"
-                                        sub="Separate images and stock per color option" />
+                                        sub="Separate price, stock and images per color" />
+
+                                    {fErrs.colorVariants && <p className="pf-field-err">⚠ {fErrs.colorVariants}</p>}
 
                                     {enableVariants && (
-                                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                                            <div style={{ padding: "10px 14px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10 }}>
+                                                <p style={{ fontSize: 11, color: "#92400e", fontWeight: 600 }}>
+                                                    💡 Price/MRP blank chhodo = base product price use hogi. Alag price chahiye toh bharo.
+                                                </p>
+                                            </div>
+
                                             {colorVariants.map((v, vi) => (
                                                 <div key={v.id} className={`pf-variant-card${v.isDefault ? " default" : ""}`}>
+                                                    {/* Row 1: Color swatch + Name + Actions */}
                                                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                                                        <div style={{ position: "relative" }}>
+                                                        <div style={{ position: "relative", flexShrink: 0 }}>
                                                             <input type="color" value={v.hex}
                                                                 onChange={e => updateVariant(v.id, "hex", e.target.value)}
-                                                                style={{ opacity: 0, position: "absolute", inset: 0, cursor: "pointer", border: "none" }} />
-                                                            <div style={{
-                                                                width: 36, height: 36, borderRadius: "50%",
-                                                                background: v.hex, border: "3px solid #fff",
-                                                                boxShadow: "0 0 0 2px #e2e8f0", cursor: "pointer"
-                                                            }} />
+                                                                style={{ opacity: 0, position: "absolute", inset: 0, cursor: "pointer", border: "none", width: "100%", height: "100%" }} />
+                                                            <div style={{ width: 36, height: 36, borderRadius: "50%", background: v.hex, border: "3px solid #fff", boxShadow: "0 0 0 2px #e2e8f0", cursor: "pointer" }} />
                                                         </div>
                                                         <input value={v.name}
                                                             onChange={e => updateVariant(v.id, "name", e.target.value)}
                                                             placeholder={`Color ${vi + 1} (e.g. Navy Blue)`}
                                                             className="pf-inp" style={{ flex: 1 }} />
-                                                        <input type="number" min="0" value={v.stock}
-                                                            onChange={e => updateVariant(v.id, "stock", e.target.value)}
-                                                            placeholder="Stock" className="pf-inp" style={{ width: 90 }} />
                                                         <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
                                                             <button type="button" onClick={() => setDefaultVariant(v.id)}
-                                                                style={{
-                                                                    padding: "4px 10px", fontSize: 10, fontWeight: 700,
-                                                                    border: "1.5px solid", borderRadius: 6, cursor: "pointer",
-                                                                    background: v.isDefault ? "#4f46e5" : "#fff",
-                                                                    color: v.isDefault ? "#fff" : "#6366f1",
-                                                                    borderColor: v.isDefault ? "#4f46e5" : "#a5b4fc"
-                                                                }}>
+                                                                style={{ padding: "4px 10px", fontSize: 10, fontWeight: 700, border: "1.5px solid", borderRadius: 6, cursor: "pointer", background: v.isDefault ? "#4f46e5" : "#fff", color: v.isDefault ? "#fff" : "#6366f1", borderColor: v.isDefault ? "#4f46e5" : "#a5b4fc" }}>
                                                                 {v.isDefault ? "✓ Default" : "Set Default"}
                                                             </button>
                                                             {colorVariants.length > 1 && (
                                                                 <button type="button" onClick={() => removeVariant(v.id)}
-                                                                    style={{
-                                                                        padding: "3px 10px", fontSize: 10, fontWeight: 700,
-                                                                        border: "1.5px solid #fecaca", borderRadius: 6,
-                                                                        cursor: "pointer", background: "#fef2f2", color: "#dc2626"
-                                                                    }}>
+                                                                    style={{ padding: "3px 10px", fontSize: 10, fontWeight: 700, border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", background: "#fef2f2", color: "#dc2626" }}>
                                                                     Remove
                                                                 </button>
                                                             )}
                                                         </div>
                                                     </div>
 
-                                                    {/* Existing images indicator */}
+                                                    {/* Row 2: Price + MRP + Stock (v2.1) */}
+                                                    <div className="g3" style={{ marginBottom: 14 }}>
+                                                        <Field label="Price (₹)" hint="blank = base price">
+                                                            <div style={{ position: "relative" }}>
+                                                                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 12, pointerEvents: "none" }}>₹</span>
+                                                                <input type="number" min="0"
+                                                                    value={v.price}
+                                                                    onChange={e => updateVariant(v.id, "price", e.target.value)}
+                                                                    placeholder={form.price || "Base"}
+                                                                    className="pf-inp"
+                                                                    style={{ paddingLeft: 24, fontSize: 13 }} />
+                                                            </div>
+                                                            {v.price !== "" && +v.price !== +form.price && (
+                                                                <span style={{ fontSize: 10, color: "#6366f1", background: "#eef2ff", padding: "2px 7px", borderRadius: 4, fontWeight: 600, marginTop: 4, display: "inline-block" }}>
+                                                                    Custom price set ✓
+                                                                </span>
+                                                            )}
+                                                        </Field>
+                                                        <Field label="MRP (₹)" hint="blank = base MRP">
+                                                            <div style={{ position: "relative" }}>
+                                                                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 12, pointerEvents: "none" }}>₹</span>
+                                                                <input type="number" min="0"
+                                                                    value={v.mrp}
+                                                                    onChange={e => updateVariant(v.id, "mrp", e.target.value)}
+                                                                    placeholder={form.mrp || "Base"}
+                                                                    className="pf-inp"
+                                                                    style={{ paddingLeft: 24, fontSize: 13 }} />
+                                                            </div>
+                                                        </Field>
+                                                        <Field label="Stock">
+                                                            <input type="number" min="0"
+                                                                value={v.stock}
+                                                                onChange={e => updateVariant(v.id, "stock", e.target.value)}
+                                                                placeholder="0" className="pf-inp" />
+                                                            {v.stock !== "" && (
+                                                                <p style={{ fontSize: 10, marginTop: 3, color: +v.stock > 0 ? "#059669" : "#ef4444", fontWeight: 600 }}>
+                                                                    {+v.stock > 0 ? `✓ ${v.stock} units` : "✕ OOS"}
+                                                                </p>
+                                                            )}
+                                                        </Field>
+                                                    </div>
+
+                                                    {/* Row 3: Existing images info */}
                                                     {v.existingImages?.length > 0 && v.previews.length === 0 && (
-                                                        <div style={{
-                                                            marginBottom: 10, padding: "8px 12px",
-                                                            background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8
-                                                        }}>
+                                                        <div style={{ marginBottom: 10, padding: "8px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8 }}>
                                                             <p style={{ fontSize: 11, color: "#059669", fontWeight: 600 }}>
-                                                                ✓ {v.existingImages.length} existing image(s) — upload new to replace
+                                                                ✓ {v.existingImages.length} existing image(s)
                                                             </p>
+                                                            {/* Show existing images as small thumbnails */}
+                                                            <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                                                                {v.existingImages.map((img, ei) => (
+                                                                    <img key={ei} src={img.url} alt="" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #bbf7d0" }} />
+                                                                ))}
+                                                            </div>
+                                                            <p style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>Neeche se naye upload karo replace karne ke liye</p>
                                                         </div>
                                                     )}
 
+                                                    {/* Row 4: Variant images */}
                                                     <div>
                                                         <p style={{ fontSize: 11, fontWeight: 600, color: "#64748b", marginBottom: 8 }}>
-                                                            Images for this color:
+                                                            {v.previews.length > 0 ? "New Images (will replace existing):" : "Upload Images for this color:"}
                                                         </p>
                                                         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
                                                             {v.previews.map((src, pi) => (
                                                                 <div key={pi} className="pf-slot">
                                                                     <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                                                                     {pi === 0 && <span className="pf-img-badge">MAIN</span>}
-                                                                    <button type="button" className="pf-img-del"
-                                                                        onClick={() => {
-                                                                            updateVariant(v.id, "images", v.images.filter((_, j) => j !== pi));
-                                                                            updateVariant(v.id, "previews", v.previews.filter((_, j) => j !== pi));
-                                                                        }}>✕</button>
+                                                                    <button type="button" className="pf-img-del" onClick={() => removeVariantImage(v.id, pi)}>✕</button>
                                                                 </div>
                                                             ))}
                                                             {v.previews.length < 4 && (
                                                                 <label className="pf-drop">
                                                                     <span style={{ fontSize: 22 }}>📷</span>
                                                                     <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>Add</span>
-                                                                    <input type="file" multiple accept="image/*"
-                                                                        onChange={e => handleVariantImages(v.id, e)}
-                                                                        style={{ display: "none" }} />
+                                                                    <input type="file" multiple accept="image/*" onChange={e => handleVariantImages(v.id, e)} style={{ display: "none" }} />
                                                                 </label>
                                                             )}
                                                         </div>
                                                     </div>
                                                 </div>
                                             ))}
+
                                             <button type="button" onClick={addVariant}
-                                                style={{
-                                                    display: "flex", alignItems: "center", gap: 6, justifyContent: "center",
-                                                    padding: "10px 16px", border: "2px dashed #c7d2fe",
-                                                    borderRadius: 12, background: "none", cursor: "pointer",
-                                                    color: "#6366f1", fontWeight: 700, fontSize: 13, fontFamily: "inherit"
-                                                }}>
+                                                style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center", padding: "10px 16px", border: "2px dashed #c7d2fe", borderRadius: 12, background: "none", cursor: "pointer", color: "#6366f1", fontWeight: 700, fontSize: 13, fontFamily: "inherit" }}>
                                                 + Add Color Variant
                                             </button>
                                         </div>
@@ -977,7 +949,7 @@ const AdminEditProduct = () => {
                                 </div>
                             )}
 
-                            {/* DETAILS */}
+                            {/* ══ DETAILS ══ */}
                             {tab === "details" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                                     <SL>Product Details & Specifications</SL>
@@ -991,19 +963,12 @@ const AdminEditProduct = () => {
                                                         {(hlTemplate.length ? hlTemplate.map(t => t.title) : HIGHLIGHT_KEYS)
                                                             .map(k => <option key={k} value={k}>{k}</option>)}
                                                     </select>
-                                                    <input value={h.value} onChange={e => updateHL(i, "value", e.target.value)}
-                                                        placeholder="Value…" className="pf-inp" style={{ flex: 1 }} />
-                                                    {hls.length > 1 && (
-                                                        <button type="button" onClick={() => removeHL(i)} className="pf-hl-rm">✕</button>
-                                                    )}
+                                                    <input value={h.value} onChange={e => updateHL(i, "value", e.target.value)} placeholder="Value…" className="pf-inp" style={{ flex: 1 }} />
+                                                    {hls.length > 1 && <button type="button" onClick={() => removeHL(i)} className="pf-hl-rm">✕</button>}
                                                 </div>
                                             ))}
                                             <button type="button" onClick={addHL}
-                                                style={{
-                                                    alignSelf: "flex-start", display: "flex", alignItems: "center",
-                                                    gap: 5, fontSize: 12, fontWeight: 600, color: "#6366f1",
-                                                    background: "none", border: "none", cursor: "pointer", padding: "3px 0"
-                                                }}>
+                                                style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#6366f1", background: "none", border: "none", cursor: "pointer", padding: "3px 0" }}>
                                                 + Add Highlight
                                             </button>
                                         </div>
@@ -1015,7 +980,7 @@ const AdminEditProduct = () => {
                                 </div>
                             )}
 
-                            {/* IMAGES */}
+                            {/* ══ IMAGES ══ */}
                             {tab === "images" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SL>Product Images</SL>
@@ -1024,7 +989,7 @@ const AdminEditProduct = () => {
                                     {curImgs.length > 0 && newPreviews.length === 0 && (
                                         <div>
                                             <p style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 10 }}>
-                                                Current Images <span style={{ color: "#94a3b8", fontWeight: 400 }}>— upload new to replace</span>
+                                                Current Images <span style={{ color: "#94a3b8", fontWeight: 400 }}>— naya upload karo replace karne ke liye</span>
                                             </p>
                                             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
                                                 {curImgs.map((img, i) => (
@@ -1037,7 +1002,6 @@ const AdminEditProduct = () => {
                                         </div>
                                     )}
 
-                                    {/* New image upload */}
                                     <div>
                                         <p style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 10 }}>
                                             {newPreviews.length > 0 ? "New Images (will replace current)" : "Replace Images"}
@@ -1070,68 +1034,43 @@ const AdminEditProduct = () => {
                                 </div>
                             )}
 
-                            {/* POLICY */}
+                            {/* ══ POLICY ══ */}
                             {tab === "policy" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SL>Cancellation, Return & Replacement Policy</SL>
                                     <div className="g3">
                                         {[["isCancellable", "Cancellable"], ["isReturnable", "Returnable"], ["isReplaceable", "Replaceable"]].map(([field, label]) => (
-                                            <label key={field} style={{
-                                                display: "flex", alignItems: "center", gap: 9,
-                                                padding: "11px 14px", borderRadius: 11, cursor: "pointer", fontSize: 13, fontWeight: 700,
-                                                background: form[field] ? "#f0fdf4" : "#fef2f2",
-                                                border: `1.5px solid ${form[field] ? "#bbf7d0" : "#fecaca"}`,
-                                                transition: "all .15s"
-                                            }}>
-                                                <input type="checkbox" name={field} checked={form[field]}
-                                                    onChange={e => setForm(p => ({ ...p, [field]: e.target.checked }))} />
+                                            <label key={field} style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 14px", borderRadius: 11, cursor: "pointer", fontSize: 13, fontWeight: 700, background: form[field] ? "#f0fdf4" : "#fef2f2", border: `1.5px solid ${form[field] ? "#bbf7d0" : "#fecaca"}`, transition: "all .15s" }}>
+                                                <input type="checkbox" name={field} checked={form[field]} onChange={e => setForm(p => ({ ...p, [field]: e.target.checked }))} />
                                                 {label}
                                             </label>
                                         ))}
                                     </div>
                                     <div className="g3">
-                                        <Field label="Cancel Window (hrs)">
-                                            <input name="cancelWindow" value={form.cancelWindow} onChange={hc} type="number" min="0" max="72" className="pf-inp" />
-                                        </Field>
-                                        <Field label="Return Window (days)">
-                                            <input name="returnWindow" value={form.returnWindow} onChange={hc} type="number" min="0" max="30" className="pf-inp" />
-                                        </Field>
-                                        <Field label="Replacement Window (days)">
-                                            <input name="replacementWindow" value={form.replacementWindow} onChange={hc} type="number" min="0" max="30" className="pf-inp" />
-                                        </Field>
+                                        <Field label="Cancel Window (hrs)"><input name="cancelWindow" value={form.cancelWindow} onChange={hc} type="number" min="0" max="72" className="pf-inp" /></Field>
+                                        <Field label="Return Window (days)"><input name="returnWindow" value={form.returnWindow} onChange={hc} type="number" min="0" max="30" className="pf-inp" /></Field>
+                                        <Field label="Replacement Window (days)"><input name="replacementWindow" value={form.replacementWindow} onChange={hc} type="number" min="0" max="30" className="pf-inp" /></Field>
                                     </div>
                                     {!form.isReturnable && (
                                         <Field label="Non-Returnable Reason">
-                                            <input name="nonReturnableReason" value={form.nonReturnableReason} onChange={hc}
-                                                placeholder="e.g. Hygiene product" className="pf-inp" />
+                                            <input name="nonReturnableReason" value={form.nonReturnableReason} onChange={hc} placeholder="e.g. Hygiene product" className="pf-inp" />
                                         </Field>
                                     )}
                                 </div>
                             )}
 
-                            {/* SEO */}
+                            {/* ══ SEO ══ */}
                             {tab === "seo" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SL>SEO & Shipping</SL>
                                     <Field label="Meta Title" hint="~60 chars">
-                                        <input name="metaTitle" value={form.metaTitle} onChange={hc}
-                                            placeholder="Buy Premium Silk Kurta | Urbexon" className="pf-inp" />
-                                        {form.metaTitle && (
-                                            <p style={{ fontSize: 10, marginTop: 2, color: form.metaTitle.length > 60 ? "#dc2626" : "#94a3b8" }}>
-                                                {form.metaTitle.length}/60 chars
-                                            </p>
-                                        )}
+                                        <input name="metaTitle" value={form.metaTitle} onChange={hc} placeholder="Buy Premium Silk Kurta | Urbexon" className="pf-inp" />
+                                        {form.metaTitle && <p style={{ fontSize: 10, marginTop: 2, color: form.metaTitle.length > 60 ? "#dc2626" : "#94a3b8" }}>{form.metaTitle.length}/60 chars</p>}
                                     </Field>
                                     <Field label="Meta Description" hint="~160 chars">
-                                        <textarea name="metaDesc" value={form.metaDesc} onChange={hc}
-                                            placeholder="Brief description…" rows={3} className="pf-inp" style={{ resize: "none", lineHeight: 1.6 }} />
-                                        {form.metaDesc && (
-                                            <p style={{ fontSize: 10, marginTop: 2, color: form.metaDesc.length > 160 ? "#dc2626" : "#94a3b8" }}>
-                                                {form.metaDesc.length}/160 chars
-                                            </p>
-                                        )}
+                                        <textarea name="metaDesc" value={form.metaDesc} onChange={hc} placeholder="Brief description…" rows={3} className="pf-inp" style={{ resize: "none", lineHeight: 1.6 }} />
+                                        {form.metaDesc && <p style={{ fontSize: 10, marginTop: 2, color: form.metaDesc.length > 160 ? "#dc2626" : "#94a3b8" }}>{form.metaDesc.length}/160 chars</p>}
                                     </Field>
-                                    <div style={{ height: 1, background: "#f1f5f9" }} />
                                     <div className="g2">
                                         <Field label="Return Policy">
                                             <select name="returnPolicy" value={form.returnPolicy} onChange={hc} className="pf-inp pf-sel">
@@ -1141,35 +1080,21 @@ const AdminEditProduct = () => {
                                                 <option value="30">30 Days</option>
                                             </select>
                                         </Field>
-                                        <Field label="Shipping Info">
-                                            <input name="shippingInfo" value={form.shippingInfo} onChange={hc}
-                                                placeholder="Ships in 2–3 business days" className="pf-inp" />
-                                        </Field>
+                                        <Field label="Shipping Info"><input name="shippingInfo" value={form.shippingInfo} onChange={hc} placeholder="Ships in 2–3 business days" className="pf-inp" /></Field>
                                     </div>
                                 </div>
                             )}
 
-                            {/* QUICK */}
+                            {/* ══ QUICK ══ */}
                             {tab === "quick" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SL>Quick Commerce Settings (Urbexon Hour)</SL>
-                                    <div style={{
-                                        padding: "12px 14px", background: "#fffbeb",
-                                        border: "1px solid #fde68a", borderRadius: 10
-                                    }}>
-                                        <p style={{ fontSize: 11, color: "#92400e", fontWeight: 600 }}>
-                                            ⚡ Urbexon Hour fast-delivery product settings
-                                        </p>
+                                    <div style={{ padding: "12px 14px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10 }}>
+                                        <p style={{ fontSize: 11, color: "#92400e", fontWeight: 600 }}>⚡ Urbexon Hour fast-delivery product settings</p>
                                     </div>
                                     <div className="g2">
-                                        <Field label="Prep Time (minutes)">
-                                            <input name="prepTimeMinutes" value={form.prepTimeMinutes} onChange={hc}
-                                                type="number" min="1" max="120" placeholder="10" className="pf-inp" />
-                                        </Field>
-                                        <Field label="Max Order Qty">
-                                            <input name="maxOrderQty" value={form.maxOrderQty} onChange={hc}
-                                                type="number" min="1" max="100" placeholder="10" className="pf-inp" />
-                                        </Field>
+                                        <Field label="Prep Time (minutes)"><input name="prepTimeMinutes" value={form.prepTimeMinutes} onChange={hc} type="number" min="1" max="120" placeholder="10" className="pf-inp" /></Field>
+                                        <Field label="Max Order Qty"><input name="maxOrderQty" value={form.maxOrderQty} onChange={hc} type="number" min="1" max="100" placeholder="10" className="pf-inp" /></Field>
                                     </div>
                                 </div>
                             )}
@@ -1188,12 +1113,9 @@ const AdminEditProduct = () => {
                         )}
 
                         <div className="pf-actions">
-                            <button type="button" className="pf-btn-nav" disabled={tabIdx <= 0}
-                                onClick={() => setTab(sections[tabIdx - 1])}>←</button>
-                            <button type="button" className="pf-btn-nav" disabled={tabIdx >= sections.length - 1}
-                                onClick={() => setTab(sections[tabIdx + 1])}>→</button>
-                            <button type="button" className="pf-btn-ghost"
-                                onClick={() => navigate("/admin/products")}>Cancel</button>
+                            <button type="button" className="pf-btn-nav" disabled={tabIdx <= 0} onClick={() => setTab(sections[tabIdx - 1])}>←</button>
+                            <button type="button" className="pf-btn-nav" disabled={tabIdx >= sections.length - 1} onClick={() => setTab(sections[tabIdx + 1])}>→</button>
+                            <button type="button" className="pf-btn-ghost" onClick={() => navigate("/admin/products")}>Cancel</button>
                             <button type="submit" disabled={saving} className="pf-btn-submit">
                                 {saving ? <><div className="pf-spin" /> Updating…</> : <>✓ Update Product</>}
                             </button>
@@ -1204,11 +1126,7 @@ const AdminEditProduct = () => {
                 {/* Progress dots */}
                 <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 14 }}>
                     {sections.map(sid => (
-                        <div key={sid} style={{
-                            width: sid === tab ? 20 : 6, height: 6, borderRadius: 3,
-                            background: tabHasErr(sid) ? "#ef4444" : sid === tab ? tc.color : "#e2e8f0",
-                            transition: "all .25s"
-                        }} />
+                        <div key={sid} style={{ width: sid === tab ? 20 : 6, height: 6, borderRadius: 3, background: tabHasErr(sid) ? "#ef4444" : sid === tab ? tc.color : "#e2e8f0", transition: "all .25s" }} />
                     ))}
                 </div>
             </div>

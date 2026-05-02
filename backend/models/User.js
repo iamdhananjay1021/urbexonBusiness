@@ -56,7 +56,7 @@ const userSchema = new mongoose.Schema(
         },
 
         // ── Google OAuth ──
-        googleId: { type: String, default: null, unique: true, sparse: true },
+        googleId: { type: String, unique: true, sparse: true },
 
         // ── ROLES: user | vendor | delivery_boy | admin | owner ──
         role: {

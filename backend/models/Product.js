@@ -1,6 +1,11 @@
 /**
- * Product.js — Production model
+ * Product.js — Production model v2.1
  * productType: "ecommerce" (admin) | "urbexon_hour" (vendor)
+ *
+ * CHANGES v2.1:
+ * - colorVariants: Mixed → properly typed schema
+ *   Each variant now has: name, hex, price (optional override), stock, images
+ * - colorVariants are now queryable / indexable
  */
 import mongoose from "mongoose";
 import slugify from "slugify";
@@ -9,6 +14,17 @@ const imageSchema = new mongoose.Schema({
     url: { type: String, required: true },
     publicId: { type: String, default: "" },
     alt: { type: String, default: "" },
+}, { _id: false });
+
+/* ── Color Variant Sub-Schema ────────────────────────────── */
+const colorVariantSchema = new mongoose.Schema({
+    name: { type: String, trim: true, default: "" },        // "Navy Blue", "Crimson Red"
+    hex: { type: String, default: "#000000" },              // "#1a1a2e"
+    price: { type: Number, default: null, min: 0 },         // null = use product base price
+    mrp: { type: Number, default: null, min: 0 },           // null = use product base mrp
+    stock: { type: Number, default: 0, min: 0 },
+    isDefault: { type: Boolean, default: false },
+    images: { type: [imageSchema], default: [] },
 }, { _id: false });
 
 const productSchema = new mongoose.Schema({
@@ -49,10 +65,10 @@ const productSchema = new mongoose.Schema({
     isCancellable: { type: Boolean, default: true },
     isReturnable: { type: Boolean, default: true },
     isReplaceable: { type: Boolean, default: false },
-    returnWindow: { type: Number, default: 7, min: 0, max: 30 },       // days after delivery
-    replacementWindow: { type: Number, default: 7, min: 0, max: 30 },  // days after delivery
-    cancelWindow: { type: Number, default: 0, min: 0, max: 72 },       // hours after order placed (0 = until packed)
-    nonReturnableReason: { type: String, default: "" },                 // e.g. "Hygiene product"
+    returnWindow: { type: Number, default: 7, min: 0, max: 30 },
+    replacementWindow: { type: Number, default: 7, min: 0, max: 30 },
+    cancelWindow: { type: Number, default: 0, min: 0, max: 72 },
+    nonReturnableReason: { type: String, default: "" },
     isCustomizable: { type: Boolean, default: false },
     customizationConfig: {
         allowText: { type: Boolean, default: true },
@@ -67,7 +83,6 @@ const productSchema = new mongoose.Schema({
         extraPrice: { type: Number, default: 0, min: 0 },
     },
     highlights: { type: Map, of: String, default: {} },
-    // Structured highlights array: [{ title: "Weight", value: "1kg" }]
     highlightsArray: {
         type: [
             {
@@ -81,7 +96,13 @@ const productSchema = new mongoose.Schema({
     // ── Images ────────────────────────────────────────────
     images: { type: [imageSchema], default: [] },
 
+    // ── Color Variants ────────────────────────────────────
+    // v2.1: Properly typed (was Mixed). Each variant has its own
+    // price/stock/images. price=null means "use product base price".
+    colorVariants: { type: [colorVariantSchema], default: [] },
+
     // ── Stock ─────────────────────────────────────────────
+    // Base stock (used when no colorVariants, or as fallback)
     stock: { type: Number, default: 0, min: 0 },
     inStock: { type: Boolean, default: false, index: true },
 
@@ -91,8 +112,8 @@ const productSchema = new mongoose.Schema({
     isDeal: { type: Boolean, default: false, index: true },
     dealStartsAt: { type: Date, default: null },
     dealEndsAt: { type: Date, default: null },
-    dealPriority: { type: Number, default: 0 }, // Higher = shown first
-    discount: { type: Number, default: 0 }, // Manual discount percentage override
+    dealPriority: { type: Number, default: 0 },
+    discount: { type: Number, default: 0 },
 
     // ── Analytics ─────────────────────────────────────────
     views: { type: Number, default: 0 },
@@ -135,8 +156,16 @@ productSchema.pre("save", async function (next) {
 });
 
 // ── Auto inStock ──────────────────────────────────────────
+// If colorVariants exist → inStock if ANY variant has stock > 0
+// Otherwise → use base stock
 productSchema.pre("save", function (next) {
-    this.inStock = this.stock > 0;
+    if (this.colorVariants && this.colorVariants.length > 0) {
+        const totalVariantStock = this.colorVariants.reduce((s, v) => s + (v.stock || 0), 0);
+        this.stock = totalVariantStock;
+        this.inStock = totalVariantStock > 0;
+    } else {
+        this.inStock = this.stock > 0;
+    }
     next();
 });
 

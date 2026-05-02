@@ -40,16 +40,14 @@ const ShareModal = ({ product, onClose }) => {
     const url = window.location.href;
     const text = encodeURIComponent(`${product.name} — ₹${Number(product.price).toLocaleString("en-IN")}`);
     const enc = encodeURIComponent(url);
-
     const links = [
         { icon: <FaWhatsapp size={22} />, label: "WhatsApp", color: "#25D366", bg: "#f0fdf4", href: `https://wa.me/?text=${text}%20${enc}` },
         { icon: <FaFacebook size={22} />, label: "Facebook", color: "#1877F2", bg: "#eff6ff", href: `https://www.facebook.com/sharer/sharer.php?u=${enc}` },
         { icon: <FaTwitter size={22} />, label: "Twitter", color: "#000", bg: "#f5f5f5", href: `https://twitter.com/intent/tweet?text=${text}&url=${enc}` },
         { icon: <FaInstagram size={22} />, label: "Instagram", color: "#E1306C", bg: "#fff0f6", href: `https://www.instagram.com/` },
     ];
-
     return (
-        <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "8vh 16px 0" }}>
+        <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "8vh 16px 0" }}>
             <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 380, borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,.25)", maxHeight: "82vh", overflowY: "auto", animation: "mcSlideDown .22s ease" }}>
                 <div style={{ padding: "16px 20px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #f0f0f0" }}>
                     <span style={{ fontWeight: 700, fontSize: 15, color: "#212121" }}>Share Product</span>
@@ -96,7 +94,6 @@ const ZoomModal = ({ src, alt, onClose }) => {
         window.addEventListener("keydown", h);
         return () => window.removeEventListener("keydown", h);
     }, [onClose]);
-
     return (
         <div onClick={onClose} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, background: "rgba(0,0,0,.94)", display: "flex", alignItems: "center", justifyContent: "center", width: "100vw", height: "100vh" }}>
             <button onClick={onClose} style={{ position: "fixed", top: 16, right: 16, width: 40, height: 40, background: "rgba(255,255,255,.15)", border: "1px solid rgba(255,255,255,.3)", borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -135,50 +132,6 @@ const RatingBar = ({ star, count, pct }) => (
     </div>
 );
 
-/* ─── Variant Selector ──────────────────────────────────── */
-const VariantSelector = ({ variants, currentProductId }) => {
-    if (!variants || variants.length <= 1) return null;
-
-    const grouped = variants.reduce((acc, v) => {
-        if (!v.variantOptions || !Array.isArray(v.variantOptions)) return acc;
-        v.variantOptions.forEach(opt => {
-            if (!acc[opt.type]) acc[opt.type] = [];
-            acc[opt.type].push({ _id: v._id, slug: v.slug, value: opt.value, thumbnail: v.images?.[0]?.url });
-        });
-        return acc;
-    }, {});
-
-    return (
-        <div style={{ marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f0f0f0" }}>
-            {Object.entries(grouped).map(([type, options]) => (
-                <div key={type} style={{ marginBottom: 12 }}>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: "#212121", marginBottom: 10, textTransform: "capitalize" }}>
-                        More {type} Options
-                    </p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                        {options.map((variant, idx) => {
-                            const isCurrent = variant._id === currentProductId;
-                            const isColor = type.toLowerCase() === 'color';
-                            const isHex = isColor && /^#([0-9A-F]{3}){1,2}$/i.test(variant.value);
-
-                            if (isColor) {
-                                return (
-                                    <Link key={`${variant._id}-${idx}`} to={`/products/${variant.slug || variant._id}`} title={`View color: ${variant.value}`} style={{ width: 44, height: 44, borderRadius: '4px', background: isHex ? variant.value : '#f5f5f5', border: `2px solid ${isCurrent ? '#2874f0' : '#e0e0e0'}`, cursor: 'pointer', boxShadow: isCurrent ? '0 0 0 1px #fff, 0 0 0 2px #2874f0' : 'none', transition: 'all .2s', backgroundImage: !isHex && variant.thumbnail ? `url(${variant.thumbnail})` : 'none', backgroundSize: 'cover', backgroundPosition: 'top center', display: 'inline-block' }} />
-                                );
-                            }
-                            return (
-                                <Link key={`${variant._id}-${idx}`} to={`/products/${variant.slug || variant._id}`} style={{ padding: "6px 12px", border: `1px solid ${isCurrent ? '#2874f0' : '#e0e0e0'}`, borderRadius: 4, background: isCurrent ? "#f0f5ff" : "#fff", color: isCurrent ? "#2874f0" : "#212121", fontSize: 13, fontWeight: 600, textDecoration: "none", display: "inline-block" }}>
-                                    {variant.value}
-                                </Link>
-                            );
-                        })}
-                    </div>
-                </div>
-            ))}
-        </div>
-    );
-};
-
 /* ═══════════════════════════════════════════════════════════
    MAIN COMPONENT
 ═══════════════════════════════════════════════════════════ */
@@ -201,6 +154,7 @@ const ProductDetails = () => {
     const [imgZoomed, setImgZoomed] = useState(false);
     const [shareOpen, setShareOpen] = useState(false);
     const [selectedSize, setSelectedSize] = useState("");
+    const [selectedColor, setSelectedColor] = useState("");
     const [addedFlash, setAddedFlash] = useState(false);
     const [activeTab, setActiveTab] = useState("description");
 
@@ -224,16 +178,58 @@ const ProductDetails = () => {
 
     const abortRef = useRef(null);
 
-    /* ── Derived ── */
-    const inCart = useMemo(() => cartItems.some(i => i._id === product?._id), [cartItems, product?._id]);
-    const mrpValue = useMemo(() => product ? getMrp(product) : null, [product]);
-    const hasDiscount = useMemo(() => mrpValue && mrpValue > Number(product?.price), [mrpValue, product?.price]);
-    const savedAmount = useMemo(() => hasDiscount ? mrpValue - Number(product.price) : 0, [hasDiscount, mrpValue, product?.price]);
-    const discountPct = useMemo(() => hasDiscount ? Math.round(((mrpValue - Number(product.price)) / mrpValue) * 100) : null, [hasDiscount, mrpValue, product?.price]);
-    const avgRating = useMemo(() => {
-        if (reviews && reviews.length > 0) {
-            return reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length;
+    /* ═══════════════════════════════════════════════
+       ACTIVE VARIANT — selected color ka full object
+    ═══════════════════════════════════════════════ */
+    const activeVariant = useMemo(() => {
+        if (!selectedColor || !product?.colorVariants?.length) return null;
+        return product.colorVariants.find(
+            (v, idx) => {
+                const cName = v.name || v.color || `Color ${idx + 1}`;
+                return cName === selectedColor;
+            }
+        ) || null;
+    }, [product?.colorVariants, selectedColor]);
+
+    /* Variant-aware price — variant ka price ho toh woh, warna base price */
+    const displayPrice = useMemo(() => {
+        if (activeVariant?.price != null && Number(activeVariant.price) > 0)
+            return Number(activeVariant.price);
+        return product ? Number(product.price) : 0;
+    }, [activeVariant, product?.price]);
+
+    /* Variant-aware MRP */
+    const baseMrp = useMemo(() => getMrp(product), [product]);
+    const displayMrp = useMemo(() => {
+        if (activeVariant?.mrp != null && Number(activeVariant.mrp) > 0)
+            return Number(activeVariant.mrp);
+        return baseMrp;
+    }, [activeVariant, baseMrp]);
+
+    /* Variant-aware stock & inStock */
+    const variantStock = useMemo(() => {
+        if (activeVariant) return activeVariant.stock ?? 0;
+        return product?.stock ?? 0;
+    }, [activeVariant, product?.stock]);
+
+    const variantInStock = useMemo(() => {
+        if (product?.colorVariants?.length > 0 && selectedColor) {
+            return (activeVariant?.stock ?? 0) > 0;
         }
+        // agar koi color select nahi hai aur variants hain — base inStock use karo
+        return product?.inStock ?? false;
+    }, [activeVariant, selectedColor, product?.colorVariants, product?.inStock]);
+
+    /* ── Derived ── */
+    const currentCartItemId = product ? `${product._id}-${selectedSize || 'nosize'}-${selectedColor || 'nocolor'}` : null;
+    const inCart = useMemo(() => cartItems.some(i => (i.cartItemId || i._id) === currentCartItemId), [cartItems, currentCartItemId]);
+
+    const hasDiscount = useMemo(() => displayMrp && displayMrp > displayPrice, [displayMrp, displayPrice]);
+    const savedAmount = useMemo(() => hasDiscount ? displayMrp - displayPrice : 0, [hasDiscount, displayMrp, displayPrice]);
+    const discountPct = useMemo(() => hasDiscount ? Math.round(((displayMrp - displayPrice) / displayMrp) * 100) : null, [hasDiscount, displayMrp, displayPrice]);
+
+    const avgRating = useMemo(() => {
+        if (reviews && reviews.length > 0) return reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length;
         return product?.rating || 0;
     }, [reviews, product?.rating]);
 
@@ -244,24 +240,33 @@ const ProductDetails = () => {
     })), [reviews]);
 
     const highlightEntries = useMemo(() => {
-        // Prefer structured highlightsArray, fallback to legacy highlights Map
-        if (product?.highlightsArray?.length) {
-            return product.highlightsArray.map(h => [h.title, h.value]);
-        }
+        if (product?.highlightsArray?.length) return product.highlightsArray.map(h => [h.title, h.value]);
         if (!product?.highlights) return [];
         return product.highlights instanceof Map
             ? [...product.highlights.entries()]
             : Object.entries(product.highlights);
     }, [product?.highlights, product?.highlightsArray]);
 
-    const allImages = useMemo(() => product?.images?.length ? product.images : [], [product?.images]);
+    /* ── Images — switch to variant images when color selected ── */
+    const allImages = useMemo(() => {
+        if (!product) return [];
+        if (selectedColor && product.colorVariants) {
+            const variant = product.colorVariants.find((v, idx) => {
+                const cName = v.name || v.color || `Color ${idx + 1}`;
+                return cName === selectedColor;
+            });
+            if (variant?.images?.length > 0) return variant.images;
+        }
+        return product.images?.length ? product.images : [];
+    }, [product, selectedColor]);
 
-    /* ── FIX: sizes is array of {size, stock} objects ── */
+    /* Reset active image when color changes */
+    useEffect(() => { setActiveImg(0); }, [selectedColor]);
+
+    /* ── Normalized sizes ── */
     const normalizedSizes = useMemo(() => {
         if (!product?.sizes?.length) return [];
-        return product.sizes.map(s =>
-            typeof s === "string" ? { size: s, stock: 1 } : s
-        );
+        return product.sizes.map(s => typeof s === "string" ? { size: s, stock: 1 } : s);
     }, [product?.sizes]);
 
     /* ── Fetch ── */
@@ -284,17 +289,22 @@ const ProductDetails = () => {
                 setError("");
                 setActiveImg(0);
                 setSelectedSize("");
+                setSelectedColor("");
 
                 const { data: prod } = await api.get(`/products/${id}`, { signal: ctrl.signal });
                 setProductType(prod?.productType || "ecommerce");
                 setProduct(prod);
 
-                // Track recently viewed
+                // Auto-select default color variant
+                if (prod?.colorVariants?.length > 0) {
+                    const def = prod.colorVariants.find(v => v.isDefault) || prod.colorVariants[0];
+                    if (def?.name) setSelectedColor(def.name);
+                }
+
                 trackView(prod);
 
                 const { data: related } = await api.get(`/products/${prod._id}/related`, { signal: ctrl.signal });
                 setRelatedProducts(related);
-
                 await fetchReviews(prod._id);
             } catch (err) {
                 if (err.name !== "AbortError") setError("Failed to load product.");
@@ -349,18 +359,52 @@ const ProductDetails = () => {
 
     const handleAddToCart = useCallback(() => {
         if (normalizedSizes.length > 0 && !selectedSize) return alert("Please select a size!");
-        addItem({ ...product, selectedSize, customization: getCustomization() });
+        if (product?.colorVariants?.length > 0 && !selectedColor) return alert("Please select a color!");
+
+        const cartItemId = `${product._id}-${selectedSize || 'nosize'}-${selectedColor || 'nocolor'}`;
+        const cartPayload = {
+            ...product,
+            _id: cartItemId, // 🔥 Trick Redux to treat this as a totally unique item
+            productId: product._id, // 🔥 Preserve real ID for backend processing
+            /* 🔥 Variant price override */
+            price: displayPrice,
+            mrp: displayMrp,
+            /* Variant images as cart thumbnail */
+            images: activeVariant?.images?.length ? activeVariant.images : product.images,
+            image: activeVariant?.images?.[0]?.url || product.images?.[0]?.url || "",
+            selectedSize,
+            selectedColor,
+            customization: getCustomization(),
+            cartItemId
+        };
+
+        addItem(cartPayload);
         setAddedFlash(true);
         setTimeout(() => setAddedFlash(false), 1500);
-    }, [product, selectedSize, normalizedSizes, addItem, getCustomization]);
+    }, [product, selectedSize, selectedColor, normalizedSizes, addItem, getCustomization, displayPrice, displayMrp, activeVariant]);
 
     const handleBuyNow = useCallback(() => {
         if (normalizedSizes.length > 0 && !selectedSize) return alert("Please select a size!");
-        const buyNowItem = { ...product, quantity: 1, selectedSize, customization: getCustomization() };
-        // Persist to sessionStorage so it survives login redirect
+        if (product?.colorVariants?.length > 0 && !selectedColor) return alert("Please select a color!");
+
+        const cartItemId = `${product._id}-${selectedSize || 'nosize'}-${selectedColor || 'nocolor'}`;
+        const buyNowItem = {
+            ...product,
+            _id: cartItemId, // 🔥 Trick Checkout into treating this as unique
+            productId: product._id, // 🔥 Preserve real ID
+            price: displayPrice,
+            mrp: displayMrp,
+            images: activeVariant?.images?.length ? activeVariant.images : product.images,
+            image: activeVariant?.images?.[0]?.url || product.images?.[0]?.url || "",
+            quantity: 1,
+            selectedSize,
+            selectedColor,
+            customization: getCustomization(),
+            cartItemId
+        };
         try { sessionStorage.setItem("ux_buy_now_item", JSON.stringify(buyNowItem)); } catch { }
         navigate("/checkout", { state: { buyNowItem } });
-    }, [product, selectedSize, normalizedSizes, navigate, getCustomization]);
+    }, [product, selectedSize, selectedColor, normalizedSizes, navigate, getCustomization, displayPrice, displayMrp, activeVariant]);
 
     const handleNotifyMe = useCallback(async () => {
         if (!notifyEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notifyEmail)) {
@@ -370,10 +414,7 @@ const ProductDetails = () => {
         try {
             setNotifySubmitting(true);
             setNotifyError("");
-            await api.post("/stock-notify/subscribe", {
-                productId: product._id,
-                email: notifyEmail.trim(),
-            });
+            await api.post("/stock-notify/subscribe", { productId: product._id, email: notifyEmail.trim() });
             setNotifySuccess(true);
             setShowNotifyInput(false);
             try { localStorage.setItem(`notify_${product._id}`, "1"); } catch { }
@@ -425,9 +466,7 @@ const ProductDetails = () => {
     if (!product || error) return (
         <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, background: "#f1f3f6" }}>
             <p style={{ color: "#878787", fontSize: 14 }}>{error || "Product not found"}</p>
-            <button onClick={() => navigate("/")} style={{ padding: "10px 24px", background: "#2874f0", color: "#fff", border: "none", borderRadius: 4, fontWeight: 700, cursor: "pointer" }}>
-                Go Home
-            </button>
+            <button onClick={() => navigate("/")} style={{ padding: "10px 24px", background: "#2874f0", color: "#fff", border: "none", borderRadius: 4, fontWeight: 700, cursor: "pointer" }}>Go Home</button>
         </div>
     );
 
@@ -445,8 +484,7 @@ const ProductDetails = () => {
                         type="product"
                     />
                     <JsonLd data={{
-                        "@context": "https://schema.org",
-                        "@type": "Product",
+                        "@context": "https://schema.org", "@type": "Product",
                         name: product.name,
                         description: product.description?.slice(0, 300),
                         image: product.images?.map(i => i.url) || [],
@@ -455,216 +493,95 @@ const ProductDetails = () => {
                             "@type": "Offer",
                             url: `https://www.urbexon.in/products/${id}`,
                             priceCurrency: "INR",
-                            price: product.price,
-                            availability: product.inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+                            price: displayPrice,
+                            availability: variantInStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
                         },
                         ...(product.avgRating > 0 && {
-                            aggregateRating: {
-                                "@type": "AggregateRating",
-                                ratingValue: product.avgRating,
-                                reviewCount: product.reviewCount || 1,
-                            },
+                            aggregateRating: { "@type": "AggregateRating", ratingValue: product.avgRating, reviewCount: product.reviewCount || 1 },
                         }),
                     }} />
                 </>
             )}
+
             {/* ── Global CSS ── */}
             <style>{`
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');
 
 @keyframes mcSlideDown { from{opacity:0;transform:translateY(-18px)} to{opacity:1;transform:translateY(0)} }
 @keyframes spin { to{transform:rotate(360deg)} }
+@keyframes colorPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
 
-/* ═══ BASE ═══ */
-.pd-tab {
-  padding:12px 20px;
-  font-size:13px;
-  font-weight:600;
-  border:none;
-  background:none;
-  cursor:pointer;
-  border-bottom:3px solid transparent;
-  color:#878787;
-  transition:.2s;
-}
+.pd-tab { padding:12px 20px; font-size:13px; font-weight:600; border:none; background:none; cursor:pointer; border-bottom:3px solid transparent; color:#878787; transition:.2s; }
 .pd-tab.active { color:#2874f0; border-bottom-color:#2874f0; }
 
-.pd-size {
-  min-width:50px;
-  height:42px;
-  padding:0 12px;
-  border:1px solid #e0e0e0;
-  font-size:12px;
-  font-weight:600;
-  cursor:pointer;
-  background:#fff;
-  border-radius:4px;
-}
+.pd-size { min-width:50px; height:42px; padding:0 12px; border:1px solid #e0e0e0; font-size:12px; font-weight:600; cursor:pointer; background:#fff; border-radius:4px; transition:all .15s; }
+.pd-size:hover:not(.oos) { border-color:#2874f0; }
 .pd-size.active { border:2px solid #212121; }
 .pd-size.oos { color:#ccc; cursor:not-allowed; text-decoration:line-through; }
 
-.pd-btn {
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:6px;
-  height:48px;
-  flex:1;
-  font-size:13px;
-  font-weight:700;
-  border:none;
-  border-radius:4px;
-  cursor:pointer;
-}
+.pd-btn { display:flex; align-items:center; justify-content:center; gap:6px; height:48px; flex:1; font-size:13px; font-weight:700; border:none; border-radius:4px; cursor:pointer; }
 .pd-cart { background:#ff9f00; color:#fff; }
 .pd-buy { background:#fb641b; color:#fff; }
-
-.pd-thumb {
-  width:64px;
-  height:64px;
-  border:2px solid transparent;
-  border-radius:4px;
-  overflow:hidden;
-  cursor:pointer;
-  background:#fafafa;
-}
+.pd-thumb { width:64px; height:64px; border:2px solid transparent; border-radius:4px; overflow:hidden; cursor:pointer; background:#fafafa; transition:border-color .2s; }
 .pd-thumb.active { border-color:#2874f0; }
 
-/* 🔥 FIXED HERO IMAGE (MAIN ISSUE) */
-.pd-hero-img {
-  aspect-ratio:3/4;
-  background:#fafafa;
-  border:1px solid #f0f0f0;
-  border-radius:4px;
-  overflow:hidden;
-  cursor:zoom-in;
-  position:relative;
+.pd-hero-img { aspect-ratio:3/4; background:#fafafa; border:1px solid #f0f0f0; border-radius:4px; overflow:hidden; cursor:zoom-in; position:relative; display:flex; align-items:center; justify-content:center; }
+.pd-hero-img img { width:100%; height:100%; object-fit:contain; object-position:center; transition:.3s; }
 
-  display:flex;
-  align-items:center;
-  justify-content:center;  /* ✅ CENTER FIX */
-}
+.pd-share-btn { position:absolute; top:10px; right:10px; background:#fff; border:none; border-radius:20px; padding:6px 12px; font-size:11px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.1); }
+.pd-trust { display:flex; align-items:center; gap:8px; padding:10px 0; font-size:12px; border-bottom:1px solid #f0f0f0; }
 
-.pd-hero-img img {
-  width:100%;
-  height:100%;
-  object-fit:contain;     /* ✅ NO LEFT SHIFT */
-  object-position:center;
-  transition:.3s;
-}
+/* ── Color Variant Buttons ── */
+.pd-color-btn { display:flex; align-items:center; gap:8px; padding:6px 12px 6px 8px; border-radius:6px; cursor:pointer; transition:all .18s; position:relative; min-height:42px; font-family:'Roboto',sans-serif; }
+.pd-color-btn:hover:not(.oos) { transform:translateY(-1px); box-shadow:0 4px 12px rgba(40,116,240,.15); }
+.pd-color-btn.selected { box-shadow:0 0 0 1px #fff,0 0 0 3px #2874f0; }
+.pd-color-btn.oos { cursor:not-allowed; opacity:.45; }
+.pd-color-check { position:absolute; top:-7px; right:-7px; background:#2874f0; color:#fff; width:17px; height:17px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:800; border:2px solid #fff; }
 
-.pd-share-btn {
-  position:absolute;
-  top:10px;
-  right:10px;
-  background:#fff;
-  border:none;
-  border-radius:20px;
-  padding:6px 12px;
-  font-size:11px;
-  font-weight:700;
-  cursor:pointer;
-}
-
-.pd-trust {
-  display:flex;
-  align-items:center;
-  gap:8px;
-  padding:10px 0;
-  font-size:12px;
-  border-bottom:1px solid #f0f0f0;
-}
-
-/* ═══ TABLET ═══ */
-@media (max-width:1024px){
-  .pd-main-grid{ grid-template-columns:1fr 1fr !important; }
-}
-
-/* ═══ MOBILE ═══ */
+@media (max-width:1024px){ .pd-main-grid{ grid-template-columns:1fr 1fr !important; } }
 @media (max-width:768px){
-
   .pd-main-grid{ grid-template-columns:1fr !important; }
-
-  .pd-img-wrap{
-    padding:14px !important;
-    border-bottom:1px solid #f0f0f0;
-  }
-
+  .pd-img-wrap{ padding:14px !important; border-bottom:1px solid #f0f0f0; }
   .pd-info-wrap{ padding:14px !important; }
-
   .pd-thumb{ width:52px; height:52px; }
-
-  .pd-btn{
-    height:42px;
-    font-size:12px;
-  }
-
-  h1.pd-title{
-    font-size:1rem;
-  }
+  .pd-btn{ height:42px; font-size:12px; }
+  h1.pd-title{ font-size:1rem; }
 }
-
-/* ═══ SMALL PHONE ═══ */
 @media (max-width:480px){
-
   .pd-img-wrap{ padding:10px !important; }
-
-  .pd-hero-img{
-    max-height:280px;
-  }
-
-  .pd-thumb{
-    width:44px;
-    height:44px;
-  }
-
-  .pd-btn{
-    height:38px;
-    font-size:10px;
-  }
-
-  h1.pd-title{
-    font-size:0.95rem;
-  }
-
-  .pd-trust{
-    font-size:10px;
-  }
+  .pd-hero-img{ max-height:280px; }
+  .pd-thumb{ width:44px; height:44px; }
+  .pd-btn{ height:38px; font-size:10px; }
+  h1.pd-title{ font-size:0.95rem; }
+  .pd-trust{ font-size:10px; }
+  .pd-bottom-spacer { height: 80px; }
 }
+@media (min-width:769px){ .pd-bottom-spacer { height: 0; } }
 `}</style>
 
-            <div style={{ background: "#f1f3f6", minHeight: "100vh" }}>
+            <div style={{ background: "#f1f3f6", minHeight: "100vh", overflowX: "hidden", width: "100%" }}>
 
                 {/* ── Breadcrumb ── */}
-                <div className="pd-breadcrumb" style={{ background: "#fff", padding: "10px 16px", borderBottom: "1px solid #f0f0f0" }}>
+                <div style={{ background: "#fff", padding: "10px 16px", borderBottom: "1px solid #f0f0f0" }}>
                     <button onClick={() => navigate(-1)} style={{ display: "flex", alignItems: "center", gap: 6, color: "#2874f0", background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
                         <FaArrowLeft size={11} /> Back
                     </button>
                 </div>
 
                 {/* ── Main white card ── */}
-                <div className="pd-page-wrap" style={{ maxWidth: 1100, margin: "12px auto", background: "#fff", borderRadius: 4, boxShadow: "0 1px 4px rgba(0,0,0,.1)" }}>
+                <div style={{ maxWidth: 1100, margin: "12px auto", background: "#fff", borderRadius: 4, boxShadow: "0 1px 4px rgba(0,0,0,.1)", width: "100%", boxSizing: "border-box" }}>
                     <div className="pd-main-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1.15fr", gap: 0 }}>
 
-                        {/* ══════════ LEFT — Images ══════════ */}
-                        <div className="pd-img-wrap" style={{ borderRight: "1px solid #f0f0f0", padding: "24px 20px" }}>
-
-                            {/* Main Image */}
+                        {/* ══ LEFT — Images ══ */}
+                        <div className="pd-img-wrap" style={{ borderRight: "1px solid #f0f0f0", padding: "24px 20px", minWidth: 0, boxSizing: "border-box" }}>
                             <div style={{ position: "relative" }}>
                                 {/* Badges */}
                                 <div style={{ position: "absolute", top: 10, left: 10, zIndex: 2, display: "flex", flexDirection: "column", gap: 4 }}>
-                                    {product.isCustomizable && (
-                                        <span style={{ background: "#388e3c", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 2 }}>✏ CUSTOM</span>
-                                    )}
-                                    {!product.inStock && (
-                                        <span style={{ background: "#212121", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 2 }}>SOLD OUT</span>
-                                    )}
-                                    {hasDiscount && (
-                                        <span style={{ background: "#388e3c", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 2 }}>{discountPct}% off</span>
-                                    )}
+                                    {product.isCustomizable && <span style={{ background: "#388e3c", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 2 }}>✏ CUSTOM</span>}
+                                    {!variantInStock && <span style={{ background: "#212121", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 2 }}>SOLD OUT</span>}
+                                    {hasDiscount && <span style={{ background: "#388e3c", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 2 }}>{discountPct}% off</span>}
                                 </div>
 
-                                {/* Share */}
                                 <button className="pd-share-btn" onClick={e => { e.preventDefault(); e.stopPropagation(); setShareOpen(true); }}>
                                     <FaShare size={11} /> Share
                                 </button>
@@ -672,7 +589,7 @@ const ProductDetails = () => {
                                 {/* Hero image */}
                                 <div
                                     className="pd-hero-img"
-                                    style={{ aspectRatio: "3/4", background: "#fafafa", border: "1px solid #f0f0f0", borderRadius: 4, overflow: "hidden", cursor: "zoom-in", position: "relative", maxWidth: "100%", maxHeight: "600px" }}
+                                    style={{ maxWidth: "100%", maxHeight: 600 }}
                                     onClick={() => { if (!shareOpen) setImgZoomed(true); }}
                                 >
                                     {heroUrl
@@ -680,13 +597,12 @@ const ProductDetails = () => {
                                             src={heroUrl}
                                             alt={product.name}
                                             loading="eager"
-                                            style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top center", transition: "transform .4s ease" }}
+                                            style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center", transition: "transform .4s ease" }}
                                             onMouseEnter={e => e.target.style.transform = "scale(1.04)"}
                                             onMouseLeave={e => e.target.style.transform = "scale(1)"}
                                         />
                                         : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 64 }}>🎁</div>
                                     }
-                                    {/* Zoom hint */}
                                     <div style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(255,255,255,.9)", borderRadius: 4, padding: "6px 10px", display: "flex", alignItems: "center", gap: 5 }}>
                                         <FaSearchPlus size={12} color="#212121" />
                                         <span style={{ fontSize: 10, fontWeight: 700, color: "#212121" }}>ZOOM</span>
@@ -696,9 +612,9 @@ const ProductDetails = () => {
 
                             {/* Thumbnails */}
                             {allImages.length > 1 && (
-                                <div className="pd-thumb-wrap" style={{ display: "flex", gap: 8, marginTop: 12, overflowX: "auto", paddingBottom: 4 }}>
+                                <div style={{ display: "flex", gap: 8, marginTop: 12, overflowX: "auto", paddingBottom: 4 }}>
                                     {allImages.map((img, i) => (
-                                        <div key={i} className={`pd-thumb ${activeImg === i ? "active" : ""}`} onClick={() => setActiveImg(i)}>
+                                        <div key={i} className={`pd-thumb${activeImg === i ? " active" : ""}`} onClick={() => setActiveImg(i)}>
                                             <img src={imgUrl.card(img.url)} alt={`${product.name} ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top center" }} />
                                         </div>
                                     ))}
@@ -706,18 +622,16 @@ const ProductDetails = () => {
                             )}
                         </div>
 
-                        {/* ══════════ RIGHT — Info ══════════ */}
-                        <div className="pd-info-wrap" style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 0 }}>
+                        {/* ══ RIGHT — Info ══ */}
+                        <div className="pd-info-wrap" style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 0, minWidth: 0, boxSizing: "border-box" }}>
 
-                            {/* Category */}
                             {product.category && (
-                                <p className="pd-category" style={{ fontSize: 11, color: "#878787", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>
+                                <p style={{ fontSize: 11, color: "#878787", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>
                                     {product.category.replace(/-/g, " ")}
                                 </p>
                             )}
 
-                            {/* Title */}
-                            <h1 className="pd-title" style={{ fontSize: "1.35rem", fontWeight: 500, color: "#212121", lineHeight: 1.4, marginBottom: 10 }}>
+                            <h1 className="pd-title" style={{ fontSize: "1.35rem", fontWeight: 500, color: "#212121", lineHeight: 1.4, marginBottom: 10, wordBreak: "break-word" }}>
                                 {product.name}
                             </h1>
 
@@ -730,16 +644,26 @@ const ProductDetails = () => {
                                 <span style={{ fontSize: 13, color: "#878787" }}>{reviews.length} Ratings &amp; Reviews</span>
                             </div>
 
-                            {/* Price */}
+                            {/* ══ PRICE — Dynamic (changes on color select) ══ */}
                             <div style={{ marginBottom: 4 }}>
                                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                                    <span className="pd-price-large" style={{ fontSize: "2rem", fontWeight: 700, color: "#212121", lineHeight: 1 }}>
-                                        ₹{Number(product.price).toLocaleString("en-IN")}
+                                    <span style={{ fontSize: "2rem", fontWeight: 700, color: "#212121", lineHeight: 1, transition: "all .2s" }}>
+                                        ₹{displayPrice.toLocaleString("en-IN")}
                                     </span>
                                     {hasDiscount && <>
-                                        <span className="pd-price-old" style={{ fontSize: "1rem", color: "#878787", textDecoration: "line-through" }}>₹{Number(mrpValue).toLocaleString("en-IN")}</span>
-                                        <span className="pd-price-off" style={{ fontSize: "1rem", fontWeight: 700, color: "#388e3c" }}>{discountPct}% off</span>
+                                        <span style={{ fontSize: "1rem", color: "#878787", textDecoration: "line-through" }}>
+                                            ₹{Number(displayMrp).toLocaleString("en-IN")}
+                                        </span>
+                                        <span style={{ fontSize: "1rem", fontWeight: 700, color: "#388e3c" }}>
+                                            {discountPct}% off
+                                        </span>
                                     </>}
+                                    {/* Agar variant ka alag price hai toh badge show karo */}
+                                    {activeVariant?.price != null && Number(activeVariant.price) > 0 && Number(activeVariant.price) !== Number(product.price) && (
+                                        <span style={{ fontSize: 10, color: "#6366f1", background: "#eef2ff", padding: "2px 8px", borderRadius: 4, fontWeight: 700 }}>
+                                            {activeVariant.name} price
+                                        </span>
+                                    )}
                                 </div>
                                 <p style={{ fontSize: 12, color: "#878787" }}>Inclusive of all taxes</p>
                                 {hasDiscount && savedAmount > 0 && (
@@ -751,31 +675,29 @@ const ProductDetails = () => {
 
                             {/* Delivery Estimate */}
                             <div style={{ marginTop: 6, marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #f0f0f0" }}>
-                                <DeliveryEstimate productPrice={Number(product.price) || 0} productWeight={product.weight || 500} />
+                                <DeliveryEstimate productPrice={displayPrice} productWeight={product.weight || 500} />
                             </div>
 
-                            {/* Variants Selector */}
-                            {product.allVariants && product.allVariants.length > 1 && (
-                                <VariantSelector variants={product.allVariants} currentProductId={product._id} />
-                            )}
-
-                            {/* Stock */}
+                            {/* ══ STOCK — Dynamic (changes on color select) ══ */}
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-                                {product.inStock ? (<>
+                                {variantInStock ? (<>
                                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#388e3c", display: "inline-block" }} />
                                     <span style={{ fontSize: 13, fontWeight: 600, color: "#388e3c" }}>In Stock</span>
-                                    {product.stock > 0 && product.stock <= 10 && (
+                                    {variantStock > 0 && variantStock <= 10 && (
                                         <span style={{ fontSize: 12, color: "#ff6161", fontWeight: 600, background: "#fff3f3", padding: "2px 8px", borderRadius: 3 }}>
-                                            Only {product.stock} left
+                                            Only {variantStock} left
                                         </span>
                                     )}
                                 </>) : (<>
                                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ff6161", display: "inline-block" }} />
                                     <span style={{ fontSize: 13, fontWeight: 600, color: "#ff6161" }}>Out of Stock</span>
+                                    {selectedColor && (
+                                        <span style={{ fontSize: 11, color: "#878787" }}>for {selectedColor}</span>
+                                    )}
                                 </>)}
                             </div>
 
-                            {/* ── FIX: Sizes — properly handle {size, stock} objects ── */}
+                            {/* ══ SIZES ══ */}
                             {normalizedSizes.length > 0 && (
                                 <div style={{ marginBottom: 18 }}>
                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -810,6 +732,86 @@ const ProductDetails = () => {
                                 </div>
                             )}
 
+                            {/* ══ COLOR VARIANTS — Full Production UI ══ */}
+                            {product.colorVariants?.length > 0 && (
+                                <div style={{ marginBottom: 18 }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                                        <p style={{ fontSize: 13, fontWeight: 700, color: "#212121" }}>Color</p>
+                                        {selectedColor && (
+                                            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                                {activeVariant?.hex && (
+                                                    <span style={{ width: 14, height: 14, borderRadius: "50%", background: activeVariant.hex, border: "1.5px solid #e0e0e0", display: "inline-block" }} />
+                                                )}
+                                                <span style={{ fontSize: 13, fontWeight: 600, color: "#212121" }}>: {selectedColor}</span>
+                                                {/* Variant price badge — agar base se alag hai */}
+                                                {activeVariant?.price != null && Number(activeVariant.price) > 0 && Number(activeVariant.price) !== Number(product.price) && (
+                                                    <span style={{ fontSize: 11, color: "#388e3c", background: "#f0fdf4", padding: "1px 8px", borderRadius: 4, fontWeight: 700, border: "1px solid #bbf7d0" }}>
+                                                        ₹{Number(activeVariant.price).toLocaleString("en-IN")}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                                        {product.colorVariants.map((variant, idx) => {
+                                            const cName = variant.name || variant.color || `Color ${idx + 1}`;
+                                            const thumb = variant.images?.[0]?.url;
+                                            const isSelected = selectedColor === cName;
+                                            const vStock = variant.stock ?? 0;
+                                            const isVarOos = vStock === 0;
+
+                                            return (
+                                                <button
+                                                    key={idx}
+                                                    className={`pd-color-btn${isSelected ? " selected" : ""}${isVarOos ? " oos" : ""}`}
+                                                    onClick={() => !isVarOos && setSelectedColor(cName)}
+                                                    title={`${cName}${isVarOos ? " — Out of Stock" : `  (${vStock} left)`}`}
+                                                    style={{
+                                                        border: `${isSelected ? 2 : 1.5}px solid ${isSelected ? "#2874f0" : "#e0e0e0"}`,
+                                                        background: isSelected ? "#f0f5ff" : "#fff",
+                                                    }}
+                                                >
+                                                    {/* Swatch — thumbnail priority, fallback hex color circle */}
+                                                    {thumb ? (
+                                                        <img
+                                                            src={thumb}
+                                                            alt={cName}
+                                                            style={{ width: 32, height: 32, objectFit: "cover", borderRadius: 4, border: "1px solid #e0e0e0", flexShrink: 0 }}
+                                                        />
+                                                    ) : variant.hex ? (
+                                                        <span style={{ width: 24, height: 24, borderRadius: "50%", background: variant.hex, border: "2px solid #e0e0e0", display: "inline-block", flexShrink: 0 }} />
+                                                    ) : null}
+
+                                                    <div style={{ textAlign: "left" }}>
+                                                        <div style={{ fontSize: 12, fontWeight: 600, color: isSelected ? "#2874f0" : "#212121", textTransform: "capitalize" }}>
+                                                            {cName}
+                                                        </div>
+                                                        {/* Variant ka price — agar base se alag hai */}
+                                                        {variant.price != null && Number(variant.price) > 0 && Number(variant.price) !== Number(product.price) && (
+                                                            <div style={{ fontSize: 11, color: "#388e3c", fontWeight: 700 }}>
+                                                                ₹{Number(variant.price).toLocaleString("en-IN")}
+                                                            </div>
+                                                        )}
+                                                        {isVarOos && (
+                                                            <div style={{ fontSize: 10, color: "#ff6161", fontWeight: 600 }}>Out of stock</div>
+                                                        )}
+                                                    </div>
+
+                                                    {isSelected && <span className="pd-color-check">✓</span>}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {!selectedColor && (
+                                        <p style={{ fontSize: 12, color: "#ff6161", marginTop: 8, fontWeight: 600 }}>
+                                            ↑ Please select a color to continue
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Customization */}
                             {product.isCustomizable && (() => {
                                 const cfg = product.customizationConfig || {};
@@ -837,16 +839,12 @@ const ProductDetails = () => {
                                                     <FaPencilAlt size={9} /> {textLabel}
                                                 </label>
                                                 <input
-                                                    type="text"
-                                                    value={customText}
-                                                    maxLength={textMaxLen}
+                                                    type="text" value={customText} maxLength={textMaxLen}
                                                     onChange={e => setCustomText(e.target.value)}
                                                     placeholder={textPlaceholder}
                                                     style={{ width: "100%", padding: "8px 12px", border: "1px solid #ffe0b2", borderRadius: 4, fontSize: 13, outline: "none", background: "#fff", boxSizing: "border-box" }}
                                                 />
-                                                {customText && (
-                                                    <p style={{ fontSize: 10, color: "#bf360c", marginTop: 3, textAlign: "right" }}>{customText.length}/{textMaxLen}</p>
-                                                )}
+                                                {customText && <p style={{ fontSize: 10, color: "#bf360c", marginTop: 3, textAlign: "right" }}>{customText.length}/{textMaxLen}</p>}
                                             </div>
                                         )}
                                         {allowImage && (
@@ -868,9 +866,7 @@ const ProductDetails = () => {
                                                         <button onClick={removeCustomImage} style={{ position: "absolute", top: -8, right: -8, width: 20, height: 20, background: "#f44336", color: "#fff", border: "none", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                                                             <FaTimes size={9} />
                                                         </button>
-                                                        {customImageUrl && (
-                                                            <span style={{ position: "absolute", bottom: 2, left: 2, background: "#4caf50", color: "#fff", fontSize: 8, fontWeight: 700, padding: "1px 4px" }}>✓</span>
-                                                        )}
+                                                        {customImageUrl && <span style={{ position: "absolute", bottom: 2, left: 2, background: "#4caf50", color: "#fff", fontSize: 8, fontWeight: 700, padding: "1px 4px" }}>✓</span>}
                                                     </div>
                                                 )}
                                             </div>
@@ -881,10 +877,8 @@ const ProductDetails = () => {
                                                     <FaStickyNote size={9} /> {noteLabel}
                                                 </label>
                                                 <textarea
-                                                    value={customNote}
-                                                    onChange={e => setCustomNote(e.target.value)}
-                                                    placeholder={notePlaceholder}
-                                                    rows={2}
+                                                    value={customNote} onChange={e => setCustomNote(e.target.value)}
+                                                    placeholder={notePlaceholder} rows={2}
                                                     style={{ width: "100%", padding: "8px 12px", border: "1px solid #ffe0b2", borderRadius: 4, fontSize: 13, outline: "none", resize: "none", background: "#fff", boxSizing: "border-box" }}
                                                 />
                                             </div>
@@ -893,12 +887,12 @@ const ProductDetails = () => {
                                 );
                             })()}
 
-                            {/* ── CTA or Out of Stock ── */}
-                            {product.inStock ? (
+                            {/* ══ CTA Buttons ══ */}
+                            {variantInStock ? (
                                 <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
                                     <button
                                         onClick={handleAddToCart}
-                                        className={`pd-btn pd-cart${inCart ? " in-cart" : ""}`}
+                                        className={`pd-btn pd-cart`}
                                         style={addedFlash ? { background: "#4caf50", color: "#fff" } : {}}
                                     >
                                         <FaShoppingCart size={16} />
@@ -938,25 +932,19 @@ const ProductDetails = () => {
                                             {showNotifyInput ? (
                                                 <div style={{ display: "flex", gap: 8 }}>
                                                     <input
-                                                        type="email"
-                                                        value={notifyEmail}
+                                                        type="email" value={notifyEmail}
                                                         onChange={e => { setNotifyEmail(e.target.value); setNotifyError(""); }}
                                                         placeholder="your@email.com"
                                                         style={{ flex: 1, padding: "10px 12px", border: "1px solid #e0e0e0", borderRadius: 4, fontSize: 13, outline: "none" }}
                                                     />
-                                                    <button
-                                                        onClick={handleNotifyMe}
-                                                        disabled={notifySubmitting}
-                                                        style={{ padding: "0 16px", background: "#2874f0", color: "#fff", border: "none", borderRadius: 4, fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}
-                                                    >
+                                                    <button onClick={handleNotifyMe} disabled={notifySubmitting}
+                                                        style={{ padding: "0 16px", background: "#2874f0", color: "#fff", border: "none", borderRadius: 4, fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
                                                         {notifySubmitting ? "…" : "Notify Me"}
                                                     </button>
                                                 </div>
                                             ) : (
-                                                <button
-                                                    onClick={() => setShowNotifyInput(true)}
-                                                    style={{ width: "100%", padding: "10px 0", border: "1px solid #2874f0", color: "#2874f0", background: "#fff", borderRadius: 4, fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-                                                >
+                                                <button onClick={() => setShowNotifyInput(true)}
+                                                    style={{ width: "100%", padding: "10px 0", border: "1px solid #2874f0", color: "#2874f0", background: "#fff", borderRadius: 4, fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                                                     <FaBell size={12} /> Notify Me
                                                 </button>
                                             )}
@@ -967,19 +955,19 @@ const ProductDetails = () => {
                             )}
 
                             {/* Trust strip */}
-                            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                                <div className="pd-trust"><FaShieldAlt color="#388e3c" size={14} /> <strong>Secure</strong> 100% Secure Checkout</div>
-                                <div className="pd-trust"><FaTruck color="#2874f0" size={14} /> <strong>Free</strong> Delivery on orders above ₹499</div>
-                                <div className="pd-trust"><FaUndo color="#ff9f00" size={14} /> <strong>{product.isReturnable !== false ? `${product.returnWindow || 7}-Day` : "No"}</strong> Returns {product.isReplaceable ? `& ${product.replacementWindow || 7}-Day Replacement` : ""}</div>
-                                {product.isCancellable === false && <div className="pd-trust" style={{ color: "#ef4444" }}><FaTimesCircle color="#ef4444" size={14} /> <strong>Non-Cancellable</strong> This product cannot be cancelled after ordering</div>}
+                            <div style={{ display: "flex", flexDirection: "column", gap: 0, wordBreak: "break-word" }}>
+                                <div className="pd-trust" style={{ flexWrap: "wrap" }}><FaShieldAlt color="#388e3c" size={14} style={{ flexShrink: 0 }} /> <strong>Secure</strong> 100% Secure Checkout</div>
+                                <div className="pd-trust" style={{ flexWrap: "wrap" }}><FaTruck color="#2874f0" size={14} style={{ flexShrink: 0 }} /> <strong>Free</strong> Delivery on orders above ₹499</div>
+                                <div className="pd-trust" style={{ flexWrap: "wrap" }}><FaUndo color="#ff9f00" size={14} style={{ flexShrink: 0 }} /> <strong>{product.isReturnable !== false ? `${product.returnWindow || 7}-Day` : "No"}</strong> Returns {product.isReplaceable ? `& ${product.replacementWindow || 7}-Day Replacement` : ""}</div>
+                                {product.isCancellable === false && <div className="pd-trust" style={{ color: "#ef4444", flexWrap: "wrap" }}><FaTimesCircle color="#ef4444" size={14} style={{ flexShrink: 0 }} /> <strong>Non-Cancellable</strong> This product cannot be cancelled after ordering</div>}
                             </div>
 
                             {/* Accordions */}
-                            <div className="pd-accordion" style={{ marginTop: 16 }}>
-                                <Accordion title="Products Details & Description" icon={<FaTag size={13} color="#878787" />} defaultOpen={false}>
+                            <div style={{ marginTop: 16 }}>
+                                <Accordion title="Product Details & Description" icon={<FaTag size={13} color="#878787" />}>
                                     {product.description || "No details available."}
                                 </Accordion>
-                                <Accordion title="Delivery & Return" icon={<FaTruck size={13} color="#878787" />} defaultOpen={false}>
+                                <Accordion title="Delivery & Return" icon={<FaTruck size={13} color="#878787" />}>
                                     <p>• Free delivery on orders above ₹499</p>
                                     <p>• Standard delivery: 4–7 business days</p>
                                     {product.isReturnable !== false
@@ -998,48 +986,40 @@ const ProductDetails = () => {
 
                     {/* ── Tabs ── */}
                     <div style={{ borderTop: "1px solid #f0f0f0" }}>
-                        <div className="pd-tabs-wrap" style={{ display: "flex", borderBottom: "1px solid #f0f0f0", overflowX: "auto", paddingLeft: 16 }}>
+                        <div style={{ display: "flex", borderBottom: "1px solid #f0f0f0", overflowX: "auto", paddingLeft: 16 }}>
                             {[
                                 { key: "description", label: "Description" },
                                 ...(highlightEntries.length > 0 ? [{ key: "highlights", label: "Specifications" }] : []),
                                 { key: "reviews", label: `Reviews (${reviews.length})` },
                             ].map(tab => (
-                                <button
-                                    key={tab.key}
-                                    onClick={() => setActiveTab(tab.key)}
-                                    className={`pd-tab${activeTab === tab.key ? " active" : ""}`}
-                                >
+                                <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={`pd-tab${activeTab === tab.key ? " active" : ""}`}>
                                     {tab.label}
                                 </button>
                             ))}
                         </div>
 
-                        <div className="pd-tab-content" style={{ padding: "24px 28px" }}>
-                            {/* Description */}
+                        <div style={{ padding: "24px 28px" }}>
                             {activeTab === "description" && (
                                 <div style={{ maxWidth: 680 }}>
                                     {product.description
                                         ? <p style={{ fontSize: 14, color: "#444", lineHeight: 1.9 }}>{product.description}</p>
-                                        : <p style={{ fontSize: 14, color: "#878787", fontStyle: "italic" }}>No description available.</p>
-                                    }
+                                        : <p style={{ fontSize: 14, color: "#878787", fontStyle: "italic" }}>No description available.</p>}
                                 </div>
                             )}
 
-                            {/* Specifications */}
                             {activeTab === "highlights" && highlightEntries.length > 0 && (
-                                <table style={{ borderCollapse: "collapse", width: "100%", maxWidth: 600 }}>
+                                <table style={{ borderCollapse: "collapse", width: "100%", maxWidth: 600, tableLayout: "fixed" }}>
                                     <tbody>
                                         {highlightEntries.map(([k, v], i) => (
                                             <tr key={k} style={{ background: i % 2 === 0 ? "#fafafa" : "#fff" }}>
-                                                <td style={{ padding: "10px 16px", fontSize: 13, color: "#878787", fontWeight: 600, width: "35%", borderBottom: "1px solid #f0f0f0" }}>{k}</td>
-                                                <td style={{ padding: "10px 16px", fontSize: 13, color: "#212121", borderBottom: "1px solid #f0f0f0" }}>{v}</td>
+                                                <td style={{ padding: "10px 16px", fontSize: 13, color: "#878787", fontWeight: 600, width: "35%", borderBottom: "1px solid #f0f0f0", wordBreak: "break-word" }}>{k}</td>
+                                                <td style={{ padding: "10px 16px", fontSize: 13, color: "#212121", borderBottom: "1px solid #f0f0f0", wordBreak: "break-word" }}>{v}</td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             )}
 
-                            {/* Reviews */}
                             {activeTab === "reviews" && (
                                 <div style={{ maxWidth: 680 }}>
                                     {reviews.length > 0 && (
@@ -1066,10 +1046,8 @@ const ProductDetails = () => {
                                                 ))}
                                             </div>
                                             <textarea
-                                                value={myComment}
-                                                onChange={e => setMyComment(e.target.value)}
-                                                rows={3}
-                                                placeholder="Share your experience…"
+                                                value={myComment} onChange={e => setMyComment(e.target.value)}
+                                                rows={3} placeholder="Share your experience…"
                                                 style={{ width: "100%", border: "1px solid #e0e0e0", borderRadius: 4, padding: "10px 12px", fontSize: 13, marginBottom: 10, outline: "none", resize: "none", fontFamily: "'Roboto',sans-serif", boxSizing: "border-box" }}
                                             />
                                             {reviewError && <p style={{ color: "#f44336", fontSize: 12, marginBottom: 8 }}>{reviewError}</p>}
@@ -1078,19 +1056,14 @@ const ProductDetails = () => {
                                                     <FaCheckCircle size={10} /> Review submitted!
                                                 </p>
                                             )}
-                                            <button
-                                                type="submit"
-                                                disabled={submitting}
-                                                style={{ padding: "10px 24px", background: "#2874f0", color: "#fff", border: "none", borderRadius: 4, fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: submitting ? 0.6 : 1 }}
-                                            >
+                                            <button type="submit" disabled={submitting}
+                                                style={{ padding: "10px 24px", background: "#2874f0", color: "#fff", border: "none", borderRadius: 4, fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: submitting ? 0.6 : 1 }}>
                                                 {submitting ? "Submitting…" : "Submit Review"}
                                             </button>
                                         </form>
                                     ) : (
-                                        <button
-                                            onClick={() => navigate("/login")}
-                                            style={{ marginBottom: 24, padding: "10px 24px", border: "1px solid #2874f0", color: "#2874f0", background: "#fff", borderRadius: 4, fontWeight: 700, fontSize: 13, cursor: "pointer" }}
-                                        >
+                                        <button onClick={() => navigate("/login")}
+                                            style={{ marginBottom: 24, padding: "10px 24px", border: "1px solid #2874f0", color: "#2874f0", background: "#fff", borderRadius: 4, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                                             Login to Write a Review
                                         </button>
                                     )}
@@ -1132,7 +1105,7 @@ const ProductDetails = () => {
                         </div>
                     </div>
 
-                    {/* ── Related Products ── */}
+                    {/* Related Products */}
                     {relatedProducts.length > 0 && (
                         <div style={{ borderTop: "1px solid #f0f0f0", padding: "24px 28px" }}>
                             <p style={{ fontSize: 11, fontWeight: 800, color: "#2874f0", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 }}>You May Also Like</p>
@@ -1141,9 +1114,10 @@ const ProductDetails = () => {
                         </div>
                     )}
                 </div>
+
+                <div className="pd-bottom-spacer" />
             </div>
 
-            {/* ── Modals ── */}
             {imgZoomed && <ZoomModal src={heroUrl} alt={product.name} onClose={() => setImgZoomed(false)} />}
             {shareOpen && <ShareModal product={product} onClose={() => setShareOpen(false)} />}
         </>

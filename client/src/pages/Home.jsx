@@ -70,7 +70,7 @@ const PAGE_SIZE = 20;
 const SkCard = () => (
     <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 h-full w-full flex flex-col">
         <div className="h-[200px] sm:h-[220px] shrink-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse" />
-        <div className="p-3 flex-1 flex flex-col space-y-2">
+        <div className="p-2.5 sm:p-3 flex-1 flex flex-col space-y-2 min-w-0">
             <div className="h-2.5 w-1/3 bg-gray-200 rounded animate-pulse" />
             <div className="h-3 bg-gray-200 rounded animate-pulse" />
             <div className="h-3 w-4/5 bg-gray-200 rounded animate-pulse" />
@@ -195,7 +195,7 @@ const PCard = memo(({ product, showDealBadge = false }) => {
                     <div className="absolute bottom-2 left-2 bg-gradient-to-r from-orange-500 to-orange-400 text-white text-[9px] font-bold px-2 py-1 rounded-full flex items-center gap-1"><FaBolt size={8} /> EXPRESS</div>
                 )}
                 {isOOS && (
-                    <div className="absolute inset-0 bg-white/75 flex items-center justify-center text-[11px] font-bold text-gray-500 uppercase tracking-widest">Out of Stock</div>
+                    <div className="absolute inset-0 bg-white/75 flex items-center justify-center text-[10px] sm:text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center px-1">Out of Stock</div>
                 )}
                 <button
                     className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/95 border-none cursor-pointer flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 md:group-hover:opacity-100 transition-opacity hover:scale-110 md:opacity-100"
@@ -205,13 +205,13 @@ const PCard = memo(({ product, showDealBadge = false }) => {
                     {inWishlist ? <FaHeart size={13} className="text-red-500" /> : <FaRegHeart size={13} className="text-gray-400" />}
                 </button>
             </div>
-            <div className="p-3 flex-1 flex flex-col">
+            <div className="p-2.5 sm:p-3 flex-1 flex flex-col min-w-0">
                 {product.brand ? (
                     <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 line-clamp-1">{product.brand}</div>
                 ) : (
                     <div className="h-[14px] mb-1" />
                 )}
-                <div className="text-[12px] text-gray-600 leading-tight mb-1.5 line-clamp-2 font-medium min-h-[34px]">{product.name}</div>
+                <div className="text-[11px] sm:text-[12px] text-gray-600 leading-tight mb-1.5 line-clamp-2 font-medium min-h-[34px] break-words">{product.name}</div>
                 <div className="mt-auto">
                     <div className="h-[20px] mb-2 flex items-center">
                         {product.rating > 0 && (
@@ -227,10 +227,10 @@ const PCard = memo(({ product, showDealBadge = false }) => {
                         {d > 0 && <span className="text-[11px] font-bold text-green-600">{d}% off</span>}
                     </div>
                     <button
-                        className={`w-full py-2 text-[11px] font-bold rounded-lg border-[1.5px] transition-all uppercase tracking-wide flex items-center justify-center gap-1.5 ${btnVariant}`}
+                        className={`w-full py-1.5 sm:py-2 text-[10px] sm:text-[11px] font-bold rounded-lg border-[1.5px] transition-all uppercase tracking-normal sm:tracking-wide flex items-center justify-center gap-1.5 ${btnVariant}`}
                         onClick={handleCart} disabled={isOOS}
                     >
-                        {btnText}
+                        <span className="truncate">{btnText}</span>
                     </button>
                 </div>
             </div>
@@ -439,6 +439,9 @@ const Home = () => {
     const heroTimer = useRef(null);
     const { recentlyViewed } = useRecentlyViewed();
 
+    /* Filter out Urbexon Hour products from the ecommerce home page */
+    const ecommerceRecentlyViewed = recentlyViewed.filter(p => p.productType !== "urbexon_hour");
+
     /* ── Fetch homepage data ── */
     useEffect(() => {
         if (_homeCache && Date.now() - _homeCache._ts < CACHE_TTL) { setLoading(false); return; }
@@ -516,20 +519,29 @@ const Home = () => {
        SEARCH VIEW
     ═══════════════════════════════════════ */
     if (searchQuery.trim()) return (
-        <div className="bg-gray-50 min-h-screen">
-            <div className="max-w-[1280px] mx-auto px-4 lg:px-12 pt-10 pb-16">
-                <div className="mb-5">
-                    <h1 className="text-xl font-extrabold text-gray-900">Results for &ldquo;{searchQuery}&rdquo;</h1>
-                    <p className="text-[13px] text-gray-500 mt-1 font-medium">
+        <div className="bg-gray-50 min-h-screen overflow-x-hidden w-full relative">
+            <style>{`
+                @media (max-width: 374px) {
+                    .home-grid { gap: 0.5rem !important; }
+                }
+                @media (max-width: 640px) {
+                    .home-grid { gap: 0.625rem !important; }
+                    .home-container { padding: 1rem 0.75rem !important; }
+                }
+            `}</style>
+            <div className="max-w-[1280px] mx-auto px-3 sm:px-4 lg:px-12 pt-6 sm:pt-10 pb-[90px] sm:pb-16 home-container">
+                <div className="mb-4 sm:mb-5">
+                    <h1 className="text-lg sm:text-xl font-extrabold text-gray-900">Results for &ldquo;{searchQuery}&rdquo;</h1>
+                    <p className="text-[12px] sm:text-[13px] text-gray-500 mt-0.5 sm:mt-1 font-medium">
                         {searching ? "Searching…" : `${searchResults.length} result${searchResults.length !== 1 ? "s" : ""}`}
                     </p>
                 </div>
                 {searching ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-3.5">{Array(8).fill(0).map((_, i) => <SkCard key={i} />)}</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1.5 sm:gap-2.5 home-grid">{Array(8).fill(0).map((_, i) => <SkCard key={i} />)}</div>
                 ) : searchResults.length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-3.5">{searchResults.map(p => <PCard key={p._id} product={p} />)}</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1.5 sm:gap-2.5 home-grid">{searchResults.map(p => <PCard key={p._id} product={p} />)}</div>
                 ) : (
-                    <div className="text-center py-20 text-gray-400">
+                    <div className="text-center py-12 sm:py-20 text-gray-400">
                         <FaSearch size={36} className="mx-auto mb-3 text-gray-200" />
                         <div className="font-bold text-base">No products found</div>
                         <div className="text-sm mt-1.5">Try a different search term</div>
@@ -543,7 +555,7 @@ const Home = () => {
        MAIN VIEW
     ═══════════════════════════════════════ */
     return (
-        <div className="bg-gray-50 font-[family-name:var(--font-sans,_ui-sans-serif,system-ui)]">
+        <div className="bg-gray-50 font-[family-name:var(--font-sans,_ui-sans-serif,system-ui)] overflow-x-hidden w-full relative">
             <SEO title="Premium Online Shopping" description="Shop at Urbexon for the best deals on fashion, electronics, home essentials, and more." path="/" />
 
             {/* ━━ HERO ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
@@ -669,20 +681,20 @@ const Home = () => {
                     <div className="max-w-[1280px] mx-auto px-4 lg:px-12 py-11">
                         <SecHead title="New Arrivals" sub="Fresh drops, just for you" to="/products?sort=newest" label="See all" />
                         {loading
-                            ? <div className="flex gap-3.5 overflow-x-auto pb-2 scrollbar-hide items-stretch">{Array(6).fill(0).map((_, i) => <div key={i} className="min-w-[200px] h-full"><SkCard /></div>)}</div>
-                            : <div className="flex gap-3.5 overflow-x-auto pb-2 scrollbar-hide items-stretch">{newArrivals.map(p => <div key={p._id} className="min-w-[200px] sm:min-w-[162px] flex-shrink-0 h-full"><PCard product={p} /></div>)}</div>
+                            ? <div className="flex gap-3.5 overflow-x-auto pb-2 scrollbar-hide items-stretch">{Array(6).fill(0).map((_, i) => <div key={i} className="w-[150px] sm:w-[180px] lg:w-[200px] flex-shrink-0 h-full"><SkCard /></div>)}</div>
+                            : <div className="flex gap-3.5 overflow-x-auto pb-2 scrollbar-hide items-stretch">{newArrivals.map(p => <div key={p._id} className="w-[150px] sm:w-[180px] lg:w-[200px] flex-shrink-0 h-full"><PCard product={p} /></div>)}</div>
                         }
                     </div>
                 </div>
             )}
 
             {/* ━━ RECENTLY VIEWED ━━━━━━━━━━━━━━━━━━━ */}
-            {recentlyViewed.length > 0 && (
+            {ecommerceRecentlyViewed.length > 0 && (
                 <div className="bg-gray-50 border-t border-gray-100">
                     <div className="max-w-[1280px] mx-auto px-4 lg:px-12 py-11">
                         <SecHead title="Recently Viewed" sub="Continue where you left off" />
                         <div className="flex gap-3.5 overflow-x-auto pb-2 scrollbar-hide items-stretch">
-                            {recentlyViewed.slice(0, 12).map(p => <div key={p._id} className="min-w-[200px] flex-shrink-0 h-full"><PCard product={p} /></div>)}
+                            {ecommerceRecentlyViewed.slice(0, 12).map(p => <div key={p._id} className="w-[150px] sm:w-[180px] lg:w-[200px] flex-shrink-0 h-full"><PCard product={p} /></div>)}
                         </div>
                     </div>
                 </div>
@@ -713,7 +725,7 @@ const Home = () => {
                     <div className="max-w-[1280px] mx-auto px-4 lg:px-12 py-11">
                         <SecHead title={`Based on "${forYouTerm}"`} sub="Products picked for you" to={`/?search=${encodeURIComponent(forYouTerm)}`} label="See all" />
                         <div className="flex gap-3.5 overflow-x-auto pb-2 scrollbar-hide items-stretch">
-                            {forYouProducts.map(p => <div key={p._id} className="min-w-[200px] flex-shrink-0 h-full"><PCard product={p} /></div>)}
+                            {forYouProducts.map(p => <div key={p._id} className="w-[150px] sm:w-[180px] lg:w-[200px] flex-shrink-0 h-full"><PCard product={p} /></div>)}
                         </div>
                     </div>
                 </div>
@@ -739,7 +751,7 @@ const Home = () => {
             </div>
 
             {/* ━━ NEWSLETTER ━━━━━━━━━━━━━━━━━━━━━━━━ */}
-            <div className="bg-gradient-to-br from-gray-900 to-gray-800 py-14">
+            <div className="bg-gradient-to-br from-gray-900 to-gray-800 pt-14 pb-[90px] md:pb-14">
                 <div className="max-w-[1280px] mx-auto px-4 lg:px-12">
                     <div className="text-center max-w-[520px] mx-auto">
                         <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[11px] font-bold bg-blue-900/40 text-blue-300 border border-blue-800/40 mb-4 tracking-wider">✉️ NEWSLETTER</div>
@@ -750,7 +762,7 @@ const Home = () => {
                         ) : (
                             <form className="flex rounded-xl overflow-hidden border border-white/10 bg-white/6 backdrop-blur-sm shadow-md" onSubmit={handleNL}>
                                 <input
-                                    className="flex-1 px-5 py-3.5 bg-transparent border-none outline-none text-sm text-gray-100 placeholder:text-white/45"
+                                    className="flex-1 min-w-0 px-4 sm:px-5 py-3.5 bg-transparent border-none outline-none text-sm text-gray-100 placeholder:text-white/45"
                                     type="email" value={nlEmail} onChange={e => { setNlEmail(e.target.value); setNlStatus(""); }}
                                     placeholder="Enter your email address" required
                                 />

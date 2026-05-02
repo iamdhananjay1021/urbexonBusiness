@@ -767,7 +767,7 @@ export const adminGetAllProducts = async (req, res) => {
         const [products, total] = await Promise.all([
             Product.find(filter)
                 .populate("vendorId", "shopName")
-                .select("name slug category brand price mrp stock inStock isActive isDeal isFeatured productType vendorId createdAt images")
+                .select("name slug category brand price mrp stock inStock isActive isDeal isFeatured productType vendorId createdAt images colorVariants")
                 .sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
             Product.countDocuments(filter),
         ]);
@@ -832,10 +832,8 @@ export const adminCreateProduct = async (req, res) => {
             stock = sizes.reduce((sum, s) => sum + (s.stock || 0), 0);
         }
 
-        let colorVariants = [];
-        try {
-            if (body.colorVariants) colorVariants = JSON.parse(body.colorVariants);
-        } catch { colorVariants = []; }
+        // [FIX] Use safeParse to prevent JSON.parse crashes when Zod already parsed it
+        const colorVariants = safeParse(body.colorVariants, []);
 
         const images = [];
         const imageErrors = [];
@@ -978,7 +976,9 @@ export const adminUpdateProduct = async (req, res) => {
 
         let colorVariantsMeta = [];
         try {
-            if (body.colorVariants) colorVariantsMeta = JSON.parse(body.colorVariants);
+            if (body.colorVariants) {
+                colorVariantsMeta = typeof body.colorVariants === 'string' ? JSON.parse(body.colorVariants) : body.colorVariants;
+            }
         } catch { colorVariantsMeta = []; }
 
         let fileIndex = 0;
@@ -1113,6 +1113,7 @@ export const adminUpdateProduct = async (req, res) => {
 
         const wasOutOfStock = !product.inStock;
         product.inStock = product.stock > 0;
+        product.markModified("colorVariants"); // [FIX] Force Mongoose to save the array deeply
 
         await product.save();
 

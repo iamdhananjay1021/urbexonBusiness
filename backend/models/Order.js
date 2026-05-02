@@ -56,6 +56,7 @@ const orderSchema = new mongoose.Schema(
                 qty: Number,
                 image: String,
                 selectedSize: { type: String, default: "" },
+                selectedColor: { type: String, default: "" },
                 hsnCode: { type: String, default: "91059990" },
                 gstPercent: { type: Number, default: 0 },
                 customization: {

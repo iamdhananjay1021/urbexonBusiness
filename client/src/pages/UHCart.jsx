@@ -96,8 +96,9 @@ const UHCart = () => {
                         const discount = item.mrp && item.mrp > item.price
                             ? Math.round(((item.mrp - item.price) / item.mrp) * 100)
                             : 0;
+                        const uniqueId = item.cartItemId || item._id;
                         return (
-                            <div key={item._id} className="uhc-item">
+                            <div key={uniqueId} className="uhc-item">
                                 <img
                                     src={img} alt={item.name}
                                     className="uhc-item-img"
@@ -107,6 +108,8 @@ const UHCart = () => {
                                 <div className="uhc-item-body">
                                     {item.brand && <div className="uhc-item-brand">{item.brand}</div>}
                                     <div className="uhc-item-name">{item.name}</div>
+                                    {item.selectedSize && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Size: {item.selectedSize}</div>}
+                                    {item.selectedColor && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Color: {item.selectedColor}</div>}
                                     <div className="uhc-item-price-row">
                                         <span className="uhc-item-price">{fmt(item.price)}</span>
                                         {item.mrp > item.price && (
@@ -124,8 +127,8 @@ const UHCart = () => {
                                     <div className="uhc-qty">
                                         <button
                                             onClick={() => {
-                                                if (item.quantity <= 1) removeItem(item._id, "urbexon_hour");
-                                                else decrement(item._id, "urbexon_hour");
+                                                if (item.quantity <= 1) removeItem(uniqueId, "urbexon_hour");
+                                                else decrement(uniqueId, "urbexon_hour");
                                             }}
                                             className="uhc-qty-btn"
                                         >
@@ -133,7 +136,7 @@ const UHCart = () => {
                                         </button>
                                         <span className="uhc-qty-val">{item.quantity}</span>
                                         <button
-                                            onClick={() => increment(item._id, "urbexon_hour")}
+                                            onClick={() => increment(uniqueId, "urbexon_hour")}
                                             className="uhc-qty-btn"
                                             disabled={item.quantity >= 99}
                                         >
@@ -142,7 +145,7 @@ const UHCart = () => {
                                     </div>
                                     <button
                                         className="uhc-remove"
-                                        onClick={() => removeItem(item._id, "urbexon_hour")}
+                                        onClick={() => removeItem(uniqueId, "urbexon_hour")}
                                     >
                                         <FaTrash size={10} /> Remove
                                     </button>

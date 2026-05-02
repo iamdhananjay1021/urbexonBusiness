@@ -107,6 +107,8 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow }) => {
           cursor: pointer; position: relative;
           transition: border-color .25s, box-shadow .25s, transform .25s;
           border-radius: 0;
+          width: 100%;
+          min-width: 0;
         }
         .pc-wrap:hover {
           border-color: var(--pc-gold);
@@ -255,24 +257,27 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow }) => {
         /* ═══════════════════════════════
            BODY
         ═══════════════════════════════ */
-        .pc-body { padding: 12px 14px 14px; flex: 1; display: flex; flex-direction: column; }
+        .pc-body { padding: 12px 14px 14px; flex: 1; display: flex; flex-direction: column; min-width: 0; }
         .pc-cat {
           font-size: 8.5px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase;
           color: var(--pc-gold); margin-bottom: 4px;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .pc-name {
           font-size: 12.5px; font-weight: 500; color: var(--pc-ink); line-height: 1.4;
           display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
           min-height: 2.6em; margin-bottom: 6px;
+          word-break: break-word;
         }
         .pc-stars { display: flex; align-items: center; gap: 2px; margin-bottom: 6px; }
         .pc-reviews { font-size: 9.5px; color: var(--pc-faint); margin-left: 3px; }
         .pc-stock {
           font-size: 9.5px; font-weight: 700;
           display: flex; align-items: center; gap: 4px; margin-bottom: 8px;
+          flex-wrap: wrap;
         }
         .pc-dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
-        .pc-price-row { display: flex; align-items: baseline; gap: 7px; margin-top: auto; }
+        .pc-price-row { display: flex; align-items: baseline; gap: 7px; margin-top: auto; flex-wrap: wrap; }
         .pc-price {
           font-family: 'Cormorant Garamond', serif;
           font-size: 1.3rem; font-weight: 600; color: var(--pc-ink);
@@ -290,13 +295,32 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow }) => {
         .pc-add-pop { animation: pcAddPop .35s ease forwards; }
 
         /* ═══════════════════════════════
-           MOBILE OVERRIDES
+           EXTRA-SMALL SCREENS (iPhone < 375px)
+        ═══════════════════════════════ */
+        @media (max-width: 374px) {
+          .pc-wrap { border-radius: 0; }
+          .pc-img-area { height: 160px; }
+          .pc-body { padding: 8px 10px 10px; }
+          .pc-cat { font-size: 7.5px; margin-bottom: 2px; }
+          .pc-name { font-size: 11px; min-height: auto; -webkit-line-clamp: 2; margin-bottom: 4px; }
+          .pc-price { font-size: 1rem; }
+          .pc-mrp { font-size: 9px; }
+          .pc-wish { top: 4px; right: 4px; width: 24px; height: 24px; }
+          .pc-badge { font-size: 7px; padding: 2px 5px; }
+          .pc-disc-badge { font-size: 7px; padding: 2px 5px; top: 4px; right: 4px; }
+          .pc-mob-btn-cart, .pc-mob-btn-buy { font-size: 9px; padding: 7px 0; gap: 3px; }
+          .pc-reviews { font-size: 8.5px; }
+          .pc-stock { font-size: 8.5px; }
+        }
+
+        /* ═══════════════════════════════
+           MOBILE OVERRIDES (375px - 767px)
            — taller image, bigger text,
              always-visible action bar
         ═══════════════════════════════ */
         @media (max-width: 767px) {
           /* Taller image on mobile — fills nicely in 2-col grid */
-          .pc-img-area { height: 220px; }
+          .pc-img-area { height: 200px; }
           .pc-img { object-fit: cover; padding: 0; }
 
           /* No hover overlay on mobile — show sticky bar instead */
@@ -322,6 +346,8 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow }) => {
             border: none; cursor: pointer;
             display: flex; align-items: center; justify-content: center; gap: 5px;
             transition: all .18s;
+            min-width: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
           }
           .pc-mob-bc-default  { background: var(--pc-ink); color: #fff; }
           .pc-mob-bc-incart   { background: #f0fdf4; color: #16a34a; border-right: 1px solid #bbf7d0; cursor: default; }
@@ -335,6 +361,8 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow }) => {
             border: none; cursor: pointer;
             display: flex; align-items: center; justify-content: center; gap: 5px;
             transition: all .18s; border-left: 1px solid rgba(255,255,255,.2);
+            min-width: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
           }
           .pc-mob-btn-buy:disabled { background: #f4f4f5; color: #a1a1aa; cursor: not-allowed; }
         }

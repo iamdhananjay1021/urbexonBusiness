@@ -107,7 +107,8 @@ const NotificationCenter = ({ variant = "desktop" }) => {
 
         refreshUnread();
 
-        const interval = setInterval(refreshUnread, 60000);
+        // Increased polling to 5 mins to prevent 304 log spam. WebSockets handle instant updates.
+        const interval = setInterval(refreshUnread, 300000);
 
         let focusTimeout;
         const handleFocus = () => {

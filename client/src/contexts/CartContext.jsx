@@ -24,11 +24,11 @@ export const CartProvider = ({ children }) => {
 
     const addItem = (product, qty = 1) => {
         setCartItems((prev) => {
-            const exist = prev.find((p) => p._id === product._id);
+            const exist = prev.find((p) => (p.cartItemId || p._id) === (product.cartItemId || product._id));
 
             if (exist) {
                 return prev.map((p) =>
-                    p._id === product._id
+                    (p.cartItemId || p._id) === (product.cartItemId || product._id)
                         ? { ...p, quantity: p.quantity + qty }
                         : p
                 );
@@ -39,7 +39,7 @@ export const CartProvider = ({ children }) => {
     };
 
     const removeItem = (id) => {
-        setCartItems((prev) => prev.filter((p) => p._id !== id));
+        setCartItems((prev) => prev.filter((p) => (p.cartItemId || p._id) !== id));
     };
 
     const updateItemQuantity = (id, quantity) => {
@@ -47,7 +47,7 @@ export const CartProvider = ({ children }) => {
 
         setCartItems((prev) =>
             prev.map((p) =>
-                p._id === id ? { ...p, quantity } : p
+                (p.cartItemId || p._id) === id ? { ...p, quantity } : p
             )
         );
     };

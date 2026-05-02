@@ -26,6 +26,7 @@ const CSS = `
 .ft-uh-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.25);color:#c9a84c;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;cursor:pointer;text-decoration:none;transition:all .2s}
 .ft-uh-badge:hover{background:rgba(201,168,76,.2)}
 .ft-bottom{border-top:1px solid rgba(255,255,255,.06);padding:20px clamp(16px,5vw,60px)}
+@media(max-width:767px){.ft-bottom{padding-bottom:80px}}
 .ft-bottom-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
 .ft-copy{font-size:12px;color:rgba(255,255,255,.3)}
 .ft-legal{display:flex;gap:20px;flex-wrap:wrap}

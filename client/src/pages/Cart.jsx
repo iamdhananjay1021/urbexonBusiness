@@ -44,6 +44,9 @@ const CSS = `
 .cart-item:last-child{border-bottom:none}
 .cart-item:hover{background:#f9fafb}
 .cart-img{width:80px;height:80px;object-fit:cover;border-radius:10px;background:#f3f4f6}
+.cart-item > div:nth-child(2) { /* This targets the div containing name, price, etc. */
+  min-width: 0; /* Allows content to shrink and wrap */
+}
 .cart-name{font-size:13px;font-weight:600;color:#111827;line-height:1.4;margin-bottom:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .cart-price{font-size:15px;font-weight:800;color:#111827}
 .cart-mrp{font-size:11px;color:#94a3b8;text-decoration:line-through;margin-left:6px}
@@ -82,6 +85,9 @@ const CSS = `
 .oos-banner{background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;color:#dc2626;font-size:13px;font-weight:600}
 `;
 
+// Add padding-bottom for mobile bottom navbar
+const MOBILE_BOTTOM_NAV_HEIGHT = 80; // Assuming 56px nav + some extra space
+
 const Cart = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -105,14 +111,30 @@ const Cart = () => {
   const activePrice = isUH ? uhPrice : ecPrice;
   const cartType = isUH ? "urbexon_hour" : "ecommerce";
 
+  // Auto-switch tab if the active cart becomes empty but the other cart still has items
+  useEffect(() => {
+    if (activeTab === "ec" && !hasEc && hasUh) {
+      setActiveTab("uh");
+    } else if (activeTab === "uh" && !hasUh && hasEc) {
+      setActiveTab("ec");
+    }
+  }, [hasEc, hasUh, activeTab]);
+
   // Stock validation
   const [stockMap, setStockMap] = useState({});
   const [stockLoading, setStockLoading] = useState(false);
 
-  useEffect(() => {
+  const itemIdsString = useMemo(() => {
     const allItems = [...ecItems, ...uhItems];
-    if (allItems.length === 0) return;
-    const uniqueIds = [...new Set(allItems.map(i => i._id))];
+    return [...new Set(allItems.map(i => i.productId || i._id))].sort().join(',');
+  }, [ecItems, uhItems]);
+
+  useEffect(() => {
+    if (!itemIdsString) {
+      setStockMap({});
+      return;
+    }
+    const uniqueIds = itemIdsString.split(',');
     let cancelled = false;
     setStockLoading(true);
     Promise.all(
@@ -129,10 +151,10 @@ const Cart = () => {
       setStockMap(map);
     }).finally(() => { if (!cancelled) setStockLoading(false); });
     return () => { cancelled = true; };
-  }, [ecItems.length, uhItems.length]);
+  }, [itemIdsString]);
 
   const isOOS = useCallback((item) => {
-    const info = stockMap[item._id];
+    const info = stockMap[item.productId || item._id];
     if (!info || info.stock === -1) return false; // couldn't fetch, don't block
     return !info.inStock || info.stock === 0;
   }, [stockMap]);
@@ -153,7 +175,8 @@ const Cart = () => {
   const { delivery, platform, total } = useMemo(() => {
     const d = isUH ? 25 : (inStockPrice >= 499 ? 0 : 49);
     const p = 11;
-    return { delivery: d, platform: p, total: inStockPrice - discount + d + p, estimated: true };
+    const itemsTotal = Math.max(0, inStockPrice - discount);
+    return { delivery: d, platform: p, total: itemsTotal + d + p, estimated: true };
   }, [inStockPrice, discount, isUH]);
 
   const applyCoupon = useCallback(async () => {
@@ -185,7 +208,7 @@ const Cart = () => {
 
   if (!hasEc && !hasUh) {
     return (
-      <div className="cart-root">
+      <div className="cart-root" style={{ paddingBottom: MOBILE_BOTTOM_NAV_HEIGHT }}>
         <style>{CSS}</style>
         <div className="empty-cart">
           <div className="empty-icon">🛒</div>
@@ -200,7 +223,7 @@ const Cart = () => {
   }
 
   return (
-    <div className="cart-root">
+    <div className="cart-root" style={{ paddingBottom: MOBILE_BOTTOM_NAV_HEIGHT }}>
       <SEO title="Cart" noindex />
       <style>{CSS}</style>
 
@@ -240,9 +263,10 @@ const Cart = () => {
             <div className="cart-items">
               {activeItems.map((item, idx) => {
                 const oos = isOOS(item);
+                const uniqueId = item.cartItemId || item._id;
                 return (
-                  <div key={`${item._id}-${idx}`} className={`cart-item${oos ? " oos" : ""}`}>
-                    <Link to={`/products/${item.slug || item._id}`} style={{ pointerEvents: oos ? "none" : "auto" }}>
+                  <div key={`${uniqueId}-${idx}`} className={`cart-item${oos ? " oos" : ""}`}>
+                    <Link to={`/products/${item.slug || item.productId || item._id}`} style={{ pointerEvents: oos ? "none" : "auto" }}>
                       <img
                         className="cart-img"
                         src={item?.images?.[0]?.url || item?.image || "/placeholder.png"}
@@ -252,7 +276,7 @@ const Cart = () => {
                       />
                     </Link>
                     <div>
-                      <Link to={`/products/${item.slug || item._id}`} style={{ pointerEvents: oos ? "none" : "auto" }}>
+                      <Link to={`/products/${item.slug || item.productId || item._id}`} style={{ pointerEvents: oos ? "none" : "auto" }}>
                         <div className="cart-name">{item.name}</div>
                       </Link>
                       <div>
@@ -260,19 +284,20 @@ const Cart = () => {
                         {item.mrp > item.price && <span className="cart-mrp">{fmt(item.mrp)}</span>}
                       </div>
                       {item.selectedSize && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>Size: {item.selectedSize}</div>}
+                      {item.selectedColor && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>Color: {item.selectedColor}</div>}
                       {item.productType === "urbexon_hour" && !oos && <div className="uh-badge" style={{ marginTop: 4 }}><FaBolt size={8} />Express</div>}
                       {oos && <div className="oos-badge"><FaBan size={9} />Out of Stock</div>}
                     </div>
                     {!oos ? (
                       <div className="qty-box">
-                        <button className="qty-btn" onClick={() => dispatch(decQty({ id: item._id, cartType }))}><FaMinus size={10} /></button>
+                        <button className="qty-btn" onClick={() => dispatch(decQty({ id: uniqueId, cartType }))}><FaMinus size={10} /></button>
                         <span className="qty-num">{item.quantity}</span>
-                        <button className="qty-btn" onClick={() => dispatch(incQty({ id: item._id, cartType }))}><FaPlus size={10} /></button>
+                        <button className="qty-btn" onClick={() => dispatch(incQty({ id: uniqueId, cartType }))}><FaPlus size={10} /></button>
                       </div>
                     ) : (
                       <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textAlign: "center" }}>Unavailable</div>
                     )}
-                    <button className="cart-rm" style={{ pointerEvents: "auto", opacity: 1 }} onClick={() => dispatch(removeFromCart({ id: item._id, cartType }))}>
+                    <button className="cart-rm" style={{ pointerEvents: "auto", opacity: 1 }} onClick={() => dispatch(removeFromCart({ id: uniqueId, cartType }))}>
                       <FaTrash size={13} />
                     </button>
                   </div>

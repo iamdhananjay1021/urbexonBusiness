@@ -703,6 +703,7 @@ const OrderDetails = () => {
                                             <p style={{ fontSize: 12, color: C.muted, margin: 0, marginBottom: 4 }}>Qty: {item.qty || 1} × ₹{inr(item.price)}</p>
                                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                                                 {item.selectedSize && <span style={{ fontSize: 10, fontWeight: 700, background: C.amberBg, color: C.amber, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.amberMid}` }}>Size: {item.selectedSize}</span>}
+                                                {item.selectedColor && <span style={{ fontSize: 10, fontWeight: 700, background: C.blueBg, color: C.blue, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.blueMid}` }}>Color: {item.selectedColor}</span>}
                                                 {item.customization?.text && <span style={{ fontSize: 10, fontWeight: 600, background: C.blueBg, color: C.blue, padding: "1px 7px", borderRadius: 4 }}>✏️ {item.customization.text}</span>}
                                                 {item.customization?.note && <span style={{ fontSize: 10, fontWeight: 600, background: C.borderLight, color: C.sub, padding: "1px 7px", borderRadius: 4 }}>📝 {item.customization.note}</span>}
                                                 {item.policy?.isReturnable === false

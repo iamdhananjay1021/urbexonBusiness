@@ -211,21 +211,26 @@ const UHCheckout = () => {
                         )}
                         {step === 3 && (
                             <div className="uhck-acc-body" style={{ padding: 0 }}>
-                                {checkoutItems.map((item) => (
-                                    <div key={item._id} className="uhck-sum-item">
-                                        <div className="uhck-sum-img-wrap">
-                                            <img src={item.images?.[0]?.url || item.image?.url || item.image || "/placeholder.png"} alt={item.name} loading="lazy" />
-                                        </div>
-                                        <div className="uhck-sum-details">
-                                            <div className="uhck-sum-name">{item.name}</div>
-                                            <div className="uhck-sum-qty">Qty: {item.quantity}</div>
-                                            <div className="uhck-sum-price-row">
-                                                <span className="uhck-sum-price">{fmt(item.price * item.quantity)}</span>
-                                                {item.mrp > item.price && <span className="uhck-sum-mrp">{fmt(item.mrp * item.quantity)}</span>}
+                                {checkoutItems.map((item, idx) => {
+                                    const uniqueId = item.cartItemId || `${item._id}-${idx}`;
+                                    return (
+                                        <div key={uniqueId} className="uhck-sum-item" style={{ display: "flex", gap: "16px", padding: "24px", borderBottom: "1px solid #f0f0f0" }}>
+                                            <div className="uhck-sum-img-wrap" style={{ width: "80px", height: "80px", flexShrink: 0, textAlign: "center" }}>
+                                                <img src={item.images?.[0]?.url || item.image?.url || item.image || "/placeholder.png"} alt={item.name} loading="lazy" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                                            </div>
+                                            <div className="uhck-sum-details" style={{ flex: 1 }}>
+                                                <div className="uhck-sum-name" style={{ fontSize: "14px", color: "#212121", marginBottom: "8px", lineHeight: "1.4" }}>{item.name}</div>
+                                                {item.selectedSize && <div style={{ fontSize: 11, color: "#878787", marginBottom: 2 }}>Size: {item.selectedSize}</div>}
+                                                {item.selectedColor && <div style={{ fontSize: 11, color: "#878787", marginBottom: 2 }}>Color: {item.selectedColor}</div>}
+                                                <div className="uhck-sum-qty" style={{ fontSize: "12px", color: "#878787", marginBottom: "12px" }}>Qty: {item.quantity}</div>
+                                                <div className="uhck-sum-price-row" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                                    <span className="uhck-sum-price" style={{ fontSize: "16px", fontWeight: 500, color: "#212121" }}>{fmt(item.price * item.quantity)}</span>
+                                                    {item.mrp > item.price && <span className="uhck-sum-mrp" style={{ fontSize: "14px", color: "#878787", textDecoration: "line-through" }}>{fmt(item.mrp * item.quantity)}</span>}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                                 <div style={{ padding: "16px 24px", background: "#f5faff", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
                                     <span style={{ fontSize: 13, color: "#212121" }}>Order confirmation email will be sent to <b>{contact.email || "your email"}</b></span>
                                     <button className="uhck-btn-primary" onClick={() => setStep(4)}>CONTINUE</button>
@@ -244,43 +249,43 @@ const UHCheckout = () => {
                         </div>
                         {step === 4 && (
                             <div className="uhck-acc-body" style={{ padding: 0 }}>
-                                <div className="uhck-pay-options">
+                                <div className="uhck-pay-options" style={{ display: "flex", flexDirection: "column" }}>
                                     {/* Online */}
-                                    <div className={`uhck-pay-row ${paymentMethod === "online" ? "active" : ""}`} onClick={() => selectPaymentMethod("online")}>
-                                        <div className={`uhck-radio ${paymentMethod === "online" ? "on" : ""}`} />
-                                        <div className="uhck-pay-info">
-                                            <span className="uhck-pay-title">UPI, Wallets, Credit / Debit Card</span>
-                                            <span className="uhck-pay-sub">Fast & Secure Payments</span>
+                                    <div className={`uhck-pay-row ${paymentMethod === "online" ? "active" : ""}`} style={{ display: "flex", alignItems: "flex-start", gap: "16px", padding: "16px 24px", borderBottom: "1px solid #f0f0f0", cursor: "pointer" }} onClick={() => selectPaymentMethod("online")}>
+                                        <div className={`uhck-radio ${paymentMethod === "online" ? "on" : ""}`} style={{ width: "18px", height: "18px", borderRadius: "50%", border: paymentMethod === "online" ? "5px solid #2874f0" : "2px solid #ccc", marginTop: "2px", flexShrink: 0 }} />
+                                        <div className="uhck-pay-info" style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+                                            <span className="uhck-pay-title" style={{ fontSize: "15px", color: "#212121" }}>UPI, Wallets, Credit / Debit Card</span>
+                                            <span className="uhck-pay-sub" style={{ fontSize: "12px", color: "#878787" }}>Fast & Secure Payments</span>
+                                            {paymentMethod === "online" && (
+                                                <div className="uhck-pay-action" style={{ width: "100%", marginTop: "16px" }}>
+                                                    <button className="uhck-btn-primary" onClick={handlePayOnline} disabled={loading || payState === "processing"}>
+                                                        {loading || payState === "processing" ? "Processing..." : `PAY ${fmt(finalTotal)}`}
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
-                                        {paymentMethod === "online" && (
-                                            <div className="uhck-pay-action">
-                                                <button className="uhck-btn-primary" onClick={handlePayOnline} disabled={loading || payState === "processing"}>
-                                                    {loading || payState === "processing" ? "Processing..." : `PAY ${fmt(finalTotal)}`}
-                                                </button>
-                                            </div>
-                                        )}
                                     </div>
 
                                     {/* COD */}
-                                    <div className={`uhck-pay-row ${paymentMethod === "cod" ? "active" : ""} ${!codAvailable && !codChecking ? "disabled" : ""}`} onClick={() => codAvailable && selectPaymentMethod("cod")}>
-                                        <div className={`uhck-radio ${paymentMethod === "cod" ? "on" : ""}`} />
-                                        <div className="uhck-pay-info">
-                                            <span className="uhck-pay-title">Cash on Delivery</span>
+                                    <div className={`uhck-pay-row ${paymentMethod === "cod" ? "active" : ""} ${!codAvailable && !codChecking ? "disabled" : ""}`} style={{ display: "flex", alignItems: "flex-start", gap: "16px", padding: "16px 24px", borderBottom: "1px solid #f0f0f0", cursor: "pointer", opacity: (!codAvailable && !codChecking) ? 0.5 : 1 }} onClick={() => codAvailable && selectPaymentMethod("cod")}>
+                                        <div className={`uhck-radio ${paymentMethod === "cod" ? "on" : ""}`} style={{ width: "18px", height: "18px", borderRadius: "50%", border: paymentMethod === "cod" ? "5px solid #2874f0" : "2px solid #ccc", marginTop: "2px", flexShrink: 0 }} />
+                                        <div className="uhck-pay-info" style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+                                            <span className="uhck-pay-title" style={{ fontSize: "15px", color: "#212121" }}>Cash on Delivery</span>
                                             {codChecking ? (
-                                                <span className="uhck-pay-sub">Checking availability...</span>
+                                                <span className="uhck-pay-sub" style={{ fontSize: "12px", color: "#878787" }}>Checking availability...</span>
                                             ) : codAvailable ? (
-                                                <span className="uhck-pay-sub">Pay at your doorstep</span>
+                                                <span className="uhck-pay-sub" style={{ fontSize: "12px", color: "#878787" }}>Pay at your doorstep</span>
                                             ) : (
-                                                <span className="uhck-pay-sub" style={{ color: "#ff6161" }}>Not available for this location</span>
+                                                <span className="uhck-pay-sub" style={{ color: "#ff6161", fontSize: "12px" }}>Not available for this location</span>
+                                            )}
+                                            {paymentMethod === "cod" && codAvailable && (
+                                                <div className="uhck-pay-action" style={{ width: "100%", marginTop: "16px" }}>
+                                                    <button className="uhck-btn-primary" onClick={handleCOD} disabled={loading || payState === "processing"}>
+                                                        {loading || payState === "processing" ? "Processing..." : `PLACE ORDER`}
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
-                                        {paymentMethod === "cod" && codAvailable && (
-                                            <div className="uhck-pay-action">
-                                                <button className="uhck-btn-primary" onClick={handleCOD} disabled={loading || payState === "processing"}>
-                                                    {loading || payState === "processing" ? "Processing..." : `PLACE ORDER`}
-                                                </button>
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -289,34 +294,34 @@ const UHCheckout = () => {
                 </div>
 
                 {/* Sidebar: Order Summary */}
-                <div className="uhck-sidebar">
+                <div className="uhck-sidebar" style={{ background: "#fff", borderRadius: "2px", boxShadow: "0 1px 2px 0 rgba(0,0,0,0.2)", position: "sticky", top: "16px" }}>
                     <div className="uhck-price-card">
-                        <div className="uhck-price-title">PRICE DETAILS</div>
+                        <div className="uhck-price-title" style={{ padding: "14px 24px", borderBottom: "1px solid #f0f0f0", fontSize: "16px", fontWeight: 500, color: "#878787", textTransform: "uppercase" }}>PRICE DETAILS</div>
                         {pricingLoading ? (
-                            <div className="uhck-loading" style={{ padding: 24 }}><FaSpinner className="uhck-spin" /> Calculating…</div>
+                            <div className="uhck-loading" style={{ padding: 24, display: "flex", alignItems: "center", gap: "10px", fontSize: "14px", color: "#878787" }}><FaSpinner className="uhck-spin" style={{ animation: "uhck-sp .8s linear infinite" }} /> Calculating…</div>
                         ) : pricing ? (
-                            <div className="uhck-price-body">
-                                <div className="uhck-price-row">
+                            <div className="uhck-price-body" style={{ padding: "24px" }}>
+                                <div className="uhck-price-row" style={{ display: "flex", justifyContent: "space-between", fontSize: "15px", color: "#212121", marginBottom: "16px" }}>
                                     <span>Price ({checkoutItems.length} item{checkoutItems.length > 1 ? "s" : ""})</span>
                                     <span>{fmt(pricing.itemsTotal)}</span>
                                 </div>
-                                <div className="uhck-price-row">
+                                <div className="uhck-price-row" style={{ display: "flex", justifyContent: "space-between", fontSize: "15px", color: "#212121", marginBottom: "16px" }}>
                                     <span>Delivery Charges</span>
                                     <span style={{ color: pricing.deliveryCharge === 0 ? "#388e3c" : "#212121" }}>
                                         {pricing.deliveryCharge === 0 ? "FREE" : fmt(pricing.deliveryCharge)}
                                     </span>
                                 </div>
-                                <div className="uhck-price-row">
+                                <div className="uhck-price-row" style={{ display: "flex", justifyContent: "space-between", fontSize: "15px", color: "#212121", marginBottom: "16px" }}>
                                     <span>Platform Fee</span>
                                     <span>{fmt(pricing.platformFee)}</span>
                                 </div>
                                 {pricing.couponDiscount > 0 && (
-                                    <div className="uhck-price-row" style={{ color: "#388e3c" }}>
+                                    <div className="uhck-price-row" style={{ display: "flex", justifyContent: "space-between", fontSize: "15px", color: "#388e3c", marginBottom: "16px" }}>
                                         <span>Coupon Discount</span>
                                         <span>−{fmt(pricing.couponDiscount)}</span>
                                     </div>
                                 )}
-                                <div className="uhck-price-total">
+                                <div className="uhck-price-total" style={{ display: "flex", justifyContent: "space-between", fontSize: "18px", fontWeight: 500, color: "#212121", paddingTop: "16px", borderTop: "1px dashed #e0e0e0", marginTop: "8px" }}>
                                     <span>Amount Payable</span>
                                     <span>{fmt(pricing.finalTotal)}</span>
                                 </div>
@@ -328,40 +333,35 @@ const UHCheckout = () => {
                             </div>
                         ) : null}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, justifyContent: "center", color: "#878787", fontSize: 12, fontWeight: 600 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, justifyContent: "center", color: "#878787", fontSize: 12, fontWeight: 600, paddingBottom: "24px" }}>
                         <FaShieldAlt size={16} /> Safe and Secure Payments
                     </div>
                 </div>
-            </div>
 
-            {/* Mobile order summary toggle */}
-            <div className="uhck-mobile-sum-toggle" onClick={() => setMobileSummaryOpen(!mobileSummaryOpen)}>
-                <span>{checkoutItems.length} item{checkoutItems.length > 1 ? "s" : ""} · {fmt(finalTotal)}</span>
-                {mobileSummaryOpen ? <FaChevronDown size={12} /> : <FaChevronUp size={12} />}
-            </div>
-            {mobileSummaryOpen && (
-                <div className="uhck-mobile-summary">
-                    {checkoutItems.map((item) => (
-                        <div key={item._id} className="uhck-side-item">
-                            <img
-                                src={item.images?.[0]?.url || item.image || "/placeholder.png"}
-                                alt={item.name} className="uhck-side-img"
-                                loading="lazy"
-                                onError={(e) => { e.target.src = "/placeholder.png"; }}
-                            />
-                            <div className="uhck-side-item-info">
-                                <div className="uhck-side-item-name">{item.name}</div>
-                                <div className="uhck-side-item-qty">Qty: {item.quantity} · {fmt(item.price * item.quantity)}</div>
-                            </div>
-                        </div>
-                    ))}
+                {/* Mobile order summary toggle */}
+                <div className="uhck-mobile-sum-toggle" style={{ display: "none", position: "fixed", bottom: 0, left: 0, right: 0, background: "#1a1740", color: "#fff", padding: "12px 16px", zIndex: 50, justifyContent: "space-between", alignItems: "center", fontSize: "13px", fontWeight: 700, cursor: "pointer" }} onClick={() => setMobileSummaryOpen(!mobileSummaryOpen)}>
+                    <span>{checkoutItems.length} item{checkoutItems.length > 1 ? "s" : ""} · {fmt(finalTotal)}</span>
+                    {mobileSummaryOpen ? <FaChevronDown size={12} /> : <FaChevronUp size={12} />}
                 </div>
-            )}
+                {mobileSummaryOpen && (
+                    <div className="uhck-mobile-summary" style={{ position: "fixed", bottom: "44px", left: 0, right: 0, background: "#fff", borderTop: "1px solid #e8e4d9", padding: "12px 16px", zIndex: 49, maxHeight: "40vh", overflowY: "auto", boxShadow: "0 -4px 16px rgba(0,0,0,.1)" }}>
+                        {checkoutItems.map((item, idx) => (
+                            <div key={item.cartItemId || `${item._id}-${idx}`} className="uhck-side-item" style={{ display: "flex", gap: "12px", marginBottom: "12px" }}>
+                                <img src={item.images?.[0]?.url || item.image || "/placeholder.png"} alt={item.name} className="uhck-side-img" loading="lazy" style={{ width: "40px", height: "40px", objectFit: "contain" }} onError={(e) => { e.target.src = "/placeholder.png"; }} />
+                                <div className="uhck-side-item-info" style={{ flex: 1 }}>
+                                    <div className="uhck-side-item-name" style={{ fontSize: "12px", fontWeight: 500, color: "#212121", marginBottom: "4px" }}>{item.name}</div>
+                                    <div className="uhck-side-item-qty" style={{ fontSize: "11px", color: "#878787" }}>Qty: {item.quantity} · {fmt(item.price * item.quantity)}</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
 
-/* ── Inline Address Form ──────────────────────────────── */
+/* ── In Form ──────────────────────────────── */
 const AddressFormInline = ({ initial, saving, onSave, onCancel }) => {
     const [form, setForm] = useState({
         label: initial?.label || "Home",
@@ -391,128 +391,87 @@ const AddressFormInline = ({ initial, saving, onSave, onCancel }) => {
     };
 
     return (
-        <div className="uhck-addr-form">
-            <h3>{initial ? "Edit Address" : "Add New Address"}</h3>
-            {formError && <div className="uhck-error">{formError}</div>}
-            <div className="uhck-addr-labels">
+        <div className="uhck-addr-form" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <h3 style={{ fontSize: "16px", fontWeight: 500, margin: 0 }}>{initial ? "Edit Address" : "Add New Address"}</h3>
+            {formError && <div className="uhck-error" style={{ background: "#ffebe8", color: "#ff6161", padding: "12px 24px", fontSize: "14px", borderRadius: "2px" }}>{formError}</div>}
+            <div className="uhck-addr-labels" style={{ display: "flex", gap: "12px", marginBottom: "8px" }}>
                 {["Home", "Work", "Other"].map((l) => (
-                    <button key={l} className={`uhck-label-chip${form.label === l ? " active" : ""}`} onClick={() => update("label", l)}>
+                    <button key={l} className={`uhck-label-chip${form.label === l ? " active" : ""}`} onClick={() => update("label", l)} style={{ background: form.label === l ? "#fff" : "#fff", color: form.label === l ? "#2874f0" : "#212121", border: form.label === l ? "1px solid #2874f0" : "1px solid #e0e0e0", padding: "6px 16px", borderRadius: "2px", fontSize: "13px", fontWeight: 500, cursor: "pointer", textTransform: "uppercase" }}>
                         {LABEL_ICONS[l]} {l}
                     </button>
                 ))}
             </div>
-            <div className="uhck-form-grid">
-                <div className="uhck-field"><label>Name</label><input value={form.name} onChange={(e) => update("name", e.target.value)} maxLength={100} /></div>
-                <div className="uhck-field"><label>Phone</label><input value={form.phone} onChange={(e) => update("phone", e.target.value.replace(/\D/g, "").slice(0, 10))} maxLength={10} inputMode="numeric" /></div>
-                <div className="uhck-field full"><label>House / Flat / Building</label><input value={form.house} onChange={(e) => update("house", e.target.value)} maxLength={200} /></div>
-                <div className="uhck-field full"><label>Area / Street / Colony</label><input value={form.area} onChange={(e) => update("area", e.target.value)} maxLength={200} /></div>
-                <div className="uhck-field"><label>Landmark</label><input value={form.landmark} onChange={(e) => update("landmark", e.target.value)} maxLength={100} placeholder="Optional" /></div>
-                <div className="uhck-field"><label>City</label><input value={form.city} onChange={(e) => update("city", e.target.value)} maxLength={100} /></div>
-                <div className="uhck-field"><label>State</label><input value={form.state} onChange={(e) => update("state", e.target.value)} maxLength={100} /></div>
-                <div className="uhck-field"><label>Pincode</label><input value={form.pincode} onChange={(e) => update("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} inputMode="numeric" /></div>
+            <div className="uhck-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div className="uhck-field" style={{ display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>Name</label><input value={form.name} onChange={(e) => update("name", e.target.value)} maxLength={100} style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
+                <div className="uhck-field" style={{ display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>Phone</label><input value={form.phone} onChange={(e) => update("phone", e.target.value.replace(/\D/g, "").slice(0, 10))} maxLength={10} inputMode="numeric" style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
+                <div className="uhck-field full" style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>House / Flat / Building</label><input value={form.house} onChange={(e) => update("house", e.target.value)} maxLength={200} style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
+                <div className="uhck-field full" style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>Area / Street / Colony</label><input value={form.area} onChange={(e) => update("area", e.target.value)} maxLength={200} style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
+                <div className="uhck-field" style={{ display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>Landmark</label><input value={form.landmark} onChange={(e) => update("landmark", e.target.value)} maxLength={100} placeholder="Optional" style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
+                <div className="uhck-field" style={{ display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>City</label><input value={form.city} onChange={(e) => update("city", e.target.value)} maxLength={100} style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
+                <div className="uhck-field" style={{ display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>State</label><input value={form.state} onChange={(e) => update("state", e.target.value)} maxLength={100} style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
+                <div className="uhck-field" style={{ display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>Pincode</label><input value={form.pincode} onChange={(e) => update("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} inputMode="numeric" style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
             </div>
-            <div className="uhck-form-btns">
-                <button className="uhck-btn-secondary" onClick={onCancel}>Cancel</button>
-                <button className="uhck-btn-primary" onClick={handleSubmit} disabled={saving}>
-                    {saving ? <><FaSpinner className="uhck-spin" /> Saving…</> : (initial ? "Update" : "Save Address")}
+            <div className="uhck-form-btns" style={{ display: "flex", gap: "16px", marginTop: "16px" }}>
+                <button className="uhck-btn-secondary" style={{ flex: 1, padding: "14px", background: "#fff", border: "1px solid #e0e0e0", color: "#212121", fontWeight: 500, cursor: "pointer" }} onClick={onCancel}>Cancel</button>
+                <button className="uhck-btn-primary" style={{ flex: 1, padding: "14px", background: "#fb641b", color: "#fff", border: "none", fontWeight: 500, cursor: "pointer" }} onClick={handleSubmit} disabled={saving}>
+                    {saving ? <><FaSpinner className="uhck-spin" style={{ animation: "uhck-sp .8s linear infinite" }} /> Saving…</> : (initial ? "Update" : "Save Address")}
                 </button>
             </div>
         </div>
     );
 };
 
-/* ── CSS ─────────────────────────────────────────────── */
+/* ── CSS ───────────────────────────────────────── */
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-.uhck-root{min-height:100vh;background:#f1f3f6;font-family:'Roboto',sans-serif;padding-bottom:60px}
-
-.uhck-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;text-align:center;gap:10px;font-family:'Roboto',sans-serif}
-.uhck-empty h2{font-size:20px;font-weight:700;color:#212121}
-.uhck-empty p{font-size:14px;color:#878787}
-.uhck-btn-primary{background:#fb641b;color:#fff;border:none;padding:14px 32px;font-size:14px;font-weight:500;border-radius:2px;cursor:pointer;box-shadow:0 1px 2px 0 rgba(0,0,0,0.2);text-transform:uppercase;font-family:inherit}
-.uhck-btn-primary:disabled{opacity:0.6;cursor:not-allowed}
-
-.uhck-header{background:#2874f0;color:#fff;height:60px;display:flex;align-items:center;}
-.uhck-header-inner{max-width:1100px;margin:0 auto;width:100%;padding:0 16px;display:flex;justify-content:space-between;align-items:center}
-.uhck-back{background:none;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center}
-.uhck-header-brand{font-size:20px;letter-spacing:0.5px}
-.uhck-secure{font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px;letter-spacing:0.5px}
-
-.uhck-layout{max-width:1000px;margin:24px auto;display:grid;grid-template-columns:1fr 300px;gap:16px;padding:0 16px;align-items:start}
-@media(max-width:860px){.uhck-layout{grid-template-columns:1fr;gap:12px}}
-
-.uhck-main{display:flex;flex-direction:column;gap:16px}
-.uhck-acc-card{background:#fff;border-radius:2px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.2)}
-.uhck-acc-head{display:flex;justify-content:space-between;align-items:center;padding:14px 24px;background:#fff}
-.uhck-acc-card.active .uhck-acc-head{background:#2874f0;color:#fff}
-.uhck-acc-title{display:flex;align-items:center;gap:16px;font-size:16px;font-weight:500;color:#878787}
-.uhck-acc-card.active .uhck-acc-title{color:#fff;font-weight:500}
-.uhck-acc-num{width:24px;height:24px;background:#f0f0f0;color:#2874f0;display:flex;align-items:center;justify-content:center;border-radius:2px;font-size:13px;font-weight:500}
-.uhck-acc-card.active .uhck-acc-num{background:#fff;color:#2874f0}
-.uhck-acc-check{color:#2874f0;margin-left:8px}
-.uhck-acc-change{background:#fff;color:#2874f0;border:1px solid #e0e0e0;padding:6px 16px;border-radius:2px;font-size:13px;font-weight:500;cursor:pointer;text-transform:uppercase}
-
-.uhck-acc-summary{padding:0 24px 16px 64px;font-size:14px;color:#212121}
-.uhck-acc-body{padding:16px 24px 24px 64px}
-@media(max-width:600px){
-    .uhck-acc-head{padding:14px 16px}
-    .uhck-acc-summary{padding:0 16px 16px 56px}
-    .uhck-acc-body{padding:16px 16px 24px 16px}
-}
-
-.uhck-field-row{display:flex;gap:16px;flex-wrap:wrap}
-.uhck-field{flex:1;min-width:240px}
-.uhck-field input{width:100%;padding:12px 16px;border:1px solid #e0e0e0;border-radius:2px;font-size:14px;outline:none;font-family:inherit;transition:border-color .2s}
-.uhck-field input:focus{border-color:#2874f0}
-
-.uhck-addr-list{display:flex;flex-direction:column;gap:12px}
-.uhck-addr{display:flex;gap:16px;padding:16px;border:1px solid #e0e0e0;border-radius:2px;background:#fff;cursor:pointer;transition:background .2s}
-.uhck-addr:hover{background:#f5faff}
-.uhck-addr.selected{background:#f5faff}
-.uhck-radio{width:18px;height:18px;border-radius:50%;border:2px solid #ccc;margin-top:2px;flex-shrink:0}
-.uhck-radio.on{border:5px solid #2874f0}
-.uhck-addr-body{flex:1}
-.uhck-addr-top{margin-bottom:6px;font-size:14px;color:#212121}
-.uhck-addr-label{background:#f0f0f0;color:#878787;font-size:10px;font-weight:500;padding:2px 6px;border-radius:2px;text-transform:uppercase}
-.uhck-addr-line{font-size:14px;color:#212121;line-height:1.5}
-.uhck-addr-actions button{background:none;border:none;color:#2874f0;font-size:13px;font-weight:500;cursor:pointer;text-transform:uppercase;font-family:inherit}
-
-.uhck-add-addr{display:flex;align-items:center;gap:12px;padding:16px;background:#fff;border:1px solid #e0e0e0;color:#2874f0;font-size:14px;font-weight:500;cursor:pointer;border-radius:2px;width:100%;font-family:inherit}
-
-.uhck-sum-item{display:flex;gap:16px;padding:24px;border-bottom:1px solid #f0f0f0}
-.uhck-sum-img-wrap{width:80px;height:80px;flex-shrink:0;text-align:center}
-.uhck-sum-img-wrap img{max-width:100%;max-height:100%;object-fit:contain}
-.uhck-sum-details{flex:1}
-.uhck-sum-name{font-size:14px;color:#212121;margin-bottom:8px;line-height:1.4}
-.uhck-sum-qty{font-size:12px;color:#878787;margin-bottom:12px}
-.uhck-sum-price-row{display:flex;align-items:center;gap:8px}
-.uhck-sum-price{font-size:16px;font-weight:500;color:#212121}
-.uhck-sum-mrp{font-size:14px;color:#878787;text-decoration:line-through}
-
-.uhck-pay-options{display:flex;flex-direction:column}
-.uhck-pay-row{display:flex;align-items:flex-start;gap:16px;padding:16px 24px;border-bottom:1px solid #f0f0f0;cursor:pointer}
-.uhck-pay-row.disabled{opacity:0.5;cursor:not-allowed}
-.uhck-pay-info{flex:1;display:flex;flex-direction:column;gap:4px}
-.uhck-pay-title{font-size:15px;color:#212121}
-.uhck-pay-sub{font-size:12px;color:#878787}
-.uhck-pay-action{width:100%;margin-top:16px}
-
-.uhck-sidebar{}
-.uhck-price-card{background:#fff;border-radius:2px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.2);position:sticky;top:16px}
-.uhck-price-title{padding:14px 24px;border-bottom:1px solid #f0f0f0;font-size:16px;font-weight:500;color:#878787;text-transform:uppercase}
-.uhck-price-body{padding:24px}
-.uhck-price-row{display:flex;justify-content:space-between;font-size:15px;color:#212121;margin-bottom:16px}
-.uhck-price-total{display:flex;justify-content:space-between;font-size:18px;font-weight:500;color:#212121;padding-top:16px;border-top:1px dashed #e0e0e0;margin-top:8px}
-
-.uhck-error{background:#ffebe8;color:#ff6161;padding:12px 24px;font-size:14px;border-radius:2px;margin-bottom:16px}
-.uhck-loading{display:flex;align-items:center;gap:10px;font-size:14px;color:#878787}
-.uhck-spin{animation:uhck-sp .8s linear infinite}
-@keyframes uhck-sp{to{transform:rotate(360deg)}}
-
-.uhck-mobile-sum-toggle{display:none;position:fixed;bottom:0;left:0;right:0;background:#1a1740;color:#fff;padding:12px 16px;z-index:50;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;cursor:pointer}
-@media(max-width:768px){.uhck-mobile-sum-toggle{display:flex}}
-.uhck-mobile-summary{position:fixed;bottom:44px;left:0;right:0;background:#fff;border-top:1px solid #e8e4d9;padding:12px 16px;z-index:49;max-height:40vh;overflow-y:auto;box-shadow:0 -4px 16px rgba(0,0,0,.1)}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+.uhck-root { min-height: 100vh; background: #f1f3f6; font-family: 'Roboto', sans-serif; padding-bottom: 60px; }
+.uhck-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; text-align: center; gap: 10px; }
+.uhck-empty h2 { font-size: 20px; font-weight: 500; color: #212121; }
+.uhck-empty p { font-size: 14px; color: #878787; }
+.uhck-btn-primary { background: #fb641b; color: #fff; border: none; padding: 14px 32px; font-size: 14px; font-weight: 500; border-radius: 2px; cursor: pointer; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2); text-transform: uppercase; font-family: inherit; }
+.uhck-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.uhck-header { background: #2874f0; color: #fff; height: 60px; display: flex; align-items: center; }
+.uhck-header-inner { max-width: 1100px; margin: 0 auto; width: 100%; padding: 0 16px; display: flex; justify-content: space-between; align-items: center; }
+.uhck-back { background: none; border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.uhck-header-brand { font-size: 20px; letter-spacing: 0.5px; font-weight: 500; }
+.uhck-secure { font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 6px; letter-spacing: 0.5px; }
+.uhck-layout { max-width: 1000px; margin: 24px auto; display: grid; grid-template-columns: 1fr 300px; gap: 16px; padding: 0 16px; align-items: start; }
+@media(max-width: 860px) { .uhck-layout { grid-template-columns: 1fr; gap: 12px; } }
+.uhck-main { display: flex; flex-direction: column; gap: 16px; }
+.uhck-acc-card { background: #fff; border-radius: 2px; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2); }
+.uhck-acc-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; background: #fff; }
+.uhck-acc-card.active .uhck-acc-head { background: #2874f0; color: #fff; }
+.uhck-acc-title { display: flex; align-items: center; gap: 16px; font-size: 16px; font-weight: 500; color: #878787; text-transform: uppercase; }
+.uhck-acc-card.active .uhck-acc-title { color: #fff; }
+.uhck-acc-num { width: 24px; height: 24px; background: #f0f0f0; color: #2874f0; display: flex; align-items: center; justify-content: center; border-radius: 2px; font-size: 13px; font-weight: 500; }
+.uhck-acc-card.active .uhck-acc-num { background: #fff; color: #2874f0; }
+.uhck-acc-check { color: #2874f0; margin-left: 8px; }
+.uhck-acc-change { background: #fff; color: #2874f0; border: 1px solid #e0e0e0; padding: 6px 16px; border-radius: 2px; font-size: 13px; font-weight: 500; cursor: pointer; text-transform: uppercase; }
+.uhck-acc-summary { padding: 0 24px 16px 64px; font-size: 14px; color: #212121; }
+.uhck-acc-body { padding: 16px 24px 24px 64px; }
+@media(max-width: 600px) { .uhck-acc-head { padding: 14px 16px; } .uhck-acc-summary { padding: 0 16px 16px 56px; } .uhck-acc-body { padding: 16px 16px 24px 16px; } }
+.uhck-field-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.uhck-field { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 4px; }
+.uhck-field input { width: 100%; padding: 12px 16px; border: 1px solid #e0e0e0; border-radius: 2px; font-size: 14px; outline: none; font-family: inherit; transition: border-color .2s; }
+.uhck-field input:focus { border-color: #2874f0; }
+.uhck-addr-list { display: flex; flex-direction: column; gap: 12px; }
+.uhck-addr { display: flex; gap: 16px; padding: 16px; border: 1px solid #e0e0e0; border-radius: 2px; background: #fff; cursor: pointer; transition: background .2s; }
+.uhck-addr:hover { background: #f5faff; }
+.uhck-addr.selected { background: #f5faff; }
+.uhck-radio { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #ccc; margin-top: 2px; flex-shrink: 0; }
+.uhck-radio.on { border: 5px solid #2874f0; }
+.uhck-addr-body { flex: 1; }
+.uhck-addr-top { margin-bottom: 6px; font-size: 14px; color: #212121; }
+.uhck-addr-label { background: #f0f0f0; color: #878787; font-size: 10px; font-weight: 500; padding: 2px 6px; border-radius: 2px; text-transform: uppercase; }
+.uhck-addr-line { font-size: 14px; color: #212121; line-height: 1.5; }
+.uhck-addr-actions button { background: none; border: none; color: #2874f0; font-size: 13px; font-weight: 500; cursor: pointer; text-transform: uppercase; font-family: inherit; }
+.uhck-add-addr { display: flex; align-items: center; gap: 12px; padding: 16px; background: #fff; border: 1px solid #e0e0e0; color: #2874f0; font-size: 14px; font-weight: 500; cursor: pointer; border-radius: 2px; width: 100%; font-family: inherit; margin-top: 16px; }
+.uhck-error { background: #ffebe8; color: #ff6161; padding: 12px 24px; font-size: 14px; border-radius: 2px; margin-bottom: 16px; }
+.uhck-loading { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #878787; }
+@keyframes uhck-sp { to { transform: rotate(360deg); } }
+.uhck-spin { animation: uhck-sp .8s linear infinite; }
+@media(max-width: 768px) { .uhck-mobile-sum-toggle { display: flex !important; } }
 `;
 
 export default UHCheckout;

@@ -408,9 +408,11 @@ const MyOrders = () => {
                                                     <div className="flex-1 min-w-0">
                                                         <p className="font-semibold text-zinc-800 text-sm leading-snug line-clamp-2">{item.name}</p>
                                                         <p className="text-xs text-zinc-400 mt-0.5">{qty} × ₹{item.price?.toLocaleString("en-IN")}</p>
-                                                        {item.customization?.text && (
-                                                            <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">✏ {item.customization.text}</span>
-                                                        )}
+                                                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                                                            {item.selectedSize && <span className="inline-flex items-center text-[10px] font-semibold text-zinc-600 bg-stone-100 border border-stone-200 px-2 py-0.5 rounded-full">Size: {item.selectedSize}</span>}
+                                                            {item.selectedColor && <span className="inline-flex items-center text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">Color: {item.selectedColor}</span>}
+                                                            {item.customization?.text && <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">✏ {item.customization.text}</span>}
+                                                        </div>
                                                         {/* Mobile status inline */}
                                                         <div className="mo-item-status-mobile">
                                                             {isCancelled ? (

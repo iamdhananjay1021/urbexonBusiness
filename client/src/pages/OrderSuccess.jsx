@@ -242,15 +242,17 @@ const OrderSuccess = () => {
                                     <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>
                                         Qty: {item.qty || item.quantity || 1} × ₹{Number(item.price).toLocaleString("en-IN")}
                                     </p>
-                                    {item.customization?.text && (
-                                        <span style={{
-                                            display: "inline-block", marginTop: 4, fontSize: 10, fontWeight: 700,
-                                            color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a",
-                                            padding: "2px 8px", borderRadius: 20,
-                                        }}>
-                                            ✏️ {item.customization.text}
-                                        </span>
-                                    )}
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                                        {item.selectedSize && (
+                                            <span style={{ fontSize: 10, fontWeight: 700, color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", padding: "2px 8px", borderRadius: 20 }}>Size: {item.selectedSize}</span>
+                                        )}
+                                        {item.selectedColor && (
+                                            <span style={{ fontSize: 10, fontWeight: 700, color: "#1e40af", background: "#dbeafe", border: "1px solid #bfdbfe", padding: "2px 8px", borderRadius: 20 }}>Color: {item.selectedColor}</span>
+                                        )}
+                                        {item.customization?.text && (
+                                            <span style={{ fontSize: 10, fontWeight: 700, color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", padding: "2px 8px", borderRadius: 20 }}>✏️ {item.customization.text}</span>
+                                        )}
+                                    </div>
                                 </div>
                                 <p style={{ fontWeight: 800, fontSize: 14, color: "#1e293b", flexShrink: 0, margin: 0 }}>
                                     ₹{((item.qty || item.quantity || 1) * item.price).toLocaleString("en-IN")}

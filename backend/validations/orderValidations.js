@@ -129,7 +129,7 @@ export const validateEcommerceItems = async (frontendItems) => {
             .select(
                 "name price mrp inStock stock images productType vendorId " +
                 "isCancellable isReturnable isReplaceable returnWindow " +
-                "replacementWindow cancelWindow nonReturnableReason"
+                "replacementWindow cancelWindow nonReturnableReason colorVariants"
             )
             .lean();
 
@@ -156,25 +156,38 @@ export const validateEcommerceItems = async (frontendItems) => {
             );
         }
 
-        // ✅ DB price — frontend price IGNORED
-        const dbPrice = Number(product.price);
+        let dbPrice = Number(product.price);
+        let dbMrp = product.mrp ? Number(product.mrp) : null;
+        let finalImage = product.images?.[0]?.url || "";
+
+        if (item.selectedColor && product.colorVariants?.length > 0) {
+            const variant = product.colorVariants.find((v, idx) => {
+                const cName = v.name || v.color || `Color ${idx + 1}`;
+                return cName === item.selectedColor;
+            });
+            if (variant) {
+                if (variant.price != null && variant.price > 0) dbPrice = Number(variant.price);
+                if (variant.mrp != null && variant.mrp > 0) dbMrp = Number(variant.mrp);
+                if (variant.images?.length > 0) finalImage = variant.images[0].url;
+            }
+        }
+
         itemsTotal += dbPrice * qty;
 
         formattedItems.push({
             productId: product._id,
             name: String(product.name).slice(0, 200),
             price: dbPrice,
-            mrp: product.mrp ? Number(product.mrp) : null,
+            mrp: dbMrp,
             qty,
-            image: typeof item.image === "string"
-                ? item.image
-                : product.images?.[0]?.url || "",
+            image: typeof item.image === "string" && item.image.startsWith("http") ? item.image : finalImage,
             customization: {
                 text: String(item.customization?.text || "").trim().slice(0, 500),
                 imageUrl: String(item.customization?.imageUrl || "").trim().slice(0, 1000),
                 note: String(item.customization?.note || "").trim().slice(0, 1000),
             },
             selectedSize: String(item.selectedSize || "").trim().slice(0, 50),
+            selectedColor: String(item.selectedColor || "").trim().slice(0, 50),
             // [FIX-1] productType: ecommerce, vendorId: null — CORRECT for admin products
             productType: "ecommerce",
             vendorId: null,
@@ -221,7 +234,7 @@ export const validateUrbexonHourItems = async (frontendItems) => {
             .select(
                 "name price mrp inStock stock images productType vendorId " +
                 "isCancellable isReturnable isReplaceable returnWindow " +
-                "replacementWindow cancelWindow nonReturnableReason prepTimeMinutes"
+                "replacementWindow cancelWindow nonReturnableReason prepTimeMinutes colorVariants"
             )
             .lean();
 
@@ -253,24 +266,38 @@ export const validateUrbexonHourItems = async (frontendItems) => {
             );
         }
 
-        const dbPrice = Number(product.price);
+        let dbPrice = Number(product.price);
+        let dbMrp = product.mrp ? Number(product.mrp) : null;
+        let finalImage = product.images?.[0]?.url || "";
+
+        if (item.selectedColor && product.colorVariants?.length > 0) {
+            const variant = product.colorVariants.find((v, idx) => {
+                const cName = v.name || v.color || `Color ${idx + 1}`;
+                return cName === item.selectedColor;
+            });
+            if (variant) {
+                if (variant.price != null && variant.price > 0) dbPrice = Number(variant.price);
+                if (variant.mrp != null && variant.mrp > 0) dbMrp = Number(variant.mrp);
+                if (variant.images?.length > 0) finalImage = variant.images[0].url;
+            }
+        }
+
         itemsTotal += dbPrice * qty;
 
         formattedItems.push({
             productId: product._id,
             name: String(product.name).slice(0, 200),
             price: dbPrice,
-            mrp: product.mrp ? Number(product.mrp) : null,
+            mrp: dbMrp,
             qty,
-            image: typeof item.image === "string"
-                ? item.image
-                : product.images?.[0]?.url || "",
+            image: typeof item.image === "string" && item.image.startsWith("http") ? item.image : finalImage,
             customization: {
                 text: String(item.customization?.text || "").trim().slice(0, 500),
                 imageUrl: String(item.customization?.imageUrl || "").trim().slice(0, 1000),
                 note: String(item.customization?.note || "").trim().slice(0, 1000),
             },
             selectedSize: String(item.selectedSize || "").trim().slice(0, 50),
+            selectedColor: String(item.selectedColor || "").trim().slice(0, 50),
             productType: "urbexon_hour",
             vendorId: product.vendorId,
             prepTimeMinutes: product.prepTimeMinutes || 10,
