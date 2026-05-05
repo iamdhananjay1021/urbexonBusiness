@@ -66,8 +66,8 @@ const ProductCard = memo(({ product }) => {
 
     return (
         <div
-            className="bg-white rounded-2xl border border-gray-100 overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-gray-200 flex flex-col group"
-            onClick={handleCardClick} role="link"
+            className="bg-white rounded-xl border border-stone-200 overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:border-violet-300 flex flex-col group h-full"
+            onClick={handleCardClick}
         >
             <div className="relative aspect-square bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden flex-shrink-0">
                 {discount > 0 && (
@@ -96,18 +96,18 @@ const ProductCard = memo(({ product }) => {
                     </div>
                 )}
             </div>
-            <div className="p-3 flex flex-col gap-1 flex-1">
-                {product.brand && <div className="text-[10px] font-bold text-violet-500 uppercase tracking-wider">{product.brand}</div>}
-                <div className="text-[13px] font-semibold text-gray-700 leading-snug line-clamp-2">{product.name}</div>
+            <div className="p-3 flex flex-col flex-1">
+                {product.brand && <div className="text-[10px] font-bold text-violet-500 uppercase tracking-widest mb-1">{product.brand}</div>}
+                <div className="text-sm font-semibold text-stone-800 leading-snug line-clamp-2 min-h-[2.5rem] mb-1">{product.name}</div>
                 {product.prepTimeMinutes && (
                     <div className="flex items-center gap-1 text-[10px] text-gray-400 font-medium">
                         <FaClock size={9} /> {product.prepTimeMinutes} min
                     </div>
                 )}
-                <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
-                    <span className="text-base font-black text-gray-900">{fmt(product.price)}</span>
+                <div className="flex items-baseline gap-1.5 flex-wrap mt-auto pt-1 mb-2">
+                    <span className="text-base font-bold text-gray-900">{fmt(product.price)}</span>
                     {product.mrp && product.mrp > product.price && <span className="text-[11px] text-gray-400 line-through">{fmt(product.mrp)}</span>}
-                    {discount > 0 && <span className="text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded">{discount}% off</span>}
+                    {discount > 0 && <span className="text-xs font-bold text-red-500">{discount}% off</span>}
                 </div>
 
                 {product.inStock === false ? (
@@ -116,19 +116,19 @@ const ProductCard = memo(({ product }) => {
                     </button>
                 ) : !inCart ? (
                     <button
-                        className="mt-auto w-full py-2.5 text-[13px] font-bold bg-white border border-green-500 text-green-600 rounded-lg cursor-pointer hover:bg-green-500 hover:text-white transition-all uppercase tracking-wide hover:shadow-md active:scale-95"
+                        className="w-full py-2 text-xs font-bold bg-transparent border border-violet-600 text-violet-600 rounded-md cursor-pointer hover:bg-violet-600 hover:text-white transition-all uppercase tracking-wide"
                         onClick={handleAdd}>ADD
                     </button>
                 ) : (
-                    <div className="mt-auto flex items-center justify-between bg-green-500 rounded-lg overflow-hidden border border-green-500">
+                    <div className="flex items-center justify-between bg-violet-600 rounded-md overflow-hidden">
                         <button
-                            className="w-9 h-9 border-none bg-transparent text-white cursor-pointer flex items-center justify-center hover:bg-white/15 transition-colors active:scale-90"
+                            className="w-8 h-8 border-none bg-transparent text-white cursor-pointer flex items-center justify-center hover:bg-white/15 transition-colors active:scale-90"
                             onClick={(e) => { e.stopPropagation(); if (qty <= 1) removeItem(product._id, "urbexon_hour"); else decrement(product._id, "urbexon_hour"); }}>
                             {qty <= 1 ? <FaTrash size={9} /> : <FaMinus size={9} />}
                         </button>
-                        <span className="flex-1 text-center text-[15px] font-black text-white select-none">{qty}</span>
+                        <span className="flex-1 text-center text-sm font-bold text-white select-none">{qty}</span>
                         <button
-                            className="w-9 h-9 border-none bg-transparent text-white cursor-pointer flex items-center justify-center hover:bg-white/15 transition-colors active:scale-90"
+                            className="w-8 h-8 border-none bg-transparent text-white cursor-pointer flex items-center justify-center hover:bg-white/15 transition-colors active:scale-90"
                             onClick={(e) => { e.stopPropagation(); increment(product._id, "urbexon_hour"); }}>
                             <FaPlus size={9} />
                         </button>
@@ -367,6 +367,11 @@ const UrbexonHour = () => {
     const isHomepageEmpty = !homepageData?.bestSellers?.length && !homepageData?.recommended?.length && !homepageData?.topDeals?.length && !homepageData?.trending?.length && !uhDeals.length;
     const showVendorGroups = Boolean(searchQuery || activeCategory || isHomepageEmpty);
 
+    // Scroll to top when search or category changes
+    useEffect(() => {
+        if (searchQuery || activeCategory) window.scrollTo({ top: 0, behavior: "smooth" });
+    }, [searchQuery, activeCategory]);
+
     return (
         <div className="min-h-screen bg-gray-50 overflow-x-hidden antialiased">
             <SEO title="Urbexon Hour - Quick Delivery" description="Get groceries, essentials, and more delivered in minutes with Urbexon Hour." path="/urbexon-hour" />
@@ -555,7 +560,7 @@ const UrbexonHour = () => {
                                     </div>
                                     <div className="flex gap-3.5 overflow-x-auto pb-2.5 scrollbar-hide snap-x">
                                         {uhDeals.map((p) => (
-                                            <div key={p._id} className="min-w-[200px] max-w-[220px] flex-shrink-0 snap-start bg-white border-[1.5px] border-gray-100 rounded-2xl overflow-hidden hover:border-orange-400 hover:shadow-lg hover:-translate-y-0.5 transition-all">
+                                            <div key={p._id || p.id} className="min-w-[200px] max-w-[220px] flex-shrink-0 snap-start bg-white border-[1.5px] border-gray-100 rounded-2xl overflow-hidden hover:border-orange-400 hover:shadow-lg hover:-translate-y-0.5 transition-all">
                                                 <ProductCard product={p} />
                                                 <LiveCountdown endsAt={p.dealEndsAt} />
                                             </div>
@@ -671,7 +676,7 @@ const UrbexonHour = () => {
                                     </div>
                                 </div>
                                 <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                                    {group.products.map((p) => <ProductCard key={p._id} product={p} />)}
+                                    {group.products.map((p) => <ProductCard key={p._id || p.id} product={p} />)}
                                 </div>
                             </div>
                         ))}

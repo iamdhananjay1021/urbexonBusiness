@@ -175,8 +175,9 @@ export const getProducts = async (req, res) => {
             if (rx) filter.category = rx;
         }
         if (subcategory) {
+            const subRaw = subcategory.trim().replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
             filter.subcategory = {
-                $regex: new RegExp(`^${subcategory.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}$`, "i"),
+                $regex: new RegExp(`^\\s*${subRaw}\\s*$`, "i"),
             };
         }
         if (minPrice || maxPrice) {
@@ -208,7 +209,7 @@ export const getProducts = async (req, res) => {
         try {
             const [products, total] = await Promise.all([
                 Product.find(filter)
-                    .select("name slug category brand price mrp images rating numReviews inStock stock isDeal dealEndsAt isFeatured tags productType vendorId")
+                    .select("name slug category brand price mrp images rating numReviews inStock stock isDeal dealEndsAt isFeatured tags productType vendorId colorVariants sizes")
                     .sort(sortObj).skip(skip).limit(limit).lean(),
                 Product.countDocuments(filter),
             ]);
@@ -247,11 +248,11 @@ export const getHomepageProducts = async (req, res) => {
 
         const [featured, newArrivals, deals, productCount, cats] = await Promise.all([
             Product.find({ ...base, isFeatured: true })
-                .select("name slug price mrp images category rating isDeal inStock stock")
+                .select("name slug price mrp images category rating isDeal inStock stock colorVariants sizes")
                 .sort({ createdAt: -1 }).limit(8).lean(),
 
             Product.find(base)
-                .select("name slug price mrp images category rating isDeal inStock stock")
+                .select("name slug price mrp images category rating isDeal inStock stock colorVariants sizes")
                 .sort({ createdAt: -1 }).limit(12).lean(),
 
             Product.find({
@@ -259,7 +260,7 @@ export const getHomepageProducts = async (req, res) => {
                 isDeal: true,
                 $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: new Date() } }],
             })
-                .select("name slug price mrp images category rating isDeal dealEndsAt inStock stock")
+                .select("name slug price mrp images category rating isDeal dealEndsAt inStock stock colorVariants sizes")
                 .sort({ createdAt: -1 }).limit(8).lean(),
 
             Product.countDocuments({ isActive: true }),
@@ -377,7 +378,7 @@ export const getDeals = async (req, res) => {
 
         const [products, total] = await Promise.all([
             Product.find(filter)
-                .select("name slug price mrp images category rating isDeal dealEndsAt inStock stock isFeatured")
+                .select("name slug price mrp images category rating isDeal dealEndsAt inStock stock isFeatured colorVariants sizes")
                 .sort(sortMap[sort] || { createdAt: -1 })
                 .skip(skip).limit(limit).lean(),
             Product.countDocuments(filter),
@@ -442,7 +443,7 @@ export const getUrbexonHourProducts = async (req, res) => {
         const [products, total] = await Promise.all([
             Product.find(filter)
                 .populate("vendorId", "shopName shopLogo rating isOpen city")
-                .select("name slug price mrp images brand inStock stock rating tag prepTimeMinutes isDeal dealEndsAt category isFeatured")
+                .select("name slug price mrp images brand inStock stock rating tag prepTimeMinutes isDeal dealEndsAt category isFeatured colorVariants sizes")
                 .sort({ isFeatured: -1, createdAt: -1 })
                 .skip(skip).limit(limit).lean(),
             Product.countDocuments(filter),
@@ -484,7 +485,7 @@ export const getUrbexonHourHomepage = async (req, res) => {
         }
 
         const base = { isActive: true, productType: "urbexon_hour", ...vendorFilter };
-        const selectFields = "name slug price mrp images category rating numReviews isFeatured brand inStock stock vendorId isDeal dealEndsAt tag prepTimeMinutes";
+        const selectFields = "name slug price mrp images category rating numReviews isFeatured brand inStock stock vendorId isDeal dealEndsAt tag prepTimeMinutes colorVariants sizes";
 
         const [bestSellers, recommended, topDeals, trending, budgetPicks, categories, totalProducts, totalVendors] = await Promise.all([
             Product.find({ ...base, $or: [{ isFeatured: true }, { rating: { $gte: 4 } }] })
@@ -723,7 +724,7 @@ export const getRelatedProducts = async (req, res) => {
             productType: product.productType || "ecommerce",
             $or: orConditions,
         })
-            .select("name slug price mrp images category rating isFeatured inStock stock isDeal")
+            .select("name slug price mrp images category rating isFeatured inStock stock isDeal colorVariants sizes")
             .populate("vendorId", "shopName shopLogo rating isOpen city")
             .sort({ isFeatured: -1, rating: -1, createdAt: -1 })
             .limit(10).lean();
@@ -767,7 +768,7 @@ export const adminGetAllProducts = async (req, res) => {
         const [products, total] = await Promise.all([
             Product.find(filter)
                 .populate("vendorId", "shopName")
-                .select("name slug category brand price mrp stock inStock isActive isDeal isFeatured productType vendorId createdAt images colorVariants")
+                .select("name slug category brand price mrp stock inStock isActive isDeal isFeatured productType vendorId createdAt images colorVariants sizes")
                 .sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
             Product.countDocuments(filter),
         ]);
@@ -911,7 +912,7 @@ export const adminCreateProduct = async (req, res) => {
             description: body.description?.trim() || "",
             price, mrp, cost,
             category: body.category,
-            subcategory: body.subcategory || "",
+            subcategory: body.subcategory?.trim() || "",
             brand: body.brand || "",
             sku: body.sku || "",
             weight: body.weight || "",
@@ -951,6 +952,8 @@ export const adminCreateProduct = async (req, res) => {
             safeDelPrefix("suggestions:"),
             safeDelPrefix("related:"),
             safeDelPrefix("urbexon_hour:"),
+            safeDelPrefix("categories:"),
+            safeDelPrefix("category:"),
         ]);
 
         return res.status(201).json({ success: true, product });
@@ -1029,7 +1032,7 @@ export const adminUpdateProduct = async (req, res) => {
             mrp: (v) => (v ? safeNumber(v) : null),
             cost: (v) => safeNumber(v),
             category: (v) => v,
-            subcategory: (v) => v,
+            subcategory: (v) => v?.trim(),
             brand: (v) => v,
             sku: (v) => v,
             weight: (v) => v,
@@ -1136,6 +1139,8 @@ export const adminUpdateProduct = async (req, res) => {
             safeDelCache(`product:${product.slug}`),
             safeDelPrefix("related:"),
             safeDelPrefix("urbexon_hour:"),
+            safeDelPrefix("categories:"),
+            safeDelPrefix("category:"),
         ]);
 
         return res.json({ success: true, product });
@@ -1163,6 +1168,8 @@ export const adminDeleteProduct = async (req, res) => {
             safeDelCache(`product:${product.slug}`),
             safeDelPrefix("related:"),
             safeDelPrefix("urbexon_hour:"),
+            safeDelPrefix("categories:"),
+            safeDelPrefix("category:"),
         ]);
 
         res.json({ success: true, message: "Product removed" });
@@ -1239,7 +1246,7 @@ export const vendorCreateProduct = async (req, res) => {
             price: Number(body.price),
             mrp: body.mrp ? Number(body.mrp) : null,
             category: body.category,
-            subcategory: body.subcategory || "",
+            subcategory: body.subcategory?.trim() || "",
             tags: body.tags ? body.tags.split(",").map(t => t.trim()).filter(Boolean) : [],
             images,
             sizes,
@@ -1262,6 +1269,8 @@ export const vendorCreateProduct = async (req, res) => {
             safeDelPrefix("uh_products:"),
             safeDelPrefix("suggestions:"),
             safeDelPrefix("products:"),
+            safeDelPrefix("categories:"),
+            safeDelPrefix("category:"),
         ]);
 
         res.status(201).json({ success: true, product });
@@ -1291,7 +1300,7 @@ export const vendorGetMyProducts = async (req, res) => {
         const skip = (page - 1) * limit;
         const [products, total] = await Promise.all([
             Product.find(filter)
-                .select("name slug price mrp category stock inStock isActive isDeal isFeatured images createdAt")
+                .select("name slug price mrp category stock inStock isActive isDeal isFeatured images createdAt colorVariants sizes")
                 .sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
             Product.countDocuments(filter),
         ]);
@@ -1356,7 +1365,7 @@ export const vendorUpdateProduct = async (req, res) => {
 
         if (body.isActive !== undefined) product.isActive = body.isActive === "true" || body.isActive === true;
         if (body.tags) product.tags = body.tags.split(",").map(t => t.trim()).filter(Boolean);
-        if (body.subcategory !== undefined) product.subcategory = body.subcategory;
+        if (body.subcategory !== undefined) product.subcategory = body.subcategory?.trim();
 
         if (body.highlightsArray !== undefined) {
             try {
@@ -1401,6 +1410,8 @@ export const vendorUpdateProduct = async (req, res) => {
             safeDelCache(`product:${product.slug}`),
             safeDelPrefix("related:"),
             safeDelPrefix("products:"),
+            safeDelPrefix("categories:"),
+            safeDelPrefix("category:"),
         ]);
 
         res.json({ success: true, product });
@@ -1431,6 +1442,8 @@ export const vendorDeleteProduct = async (req, res) => {
             safeDelCache(`product:${product.slug}`),
             safeDelPrefix("related:"),
             safeDelPrefix("products:"),
+            safeDelPrefix("categories:"),
+            safeDelPrefix("category:"),
         ]);
 
         res.json({ success: true, message: "Product removed" });
@@ -1463,7 +1476,7 @@ export const adminGetDealableProducts = async (req, res) => {
         }
 
         const products = await Product.find(filter)
-            .select("name brand price mrp category stock inStock isDeal dealEndsAt")
+            .select("name brand price mrp category stock inStock isDeal dealEndsAt colorVariants sizes")
             .limit(limit).lean();
 
         res.json({ success: true, products });

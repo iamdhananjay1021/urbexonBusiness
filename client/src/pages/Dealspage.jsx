@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import SEO from "../components/SEO";
 import api from "../api/axios";
-import ProductCardUnified from "../components/ProductCardUnified";
+import ProductCard from "../components/ProductCard";
 import { FaFire } from "react-icons/fa";
 
 /* ════════════════════════════════════
@@ -45,11 +45,9 @@ const DealProductCard = ({ product }) => {
     const countdownJSX = countdown ? <DealCountdownDisplay countdown={countdown} /> : null;
 
     return (
-        <ProductCardUnified
+        <ProductCard
             product={product}
-            variant="deal"
-            showDealBadge={true}
-            dealCountdown={countdownJSX}
+            footer={countdownJSX}
         />
     );
 };
@@ -159,7 +157,7 @@ const Deals = () => {
                             </p>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 20 }}>
-                            {deals.map(p => <DealProductCard key={p._id} product={p} />)}
+                            {deals.map(p => <div key={p._id || p.id}><DealProductCard product={p} /></div>)}
                         </div>
                     </>
                 )}

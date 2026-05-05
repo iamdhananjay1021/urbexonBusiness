@@ -6,7 +6,7 @@ import SEO from "../components/SEO";
 import {
     FaUser, FaEnvelope, FaBox, FaArrowRight,
     FaMapMarkerAlt, FaSignOutAlt, FaEdit, FaSave,
-    FaTimes, FaLock, FaEye, FaEyeSlash, FaPlus,
+    FaTimes, FaLock, FaEye, FaEyeSlash, FaPlus, FaArrowLeft,
     FaTrash, FaCheckCircle, FaSpinner, FaPhone,
     FaStar, FaChevronRight,
 } from "react-icons/fa";
@@ -231,6 +231,9 @@ const Profile = () => {
 
                 {/* ── Header ── */}
                 <div className="pf-header">
+                    <button onClick={() => navigate(-1)} style={{ position: "absolute", top: 20, left: 20, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer", transition: "background 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.25)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.15)"}>
+                        <FaArrowLeft size={14} />
+                    </button>
                     <div className="pf-avatar">{user?.name?.[0]?.toUpperCase() || "U"}</div>
                     <p className="pf-name">{user?.name}</p>
                     <p className="pf-email">{user?.email}</p>

@@ -25,7 +25,7 @@ import {
   clearCart,
 } from "../features/cart/cartSlice";
 import api from "../api/axios";
-import { FaTrash, FaShoppingBag, FaBolt, FaTag, FaArrowRight, FaTimes, FaPlus, FaMinus, FaBan } from "react-icons/fa";
+import { FaTrash, FaShoppingBag, FaBolt, FaTag, FaArrowRight, FaTimes, FaPlus, FaMinus, FaBan, FaArrowLeft } from "react-icons/fa";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
@@ -210,6 +210,11 @@ const Cart = () => {
     return (
       <div className="cart-root" style={{ paddingBottom: MOBILE_BOTTOM_NAV_HEIGHT }}>
         <style>{CSS}</style>
+        <div style={{ padding: "0 0 20px 0" }}>
+          <button onClick={() => navigate(-1)} style={{ background: "none", border: "none", cursor: "pointer", color: "#111827", display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 14 }}>
+            <FaArrowLeft size={14} /> Back
+          </button>
+        </div>
         <div className="empty-cart">
           <div className="empty-icon">🛒</div>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>Your cart is empty</h2>
@@ -229,22 +234,27 @@ const Cart = () => {
 
       <div className="cart-inner">
         <div className="cart-head">
-          <div>
-            {hasBoth && (
-              <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
-                <button className={`cart-tab${activeTab === "ec" ? " active" : ""}`} onClick={() => switchTab("ec")}>
-                  🛍 Store ({ecCount})
-                </button>
-                <button className={`cart-tab${activeTab === "uh" ? " active" : ""}`} onClick={() => switchTab("uh")}>
-                  ⚡ Urbexon Hour ({uhCount})
-                </button>
-              </div>
-            )}
-            <h1 className="cart-title">
-              {isUH ? <><span style={{ color: "#c9a84c" }}>⚡</span> Urbexon Hour Cart</> : "Shopping Cart"}
-              <span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8", marginLeft: 8 }}>({activeCount} items)</span>
-            </h1>
-            {isUH && <div className="uh-badge" style={{ marginTop: 6 }}><FaBolt size={9} />Fast Delivery • 45-120 mins</div>}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+            <button onClick={() => navigate(-1)} style={{ background: "none", border: "none", cursor: "pointer", color: "#111827", marginTop: hasBoth ? 10 : 4 }}>
+              <FaArrowLeft size={18} />
+            </button>
+            <div>
+              {hasBoth && (
+                <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                  <button className={`cart-tab${activeTab === "ec" ? " active" : ""}`} onClick={() => switchTab("ec")}>
+                    🛍 Store ({ecCount})
+                  </button>
+                  <button className={`cart-tab${activeTab === "uh" ? " active" : ""}`} onClick={() => switchTab("uh")}>
+                    ⚡ Urbexon Hour ({uhCount})
+                  </button>
+                </div>
+              )}
+              <h1 className="cart-title">
+                {isUH ? <><span style={{ color: "#c9a84c" }}>⚡</span> Urbexon Hour Cart</> : "Shopping Cart"}
+                <span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8", marginLeft: 8 }}>({activeCount} items)</span>
+              </h1>
+              {isUH && <div className="uh-badge" style={{ marginTop: 6 }}><FaBolt size={9} />Fast Delivery • 45-120 mins</div>}
+            </div>
           </div>
           <button className="cart-clear" onClick={() => dispatch(isUH ? clearUHCart() : clearEcommerceCart())}>
             <FaTimes size={11} style={{ marginRight: 4 }} />Clear Cart

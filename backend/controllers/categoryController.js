@@ -151,20 +151,35 @@ export const getCategorySubcategories = async (req, res) => {
         const cat = await Category.findOne({ slug, isActive: true }).lean();
         if (!cat) return res.status(404).json({ success: false, message: "Category not found" });
 
+        const catRegex = new RegExp(`^\\s*${cat.name.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}\\s*$`, "i");
+
         const productSubcats = await Product.aggregate([
-            { $match: { category: cat.name, isActive: true, subcategory: { $nin: [null, ""] } } },
-            { $group: { _id: "$subcategory", count: { $sum: 1 }, image: { $first: "$images" } } },
+            { $match: { category: catRegex, isActive: true, subcategory: { $nin: [null, ""] } } },
+            {
+                $group: {
+                    _id: { $toLower: { $trim: { input: "$subcategory" } } },
+                    originalName: { $first: { $trim: { input: "$subcategory" } } },
+                    count: { $sum: 1 },
+                    image: { $first: "$images" }
+                }
+            },
             { $sort: { count: -1 } },
             { $limit: 20 },
-            { $project: { _id: 0, name: "$_id", count: 1, image: { $arrayElemAt: ["$image.url", 0] } } },
+            { $project: { _id: 0, name: "$originalName", count: 1, image: { $arrayElemAt: ["$image.url", 0] } } },
         ]);
 
-        const productSubcatMap = new Map(productSubcats.map(s => [s.name, s]));
+        const productSubcatMap = new Map();
+        productSubcats.forEach(s => productSubcatMap.set(s.name.toLowerCase(), s));
+
         const modelSubcats = Array.isArray(cat.subcategories) ? cat.subcategories : [];
 
         const merged = [...productSubcats];
         for (const name of modelSubcats) {
-            if (!productSubcatMap.has(name)) merged.push({ name, count: 0, image: null });
+            const cleanName = name.trim();
+            const lowerName = cleanName.toLowerCase();
+            if (!productSubcatMap.has(lowerName)) {
+                merged.push({ name: cleanName, count: 0, image: null });
+            }
         }
 
         const result = { category: cat, subcategories: merged };

@@ -40,7 +40,7 @@ const TYPE_STYLES = {
     },
 };
 
-const NotificationCenter = ({ variant = "desktop" }) => {
+const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const isEnabled = Boolean(user?._id);
@@ -107,13 +107,11 @@ const NotificationCenter = ({ variant = "desktop" }) => {
 
         refreshUnread();
 
-        // Increased polling to 5 mins to prevent 304 log spam. WebSockets handle instant updates.
         const interval = setInterval(refreshUnread, 300000);
 
         let focusTimeout;
         const handleFocus = () => {
             clearTimeout(focusTimeout);
-            // Delay request by 2 seconds to prevent rapid spam when switching tabs
             focusTimeout = setTimeout(refreshUnread, 2000);
         };
         window.addEventListener("focus", handleFocus);
@@ -188,7 +186,7 @@ const NotificationCenter = ({ variant = "desktop" }) => {
             );
             setUnread((prev) => Math.max(0, prev - 1));
         } catch {
-            // Silent retry candidate; the next refresh will resync.
+            // Silent retry candidate
         }
     };
 
@@ -198,7 +196,7 @@ const NotificationCenter = ({ variant = "desktop" }) => {
             setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
             setUnread(0);
         } catch {
-            // Silent retry candidate; the next refresh will resync.
+            // Silent retry candidate
         }
     };
 
@@ -223,7 +221,7 @@ const NotificationCenter = ({ variant = "desktop" }) => {
                 setUnread((prev) => Math.max(0, prev - 1));
             }
         } catch {
-            // Silent retry candidate; the next refresh will resync.
+            // Silent retry candidate
         }
     };
 
@@ -238,9 +236,12 @@ const NotificationCenter = ({ variant = "desktop" }) => {
         return `${Math.floor(seconds / 86400)}d ago`;
     };
 
+    const btnTextColor = theme === "dark" ? "text-white" : "text-[#1a1740]";
+    const btnHover = theme === "dark" ? "hover:bg-white/10" : "hover:bg-black/5";
+
     const buttonClassName = isMobile
-        ? "w-10 h-10 border-none bg-transparent rounded flex items-center justify-center text-white cursor-pointer relative hover:bg-white/10 transition-colors"
-        : "flex items-center gap-1.5 bg-transparent border-none cursor-pointer px-2.5 py-1.5 rounded text-[13px] font-semibold text-white hover:bg-white/10 transition-colors whitespace-nowrap relative";
+        ? `w-10 h-10 border-none bg-transparent rounded-lg flex items-center justify-center cursor-pointer relative transition-colors ${btnTextColor} ${btnHover}`
+        : `flex items-center gap-1.5 bg-transparent border-none cursor-pointer px-2.5 py-2 rounded-lg relative transition-colors whitespace-nowrap ${btnTextColor} ${btnHover}`;
 
     const dropdownClassName = isMobile
         ? "fixed left-2 right-2 top-[3.9rem] max-h-[min(28rem,calc(100vh-5rem))] bg-white rounded-2xl shadow-2xl border border-gray-100 z-[950] overflow-hidden flex flex-col"
@@ -255,10 +256,10 @@ const NotificationCenter = ({ variant = "desktop" }) => {
                 aria-label="Notifications"
                 aria-expanded={open}
             >
-                <FaBell size={18} className="shrink-0 text-white" />
+                <FaBell size={17} className={`shrink-0 ${theme === "dark" ? "text-white" : "text-[#1a1740]"}`} />
                 {unread > 0 && (
-                    <span className="absolute -top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center shadow-sm">
-                        {unread > 99 ? "99+" : unread}
+                    <span className={`absolute -top-0.5 right-0.5 min-w-[16px] h-4 rounded-full text-[9px] font-black flex items-center justify-center px-0.5 ${theme === "dark" ? "bg-yellow-400 text-[#2874f0]" : "bg-red-500 text-white"}`}>
+                        {unread > 9 ? "9+" : unread}
                     </span>
                 )}
                 {!isMobile && (

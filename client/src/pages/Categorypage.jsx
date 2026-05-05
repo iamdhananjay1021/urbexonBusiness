@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/axios";
 import { fetchCategoryBySlug, fetchCategorySubcategories } from "../api/categoryApi";
-import ProductCardUnified from "../components/ProductCardUnified";
+import ProductCard from "../components/ProductCard";
 import {
     FaTimes, FaChevronDown, FaChevronUp,
     FaSortAmountDown, FaSearch,
@@ -100,6 +100,7 @@ const CategoryPage = () => {
     const handleSearch = (e) => {
         e.preventDefault();
         setSearch(searchInput);
+        window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
     const handleSort = (val) => {
@@ -132,12 +133,6 @@ const CategoryPage = () => {
             <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
         .cp { font-family:'DM Sans',sans-serif; min-height:100vh; background:#f7f4ee; }
-        .cp-skel { background:linear-gradient(90deg,#ede9e1 25%,#e5e1d8 50%,#ede9e1 75%); background-size:200% 100%; animation:cpShim 1.5s ease-in-out infinite; }
-        @keyframes cpShim { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-        .cp-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
-        @media (max-width:1024px) { .cp-grid { grid-template-columns:repeat(3,1fr); gap:14px; } }
-        @media (max-width:640px)  { .cp-grid { grid-template-columns:repeat(2,1fr); gap:10px; } }
-        @media (max-width:340px)  { .cp-grid { grid-template-columns:1fr; } }
         .cp-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
         @media (max-width:520px) {
           .cp-toolbar { gap:8px; }
@@ -248,7 +243,7 @@ const CategoryPage = () => {
                                         borderColor: activeSubcategory === sub.name ? "#1a1740" : "#d1d5db",
                                     }}
                                 >
-                                    {sub.name} <span style={{ fontSize: 10, opacity: .6 }}>({sub.count})</span>
+                                    {sub.name} {sub.count > 0 && <span style={{ fontSize: 10, opacity: .6 }}>({sub.count})</span>}
                                 </button>
                             ))}
                         </div>
@@ -260,9 +255,20 @@ const CategoryPage = () => {
 
                     {/* Skeleton */}
                     {loading && products.length === 0 && (
-                        <div className="cp-grid">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
                             {Array(12).fill(0).map((_, i) => (
-                                <div key={i} style={{ aspectRatio: "3/4" }} className="cp-skel" />
+                                <div key={i} className="bg-white border border-stone-200 rounded-xl overflow-hidden flex flex-col w-full h-full">
+                                    <div className="w-full aspect-square bg-stone-100 animate-pulse shrink-0" />
+                                    <div className="p-3 flex flex-col gap-2 flex-1">
+                                        <div className="h-2.5 w-1/3 bg-stone-200 rounded animate-pulse" />
+                                        <div className="h-3 w-4/5 bg-stone-200 rounded animate-pulse" />
+                                        <div className="h-3 w-1/2 bg-stone-200 rounded animate-pulse" />
+                                        <div className="mt-auto pt-2 space-y-2">
+                                            <div className="h-4 w-2/5 bg-stone-200 rounded animate-pulse" />
+                                            <div className="h-8 bg-stone-200 rounded animate-pulse" />
+                                        </div>
+                                    </div>
+                                </div>
                             ))}
                         </div>
                     )}
@@ -287,9 +293,9 @@ const CategoryPage = () => {
                     {/* Grid */}
                     {products.length > 0 && (
                         <>
-                            <div className="cp-grid">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
                                 {products.map((p) => (
-                                    <ProductCardUnified key={p._id} product={p} variant="default" />
+                                    <ProductCard key={p._id || p.id} product={p} hideActions />
                                 ))}
                             </div>
 

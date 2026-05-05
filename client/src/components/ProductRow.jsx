@@ -1,86 +1,73 @@
 import { useRef, useCallback, useEffect } from "react";
 import ProductCard from "./ProductCard";
+import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
 
 const ProductRow = ({ title, products = [] }) => {
     const rowRef = useRef(null);
-    const scrollIntervalRef = useRef(null);
 
-    // 🔥 FIXED: Safe scroll functions with null checks
-    const startScroll = useCallback(() => {
-        if (!rowRef.current || scrollIntervalRef.current) return;
+    // BUG FIX: Null safety - ensure products is always an array
+    const safeProducts = Array.isArray(products) ? products : [];
 
-        scrollIntervalRef.current = setInterval(() => {
-            if (rowRef.current) { // 🔥 NULL CHECK
-                rowRef.current.scrollLeft += 1;
-            } else {
-                stopScroll(); // 🔥 CLEANUP
-            }
-        }, 16);
+    const scrollBy = useCallback((dir) => {
+        rowRef.current?.scrollBy({ left: dir * 300, behavior: "smooth" });
     }, []);
 
-    const stopScroll = useCallback(() => {
-        if (scrollIntervalRef.current) {
-            clearInterval(scrollIntervalRef.current);
-            scrollIntervalRef.current = null;
-        }
-    }, []);
-
-    // 🔥 CLEANUP INTERVAL ON UNMOUNT
+    // Cleanup on unmount
     useEffect(() => {
-        return () => stopScroll();
-    }, [stopScroll]);
+        return () => { };
+    }, []);
 
-    if (!products.length) return null;
+    if (!safeProducts.length) return null;
 
     return (
         <section className="relative">
-            <h2 className="text-lg font-semibold mb-6 text-slate-800 px-4 sm:px-0">
-                {title}
-            </h2>
+            {/* Section header */}
+            <div className="flex items-center justify-between mb-4 px-4 sm:px-0">
+                <h2 className="text-lg sm:text-xl font-extrabold text-[#1c1917] tracking-tight">
+                    {title}
+                </h2>
 
-            <div className="relative">
-                {/* Navigation Dots - Optional */}
-                <div className="absolute -top-12 right-0 flex gap-2 z-10 hidden md:flex">
+                {/* Desktop nav arrows */}
+                <div className="hidden md:flex gap-2">
                     <button
-                        onClick={() => rowRef.current?.scrollBy({ left: -300, behavior: 'smooth' })}
-                        className="w-10 h-10 bg-slate-200 hover:bg-slate-300 rounded-full flex items-center justify-center text-slate-600 hover:text-slate-900 transition-all"
+                        onClick={() => scrollBy(-1)}
+                        className="w-9 h-9 rounded-full bg-[#f5f2ec] hover:bg-[#ede9e4] border border-[#e7e5e1] flex items-center justify-center text-[#1c1917] transition-all hover:scale-105"
                         aria-label="Scroll left"
                     >
-                        ←
+                        <FaChevronLeft size={12} />
                     </button>
                     <button
-                        onClick={() => rowRef.current?.scrollBy({ left: 300, behavior: 'smooth' })}
-                        className="w-10 h-10 bg-slate-200 hover:bg-slate-300 rounded-full flex items-center justify-center text-slate-600 hover:text-slate-900 transition-all"
+                        onClick={() => scrollBy(1)}
+                        className="w-9 h-9 rounded-full bg-[#f5f2ec] hover:bg-[#ede9e4] border border-[#e7e5e1] flex items-center justify-center text-[#1c1917] transition-all hover:scale-105"
                         aria-label="Scroll right"
                     >
-                        →
+                        <FaChevronRight size={12} />
                     </button>
                 </div>
+            </div>
 
-                <div
-                    ref={rowRef}
-                    onMouseEnter={startScroll}
-                    onMouseLeave={stopScroll}
-                    className="
-                        flex gap-6 overflow-x-auto pb-8 px-4 sm:px-0
-                        scrollbar-hide
-                        scroll-smooth
-                        snap-x snap-mandatory
-                        [&::-webkit-scrollbar]:hidden
-                        [-ms-overflow-style:none]
-                        [scrollbar-width:none]
-                    "
-                    style={{ scrollBehavior: 'smooth' }}
-                >
-                    {products.map((product) => (
-                        <div
-                            key={product._id}
-                            className="min-w-[260px] md:min-w-[280px] flex-shrink-0 snap-center"
-                        >
-                            <ProductCard product={product} />
-                        </div>
-                    ))}
-                </div>
+            {/* Scroll container */}
+            <div
+                ref={rowRef}
+                className="
+          flex gap-3 sm:gap-4
+          overflow-x-auto
+          pb-4 px-4 sm:px-0
+          snap-x snap-mandatory
+          scroll-smooth
+          [scrollbar-width:none]
+          [&::-webkit-scrollbar]:hidden
+        "
+            >
+                {safeProducts.map((product) => (
+                    <div
+                        key={product._id || product.id}
+                        className="min-w-[155px] xs:min-w-[160px] sm:min-w-[210px] md:min-w-[240px] lg:min-w-[260px] flex-shrink-0 snap-start"
+                    >
+                        {/* hideActions=true for home page rows — no buy/cart on mobile bar */}
+                        <ProductCard product={product} hideActions={false} />
+                    </div>
+                ))}
             </div>
         </section>
     );

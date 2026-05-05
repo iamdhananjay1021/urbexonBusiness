@@ -2,6 +2,8 @@
  * ProductCardUnified.jsx — Production-Ready Unified Product Card
  * Used across: Home, Products, Category, Deals, Urbexon Hour
  * Features: Proper styling, hover effects, cart/wishlist functionality
+ * BUG FIXES: null safety, stock handling, navigation URL fallback
+ * UI: Preserved original styling - no visual changes
  */
 import { useCallback, useState, memo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,9 +21,62 @@ const ProductCardUnified = memo(({
     const [hovered, setHovered] = useState(false);
     const [flashAdded, setFlashAdded] = useState(false);
 
+    // ═══════════════════════════════════════════════════════
+    // NULL SAFETY - Guard against null/undefined product
+    // BUG FIX: Prevent crash when product is null/undefined
+    // ═══════════════════════════════════════════════════════════════
+    if (!product) {
+        return (
+            <div style={{
+                background: "#fff",
+                border: "1px solid #e8e4d9",
+                borderRadius: 8,
+                overflow: "hidden",
+                aspectRatio: "3/4",
+                display: "flex",
+                flexDirection: "column",
+            }}>
+                <div style={{ flex: 1, background: "#f7f4ee" }} />
+                <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ height: 8, width: "30%", background: "#ede9e4", borderRadius: 4 }} />
+                    <div style={{ height: 16, width: "80%", background: "#ede9e4", borderRadius: 4 }} />
+                    <div style={{ height: 14, width: "60%", background: "#ede9e4", borderRadius: 4 }} />
+                </div>
+            </div>
+        );
+    }
+
+    // BUG FIX: Handle both _id and id fields
+    const productId = product._id || product.id || "";
+
     // Data extraction
-    const inCart = cartItems.some(i => i._id === product._id);
-    const isOOS = product.inStock === false || Number(product.stock ?? 0) === 0;
+    // BUG FIX: Check cart correctly with productId fallback
+    const inCart = cartItems.some(i => i._id === productId || i.productId === productId);
+
+    // BUG FIX: Consistent stock logic
+    const getStock = (p) => {
+        if (!p) return 0;
+
+        let calculatedStock = 0;
+        let hasVariantStock = false;
+
+        if (p.sizes && p.sizes.length > 0) {
+            calculatedStock = p.sizes.reduce((sum, s) => sum + (Number(s.stock) || 0), 0);
+            hasVariantStock = true;
+        } else if (p.colorVariants && p.colorVariants.length > 0 && p.colorVariants.some(v => v.stock !== undefined)) {
+            calculatedStock = p.colorVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+            hasVariantStock = true;
+        }
+
+        if (hasVariantStock) return calculatedStock;
+        if (p.inStock === true && (p.stock === undefined || p.stock === null)) return 10;
+        return Number(p.stock || 0);
+    }
+    const stockNum = getStock(product);
+
+    // BUG FIX: Consistent OOS logic
+    const isOOS = product.inStock === false || stockNum <= 0;
+
     const hasDisc = product.mrp && Number(product.mrp) > Number(product.price);
     const discPct = hasDisc ? Math.round(((Number(product.mrp) - Number(product.price)) / Number(product.mrp)) * 100) : null;
     const imgSrc = product.images?.[0]?.url || product.image || "";
@@ -37,8 +92,9 @@ const ProductCardUnified = memo(({
 
     const handleQuickView = useCallback((e) => {
         e.stopPropagation();
-        navigate(`/products/${product.slug || product._id}`);
-    }, [navigate, product]);
+        // BUG FIX: Ensure productId is always available
+        navigate(`/products/${product.slug || productId}`);
+    }, [navigate, product, productId]);
 
     // Styles based on variant
     const containerStyles = {
@@ -105,7 +161,7 @@ const ProductCardUnified = memo(({
                             display: "block",
                             transform: hovered ? "scale(1.06)" : "scale(1)",
                             transition: "transform .5s cubic-bezier(.34,1.1,.64,1)",
-                            filter: isOOS ? "grayscale(.7) opacity(.6)" : "none",
+                            filter: isOOS ? "grayscale(.7) opacity(.6)" : "none"
                         }}
                     />
                 ) : (
@@ -241,8 +297,8 @@ const ProductCardUnified = memo(({
                     ) : (
                         <span style={{ color: "#16a34a" }}>✓ In Stock</span>
                     )}
-                    {product.stock > 0 && product.stock <= 5 && !isOOS && (
-                        <span style={{ marginLeft: 8, color: "#f59e0b", fontWeight: 700 }}>Only {product.stock} left</span>
+                    {stockNum > 0 && stockNum <= 5 && !isOOS && (
+                        <span style={{ marginLeft: 8, color: "#f59e0b", fontWeight: 700 }}>Only {stockNum} left</span>
                     )}
                 </div>
 
