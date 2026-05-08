@@ -248,11 +248,11 @@ export const getHomepageProducts = async (req, res) => {
 
         const [featured, newArrivals, deals, productCount, cats] = await Promise.all([
             Product.find({ ...base, isFeatured: true })
-                .select("name slug price mrp images category rating isDeal inStock stock colorVariants sizes")
+                .select("name slug price mrp images category rating numReviews isDeal inStock stock colorVariants sizes")
                 .sort({ createdAt: -1 }).limit(8).lean(),
 
             Product.find(base)
-                .select("name slug price mrp images category rating isDeal inStock stock colorVariants sizes")
+                .select("name slug price mrp images category rating numReviews isDeal inStock stock colorVariants sizes")
                 .sort({ createdAt: -1 }).limit(12).lean(),
 
             Product.find({
@@ -260,10 +260,10 @@ export const getHomepageProducts = async (req, res) => {
                 isDeal: true,
                 $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: new Date() } }],
             })
-                .select("name slug price mrp images category rating isDeal dealEndsAt inStock stock colorVariants sizes")
+                .select("name slug price mrp images category rating numReviews isDeal dealEndsAt inStock stock colorVariants sizes")
                 .sort({ createdAt: -1 }).limit(8).lean(),
 
-            Product.countDocuments({ isActive: true }),
+            Product.countDocuments(base),
             Product.distinct("category", { isActive: true, productType: "ecommerce" }),
         ]);
 
@@ -378,7 +378,7 @@ export const getDeals = async (req, res) => {
 
         const [products, total] = await Promise.all([
             Product.find(filter)
-                .select("name slug price mrp images category rating isDeal dealEndsAt inStock stock isFeatured colorVariants sizes")
+                .select("name slug price mrp images category rating numReviews isDeal dealEndsAt inStock stock isFeatured colorVariants sizes")
                 .sort(sortMap[sort] || { createdAt: -1 })
                 .skip(skip).limit(limit).lean(),
             Product.countDocuments(filter),
@@ -443,7 +443,7 @@ export const getUrbexonHourProducts = async (req, res) => {
         const [products, total] = await Promise.all([
             Product.find(filter)
                 .populate("vendorId", "shopName shopLogo rating isOpen city")
-                .select("name slug price mrp images brand inStock stock rating tag prepTimeMinutes isDeal dealEndsAt category isFeatured colorVariants sizes")
+                .select("name slug price mrp images brand inStock stock rating numReviews tag prepTimeMinutes isDeal dealEndsAt category isFeatured colorVariants sizes")
                 .sort({ isFeatured: -1, createdAt: -1 })
                 .skip(skip).limit(limit).lean(),
             Product.countDocuments(filter),
@@ -724,7 +724,7 @@ export const getRelatedProducts = async (req, res) => {
             productType: product.productType || "ecommerce",
             $or: orConditions,
         })
-            .select("name slug price mrp images category rating isFeatured inStock stock isDeal colorVariants sizes")
+            .select("name slug price mrp images category rating numReviews isFeatured inStock stock isDeal colorVariants sizes")
             .populate("vendorId", "shopName shopLogo rating isOpen city")
             .sort({ isFeatured: -1, rating: -1, createdAt: -1 })
             .limit(10).lean();

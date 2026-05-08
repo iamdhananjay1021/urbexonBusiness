@@ -57,12 +57,13 @@ const ProductRow = ({ title, products = [] }) => {
           scroll-smooth
           [scrollbar-width:none]
           [&::-webkit-scrollbar]:hidden
+          items-stretch
         "
             >
                 {safeProducts.map((product) => (
                     <div
                         key={product._id || product.id}
-                        className="min-w-[155px] xs:min-w-[160px] sm:min-w-[210px] md:min-w-[240px] lg:min-w-[260px] flex-shrink-0 snap-start"
+                        className="min-w-[155px] xs:min-w-[160px] sm:min-w-[210px] md:min-w-[240px] lg:min-w-[260px] flex-shrink-0 snap-start flex flex-col"
                     >
                         {/* hideActions=true for home page rows — no buy/cart on mobile bar */}
                         <ProductCard product={product} hideActions={false} />

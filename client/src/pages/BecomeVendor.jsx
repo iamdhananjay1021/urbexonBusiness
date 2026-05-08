@@ -92,11 +92,11 @@ const BecomeVendor = () => {
   const submit = async (e) => {
     e.preventDefault();
     if (!form.shopName || !form.ownerName || !form.phone || !form.email)
-      return setError("Shop name, owner name, phone aur email zaroori hain");
+      return setError("Shop name, owner name, phone, and email are required");
     if (!form.pincode || !/^\d{6}$/.test(form.pincode))
-      return setError("Valid 6-digit pincode daalen");
+      return setError("Enter a valid 6-digit pincode");
     if (!/^[6-9]\d{9}$/.test(form.phone.trim()))
-      return setError("Valid 10-digit mobile number daalen (starts with 6-9)");
+      return setError("Enter a valid 10-digit mobile number");
 
     setSubmitting(true); setError("");
     try {
@@ -116,7 +116,7 @@ const BecomeVendor = () => {
       await api.post("/vendor/register", fd, { headers: { "Content-Type": "multipart/form-data" } });
       setSuccess(true);
     } catch (err) {
-      setError(err.response?.data?.message || "Application submit karne mein dikkat hui");
+      setError(err.response?.data?.message || "Failed to submit application");
     } finally { setSubmitting(false); }
   };
 
@@ -141,9 +141,9 @@ const BecomeVendor = () => {
   // Already applied
   if (status) {
     const cfg = {
-      pending: { color: "#f59e0b", bg: "#fffbeb", icon: "⏳", title: "Application Review Mein Hai", msg: "Aapki application review ho rahi hai. 24-48 ghante mein update milega." },
-      approved: { color: "#059669", bg: "#f0fdf4", icon: "✅", title: "Aap Approved Vendor Hain!", msg: "Congratulations! Aap ab apna vendor dashboard use kar sakte hain." },
-      rejected: { color: "#dc2626", bg: "#fef2f2", icon: "❌", title: "Application Rejected", msg: `Reason: ${status.rejectionReason || "Admin se contact karein."}` },
+      pending: { color: "#f59e0b", bg: "#fffbeb", icon: "⏳", title: "Application Under Review", msg: "Your application is under review. You will receive an update within 24-48 hours." },
+      approved: { color: "#059669", bg: "#f0fdf4", icon: "✅", title: "You are an Approved Vendor!", msg: "Congratulations! You can now access your vendor dashboard." },
+      rejected: { color: "#dc2626", bg: "#fef2f2", icon: "❌", title: "Application Rejected", msg: `Reason: ${status.rejectionReason || "Please contact support."}` },
     };
     const c = cfg[status.status] || cfg.pending;
     return (
@@ -157,19 +157,19 @@ const BecomeVendor = () => {
 
             <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
               {status.status === "approved" && (
-                <a href={import.meta.env.VITE_VENDOR_URL || import.meta.env.VITE_VENDOR_URL || "http://localhost:5175"} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", background: "#1a1740", color: "#c9a84c", borderRadius: 8, fontWeight: 700, fontSize: 13, textDecoration: "none" }}>
+                <a href={(import.meta.env.VITE_VENDOR_URL || "http://localhost:5175") + "/dashboard"} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", background: "#1a1740", color: "#c9a84c", borderRadius: 8, fontWeight: 700, fontSize: 13, textDecoration: "none" }}>
                   Vendor Dashboard <FaArrowRight size={11} />
                 </a>
               )}
               {status.status === "rejected" && (
                 <button onClick={() => setStatus(false)} style={{ padding: "11px 22px", background: "#1a1740", border: "none", color: "#c9a84c", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>
-                  Dobara Apply Karein
+                  Reapply
                 </button>
               )}
 
               {/* Home button for all statuses */}
               <button onClick={() => navigate("/")} style={{ padding: "11px 22px", background: "#f3f4f6", border: "1px solid #e5e7eb", color: "#1a1740", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>
-                Home Par Jayen
+                Go to Home
               </button>
             </div>
           </div>
@@ -184,12 +184,12 @@ const BecomeVendor = () => {
       <div style={{ padding: "60px 20px" }}>
         <div className="status-box" style={{ borderColor: "#059669" }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>Application Submit Ho Gayi!</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>Application Submitted!</h2>
           <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6 }}>
-            Hum aapki application 24-48 ghante mein review karenge.<br />Email par update milega.
+            We will review your application within 24-48 hours.<br />You will receive an update via email.
           </p>
           <button onClick={() => navigate("/")} style={{ marginTop: 20, padding: "11px 24px", background: "#1a1740", border: "none", color: "#c9a84c", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>
-            Home Par Jayen
+            Go to Home
           </button>
         </div>
       </div>
@@ -202,8 +202,8 @@ const BecomeVendor = () => {
       <style>{CSS}</style>
       <div className="bv-hero">
         <div className="bv-badge"><FaStore size={11} />Vendor Partner Program</div>
-        <h1 className="bv-title">Apna Business <span style={{ color: "#c9a84c" }}>Urbexon</span> Par Shuru Karein</h1>
-        <p className="bv-desc">Lakhs of customers tak pahuncho. Apne products list karein aur zyada kamao.</p>
+        <h1 className="bv-title">Start Your Business on <span style={{ color: "#c9a84c" }}>Urbexon</span></h1>
+        <p className="bv-desc">Reach millions of customers. List your products and grow your business.</p>
         <div className="bv-perks">
           {[["🚀", "Quick Setup"], ["💰", "Fast Payouts"], ["📊", "Live Analytics"], ["🛡️", "Secure Platform"]].map(([i, l]) => (
             <div key={l} className="bv-perk"><div className="bv-perk-icon">{i}</div><div className="bv-perk-label">{l}</div></div>
@@ -223,7 +223,7 @@ const BecomeVendor = () => {
           <div className="bv-card">
             <div className="bv-sec-title"><FaStore color="#c9a84c" size={16} />Shop Information</div>
             <div className="bv-grid">
-              <Field label="Shop Name *"><input className="bv-inp" value={form.shopName} onChange={set("shopName")} placeholder="Aapke shop ka naam" /></Field>
+              <Field label="Shop Name *"><input className="bv-inp" value={form.shopName} onChange={set("shopName")} placeholder="Your shop name" /></Field>
               <Field label="Shop Category *">
                 <select className="bv-inp" value={form.shopCategory} onChange={set("shopCategory")}>
                   <option value="">-- Select Category --</option>
@@ -242,7 +242,8 @@ const BecomeVendor = () => {
                   <option value="pets">Pet Supplies</option>
                   <option value="other">Other</option>
                 </select>
-              </Field>              <Field label="Shop Description" full={true}><textarea className="bv-inp" rows={3} value={form.shopDescription} onChange={set("shopDescription")} placeholder="Aapke shop ke baare mein batayen…" style={{ resize: "vertical" }} /></Field>
+              </Field>
+              <Field label="Shop Description" full={true}><textarea className="bv-inp" rows={3} value={form.shopDescription} onChange={set("shopDescription")} placeholder="Tell us about your shop..." style={{ resize: "vertical" }} /></Field>
             </div>
           </div>
 
@@ -303,7 +304,7 @@ const BecomeVendor = () => {
                   <label className={`bv-upload ${files[k] ? "has" : ""}`}>
                     <FaUpload size={16} color={files[k] ? "#c9a84c" : "#94a3b8"} />
                     <div style={{ fontSize: 12, color: files[k] ? "#92400e" : "#94a3b8", marginTop: 6 }}>
-                      {files[k] ? files[k].name : "File choose karein"}
+                      {files[k] ? files[k].name : "Choose file"}
                     </div>
                     <input type="file" accept="image/*,.pdf" onChange={setFile(k)} style={{ display: "none" }} />
                   </label>
@@ -313,7 +314,7 @@ const BecomeVendor = () => {
           </div>
 
           <button type="submit" className="bv-submit" disabled={submitting}>
-            {submitting ? "Submitting..." : <><FaCheckCircle size={14} />Application Submit Karein</>}
+            {submitting ? "Submitting..." : <><FaCheckCircle size={14} />Submit Application</>}
           </button>
         </form>
       </div>

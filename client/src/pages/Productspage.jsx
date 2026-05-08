@@ -32,7 +32,7 @@ const PAGE_SIZE = 24;
 ───────────────────────────────────────────── */
 const SkeletonCard = () => (
     <div className="bg-white border border-stone-200 rounded-xl overflow-hidden flex flex-col w-full h-full">
-        <div className="w-full aspect-square bg-stone-100 animate-pulse" />
+        <div className="w-full aspect-[3/4] bg-stone-100 animate-pulse" />
         <div className="p-3 flex flex-col gap-2 flex-1">
             <div className="h-2.5 w-1/3 bg-stone-200 rounded animate-pulse" />
             <div className="h-3 w-4/5 bg-stone-200 rounded animate-pulse" />

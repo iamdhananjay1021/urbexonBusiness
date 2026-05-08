@@ -47,7 +47,7 @@ const AddressStep = () => {
         message += `💰 *Total:* ₹${totalPrice}\n`;
         message += `🚚 *Payment:* Cash on Delivery`;
 
-        const whatsappNumber = "91XXXXXXXXXX"; // 👈 apna number daalna
+        const whatsappNumber = "918808485840"; // 👈 Add your number here
         const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(
             message
         )}`;

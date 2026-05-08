@@ -28,8 +28,8 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow, hideActions = false,
     // ═══════════════════════════════════════════════════════
     if (!product) {
         return (
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden flex flex-col w-full h-[280px]">
-                <div className="h-[170px] sm:h-[190px] lg:h-[210px] bg-[#ede9e4] animate-pulse shrink-0" />
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden flex flex-col w-full h-full">
+                <div className="w-full aspect-[3/4] bg-[#ede9e4] animate-pulse shrink-0" />
                 <div className="px-2.5 pt-2 pb-1 sm:px-3 sm:pt-2.5 flex flex-col gap-1.5">
                     <div className="h-2 w-1/3 bg-[#ede9e4] rounded animate-pulse" />
                     <div className="h-3 bg-[#ede9e4] rounded animate-pulse" />
@@ -85,6 +85,9 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow, hideActions = false,
     const isOOS = product.inStock === false || stockNum <= 0;
     const isLowStock = !isOOS && stockNum > 0 && stockNum <= 5;
 
+    /* ── Variant Check ── */
+    const hasVariants = (product?.sizes && product.sizes.length > 0) || (product?.colorVariants && product.colorVariants.length > 0);
+
     /* ── Numbers ── */
     const rating = Number(product.rating || 0);
     const numReviews = Number(product.numReviews || 0);
@@ -100,6 +103,11 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow, hideActions = false,
     /* ── Handlers ── */
     const handleCart = useCallback(e => {
         e.stopPropagation();
+        // If product has sizes/colors, force them to visit the product page
+        if (hasVariants) {
+            navigate(productUrl);
+            return;
+        }
         if (inCart || isOOS) return;
         if (onAddToCart) onAddToCart(product); else addItem(product);
         setFlash(true); setTimeout(() => setFlash(false), 1400);
@@ -107,6 +115,10 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow, hideActions = false,
 
     const handleBuy = useCallback(e => {
         e.stopPropagation();
+        if (hasVariants) {
+            navigate(productUrl);
+            return;
+        }
         if (isOOS) return;
         if (onBuyNow) { onBuyNow(product); return; }
         const item = { ...product, quantity: 1 };
@@ -147,10 +159,9 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow, hideActions = false,
     return (
         <div
             onClick={() => navigate(productUrl)}
-            className="group relative flex flex-col w-full bg-white border border-stone-200 rounded-xl
-        overflow-hidden cursor-pointer transition-all duration-200 
-        hover:-translate-y-1 hover:shadow-lg
-        hover:border-amber-400 active:scale-[0.99]"
+            className="group relative flex flex-col w-full h-full bg-white rounded-lg
+        overflow-hidden cursor-pointer transition-all duration-300 
+        hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] active:scale-[0.99] border border-transparent hover:border-stone-200"
         >
             {/* Wishlist */}
             <button onClick={handleWish} aria-label="Wishlist"
@@ -162,22 +173,31 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow, hideActions = false,
                     : <FaRegHeart size={12} className="text-stone-400" />}
             </button>
 
+            {/* Urbexon Hour Badge for mixed lists */}
+            {product.productType === "urbexon_hour" && (
+                <span className="absolute top-2 left-2 z-10 bg-violet-600 text-white
+            text-[9px] font-extrabold px-1.5 py-0.5 rounded shadow-md flex items-center gap-1">
+                    <FaBolt size={7} /> 45 MIN
+                </span>
+            )}
+
             {/* ─── IMAGE — fixed height, never overflows ─── */}
-            <div className="relative bg-stone-100 aspect-square shrink-0 overflow-hidden">
+            <div className="relative bg-[#f9f9f9] aspect-[3/4] shrink-0 overflow-hidden">
                 {!imgLoaded && <div className="absolute inset-0 bg-[#ede9e4] animate-pulse" />}
                 <img
                     src={image} alt={product.name}
                     loading="lazy" decoding="async"
                     onLoad={() => setImgLoaded(true)}
                     onError={e => { e.target.src = "/placeholder.png"; setImgLoaded(true); }}
-                    className={`absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105
+                    className={`absolute inset-0 w-full h-full object-contain mix-blend-multiply transition-transform duration-300 group-hover:scale-105
             ${imgLoaded ? "opacity-100" : "opacity-0"}`}
                 />
 
                 {/* Discount pill */}
-                {hasDisc && !isOOS && (
-                    <span className="absolute top-2 left-2 z-[2] bg-red-500 text-white
-            text-[10px] font-bold px-2 py-1 rounded-md">
+                {/* Adjust position if UH badge exists */}
+                {hasDisc && !isOOS && !product.productType !== "urbexon_hour" && (
+                    <span className={`absolute ${product.productType === "urbexon_hour" ? "top-7" : "top-2"} left-2 z-[2] bg-red-500 text-white
+            text-[10px] font-bold px-2 py-1 rounded-md`}>
                         -{discPct}%
                     </span>
                 )}
@@ -230,67 +250,66 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow, hideActions = false,
             </div>
 
             {/* ─── BODY — always fully visible ─── */}
-            <div className="flex flex-col flex-1 min-w-0 px-2.5 pt-2 pb-1 sm:px-3 sm:pt-2.5">
+            <div className="flex flex-col flex-1 min-w-0 px-2 pt-2 pb-1.5 sm:px-3 sm:pt-2.5">
                 {/* Category */}
-                <p className="text-[7.5px] sm:text-[8px] font-extrabold tracking-[0.14em] uppercase
-          text-[#c8a96e] truncate mb-0.5">
+                <p className="text-[9px] sm:text-[10px] font-bold tracking-[0.1em] uppercase
+          text-stone-500 truncate mb-0.5">
                     {product.category || "General"}{product.brand ? ` · ${product.brand}` : ""}
                 </p>
 
                 {/* Name */}
-                <h3 className="text-[11px] sm:text-[12px] font-medium text-[#1c1917]
-          leading-[1.35] line-clamp-2 min-h-[2.7em] mb-1 break-words">
+                <h3 className="text-[12px] sm:text-[13px] font-semibold text-[#1c1917]
+          leading-snug line-clamp-2 min-h-[2.7em] mb-1 break-words">
                     {product.name}
                 </h3>
 
                 {/* Rating */}
                 {numReviews > 0 ? (
                     <div className="flex items-center gap-1.5 mb-1">
-                        <span className="flex items-center gap-[3px] bg-[#388e3c] text-white
-              text-[8.5px] font-bold px-1.5 py-[2px] rounded-[3px]">
-                            {rating.toFixed(1)} <FaStar size={7} />
+                        <span className="flex items-center gap-[3px] text-amber-500
+              text-[11px] font-bold">
+                            {rating.toFixed(1)} <FaStar size={9} />
                         </span>
-                        <span className="text-[9.5px] text-[#a8a29e]">({numReviews.toLocaleString()} reviews)</span>
+                        <span className="text-[10px] text-stone-400">({numReviews.toLocaleString()})</span>
                     </div>
                 ) : (
-                    <div className="mb-1 h-[16px] text-[9.5px] text-[#a8a29e] flex items-center">No reviews yet</div>
+                    <div className="mb-1 h-[16px] text-[10px] text-stone-400 flex items-center">No reviews yet</div>
                 )}
 
                 {/* Stock status */}
-                <div className="flex items-center gap-1.5 mb-1.5 text-[8.5px] font-bold">
+                <div className="flex items-center gap-1.5 mb-1 text-[9.5px] font-bold uppercase tracking-wider">
                     {isOOS
-                        ? <><span className="w-[5px] h-[5px] rounded-full bg-stone-300 shrink-0" /><span className="text-stone-400">Out of Stock</span></>
+                        ? <span className="text-red-500">Out of Stock</span>
                         : isLowStock
-                            ? <><span className="w-[5px] h-[5px] rounded-full bg-amber-500 shrink-0" /><span className="text-amber-700">Only {stockNum} left</span></>
-                            : <><span className="w-[5px] h-[5px] rounded-full bg-green-500 shrink-0 animate-pulse" /><span className="text-green-700">In Stock</span></>
+                            ? <span className="text-amber-500">Only {stockNum} left</span>
+                            : <span className="text-emerald-600">In Stock</span>
                     }
                 </div>
 
                 {/* Price */}
-                <div className="mt-auto pb-2">
-                    <div className="flex items-baseline gap-1.5 flex-wrap">
-                        <span className={`text-[14px] sm:text-[15px] font-bold
-              font-['Cormorant_Garamond',serif]
+                <div className="mt-auto pb-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[14px] sm:text-[16px] font-bold
               ${isOOS ? "text-stone-400" : "text-[#1c1917]"}`}>
                             ₹{price.toLocaleString("en-IN")}
                         </span>
                         {hasDisc && !isOOS && (
-                            <span className="text-[9.5px] text-stone-400 line-through">
+                            <span className="text-[11px] text-stone-400 line-through">
                                 ₹{mrp.toLocaleString("en-IN")}
                             </span>
                         )}
+                        {hasDisc && !isOOS && (
+                            <span className="text-[10px] font-bold text-red-500">
+                                ({discPct}% OFF)
+                            </span>
+                        )}
                     </div>
-                    {hasDisc && !isOOS && saving > 0 && (
-                        <p className="text-[8.5px] sm:text-[9px] font-bold text-green-700 mt-0.5">
-                            Save ₹{saving.toLocaleString("en-IN")}
-                        </p>
-                    )}
                 </div>
             </div>
 
             {/* ─── MOBILE CTA BAR ─── */}
             {!hideActions && (
-                <div className="flex border-t border-[#e7e5e1] md:hidden shrink-0">
+                <div className="flex border-t border-stone-100 md:hidden shrink-0">
                     {isOOS ? (
                         <button onClick={handleNotify}
                             className="flex-1 flex items-center justify-center gap-1.5
@@ -300,23 +319,25 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow, hideActions = false,
                     ) : (
                         <>
                             <button onClick={handleCart} disabled={inCart}
-                                className={`flex-1 flex items-center justify-center gap-1
-                  py-2.5 text-[9px] font-extrabold tracking-wide
-                  border-r border-[#e7e5e1] transition-colors ${mobCartCls}`}>
-                                {inCart ? <><FaCheckCircle size={8} /> Added</>
-                                    : flash ? <>✓</>
-                                        : <><FaShoppingCart size={8} /> Add</>}
+                                className={`flex-1 flex items-center justify-center gap-1.5
+                  py-2.5 text-[10px] font-extrabold tracking-wide
+                  border-r border-stone-100 transition-colors ${mobCartCls}`}>
+                                {hasVariants ? <>Select Options</>
+                                    : inCart ? <><FaCheckCircle size={10} /> Added</>
+                                        : flash ? <><FaCheckCircle size={10} /> Added</>
+                                            : <><FaShoppingCart size={10} /> Cart</>}
                             </button>
                             <button onClick={handleBuy}
-                                className="flex-1 flex items-center justify-center gap-1
-                  py-2.5 text-[9px] font-extrabold tracking-wide
-                  bg-[#c8a96e] text-white hover:bg-[#a8894e] transition-colors">
-                                <FaBolt size={8} /> Buy
+                                className="flex-1 flex items-center justify-center gap-1.5
+                  py-2.5 text-[10px] font-bold tracking-wide
+                  bg-[#1c1917] text-white hover:bg-[#2d2926] transition-colors">
+                                <FaBolt size={10} /> Buy
                             </button>
                         </>
                     )}
                 </div>
             )}
+            {footer}
         </div>
     );
 });

@@ -135,7 +135,7 @@ const VendorStore = () => {
 
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
-.vs-products-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:20px}
+.vs-products-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px}
 @media(max-width:640px){.vs-products-grid{grid-template-columns:repeat(2,1fr);gap:10px}}
 `;
 

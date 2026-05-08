@@ -71,8 +71,8 @@ const Wishlist = () => {
         <div className="wl-head">
           <h1 className="wl-title"><FaHeart color="#ef4444" size={20} />My Wishlist <span style={{ fontSize: 15, color: "#94a3b8", fontWeight: 500 }}>({products.length})</span></h1>
           {products.length > 0 && (
-            <button onClick={() => { products.forEach(p => addToCart(p)); alert("Sab items cart mein add ho gaye!"); }} style={{ padding: "9px 18px", background: "#1a1740", border: "none", color: "#c9a84c", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-              Sab Cart Mein Add Karein
+            <button onClick={() => { products.forEach(p => addToCart(p)); alert("All items added to cart!"); }} style={{ padding: "9px 18px", background: "#1a1740", border: "none", color: "#c9a84c", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+              Add All to Cart
             </button>
           )}
         </div>
@@ -80,10 +80,10 @@ const Wishlist = () => {
         {products.length === 0 ? (
           <div className="wl-empty">
             <div style={{ fontSize: 56, marginBottom: 16, opacity: .3 }}>🤍</div>
-            <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>Wishlist Khali Hai</h2>
-            <p style={{ fontSize: 14, color: "#94a3b8", marginBottom: 24 }}>Apne pasandida products save karein</p>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>Your Wishlist is Empty</h2>
+            <p style={{ fontSize: 14, color: "#94a3b8", marginBottom: 24 }}>Save your favorite products</p>
             <button onClick={() => navigate("/")} style={{ padding: "11px 24px", background: "#1a1740", border: "none", color: "#c9a84c", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>
-              Shopping Karein →
+              Start Shopping →
             </button>
           </div>
         ) : (
@@ -109,7 +109,7 @@ const Wishlist = () => {
                       <div style={{ fontSize: 9, fontWeight: 700, color: "#c9a84c", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}><FaBolt size={8} />Urbexon Hour</div>
                     )}
                     <button className={`wl-add ${inCart ? "added" : ""}`} onClick={() => addToCart(product)}>
-                      <FaShoppingCart size={11} />{inCart ? "Cart Mein Hai" : "Cart Mein Add Karein"}
+                      <FaShoppingCart size={11} />{inCart ? "In Cart" : "Add to Cart"}
                     </button>
                   </div>
                 </div>

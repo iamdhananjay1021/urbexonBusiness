@@ -96,18 +96,18 @@ const ProductCard = memo(({ product }) => {
                     </div>
                 )}
             </div>
-            <div className="p-3 flex flex-col flex-1">
+            <div className="p-2.5 flex flex-col flex-1">
                 {product.brand && <div className="text-[10px] font-bold text-violet-500 uppercase tracking-widest mb-1">{product.brand}</div>}
-                <div className="text-sm font-semibold text-stone-800 leading-snug line-clamp-2 min-h-[2.5rem] mb-1">{product.name}</div>
+                <div className="text-[13px] font-semibold text-stone-800 leading-snug line-clamp-2 min-h-[2.5rem] mb-1">{product.name}</div>
                 {product.prepTimeMinutes && (
                     <div className="flex items-center gap-1 text-[10px] text-gray-400 font-medium">
                         <FaClock size={9} /> {product.prepTimeMinutes} min
                     </div>
                 )}
                 <div className="flex items-baseline gap-1.5 flex-wrap mt-auto pt-1 mb-2">
-                    <span className="text-base font-bold text-gray-900">{fmt(product.price)}</span>
-                    {product.mrp && product.mrp > product.price && <span className="text-[11px] text-gray-400 line-through">{fmt(product.mrp)}</span>}
-                    {discount > 0 && <span className="text-xs font-bold text-red-500">{discount}% off</span>}
+                    <span className="text-sm font-bold text-gray-900">{fmt(product.price)}</span>
+                    {product.mrp && product.mrp > product.price && <span className="text-[10px] text-gray-400 line-through">{fmt(product.mrp)}</span>}
+                    {discount > 0 && <span className="text-[11px] font-bold text-red-500">{discount}% off</span>}
                 </div>
 
                 {product.inStock === false ? (
@@ -122,13 +122,13 @@ const ProductCard = memo(({ product }) => {
                 ) : (
                     <div className="flex items-center justify-between bg-violet-600 rounded-md overflow-hidden">
                         <button
-                            className="w-8 h-8 border-none bg-transparent text-white cursor-pointer flex items-center justify-center hover:bg-white/15 transition-colors active:scale-90"
+                            className="w-7 h-7 border-none bg-transparent text-white cursor-pointer flex items-center justify-center hover:bg-white/15 transition-colors active:scale-90"
                             onClick={(e) => { e.stopPropagation(); if (qty <= 1) removeItem(product._id, "urbexon_hour"); else decrement(product._id, "urbexon_hour"); }}>
                             {qty <= 1 ? <FaTrash size={9} /> : <FaMinus size={9} />}
                         </button>
                         <span className="flex-1 text-center text-sm font-bold text-white select-none">{qty}</span>
                         <button
-                            className="w-8 h-8 border-none bg-transparent text-white cursor-pointer flex items-center justify-center hover:bg-white/15 transition-colors active:scale-90"
+                            className="w-7 h-7 border-none bg-transparent text-white cursor-pointer flex items-center justify-center hover:bg-white/15 transition-colors active:scale-90"
                             onClick={(e) => { e.stopPropagation(); increment(product._id, "urbexon_hour"); }}>
                             <FaPlus size={9} />
                         </button>
@@ -495,7 +495,7 @@ const UrbexonHour = () => {
                             ))}
                         </div>
                         <div className="h-5 w-36 rounded bg-gray-200 animate-pulse mb-4" />
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
                             {[1, 2, 3, 4, 5, 6].map(i => (
                                 <div key={i} className="rounded-2xl border border-gray-100 overflow-hidden bg-white">
                                     <div className="aspect-square bg-gray-200 animate-pulse" />
@@ -558,11 +558,13 @@ const UrbexonHour = () => {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="flex gap-3.5 overflow-x-auto pb-2.5 scrollbar-hide snap-x">
+                                    <div className="flex gap-3.5 overflow-x-auto pb-2.5 scrollbar-hide snap-x items-stretch">
                                         {uhDeals.map((p) => (
-                                            <div key={p._id || p.id} className="min-w-[200px] max-w-[220px] flex-shrink-0 snap-start bg-white border-[1.5px] border-gray-100 rounded-2xl overflow-hidden hover:border-orange-400 hover:shadow-lg hover:-translate-y-0.5 transition-all">
-                                                <ProductCard product={p} />
-                                                <LiveCountdown endsAt={p.dealEndsAt} />
+                                            <div key={p._id || p.id} className="min-w-[160px] max-w-[180px] flex-shrink-0 snap-start flex flex-col self-stretch">
+                                                <div className="flex-1 flex flex-col">
+                                                    <ProductCard product={p} />
+                                                </div>
+                                                <div className="mt-1.5"><LiveCountdown endsAt={p.dealEndsAt} /></div>
                                             </div>
                                         ))}
                                     </div>
@@ -675,7 +677,7 @@ const UrbexonHour = () => {
                                         </div>
                                     </div>
                                 </div>
-                                <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                                <div className="p-4 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
                                     {group.products.map((p) => <ProductCard key={p._id || p.id} product={p} />)}
                                 </div>
                             </div>

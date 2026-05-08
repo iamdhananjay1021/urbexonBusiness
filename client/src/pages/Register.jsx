@@ -107,12 +107,14 @@ const Register = () => {
 
     const redirectAfterAuth = useCallback((data) => {
         loginWithData(data);
-        if (data.role === "vendor") {
-            window.location.href = (import.meta.env.VITE_VENDOR_URL || "http://localhost:5175") + "/dashboard";
-        } else if (data.role === "delivery_boy") {
-            window.location.href = (import.meta.env.VITE_DELIVERY_URL || "http://localhost:5176") + "/dashboard";
-        } else if (from) {
+
+        // Priority 1: Hamesha user ko wahi bhejo jahan se wo aaya tha (e.g. /become-vendor)
+        if (from) {
             navigate(from, { replace: true });
+        } else if (data.role === "vendor") {
+            navigate("/become-vendor", { replace: true }); // Application form par bhejo
+        } else if (data.role === "delivery_boy") {
+            navigate("/become-delivery", { replace: true }); // Application form par bhejo
         } else {
             navigate("/", { replace: true });
         }

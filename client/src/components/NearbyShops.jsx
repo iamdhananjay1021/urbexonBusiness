@@ -45,6 +45,7 @@ const CSS = `
 .ns-pill{transition:all .18s ease;cursor:pointer;user-select:none;white-space:nowrap}
 .ns-pill:hover{transform:scale(1.04)}
 .ns-scroll::-webkit-scrollbar{display:none}
+@media(max-width:1100px){.ns-grid{grid-template-columns:repeat(3,1fr)!important}}
 @media(max-width:900px){.ns-grid{grid-template-columns:repeat(2,1fr)!important}}
 @media(max-width:540px){.ns-grid{grid-template-columns:1fr!important}}
 `;
@@ -169,7 +170,7 @@ const NearbyShops = ({ pincode, pincodeLabel = '', maxResults = 20 }) => {
 
             {/* ════ SKELETON ════ */}
             {loading && (
-                <div className="ns-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+                <div className="ns-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
                     {Array.from({ length: 6 }).map((_, i) => (
                         <div key={i} style={{ background: C.card, borderRadius: 14, border: `1px solid ${C.borderLight}`, overflow: "hidden" }}>
                             <div className="ns-sk" style={{ height: 6, borderRadius: 0 }} />
@@ -193,7 +194,7 @@ const NearbyShops = ({ pincode, pincodeLabel = '', maxResults = 20 }) => {
 
             {/* ════ VENDOR GRID ════ */}
             {!loading && vendors.length > 0 && (
-                <div className="ns-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                <div className="ns-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
                     {vendors.map((v, idx) => (
                         <Link to={`/vendor/${v.shopSlug || v._id}`} key={v._id} className="ns-card ns-fade" style={{
                             background: C.card, borderRadius: 14, overflow: "hidden",

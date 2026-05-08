@@ -44,7 +44,7 @@ const Footer = () => (
                 <div className="ft-brand-name">Urbexon</div>
                 <div className="ft-brand-sub">Premium Commerce</div>
                 <p className="ft-tagline">
-                    India ka premium multi-vendor marketplace. Fashion, lifestyle, aur local express delivery — sab ek jagah.
+                    India's premium multi-vendor marketplace. Fashion, lifestyle, and local express delivery — all in one place.
                 </p>
                 <Link to="/urbexon-hour" className="ft-uh-badge">
                     <FaBolt size={10} />Urbexon Hour — Express Delivery

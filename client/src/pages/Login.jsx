@@ -15,9 +15,9 @@ import { signInWithPopup } from "firebase/auth";
 const getRoleRedirect = (role) => {
     switch (role) {
         case "vendor":
-            return { external: true, url: (import.meta.env.VITE_VENDOR_URL || "http://localhost:5175") + "/dashboard" };
+            return { external: false, url: "/become-vendor" };
         case "delivery_boy":
-            return { external: true, url: (import.meta.env.VITE_DELIVERY_URL || "http://localhost:5176") + "/dashboard" };
+            return { external: false, url: "/become-delivery" };
         case "admin":
         case "owner":
             return null; // block - use admin panel
@@ -95,12 +95,17 @@ const Login = () => {
 
     const redirectAfterAuth = useCallback((data) => {
         loginWithData(data);
+
+        // Priority 1: Agar user explicitly kisi form (/become-vendor) se aaya hai toh wahi wapas bhejo
+        if (from) {
+            navigate(from, { replace: true });
+            return;
+        }
+
         // For vendor/delivery roles, always go to their portal
         const redirect = getRoleRedirect(data.role);
         if (redirect?.external) {
             window.location.href = redirect.url;
-        } else if (from) {
-            navigate(from, { replace: true });
         } else {
             navigate(redirect?.url || "/", { replace: true });
         }

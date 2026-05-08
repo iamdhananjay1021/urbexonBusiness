@@ -56,7 +56,7 @@ const DealProductCard = ({ product }) => {
    SKELETON
 ════════════════════════════════════ */
 const SkeletonCard = () => (
-    <div style={{ overflow: "hidden", border: "1px solid #e8e4d9" }}>
+    <div style={{ overflow: "hidden", border: "1px solid #e8e4d9", height: "100%", display: "flex", flexDirection: "column" }}>
         <div style={{ aspectRatio: "3/4", background: "linear-gradient(90deg,#f0ece4 25%,#e8e4da 50%,#f0ece4 75%)", backgroundSize: "200% 100%", animation: "shimmer 1.5s ease-in-out infinite" }} />
         <div style={{ padding: "12px 14px 14px" }}>
             <div style={{ height: 10, width: "40%", background: "#f0ede8", marginBottom: 8, borderRadius: 2 }} />
@@ -156,8 +156,8 @@ const Deals = () => {
                                 <b style={{ color: "#1c1917" }}>{deals.length}</b> active deal{deals.length !== 1 ? "s" : ""} — hurry, limited time!
                             </p>
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 20 }}>
-                            {deals.map(p => <div key={p._id || p.id}><DealProductCard product={p} /></div>)}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 16 }}>
+                            {deals.map(p => <DealProductCard key={p._id || p.id} product={p} />)}
                         </div>
                     </>
                 )}

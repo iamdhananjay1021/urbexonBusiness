@@ -263,7 +263,7 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
                     </span>
                 )}
                 {!isMobile && (
-                    <span className="hidden xl:inline text-[13px] font-semibold">Notifications</span>
+                    <span className="hidden lg:inline text-[13px] font-semibold">Notifications</span>
                 )}
             </button>
 

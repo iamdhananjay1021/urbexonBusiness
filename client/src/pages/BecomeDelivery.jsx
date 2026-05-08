@@ -56,7 +56,7 @@ const BecomeDelivery = () => {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!form.name || !form.phone || !form.vehicleType) return setError("Naam, phone aur vehicle type zaroori hai");
+    if (!form.name || !form.phone || !form.vehicleType) return setError("Name, phone, and vehicle type are required");
     setSubmitting(true); setError("");
     try {
       const fd = new FormData();
@@ -65,19 +65,19 @@ const BecomeDelivery = () => {
       await api.post("/delivery/register", fd, { headers: { "Content-Type": "multipart/form-data" } });
       setSuccess(true);
     } catch (err) {
-      setError(err.response?.data?.message || "Registration fail ho gayi");
+      setError(err.response?.data?.message || "Registration failed");
     } finally { setSubmitting(false); }
   };
 
   if (loading) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f0fdf4" }}><div style={{ width: 32, height: 32, border: "3px solid #dcfce7", borderTop: "3px solid #22c55e", borderRadius: "50%", animation: "spin .8s linear infinite" }} /><style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style></div>;
 
   if (status) {
-    const cfg = { pending: { icon: "⏳", title: "Review Mein Hai", msg: "24-48 ghante mein update milega." }, approved: { icon: "✅", title: "Approved! Delivery Start Karein", msg: "App mein login karein." }, rejected: { icon: "❌", title: "Rejected", msg: status.rider?.adminNote || "Admin se contact karein." } };
+    const cfg = { pending: { icon: "⏳", title: "Under Review", msg: "You will receive an update within 24-48 hours." }, approved: { icon: "✅", title: "Approved! Start Delivering", msg: "Login to your dashboard." }, rejected: { icon: "❌", title: "Rejected", msg: status.rider?.adminNote || "Please contact support." } };
     const c = cfg[status.status] || cfg.pending;
-    return <div className="bd-root"><style>{CSS}</style><div style={{ padding: "80px 20px", textAlign: "center" }}><div style={{ fontSize: 48, marginBottom: 12 }}>{c.icon}</div><h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>{c.title}</h2><p style={{ fontSize: 14, color: "#64748b" }}>{c.msg}</p></div></div>;
+    return <div className="bd-root"><style>{CSS}</style><div style={{ padding: "80px 20px", textAlign: "center" }}><div style={{ fontSize: 48, marginBottom: 12 }}>{c.icon}</div><h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>{c.title}</h2><p style={{ fontSize: 14, color: "#64748b", marginBottom: 20 }}>{c.msg}</p>{status.status === "approved" && <a href={(import.meta.env.VITE_DELIVERY_URL || "http://localhost:5176") + "/dashboard"} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", background: "#0f172a", color: "#22c55e", borderRadius: 8, fontWeight: 700, fontSize: 13, textDecoration: "none" }}>Delivery Dashboard <FaArrowRight size={11} /></a>}</div></div>;
   }
 
-  if (success) return <div className="bd-root"><style>{CSS}</style><div style={{ padding: "80px 20px", textAlign: "center" }}><div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div><h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>Registration Ho Gayi!</h2><p style={{ fontSize: 14, color: "#64748b", marginBottom: 24 }}>24-48 ghante mein approve ho jaoge. App download karein.</p><button onClick={() => navigate("/")} style={{ padding: "11px 24px", background: "#0f172a", border: "none", color: "#22c55e", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>Home Par Jayen</button></div></div>;
+  if (success) return <div className="bd-root"><style>{CSS}</style><div style={{ padding: "80px 20px", textAlign: "center" }}><div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div><h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>Registration Successful!</h2><p style={{ fontSize: 14, color: "#64748b", marginBottom: 24 }}>You will be approved within 24-48 hours. Download the app.</p><button onClick={() => navigate("/")} style={{ padding: "11px 24px", background: "#0f172a", border: "none", color: "#22c55e", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>Go to Home</button></div></div>;
 
   return (
     <div className="bd-root">
@@ -85,8 +85,8 @@ const BecomeDelivery = () => {
       <style>{CSS}</style>
       <div className="bd-hero">
         <div className="bd-badge"><FaMotorcycle size={11} />Delivery Partner</div>
-        <h1 className="bd-title">Delivery Partner Banein<br /><span style={{ color: "#22c55e" }}>Apni Schedule Par Kamao</span></h1>
-        <p style={{ fontSize: 14, color: "rgba(255,255,255,.65)", maxWidth: 400, margin: "0 auto" }}>Flexible hours, guaranteed earnings, aur instant payouts.</p>
+        <h1 className="bd-title">Become a Delivery Partner<br /><span style={{ color: "#22c55e" }}>Earn on Your Schedule</span></h1>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,.65)", maxWidth: 400, margin: "0 auto" }}>Flexible hours, guaranteed earnings, and instant payouts.</p>
       </div>
       <div className="bd-body">
         {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", padding: "12px 16px", borderRadius: 10, fontSize: 13, marginBottom: 16 }}>{error}</div>}
@@ -131,7 +131,7 @@ const BecomeDelivery = () => {
             </div>
           </div>
           <button type="submit" className="bd-submit" disabled={submitting}>
-            {submitting ? "Submitting..." : "Registration Submit Karein ✓"}
+            {submitting ? "Submitting..." : "Submit Registration ✓"}
           </button>
         </form>
       </div>
