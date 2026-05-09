@@ -195,6 +195,7 @@ const UrbexonHour = () => {
     });
     const [showPincodeEdit, setShowPincodeEdit] = useState(false);
     const searchQuery = searchParams.get("search") || "";
+    const activeSubcategory = searchParams.get("subcategory") || "";
     const [uhDeals, setUhDeals] = useState([]);
     const [cartAnimating, setCartAnimating] = useState(false);
     const [heroBanners, setHeroBanners] = useState([]);
@@ -202,7 +203,7 @@ const UrbexonHour = () => {
     const [homepageData, setHomepageData] = useState(null);
 
     const clearSearch = useCallback(() => {
-        setSearchParams(prev => { prev.delete("search"); return prev; }, { replace: true });
+        setSearchParams(prev => { prev.delete("search"); prev.delete("subcategory"); return prev; }, { replace: true });
     }, [setSearchParams]);
 
     const handleCategorySelect = useCallback((catName) => {
@@ -350,12 +351,13 @@ const UrbexonHour = () => {
     const filteredProducts = useMemo(() => {
         let prods = products;
         if (activeCategory) prods = prods.filter((p) => p.category === activeCategory);
+        if (activeSubcategory) prods = prods.filter((p) => p.subcategory === activeSubcategory || p.subcategory?.toLowerCase() === activeSubcategory.toLowerCase());
         if (searchQuery.trim()) {
             const q = searchQuery.trim().toLowerCase();
             prods = prods.filter((p) => p.name?.toLowerCase().includes(q) || p.brand?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q));
         }
         return prods;
-    }, [products, activeCategory, searchQuery]);
+    }, [products, activeCategory, activeSubcategory, searchQuery]);
 
     const vendorGroups = groupByVendor(filteredProducts);
     const cartSavings = useMemo(() => calculateEstimatedSavings(uhItems), [uhItems]);
@@ -632,12 +634,12 @@ const UrbexonHour = () => {
                 )}
 
                 {/* ── SEARCH RESULTS BAR ── */}
-                {searchQuery && hasActiveService && !showPincodeEdit && (
+                {(searchQuery || activeSubcategory) && hasActiveService && !showPincodeEdit && (
                     <div className="bg-blue-50 border-b-2 border-[#2874f0] border-t border-blue-100 mt-3 animate-[slideDown_0.3s_ease]">
                         <div className="max-w-[1280px] mx-auto px-4 lg:px-12 flex items-center gap-2 py-3">
                             <FaSearch size={13} className="text-blue-500 flex-shrink-0" />
                             <span className="text-[13px] text-blue-800 font-medium flex-1 min-w-0 truncate">
-                                Found <strong className="text-blue-900 font-bold">{filteredProducts.length}</strong> product{filteredProducts.length !== 1 ? "s" : ""} matching "<strong className="font-bold">{searchQuery}</strong>"
+                                Found <strong className="text-blue-900 font-bold">{filteredProducts.length}</strong> product{filteredProducts.length !== 1 ? "s" : ""} matching "<strong className="font-bold">{searchQuery || activeSubcategory}</strong>"
                             </span>
                             <button className="flex items-center gap-1.5 bg-red-100 border border-red-200 text-red-600 px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer hover:bg-red-200 transition-colors flex-shrink-0"
                                 onClick={clearSearch}><FaTimes size={12} /> Clear</button>

@@ -12,6 +12,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { sendEmailBackground } from "../utils/emailService.js";
+import { registerVendor } from "./vendor/vendorAuth.js";
 
 /* ─────────────────────────────────────────────
    Constants
@@ -736,13 +737,22 @@ export const verifyVendorOtpRegister = async (req, res) => {
         await user.save();
 
         // Call registerVendor logic (simulate req.body/files)
-        const mockReq = { body: formData, user: { _id: user._id }, files: req.files };
-        const vendorRes = await registerVendor(mockReq, res);
-        if (vendorRes.success) {
+        const mockReq = { body: formData, user: { _id: user._id, email: user.email }, files: req.files };
+
+        let vendorRes = null;
+        let statusCode = 200;
+        const mockRes = {
+            status: (code) => { statusCode = code; return mockRes; },
+            json: (data) => { vendorRes = data; return mockRes; }
+        };
+
+        await registerVendor(mockReq, mockRes);
+
+        if (vendorRes?.success) {
             const token = generateToken(user._id, user.role);
-            res.json({ success: true, token, user: safeUserPayload(user, token), vendor: vendorRes.vendor });
+            res.status(statusCode).json({ success: true, token, user: safeUserPayload(user, token), vendor: vendorRes.vendor });
         } else {
-            res.status(400).json(vendorRes);
+            res.status(statusCode).json(vendorRes || { success: false, message: "Registration failed" });
         }
 
     } catch (err) {

@@ -290,6 +290,29 @@ const CategoryBrowser = memo(({ categories: propCategories, onCategorySelect, ac
     // Callback mode: parent controls active state
     const isCallbackMode = typeof onCategorySelect === "function";
 
+    // Auto-expand subcategories when externalActive changes
+    useEffect(() => {
+        if (!isCallbackMode) return;
+        if (externalActive) {
+            const matchingCat = categories.find(c => c.name === externalActive);
+            if (matchingCat) {
+                setActiveSlug(prev => {
+                    if (prev !== matchingCat.slug) {
+                        setSubLoading(true);
+                        fetchCategorySubcategories(matchingCat.slug)
+                            .then(({ data }) => setSubcategories(data.subcategories || []))
+                            .catch(() => setSubcategories([]))
+                            .finally(() => setSubLoading(false));
+                        return matchingCat.slug;
+                    }
+                    return prev;
+                });
+            }
+        } else {
+            setActiveSlug(prev => { if (prev !== null) { setSubcategories([]); return null; } return prev; });
+        }
+    }, [externalActive, isCallbackMode, categories]);
+
     // If categories are not passed as prop, fetch them
     useEffect(() => {
         if (propCategories?.length) { setCategories(propCategories); return; }
@@ -329,9 +352,8 @@ const CategoryBrowser = memo(({ categories: propCategories, onCategorySelect, ac
     // Handle category click — toggle subcategories OR callback mode
     const handleCategoryClick = useCallback(async (cat) => {
         if (isCallbackMode) {
-            // Callback mode: notify parent, no subcategory expansion
-            const catName = cat.name;
-            onCategorySelect(externalActive === catName ? null : catName);
+            const currentlyActive = externalActive === cat.name;
+            onCategorySelect(currentlyActive ? null : cat.name);
             return;
         }
 
@@ -357,12 +379,20 @@ const CategoryBrowser = memo(({ categories: propCategories, onCategorySelect, ac
     }, [activeSlug, isCallbackMode, onCategorySelect, externalActive]);
 
     const handleSubcategoryClick = useCallback((catSlug, subcatName) => {
-        navigate(`/category/${catSlug}?subcategory=${encodeURIComponent(subcatName)}`);
-    }, [navigate]);
+        if (type === "urbexon_hour") {
+            navigate(`/urbexon-hour/${catSlug}?subcategory=${encodeURIComponent(subcatName)}`);
+        } else {
+            navigate(`/category/${catSlug}?subcategory=${encodeURIComponent(subcatName)}`);
+        }
+    }, [navigate, type]);
 
     const handleViewAll = useCallback((catSlug) => {
-        navigate(`/category/${catSlug}`);
-    }, [navigate]);
+        if (type === "urbexon_hour") {
+            navigate(`/urbexon-hour/${catSlug}`);
+        } else {
+            navigate(`/category/${catSlug}`);
+        }
+    }, [navigate, type]);
 
     if (!categories.length) return null;
 

@@ -443,7 +443,7 @@ export const getUrbexonHourProducts = async (req, res) => {
         const [products, total] = await Promise.all([
             Product.find(filter)
                 .populate("vendorId", "shopName shopLogo rating isOpen city")
-                .select("name slug price mrp images brand inStock stock rating numReviews tag prepTimeMinutes isDeal dealEndsAt category isFeatured colorVariants sizes")
+                .select("name slug price mrp images brand inStock stock rating numReviews tag prepTimeMinutes isDeal dealEndsAt category subcategory isFeatured colorVariants sizes")
                 .sort({ isFeatured: -1, createdAt: -1 })
                 .skip(skip).limit(limit).lean(),
             Product.countDocuments(filter),
@@ -485,7 +485,7 @@ export const getUrbexonHourHomepage = async (req, res) => {
         }
 
         const base = { isActive: true, productType: "urbexon_hour", ...vendorFilter };
-        const selectFields = "name slug price mrp images category rating numReviews isFeatured brand inStock stock vendorId isDeal dealEndsAt tag prepTimeMinutes colorVariants sizes";
+        const selectFields = "name slug price mrp images category subcategory rating numReviews isFeatured brand inStock stock vendorId isDeal dealEndsAt tag prepTimeMinutes colorVariants sizes";
 
         const [bestSellers, recommended, topDeals, trending, budgetPicks, categories, totalProducts, totalVendors] = await Promise.all([
             Product.find({ ...base, $or: [{ isFeatured: true }, { rating: { $gte: 4 } }] })
