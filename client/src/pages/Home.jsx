@@ -47,26 +47,27 @@ const saveSearch = t => {
     localStorage.setItem(SEARCH_KEY, JSON.stringify(h.slice(0, 15)));
 };
 
-/* ─── SKELETON ─── */
+/* ─── SKELETON CARD — Modern Loading State ─── */
 const SkCard = () => (
     <div style={{
         background: "#fff",
-        borderRadius: 16,
+        borderRadius: 12,
         overflow: "hidden",
         border: "1px solid #f0f0f0",
         display: "flex",
         flexDirection: "column",
         width: "100%",
         height: "100%",
+        transition: "all 0.2s ease",
     }}>
-        <div className="sk-img" style={{ width: "100%", aspectRatio: "3/4", background: "#f5f5f5", animation: "pulse 1.4s ease-in-out infinite" }} />
+        <div className="sk-img" style={{ width: "100%", aspectRatio: "3/4", background: "#f5f5f5", animation: "pulse 1.8s ease-in-out infinite" }} />
         <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
-            {["33%", "80%", "55%"].map((w, i) => (
-                <div key={i} style={{ height: i === 0 ? 10 : 12, width: w, background: "#efefef", borderRadius: 6, animation: "pulse 1.4s ease-in-out infinite" }} />
+            {["35%", "75%", "50%"].map((w, i) => (
+                <div key={i} style={{ height: i === 0 ? 10 : 11, width: w, background: "#f0f0f0", borderRadius: 6, animation: "pulse 1.8s ease-in-out infinite", animationDelay: `${i * 0.1}s` }} />
             ))}
-            <div style={{ marginTop: "auto", paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ height: 16, width: "45%", background: "#efefef", borderRadius: 6, animation: "pulse 1.4s ease-in-out infinite" }} />
-                <div style={{ height: 32, background: "#efefef", borderRadius: 8, animation: "pulse 1.4s ease-in-out infinite" }} />
+            <div style={{ marginTop: "auto", paddingTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ height: 10, width: "40%", background: "#f0f0f0", borderRadius: 6, animation: "pulse 1.8s ease-in-out infinite", animationDelay: "0.2s" }} />
+                <div style={{ height: 32, background: "#f0f0f0", borderRadius: 8, animation: "pulse 1.8s ease-in-out infinite", animationDelay: "0.3s" }} />
             </div>
         </div>
     </div>
@@ -106,55 +107,68 @@ const FlashTimer = ({ endsAt }) => {
     );
 };
 
-/* ─── SECTION HEADER ─── */
+/* ─── SECTION HEADER — Modern Typography ─── */
 const SecHead = ({ title, sub, to, label = "View All" }) => (
-    <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 20, gap: 12 }}>
-        <div>
-            <h2 style={{ fontSize: "clamp(17px,2.5vw,22px)", fontWeight: 800, color: "#0a0a0a", lineHeight: 1.2, letterSpacing: "-0.02em", margin: 0 }}>
+    <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap" }}>
+        <div style={{ flex: 1 }}>
+            <h2 style={{
+                fontSize: "clamp(18px, 2.2vw, 24px)",
+                fontWeight: 800,
+                color: "#1a1a1a",
+                lineHeight: 1.2,
+                letterSpacing: "-0.02em",
+                margin: 0,
+                fontFamily: "'Inter', 'Poppins', -apple-system, sans-serif",
+            }}>
                 {title}
             </h2>
-            {sub && <p style={{ fontSize: 12, color: "#888", marginTop: 3 }}>{sub}</p>}
+            {sub && <p style={{ fontSize: 13, color: "#999", marginTop: 6, fontWeight: 500 }}>{sub}</p>}
         </div>
         {to && (
             <Link to={to} style={{
-                display: "flex", alignItems: "center", gap: 5,
-                fontSize: 11, fontWeight: 700, color: "#2563eb",
+                display: "inline-flex", alignItems: "center", gap: 6,
+                fontSize: 12, fontWeight: 700, color: "#2563eb",
                 textDecoration: "none", whiteSpace: "nowrap", paddingBottom: 2,
                 letterSpacing: "0.02em",
-            }}>
-                {label} <FaArrowRight size={9} />
+                transition: "all 0.2s ease",
+                fontFamily: "'Inter', -apple-system, sans-serif",
+            }}
+                onMouseEnter={e => { e.currentTarget.style.color = "#1d4ed8"; e.currentTarget.style.transform = "translateX(2px)"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = "#2563eb"; e.currentTarget.style.transform = "translateX(0)"; }}
+            >
+                {label} <FaArrowRight size={9} style={{ marginTop: 1 }} />
             </Link>
         )}
     </div>
 );
 
-/* ─── HORIZONTAL SCROLL ROW ─── */
+/* ─── HORIZONTAL SCROLL ROW — Modern Layout ─── */
 const HScrollRow = ({ products = [], loading, skCount = 6 }) => {
     const rowRef = useRef(null);
-    const scroll = dir => rowRef.current?.scrollBy({ left: dir * 180, behavior: "smooth" });
+    const scroll = dir => rowRef.current?.scrollBy({ left: dir * 200, behavior: "smooth" });
     return (
         <div style={{ position: "relative" }} className="group-row">
             <button onClick={() => scroll(-1)} className="hscroll-btn hscroll-btn-l">
-                <FaChevronLeft size={11} />
+                <FaChevronLeft size={12} style={{ opacity: 0.7 }} />
             </button>
             <button onClick={() => scroll(1)} className="hscroll-btn hscroll-btn-r">
-                <FaChevronRight size={11} />
+                <FaChevronRight size={12} style={{ opacity: 0.7 }} />
             </button>
             <div ref={rowRef} style={{
                 display: "flex", gap: 12,
-                overflowX: "auto", paddingBottom: 12, paddingTop: 4,
+                overflowX: "auto", paddingBottom: 8, paddingTop: 2,
                 scrollSnapType: "x mandatory", scrollBehavior: "smooth",
                 msOverflowStyle: "none", scrollbarWidth: "none",
                 alignItems: "stretch"
             }}>
                 {loading
                     ? Array(skCount).fill(0).map((_, i) => (
-                        <div key={i} style={{ width: 160, minWidth: 160, scrollSnapAlign: "start" }} className="hscroll-item">
+                        <div key={i} style={{ width: 140, minWidth: 140, scrollSnapAlign: "start" }} className="hscroll-item">
                             <SkCard />
                         </div>
                     ))
                     : products.map(p => (
-                        <div key={p._id || p.id} style={{ width: 160, minWidth: 160, scrollSnapAlign: "start" }} className="hscroll-item">
+                        <div key={p._id || p.id} style={{ width: 140, minWidth: 140, scrollSnapAlign: "start" }} className="hscroll-item">
                             <ProductCard product={p} hideActions />
                         </div>
                     ))
@@ -206,35 +220,52 @@ const AllProductsSection = () => {
     }, [sort, page, loadingMore, hasMore]);
 
     return (
-        <section style={{ background: "#fff", borderTop: "1px solid #f0f0f0" }}>
-            <div className="container" style={{ paddingTop: 48, paddingBottom: 56 }}>
-                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <section style={{ background: "#fafafa", borderTop: "1px solid #f0f0f0" }}>
+            <div className="container" style={{ paddingTop: 56, paddingBottom: 64 }}>
+                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
                     <div>
-                        <h2 style={{ fontSize: "clamp(17px,2.5vw,22px)", fontWeight: 800, color: "#0a0a0a", letterSpacing: "-0.02em", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-                            <FaThLarge size={15} style={{ color: "#2563eb" }} /> All Products
+                        <h2 style={{ fontSize: "clamp(18px, 2.2vw, 24px)", fontWeight: 800, color: "#1a1a1a", letterSpacing: "-0.02em", margin: 0, display: "flex", alignItems: "center", gap: 10, fontFamily: "'Inter', 'Poppins', -apple-system, sans-serif" }}>
+                            <FaThLarge size={16} style={{ color: "#2563eb" }} /> All Products
                         </h2>
-                        <p style={{ fontSize: 12, color: "#888", marginTop: 3 }}>Browse our complete catalog</p>
+                        <p style={{ fontSize: 13, color: "#999", marginTop: 6, fontWeight: 500 }}>Browse our complete catalog of products</p>
                     </div>
-                    <Link to="/products" style={{ fontSize: 11, fontWeight: 700, color: "#2563eb", display: "flex", alignItems: "center", gap: 5, textDecoration: "none" }}>
-                        Full Catalog <FaArrowRight size={9} />
+                    <Link to="/products" style={{ fontSize: 12, fontWeight: 700, color: "#2563eb", display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", transition: "all 0.2s ease", fontFamily: "'Inter', -apple-system, sans-serif" }}
+                        onMouseEnter={e => { e.currentTarget.style.color = "#1d4ed8"; e.currentTarget.style.transform = "translateX(2px)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = "#2563eb"; e.currentTarget.style.transform = "translateX(0)"; }}
+                    >
+                        Full Catalog <FaArrowRight size={10} />
                     </Link>
                 </div>
 
                 {/* Sort pills */}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24, overflowX: "auto", paddingBottom: 4 }}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24, overflowX: "auto", paddingBottom: 6 }}>
                     {ALL_SORT_OPTIONS.map(o => (
                         <button key={o.key} onClick={() => setSort(o.key)} style={{
-                            padding: "7px 18px",
+                            padding: "8px 16px",
                             borderRadius: 100,
-                            fontSize: 11, fontWeight: 700,
-                            border: sort === o.key ? "1.5px solid #0a0a0a" : "1.5px solid #e5e5e5",
-                            background: sort === o.key ? "#0a0a0a" : "#fff",
-                            color: sort === o.key ? "#fff" : "#555",
+                            fontSize: 12, fontWeight: 600,
+                            border: sort === o.key ? "1.5px solid #1a1a1a" : "1.5px solid #e5e5e5",
+                            background: sort === o.key ? "#1a1a1a" : "#fff",
+                            color: sort === o.key ? "#fff" : "#666",
                             cursor: "pointer",
                             whiteSpace: "nowrap",
-                            transition: "all 0.15s",
+                            transition: "all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
                             letterSpacing: "0.02em",
-                        }}>
+                            fontFamily: "'Inter', -apple-system, sans-serif",
+                        }}
+                            onMouseEnter={e => {
+                                if (sort !== o.key) {
+                                    e.currentTarget.style.borderColor = "#d0d0d0";
+                                    e.currentTarget.style.background = "#f9f9f9";
+                                }
+                            }}
+                            onMouseLeave={e => {
+                                if (sort !== o.key) {
+                                    e.currentTarget.style.borderColor = "#e5e5e5";
+                                    e.currentTarget.style.background = "#fff";
+                                }
+                            }}
+                        >
                             {o.label}
                         </button>
                     ))}
@@ -264,16 +295,18 @@ const AllProductsSection = () => {
                 {!loading && hasMore && (
                     <button onClick={loadMore} disabled={loadingMore} style={{
                         display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                        width: "100%", maxWidth: 240, margin: "32px auto 0",
+                        width: "100%", maxWidth: 240, margin: "40px auto 0",
                         padding: "12px 28px",
-                        border: "1.5px solid #0a0a0a", borderRadius: 12,
-                        background: "#fff", color: "#0a0a0a",
+                        border: "1.5px solid #1a1a1a", borderRadius: 8,
+                        background: "#fff", color: "#1a1a1a",
                         fontSize: 13, fontWeight: 700, cursor: "pointer",
-                        transition: "all 0.15s",
-                        opacity: loadingMore ? 0.5 : 1,
+                        transition: "all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                        opacity: loadingMore ? 0.6 : 1,
+                        fontFamily: "'Inter', -apple-system, sans-serif",
+                        letterSpacing: "0.01em",
                     }}
-                        onMouseEnter={e => { e.currentTarget.style.background = "#0a0a0a"; e.currentTarget.style.color = "#fff"; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.color = "#0a0a0a"; }}
+                        onMouseEnter={e => { if (!loadingMore) { e.currentTarget.style.background = "#1a1a1a"; e.currentTarget.style.color = "#fff"; e.currentTarget.style.transform = "translateY(-1px)"; } }}
+                        onMouseLeave={e => { if (!loadingMore) { e.currentTarget.style.background = "#fff"; e.currentTarget.style.color = "#1a1a1a"; e.currentTarget.style.transform = "translateY(0)"; } }}
                     >
                         {loadingMore
                             ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2, borderTopColor: "currentColor" }} /> Loading…</>
@@ -327,16 +360,20 @@ const FlashDealsSection = ({ deals, loading, nearestDealEnd }) => {
                 </div>
                 <PGrid products={deals} loading={loading} skCount={8} />
                 {!loading && deals.length > 0 && (
-                    <div style={{ textAlign: "center", marginTop: 28 }}>
+                    <div style={{ textAlign: "center", marginTop: 32 }}>
                         <Link to="/deals" style={{
-                            display: "inline-flex", alignItems: "center", gap: 8,
-                            padding: "12px 28px", borderRadius: 12,
-                            background: "#0a0a0a", color: "#fff",
+                            display: "inline-flex", alignItems: "center", gap: 10,
+                            padding: "12px 28px", borderRadius: 8,
+                            background: "#1a1a1a", color: "#fff",
                             fontWeight: 700, fontSize: 13, textDecoration: "none",
                             letterSpacing: "0.02em",
-                            transition: "opacity 0.15s",
-                        }}>
-                            <FaTag size={11} /> View All Deals <FaArrowRight size={10} />
+                            fontFamily: "'Inter', -apple-system, sans-serif",
+                            transition: "all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                        }}
+                            onMouseEnter={e => { e.currentTarget.style.background = "#2d2d2d"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "#1a1a1a"; e.currentTarget.style.transform = "translateY(0)"; }}
+                        >
+                            <FaTag size={12} /> View All Deals <FaArrowRight size={11} />
                         </Link>
                     </div>
                 )}
@@ -454,24 +491,24 @@ const Home = () => {
 
     /* ── SEARCH VIEW ── */
     if (searchQuery.trim()) return (
-        <div style={{ background: "#f8f8f8", minHeight: "100vh" }}>
+        <div style={{ background: "#fafafa", minHeight: "100vh" }}>
             <style>{GLOBAL_CSS}</style>
-            <div className="container" style={{ paddingTop: 24, paddingBottom: 80 }}>
-                <div style={{ marginBottom: 24 }}>
-                    <h1 style={{ fontSize: "clamp(17px,3vw,22px)", fontWeight: 800, color: "#0a0a0a", letterSpacing: "-0.02em" }}>
-                        Results for &ldquo;{searchQuery}&rdquo;
+            <div className="container" style={{ paddingTop: 32, paddingBottom: 80 }}>
+                <div style={{ marginBottom: 32 }}>
+                    <h1 style={{ fontSize: "clamp(20px, 3vw, 28px)", fontWeight: 800, color: "#1a1a1a", letterSpacing: "-0.02em", fontFamily: "'Inter', 'Poppins', -apple-system, sans-serif" }}>
+                        Search Results for <em style={{ fontStyle: "italic", color: "#2563eb" }}>"{searchQuery}"</em>
                     </h1>
-                    <p style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+                    <p style={{ fontSize: 13, color: "#999", marginTop: 8, fontWeight: 500 }}>
                         {searching ? "Searching…" : `${searchResults.length} result${searchResults.length !== 1 ? "s" : ""} found`}
                     </p>
                 </div>
-                {searching ? <PGrid loading skCount={8} />
+                {searching ? <PGrid loading skCount={12} />
                     : searchResults.length > 0 ? <PGrid products={searchResults} />
                         : (
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "80px 0", color: "#ccc" }}>
-                                <FaSearch size={36} style={{ marginBottom: 12, color: "#e5e5e5" }} />
-                                <div style={{ fontWeight: 700, color: "#999" }}>No products found</div>
-                                <div style={{ fontSize: 13, marginTop: 4, color: "#bbb" }}>Try a different search term</div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "120px 0", color: "#ccc" }}>
+                                <FaSearch size={48} style={{ marginBottom: 16, color: "#e5e5e5" }} />
+                                <div style={{ fontWeight: 700, color: "#999", fontSize: 16 }}>No products found</div>
+                                <div style={{ fontSize: 13, marginTop: 8, color: "#bbb" }}>Try a different search term or browse our categories</div>
                             </div>
                         )
                 }
@@ -479,23 +516,25 @@ const Home = () => {
         </div>
     );
 
-    /* ══ MAIN VIEW ══ */
+    /* ──────────────────────────────────────────────────────────
+       MAIN RENDER — Modern Premium Layout
+    ────────────────────────────────────────────────────────── */
     return (
-        <div style={{ background: "#f8f8f8", overflowX: "hidden", width: "100%" }}>
+        <div style={{ background: "#fafafa", overflowX: "hidden", width: "100%" }}>
             <style>{GLOBAL_CSS}</style>
-            <SEO title="Premium Online Shopping" description="Shop at Urbexon for the best deals." path="/" />
+            <SEO title="Premium Online Shopping — Urbexon" description="Discover premium products from verified sellers with fast delivery and secure checkout." path="/" />
 
             {/* ━━ HERO BANNER ━━ */}
             {loading && slides.length === 0 ? (
-                <div style={{ background: "#0a0a0a", minHeight: 260 }}>
-                    <div className="container" style={{ paddingTop: 64, paddingBottom: 48, display: "flex", flexDirection: "column", gap: 14 }}>
-                        {["140px", "70%", "50%", "30%"].map((w, i) => (
-                            <div key={i} style={{ height: i === 0 ? 14 : i === 1 ? 22 : i === 2 ? 16 : 12, width: w, background: "rgba(255,255,255,0.07)", borderRadius: 8, animation: "pulse 1.4s ease-in-out infinite" }} />
+                <div style={{ background: "#1a1a1a", minHeight: 280 }}>
+                    <div className="container" style={{ paddingTop: 64, paddingBottom: 64, display: "flex", flexDirection: "column", gap: 16 }}>
+                        {["150px", "60%", "45%", "25%"].map((w, i) => (
+                            <div key={i} style={{ height: i === 0 ? 14 : i === 1 ? 24 : i === 2 ? 18 : 13, width: w, background: "rgba(255,255,255,0.08)", borderRadius: 8, animation: "pulse 1.8s ease-in-out infinite" }} />
                         ))}
                     </div>
                 </div>
             ) : slides.length > 0 ? (
-                <div style={{ position: "relative", width: "100%", background: "#0a0a0a", overflow: "hidden" }}
+                <div style={{ position: "relative", width: "100%", background: "#1a1a1a", overflow: "hidden" }}
                     className="hero-aspect">
                     {slides.map((slide, i) => {
                         const bg = slide.image?.url || (typeof slide.image === "string" ? slide.image : null) || "/banner-fallback.jpg";
@@ -625,25 +664,32 @@ const Home = () => {
                 </div>
             ) : !loading && (
                 <div style={{
-                    background: "#0a0a0a", display: "flex", alignItems: "center",
-                    minHeight: 380,
+                    background: "linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)",
+                    display: "flex", alignItems: "center",
+                    minHeight: 420,
+                    borderRadius: 0,
                 }}>
                     <div className="container" style={{ paddingTop: 64, paddingBottom: 64 }}>
-                        <div style={{ maxWidth: 520 }}>
-                            <h1 style={{ fontSize: "clamp(28px,5vw,52px)", fontWeight: 900, color: "#fff", lineHeight: 1.08, letterSpacing: "-0.03em", marginBottom: 16 }}>
-                                Welcome to Urbexon
-                                <em style={{ color: "#facc15", display: "block", fontStyle: "normal" }}>Shop the Best</em>
+                        <div style={{ maxWidth: 540 }}>
+                            <h1 style={{ fontSize: "clamp(28px,5vw,52px)", fontWeight: 900, color: "#fff", lineHeight: 1.1, letterSpacing: "-0.02em", marginBottom: 16, fontFamily: "'Inter', 'Poppins', -apple-system, sans-serif" }}>
+                                Welcome to <em style={{ color: "#facc15", display: "inline", fontStyle: "normal" }}>Urbexon</em>
+                                <br style={{ display: "none" }} className="mobile-br" />
                             </h1>
-                            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.55)", marginBottom: 28, lineHeight: 1.6 }}>
-                                Discover amazing products from verified sellers.
+                            <p style={{ fontSize: 15, color: "rgba(255,255,255,0.65)", marginBottom: 32, lineHeight: 1.7, maxWidth: 460 }}>
+                                Discover premium products from verified sellers with fast delivery and secure checkout.
                             </p>
                             <button onClick={() => navigate("/deals")} style={{
-                                padding: "12px 28px", background: "#fff", color: "#0a0a0a",
-                                border: "none", borderRadius: 12, fontSize: 13, fontWeight: 800,
-                                cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
+                                padding: "12px 28px", background: "#fff", color: "#1a1a1a",
+                                border: "none", borderRadius: 8, fontSize: 14, fontWeight: 700,
+                                cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8,
                                 letterSpacing: "-0.01em",
-                            }}>
-                                Explore Deals <FaArrowRight size={11} />
+                                fontFamily: "'Inter', -apple-system, sans-serif",
+                                transition: "all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                            }}
+                                onMouseEnter={e => { e.currentTarget.style.background = "#f0f0f0"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.transform = "translateY(0)"; }}
+                            >
+                                Explore Deals <FaArrowRight size={12} />
                             </button>
                         </div>
                     </div>
@@ -748,9 +794,9 @@ const Home = () => {
 
             {/* ━━ TRENDING ━━ */}
             {(loading || featured.length > 0) && (
-                <section style={{ background: "#f8f8f8", borderTop: "1px solid #f0f0f0" }}>
-                    <div className="container" style={{ paddingTop: 48, paddingBottom: 48 }}>
-                        <SecHead title="Trending Now" sub="Most popular right now" to="/products?sort=rating" label="See all" />
+                <section style={{ background: "#fff", borderTop: "1px solid #f0f0f0" }}>
+                    <div className="container" style={{ paddingTop: 56, paddingBottom: 56 }}>
+                        <SecHead title="Trending Now" sub="Most popular products right now" to="/products?sort=rating" label="See all" />
                         <PGrid products={featured} loading={loading} skCount={8} />
                     </div>
                 </section>
@@ -758,9 +804,9 @@ const Home = () => {
 
             {/* ━━ NEW ARRIVALS ━━ */}
             {(loading || newArrivals.length > 0) && (
-                <section style={{ background: "#fff" }}>
-                    <div className="container" style={{ paddingTop: 48, paddingBottom: 48 }}>
-                        <SecHead title="New Arrivals" sub="Fresh drops, just for you" to="/products?sort=newest" label="See all" />
+                <section style={{ background: "#fafafa", borderTop: "1px solid #f0f0f0" }}>
+                    <div className="container" style={{ paddingTop: 56, paddingBottom: 56 }}>
+                        <SecHead title="New Arrivals" sub="Fresh drops and latest collections" to="/products?sort=newest" label="See all" />
                         <HScrollRow products={newArrivals} loading={loading} skCount={6} />
                     </div>
                 </section>
@@ -768,8 +814,8 @@ const Home = () => {
 
             {/* ━━ RECENTLY VIEWED ━━ */}
             {ecRecent.length > 0 && (
-                <section style={{ background: "#f8f8f8", borderTop: "1px solid #f0f0f0" }}>
-                    <div className="container" style={{ paddingTop: 48, paddingBottom: 48 }}>
+                <section style={{ background: "#fff", borderTop: "1px solid #f0f0f0" }}>
+                    <div className="container" style={{ paddingTop: 56, paddingBottom: 56 }}>
                         <SecHead title="Recently Viewed" sub="Continue where you left off" />
                         <HScrollRow products={ecRecent.slice(0, 12)} loading={false} />
                     </div>
@@ -778,11 +824,11 @@ const Home = () => {
 
             {/* ━━ FOR YOU ━━ */}
             {forYouProducts.length > 0 && (
-                <section style={{ background: "#fff", borderTop: "1px solid #f0f0f0" }}>
-                    <div className="container" style={{ paddingTop: 48, paddingBottom: 48 }}>
+                <section style={{ background: "#fafafa", borderTop: "1px solid #f0f0f0" }}>
+                    <div className="container" style={{ paddingTop: 56, paddingBottom: 56 }}>
                         <SecHead
-                            title={`Based on "${forYouTerm}"`}
-                            sub="Handpicked for you"
+                            title={`Similar to "${forYouTerm}"`}
+                            sub="Handpicked recommendations just for you"
                             to={`/?search=${encodeURIComponent(forYouTerm)}`} label="See all"
                         />
                         <HScrollRow products={forYouProducts} loading={false} />
@@ -795,25 +841,25 @@ const Home = () => {
 
             {/* ━━ WHY CHOOSE URBEXON ━━ */}
             <section style={{ background: "#fff", borderTop: "1px solid #f0f0f0" }}>
-                <div className="container" style={{ paddingTop: 48, paddingBottom: 56 }}>
-                    <div style={{ textAlign: "center", marginBottom: 32 }}>
-                        <h2 style={{ fontSize: "clamp(20px,3vw,26px)", fontWeight: 800, color: "#0a0a0a", letterSpacing: "-0.025em", margin: 0 }}>
+                <div className="container" style={{ paddingTop: 56, paddingBottom: 64 }}>
+                    <div style={{ textAlign: "center", marginBottom: 40 }}>
+                        <h2 style={{ fontSize: "clamp(22px, 3vw, 28px)", fontWeight: 800, color: "#1a1a1a", letterSpacing: "-0.02em", margin: 0, fontFamily: "'Inter', 'Poppins', -apple-system, sans-serif" }}>
                             Why Choose Urbexon?
                         </h2>
-                        <p style={{ fontSize: 13, color: "#888", marginTop: 6 }}>Your trusted partner for online shopping</p>
+                        <p style={{ fontSize: 14, color: "#999", marginTop: 8, fontWeight: 500 }}>Your trusted partner for premium online shopping</p>
                     </div>
                     <div className="why-grid">
                         {WHY.map(({ Icon, label, sub, color, bg }) => (
                             <div key={label} className="why-card" style={{ "--why-bg": bg, "--why-color": color }}>
                                 <div style={{
-                                    width: 48, height: 48, borderRadius: 14, background: bg,
+                                    width: 52, height: 52, borderRadius: 12, background: bg,
                                     display: "flex", alignItems: "center", justifyContent: "center",
                                     margin: "0 auto 16px",
                                 }}>
-                                    <Icon size={20} style={{ color }} />
+                                    <Icon size={22} style={{ color }} />
                                 </div>
-                                <div style={{ fontSize: 14, fontWeight: 800, color: "#0a0a0a", marginBottom: 6, letterSpacing: "-0.01em" }}>{label}</div>
-                                <div style={{ fontSize: 12, color: "#888", lineHeight: 1.5 }}>{sub}</div>
+                                <div style={{ fontSize: 15, fontWeight: 800, color: "#1a1a1a", marginBottom: 8, letterSpacing: "-0.01em", fontFamily: "'Inter', -apple-system, sans-serif" }}>{label}</div>
+                                <div style={{ fontSize: 13, color: "#999", lineHeight: 1.6 }}>{sub}</div>
                             </div>
                         ))}
                     </div>
@@ -821,59 +867,62 @@ const Home = () => {
             </section>
 
             {/* ━━ NEWSLETTER ━━ */}
-            <section style={{ background: "#0a0a0a", paddingTop: 56, paddingBottom: 80 }} className="nl-section">
+            <section style={{ background: "linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)", paddingTop: 64, paddingBottom: 96 }} className="nl-section">
                 <div className="container">
-                    <div style={{ maxWidth: 460, margin: "0 auto", textAlign: "center" }}>
+                    <div style={{ maxWidth: 500, margin: "0 auto", textAlign: "center" }}>
                         <div style={{
-                            display: "inline-flex", alignItems: "center", gap: 6,
-                            padding: "5px 14px", borderRadius: 100,
-                            background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
-                            fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.5)",
+                            display: "inline-flex", alignItems: "center", gap: 8,
+                            padding: "6px 14px", borderRadius: 100,
+                            background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
+                            fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.6)",
                             letterSpacing: "0.12em", textTransform: "uppercase",
-                            marginBottom: 16,
+                            marginBottom: 20,
+                            fontFamily: "'Inter', -apple-system, sans-serif",
                         }}>
                             ✉️ Newsletter
                         </div>
-                        <h3 style={{ fontSize: "clamp(22px,4vw,28px)", fontWeight: 900, color: "#fff", letterSpacing: "-0.025em", margin: "0 0 10px" }}>
+                        <h3 style={{ fontSize: "clamp(24px, 4vw, 32px)", fontWeight: 900, color: "#fff", letterSpacing: "-0.02em", margin: "0 0 12px", fontFamily: "'Inter', 'Poppins', -apple-system, sans-serif" }}>
                             Stay in the Loop
                         </h3>
-                        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", marginBottom: 28, lineHeight: 1.6 }}>
-                            Exclusive deals, new arrivals, and offers — straight to your inbox.
+                        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.65)", marginBottom: 32, lineHeight: 1.7 }}>
+                            Get exclusive deals, new arrivals, and special offers delivered to your inbox.
                         </p>
                         {nlStatus === "done" ? (
-                            <p style={{ color: "#4ade80", fontWeight: 700, fontSize: 14 }}>✅ Successfully subscribed!</p>
+                            <div style={{ padding: "16px 20px", background: "rgba(74,222,128,0.1)", border: "1px solid #22c55e", borderRadius: 8, color: "#4ade80", fontWeight: 700, fontSize: 14 }}>✅ Successfully subscribed! Check your email.</div>
                         ) : (
                             <form onSubmit={handleNL} style={{
-                                display: "flex", borderRadius: 14, overflow: "hidden",
-                                border: "1px solid rgba(255,255,255,0.15)",
-                                background: "rgba(255,255,255,0.06)",
+                                display: "flex", borderRadius: 8, overflow: "hidden",
+                                border: "1px solid rgba(255,255,255,0.12)",
+                                background: "rgba(255,255,255,0.04)",
+                                backdropFilter: "blur(8px)",
                             }}>
                                 <input
                                     type="email" value={nlEmail} required
                                     onChange={e => { setNlEmail(e.target.value); setNlStatus(""); }}
-                                    placeholder="Enter your email"
+                                    placeholder="Enter your email address"
                                     style={{
-                                        flex: 1, minWidth: 0, padding: "14px 16px",
+                                        flex: 1, minWidth: 0, padding: "14px 18px",
                                         background: "transparent", border: "none", outline: "none",
-                                        fontSize: 13, color: "#fff",
-                                        placeholderColor: "rgba(255,255,255,0.4)",
+                                        fontSize: 14, color: "#fff",
+                                        fontFamily: "'Inter', -apple-system, sans-serif",
                                     }}
                                 />
                                 <button type="submit" disabled={nlStatus === "sending"} style={{
-                                    padding: "14px 22px",
-                                    background: "#fff", color: "#0a0a0a",
+                                    padding: "14px 24px",
+                                    background: "#fff", color: "#1a1a1a",
                                     border: "none", fontSize: 13, fontWeight: 800,
                                     cursor: "pointer", whiteSpace: "nowrap",
                                     letterSpacing: "-0.01em",
-                                    opacity: nlStatus === "sending" ? 0.6 : 1,
-                                    transition: "opacity 0.15s",
+                                    fontFamily: "'Inter', -apple-system, sans-serif",
+                                    opacity: nlStatus === "sending" ? 0.7 : 1,
+                                    transition: "all 0.2s ease",
                                 }}>
                                     {nlStatus === "sending" ? "Subscribing…" : "Subscribe"}
                                 </button>
                             </form>
                         )}
                         {nlStatus === "error" && (
-                            <p style={{ color: "#f87171", fontSize: 11, marginTop: 8 }}>Failed. Please try again.</p>
+                            <p style={{ color: "#fca5a5", fontSize: 12, marginTop: 10 }}>❌ Failed to subscribe. Please try again.</p>
                         )}
                     </div>
                 </div>
@@ -882,175 +931,252 @@ const Home = () => {
     );
 };
 
-/* ══════════════════════════════════════════════
-   GLOBAL CSS
-══════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════════
+   MODERN MINIMALIST GLOBAL CSS — Production Premium Design System
+   Inspired by: Flipkart, Apple, Nike
+   Color Palette: Clean white (#fff), soft grays (#f5f5f5, #f0f0f0, #e5e5e5), dark text
+   Typography: Inter, Poppins, SF Pro Display
+══════════════════════════════════════════════════════════════════════════ */
 const GLOBAL_CSS = `
+  /* ━━━━━━━━━━━━━━━━━━ ROOT & FONTS ━━━━━━━━━━━━━━━━━━ */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
+  
+  :root {
+    --primary: #2563eb;
+    --primary-light: #3b82f6;
+    --primary-dark: #1d4ed8;
+    --text-primary: #1a1a1a;
+    --text-secondary: #666666;
+    --text-tertiary: #999999;
+    --bg-white: #ffffff;
+    --bg-light: #f9f9f9;
+    --bg-lighter: #f5f5f5;
+    --border-light: #f0f0f0;
+    --border: #e5e5e5;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+    --shadow-lg: 0 10px 25px rgba(0,0,0,0.08);
+    --shadow-xl: 0 20px 40px rgba(0,0,0,0.1);
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-2xl: 20px;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━ ANIMATIONS ━━━━━━━━━━━━━━━━━━ */
   @keyframes pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.45; }
+    50% { opacity: 0.4; }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slideInUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
   }
   @keyframes gradientShift {
     0% { background-position: 0% 50%; }
     100% { background-position: 300% 50%; }
   }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 
-  /* Container */
+  /* ━━━━━━━━━━━━━━━━━━ CONTAINER ━━━━━━━━━━━━━━━━━━ */
   .container {
     max-width: 1280px;
     margin: 0 auto;
-    padding-left: 16px;
-    padding-right: 16px;
+    padding-left: 12px;
+    padding-right: 12px;
   }
   @media (min-width: 640px) {
-    .container { padding-left: 24px; padding-right: 24px; }
+    .container { padding-left: 20px; padding-right: 20px; }
   }
   @media (min-width: 1024px) {
-    .container { padding-left: 48px; padding-right: 48px; }
+    .container { padding-left: 40px; padding-right: 40px; }
+  }
+  @media (min-width: 1280px) {
+    .container { padding-left: 60px; padding-right: 60px; }
   }
 
-  /* Hero aspect ratio */
+  /* ━━━━━━━━━━━━━━━━━━ HERO SECTION ━━━━━━━━━━━━━━━━━━ */
   .hero-aspect {
-    aspect-ratio: 4/3;
+    aspect-ratio: 5/4;
+    border-radius: var(--radius-2xl);
+    overflow: hidden;
   }
   @media (min-width: 640px) {
-    .hero-aspect { aspect-ratio: 16/7; }
+    .hero-aspect { aspect-ratio: 18/7; border-radius: var(--radius-2xl); }
     .hero-desc { display: block !important; }
-    .hero-stats { display: flex !important; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
+    .hero-stats { display: flex !important; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
   }
   @media (min-width: 1024px) {
     .hero-aspect { aspect-ratio: 19/6; }
   }
   .hero-stats { display: none; }
 
-  /* Hero nav buttons */
   .hero-nav {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
     z-index: 20;
-    width: 36px; height: 36px;
+    width: 40px; height: 40px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.9);
-    border: none;
+    background: rgba(255,255,255,0.95);
+    border: 1px solid rgba(0,0,0,0.08);
     display: none;
-    align-items: center; justify-content: center;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    color: #0a0a0a;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
-    transition: all 0.15s;
+    color: var(--text-primary);
+    box-shadow: var(--shadow-lg);
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    backdrop-filter: blur(8px);
   }
-  .hero-nav:hover { background: #fff; transform: translateY(-50%) scale(1.05); }
+  .hero-nav:hover { background: #fff; transform: translateY(-50%) scale(1.08); }
+  .hero-nav:active { transform: translateY(-50%) scale(0.96); }
   @media (min-width: 640px) {
     .hero-nav { display: flex; }
   }
-  .hero-nav-l { left: 12px; }
-  .hero-nav-r { right: 12px; }
+  .hero-nav-l { left: 16px; }
+  .hero-nav-r { right: 16px; }
 
-  /* Scroll buttons */
+  /* ━━━━━━━━━━━━━━━━━━ HORIZONTAL SCROLL ━━━━━━━━━━━━━━━━━━ */
+  .group-row {
+    position: relative;
+  }
+  
   .hscroll-btn {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
     z-index: 10;
-    width: 34px; height: 34px;
+    width: 38px; height: 38px;
     border-radius: 50%;
-    background: #fff;
-    border: 1px solid #e5e5e5;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
     display: none;
-    align-items: center; justify-content: center;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    color: #555;
-    transition: all 0.15s;
+    color: var(--text-secondary);
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
     opacity: 0;
+    backdrop-filter: blur(4px);
   }
-  .hscroll-btn:hover { background: #f8f8f8; }
+  .hscroll-btn:hover { 
+    background: var(--bg-lighter);
+    border-color: var(--border-light);
+    color: var(--text-primary);
+  }
+  .hscroll-btn:active { transform: translateY(-50%) scale(0.95); }
   @media (min-width: 768px) {
     .hscroll-btn { display: flex; }
     .group-row:hover .hscroll-btn { opacity: 1; }
   }
-  .hscroll-btn-l { left: -8px; }
-  .hscroll-btn-r { right: -8px; }
+  .hscroll-btn-l { left: 0; }
+  .hscroll-btn-r { right: 0; }
 
-  /* Hscroll items */
-  .hscroll-item { width: 160px !important; min-width: 160px !important; display: flex; flex-direction: column; align-items: stretch; height: auto; }
-  .hscroll-item .aspect-square { aspect-ratio: 5/4 !important; }
-  .hscroll-item .sk-img { aspect-ratio: 5/4 !important; }
+  .hscroll-item {
+    width: 140px !important;
+    min-width: 140px !important;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    scroll-snap-align: start;
+    scroll-snap-stop: auto;
+  }
+  .hscroll-item .aspect-square { aspect-ratio: 1/1.25 !important; }
+  .hscroll-item .sk-img { aspect-ratio: 1/1.25 !important; }
 
   @media (min-width: 640px) {
-    .hscroll-item { width: 175px !important; min-width: 175px !important; }
+    .hscroll-item { width: 160px !important; min-width: 160px !important; }
   }
   @media (min-width: 1024px) {
-    .hscroll-item { width: 190px !important; min-width: 190px !important; }
+    .hscroll-item { width: 180px !important; min-width: 180px !important; }
   }
 
-  /* Product grid */
+  /* ━━━━━━━━━━━━━━━━━━ PRODUCT GRID ━━━━━━━━━━━━━━━━━━ */
   .pgrid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    gap: 8px;
+    animation: fadeIn 0.3s ease-out;
   }
   @media (min-width: 640px) {
-    .pgrid { grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .pgrid { grid-template-columns: repeat(3, 1fr); gap: 12px; }
   }
   @media (min-width: 1024px) {
-    .pgrid { grid-template-columns: repeat(5, 1fr); gap: 12px; }
+    .pgrid { grid-template-columns: repeat(4, 1fr); gap: 12px; }
   }
   @media (min-width: 1280px) {
-    .pgrid { grid-template-columns: repeat(6, 1fr); gap: 12px; }
+    .pgrid { grid-template-columns: repeat(5, 1fr); gap: 12px; }
   }
 
-  /* Spinner */
+  /* ━━━━━━━━━━━━━━━━━━ SPINNER ━━━━━━━━━━━━━━━━━━ */
   .spinner {
     display: inline-block;
-    width: 28px; height: 28px;
-    border: 3px solid #e5e5e5;
-    border-top-color: #0a0a0a;
+    width: 24px; height: 24px;
+    border: 2.5px solid var(--border);
+    border-top-color: var(--primary);
     border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin {
-    to { transform: rotate(360deg); }
+    animation: spin 0.6s linear infinite;
   }
 
-  /* Why grid */
+  /* ━━━━━━━━━━━━━━━━━━ WHY CHOOSE GRID ━━━━━━━━━━━━━━━━━━ */
   .why-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 14px;
+    gap: 12px;
+    animation: fadeIn 0.4s ease-out;
   }
-  @media (min-width: 1024px) {
-    .why-grid { grid-template-columns: repeat(4, 1fr); }
+  @media (min-width: 768px) {
+    .why-grid { grid-template-columns: repeat(4, 1fr); gap: 16px; }
   }
+
   .why-card {
-    background: #fff;
-    border: 1px solid #f0f0f0;
-    border-radius: 18px;
-    padding: 24px 16px;
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: 20px 16px;
     text-align: center;
-    transition: all 0.2s;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     cursor: default;
   }
   .why-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.07);
-    border-color: #e8e8e8;
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--border-light);
   }
 
-  /* UH strip */
-  .uh-strip:hover { filter: brightness(1.04); }
+  /* ━━━━━━━━━━━━━━━━━━ UH STRIP ━━━━━━━━━━━━━━━━━━ */
+  .uh-strip {
+    transition: all 0.3s ease;
+  }
+  .uh-strip:hover { 
+    filter: brightness(1.02);
+  }
   @media (min-width: 640px) {
     .uh-badge { display: inline-flex !important; }
   }
 
-  /* Newsletter section bottom padding for mobile bottom nav */
+  /* ━━━━━━━━━━━━━━━━━━ NEWSLETTER SECTION ━━━━━━━━━━━━━━━━━━ */
   @media (max-width: 767px) {
-    .nl-section { padding-bottom: 112px !important; }
+    .nl-section { padding-bottom: 120px !important; }
   }
 
-  /* Scrollbar hide */
+  /* ━━━━━━━━━━━━━━━━━━ SCROLLBAR ━━━━━━━━━━━━━━━━━━ */
   ::-webkit-scrollbar { display: none; }
+  * { scrollbar-width: none; }
 `;
 
 export default Home;

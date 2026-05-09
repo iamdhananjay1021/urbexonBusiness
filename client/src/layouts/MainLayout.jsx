@@ -5,13 +5,13 @@ import { Outlet, useLocation } from "react-router-dom";
 export default function MainLayout() {
     const { pathname } = useLocation();
 
-    // Hide main navbar on Urbexon Hour pages
-    const isUrbexonHour = pathname === "/urbexon-hour" || pathname.startsWith("/uh-");
+    const currentPath = pathname.toLowerCase();
 
-    // Pages where BOTH Navbar and Footer should be hidden
+    // Hide main navbar on Urbexon Hour pages
+    const isUrbexonHour = currentPath.startsWith("/urbexon-hour") || currentPath.startsWith("/uh-");
+
+    // Pages where BOTH Navbar and Footer should be hidden (within MainLayout routes)
     const noNavFooterPaths = [
-        "/login",
-        "/register",
         "/forgot-password",
         "/reset-password",
         "/checkout",
@@ -22,7 +22,8 @@ export default function MainLayout() {
         "/uh-cart",
         "/profile"
     ];
-    const hideNavAndFooter = noNavFooterPaths.some(p => pathname.startsWith(p));
+
+    const hideNavAndFooter = noNavFooterPaths.some(p => currentPath.startsWith(p));
 
     return (
         <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f7f4ee" }}>

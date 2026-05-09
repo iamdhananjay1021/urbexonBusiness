@@ -3,7 +3,6 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import api from "../api/axios";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../contexts/AuthContext";
-import RelatedProductsSlider from "../components/RelatedProductsSlider";
 import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
 import { imgUrl } from "../utils/imageUrl";
 import SEO, { JsonLd } from "../components/SEO";
@@ -132,6 +131,166 @@ const RatingBar = ({ star, count, pct }) => (
     </div>
 );
 
+/* ─── Related Product Card — Flipkart Style ──────────────── */
+const RelatedCard = ({ rp }) => {
+    const mrp = getMrp(rp);
+    const price = Number(rp.price || 0);
+    const hasDisc = mrp && mrp > price;
+    const discPct = hasDisc ? Math.round(((mrp - price) / mrp) * 100) : null;
+    const saving = hasDisc ? mrp - price : 0;
+    const rating = rp.avgRating || rp.rating || 0;
+    const numReviews = Number(rp.numReviews || 0);
+
+    // Stock calculation
+    let stockNum = 0;
+    if (rp.sizes && rp.sizes.length > 0) {
+        stockNum = rp.sizes.reduce((sum, s) => sum + (Number(s.stock) || 0), 0);
+    } else if (rp.colorVariants && rp.colorVariants.length > 0) {
+        stockNum = rp.colorVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+    } else {
+        stockNum = rp.inStock === true ? 10 : Number(rp.stock || 0);
+    }
+    const isOOS = rp.inStock === false || stockNum <= 0;
+    const isLowStock = !isOOS && stockNum > 0 && stockNum <= 5;
+
+    return (
+        <Link
+            to={`/products/${rp._id}`}
+            style={{
+                textDecoration: "none",
+                flexShrink: 0,
+                width: "clamp(160px, 30vw, 200px)",
+                border: "1px solid #e5e7eb",
+                borderRadius: 8,
+                background: "#fff",
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+                transition: "all .3s ease",
+                boxShadow: "0 1px 4px rgba(0,0,0,.08)",
+                cursor: "pointer",
+            }}
+            onMouseEnter={e => {
+                e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,.15)";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.borderColor = "#d1d5db";
+            }}
+            onMouseLeave={e => {
+                e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,.08)";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.borderColor = "#e5e7eb";
+            }}
+        >
+            {/* ──── Image Container ──── */}
+            <div style={{ width: "100%", aspectRatio: "1/1", background: "#fafafa", overflow: "hidden", position: "relative" }}>
+                {rp.images?.[0]?.url
+                    ? <img
+                        src={imgUrl.card(rp.images[0].url)}
+                        alt={rp.name}
+                        loading="lazy"
+                        style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center", padding: "8px", transition: "transform .3s" }}
+                    />
+                    : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>🎁</div>
+                }
+
+                {/* Discount Badge */}
+                {discPct && (
+                    <span style={{
+                        position: "absolute", top: 8, left: 8,
+                        background: "#388e3c", color: "#fff",
+                        fontSize: 11, fontWeight: 900,
+                        padding: "4px 8px", borderRadius: 3,
+                        letterSpacing: ".5px",
+                    }}>{discPct}% off</span>
+                )}
+
+                {/* Stock Status Badge */}
+                {isLowStock && (
+                    <span style={{
+                        position: "absolute", top: 8, right: 8,
+                        background: "#f97316", color: "#fff",
+                        fontSize: 9, fontWeight: 800,
+                        padding: "3px 6px", borderRadius: 3,
+                    }}>Only {stockNum} left</span>
+                )}
+                {isOOS && (
+                    <div style={{
+                        position: "absolute", inset: 0,
+                        background: "rgba(0,0,0,.6)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 14, fontWeight: 700, color: "#fff",
+                    }}>Out of Stock</div>
+                )}
+            </div>
+
+            {/* ──── Info Container ──── */}
+            <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+
+                {/* Brand/Category Label */}
+                <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px" }}>
+                    {rp.category?.name || "Product"}
+                </div>
+
+                {/* Product Name */}
+                <p style={{
+                    fontSize: 13, color: "#212121", fontWeight: 600,
+                    overflow: "hidden", display: "-webkit-box",
+                    WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                    lineHeight: 1.35, margin: 0,
+                }}>{rp.name}</p>
+
+                {/* Rating & Reviews */}
+                {rating > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{
+                            display: "inline-flex", alignItems: "center", gap: 3,
+                            background: "#388e3c", color: "#fff",
+                            fontSize: 11, fontWeight: 800,
+                            padding: "3px 8px", borderRadius: 3,
+                        }}>
+                            <FaStar size={9} /> {rating.toFixed(1)}
+                        </span>
+                        {numReviews > 0 && (
+                            <span style={{ fontSize: 11, color: "#878787", fontWeight: 500 }}>
+                                ({numReviews.toLocaleString("en-IN")} reviews)
+                            </span>
+                        )}
+                    </div>
+                )}
+
+                {/* Pricing Section */}
+                <div style={{ marginTop: "auto" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 6 }}>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: "#212121" }}>
+                            ₹{price.toLocaleString("en-IN")}
+                        </span>
+                        {hasDisc && (
+                            <>
+                                <span style={{ fontSize: 12, color: "#878787", textDecoration: "line-through", fontWeight: 500 }}>
+                                    ₹{mrp.toLocaleString("en-IN")}
+                                </span>
+                                <span style={{ fontSize: 11, color: "#388e3c", fontWeight: 700 }}>
+                                    Save ₹{saving.toLocaleString("en-IN")}
+                                </span>
+                            </>
+                        )}
+                    </div>
+
+                    {/* Delivery Badge */}
+                    <div style={{
+                        fontSize: 11, color: "#1f2937", fontWeight: 600,
+                        padding: "4px 6px", background: "#f0fdf4",
+                        border: "1px solid #bbf7d0", borderRadius: 3,
+                        display: "flex", alignItems: "center", gap: 4,
+                    }}>
+                        <FaTruck size={9} /> Free Delivery
+                    </div>
+                </div>
+            </div>
+        </Link>
+    );
+};
+
 /* ═══════════════════════════════════════════════════════════
    MAIN COMPONENT
 ═══════════════════════════════════════════════════════════ */
@@ -178,27 +337,20 @@ const ProductDetails = () => {
 
     const abortRef = useRef(null);
 
-    /* ═══════════════════════════════════════════════
-       ACTIVE VARIANT — selected color ka full object
-    ═══════════════════════════════════════════════ */
+    /* ── Active Variant ── */
     const activeVariant = useMemo(() => {
         if (!selectedColor || !product?.colorVariants?.length) return null;
         return product.colorVariants.find(
-            (v, idx) => {
-                const cName = v.name || v.color || `Color ${idx + 1}`;
-                return cName === selectedColor;
-            }
+            (v, idx) => (v.name || v.color || `Color ${idx + 1}`) === selectedColor
         ) || null;
     }, [product?.colorVariants, selectedColor]);
 
-    /* Variant-aware price — variant ka price ho toh woh, warna base price */
     const displayPrice = useMemo(() => {
         if (activeVariant?.price != null && Number(activeVariant.price) > 0)
             return Number(activeVariant.price);
         return product ? Number(product.price) : 0;
     }, [activeVariant, product?.price]);
 
-    /* Variant-aware MRP */
     const baseMrp = useMemo(() => getMrp(product), [product]);
     const displayMrp = useMemo(() => {
         if (activeVariant?.mrp != null && Number(activeVariant.mrp) > 0)
@@ -206,17 +358,14 @@ const ProductDetails = () => {
         return baseMrp;
     }, [activeVariant, baseMrp]);
 
-    /* Variant-aware stock & inStock */
     const variantStock = useMemo(() => {
         if (activeVariant) return activeVariant.stock ?? 0;
         return product?.stock ?? 0;
     }, [activeVariant, product?.stock]);
 
     const variantInStock = useMemo(() => {
-        if (product?.colorVariants?.length > 0 && selectedColor) {
+        if (product?.colorVariants?.length > 0 && selectedColor)
             return (activeVariant?.stock ?? 0) > 0;
-        }
-        // agar koi color select nahi hai aur variants hain — base inStock use karo
         return product?.inStock ?? false;
     }, [activeVariant, selectedColor, product?.colorVariants, product?.inStock]);
 
@@ -251,19 +400,16 @@ const ProductDetails = () => {
     const allImages = useMemo(() => {
         if (!product) return [];
         if (selectedColor && product.colorVariants) {
-            const variant = product.colorVariants.find((v, idx) => {
-                const cName = v.name || v.color || `Color ${idx + 1}`;
-                return cName === selectedColor;
-            });
+            const variant = product.colorVariants.find((v, idx) =>
+                (v.name || v.color || `Color ${idx + 1}`) === selectedColor
+            );
             if (variant?.images?.length > 0) return variant.images;
         }
         return product.images?.length ? product.images : [];
     }, [product, selectedColor]);
 
-    /* Reset active image when color changes */
     useEffect(() => { setActiveImg(0); }, [selectedColor]);
 
-    /* ── Normalized sizes ── */
     const normalizedSizes = useMemo(() => {
         if (!product?.sizes?.length) return [];
         return product.sizes.map(s => typeof s === "string" ? { size: s, stock: 1 } : s);
@@ -295,7 +441,6 @@ const ProductDetails = () => {
                 setProductType(prod?.productType || "ecommerce");
                 setProduct(prod);
 
-                // Auto-select default color variant
                 if (prod?.colorVariants?.length > 0) {
                     const def = prod.colorVariants.find(v => v.isDefault) || prod.colorVariants[0];
                     if (def?.name) setSelectedColor(def.name);
@@ -362,23 +507,19 @@ const ProductDetails = () => {
         if (product?.colorVariants?.length > 0 && !selectedColor) return alert("Please select a color!");
 
         const cartItemId = `${product._id}-${selectedSize || 'nosize'}-${selectedColor || 'nocolor'}`;
-        const cartPayload = {
+        addItem({
             ...product,
-            _id: cartItemId, // 🔥 Trick Redux to treat this as a totally unique item
-            productId: product._id, // 🔥 Preserve real ID for backend processing
-            /* 🔥 Variant price override */
+            _id: cartItemId,
+            productId: product._id,
             price: displayPrice,
             mrp: displayMrp,
-            /* Variant images as cart thumbnail */
             images: activeVariant?.images?.length ? activeVariant.images : product.images,
             image: activeVariant?.images?.[0]?.url || product.images?.[0]?.url || "",
             selectedSize,
             selectedColor,
             customization: getCustomization(),
-            cartItemId
-        };
-
-        addItem(cartPayload);
+            cartItemId,
+        });
         setAddedFlash(true);
         setTimeout(() => setAddedFlash(false), 1500);
     }, [product, selectedSize, selectedColor, normalizedSizes, addItem, getCustomization, displayPrice, displayMrp, activeVariant]);
@@ -390,8 +531,8 @@ const ProductDetails = () => {
         const cartItemId = `${product._id}-${selectedSize || 'nosize'}-${selectedColor || 'nocolor'}`;
         const buyNowItem = {
             ...product,
-            _id: cartItemId, // 🔥 Trick Checkout into treating this as unique
-            productId: product._id, // 🔥 Preserve real ID
+            _id: cartItemId,
+            productId: product._id,
             price: displayPrice,
             mrp: displayMrp,
             images: activeVariant?.images?.length ? activeVariant.images : product.images,
@@ -400,7 +541,7 @@ const ProductDetails = () => {
             selectedSize,
             selectedColor,
             customization: getCustomization(),
-            cartItemId
+            cartItemId,
         };
         try { sessionStorage.setItem("ux_buy_now_item", JSON.stringify(buyNowItem)); } catch { }
         navigate("/checkout", { state: { buyNowItem } });
@@ -453,7 +594,7 @@ const ProductDetails = () => {
         } catch { /* silent */ }
     }, [product?._id, fetchReviews]);
 
-    /* ── Loading / Error states ── */
+    /* ── Loading / Error ── */
     if (loading) return (
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f1f3f6" }}>
             <div style={{ textAlign: "center" }}>
@@ -531,12 +672,18 @@ const ProductDetails = () => {
 .pd-share-btn { position:absolute; top:10px; right:10px; background:#fff; border:none; border-radius:20px; padding:6px 12px; font-size:11px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.1); }
 .pd-trust { display:flex; align-items:center; gap:8px; padding:10px 0; font-size:12px; border-bottom:1px solid #f0f0f0; }
 
-/* ── Color Variant Buttons ── */
 .pd-color-btn { display:flex; align-items:center; gap:8px; padding:6px 12px 6px 8px; border-radius:6px; cursor:pointer; transition:all .18s; position:relative; min-height:42px; font-family:'Roboto',sans-serif; }
 .pd-color-btn:hover:not(.oos) { transform:translateY(-1px); box-shadow:0 4px 12px rgba(40,116,240,.15); }
 .pd-color-btn.selected { box-shadow:0 0 0 1px #fff,0 0 0 3px #2874f0; }
 .pd-color-btn.oos { cursor:not-allowed; opacity:.45; }
 .pd-color-check { position:absolute; top:-7px; right:-7px; background:#2874f0; color:#fff; width:17px; height:17px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:800; border:2px solid #fff; }
+
+/* Related products scroll */
+.pd-related-scroll { display:flex; gap:14px; overflow-x:auto; padding:12px 0 16px 0; margin:0 -4px; padding-left:4px; padding-right:4px; scrollbar-width:thin; scrollbar-color:#d1d5db #f3f4f6; -webkit-overflow-scrolling:touch; scroll-behavior:smooth; }
+.pd-related-scroll::-webkit-scrollbar { height:6px; }
+.pd-related-scroll::-webkit-scrollbar-track { background:#f3f4f6; border-radius:10px; }
+.pd-related-scroll::-webkit-scrollbar-thumb { background:#d1d5db; border-radius:10px; }
+.pd-related-scroll::-webkit-scrollbar-thumb:hover { background:#9ca3af; }
 
 @media (max-width:1024px){ .pd-main-grid{ grid-template-columns:1fr 1fr !important; } }
 @media (max-width:768px){
@@ -644,7 +791,7 @@ const ProductDetails = () => {
                                 <span style={{ fontSize: 13, color: "#878787" }}>{reviews.length} Ratings &amp; Reviews</span>
                             </div>
 
-                            {/* ══ PRICE — Dynamic (changes on color select) ══ */}
+                            {/* Price */}
                             <div style={{ marginBottom: 4 }}>
                                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 4 }}>
                                     <span style={{ fontSize: "2rem", fontWeight: 700, color: "#212121", lineHeight: 1, transition: "all .2s" }}>
@@ -658,7 +805,6 @@ const ProductDetails = () => {
                                             {discountPct}% off
                                         </span>
                                     </>}
-                                    {/* Agar variant ka alag price hai toh badge show karo */}
                                     {activeVariant?.price != null && Number(activeVariant.price) > 0 && Number(activeVariant.price) !== Number(product.price) && (
                                         <span style={{ fontSize: 10, color: "#6366f1", background: "#eef2ff", padding: "2px 8px", borderRadius: 4, fontWeight: 700 }}>
                                             {activeVariant.name} price
@@ -678,7 +824,7 @@ const ProductDetails = () => {
                                 <DeliveryEstimate productPrice={displayPrice} productWeight={product.weight || 500} />
                             </div>
 
-                            {/* ══ STOCK — Dynamic (changes on color select) ══ */}
+                            {/* Stock */}
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
                                 {variantInStock ? (<>
                                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#388e3c", display: "inline-block" }} />
@@ -697,7 +843,7 @@ const ProductDetails = () => {
                                 </>)}
                             </div>
 
-                            {/* ══ SIZES ══ */}
+                            {/* Sizes */}
                             {normalizedSizes.length > 0 && (
                                 <div style={{ marginBottom: 18 }}>
                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -732,7 +878,7 @@ const ProductDetails = () => {
                                 </div>
                             )}
 
-                            {/* ══ COLOR VARIANTS — Full Production UI ══ */}
+                            {/* Color Variants */}
                             {product.colorVariants?.length > 0 && (
                                 <div style={{ marginBottom: 18 }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -743,7 +889,6 @@ const ProductDetails = () => {
                                                     <span style={{ width: 14, height: 14, borderRadius: "50%", background: activeVariant.hex, border: "1.5px solid #e0e0e0", display: "inline-block" }} />
                                                 )}
                                                 <span style={{ fontSize: 13, fontWeight: 600, color: "#212121" }}>: {selectedColor}</span>
-                                                {/* Variant price badge — agar base se alag hai */}
                                                 {activeVariant?.price != null && Number(activeVariant.price) > 0 && Number(activeVariant.price) !== Number(product.price) && (
                                                     <span style={{ fontSize: 11, color: "#388e3c", background: "#f0fdf4", padding: "1px 8px", borderRadius: 4, fontWeight: 700, border: "1px solid #bbf7d0" }}>
                                                         ₹{Number(activeVariant.price).toLocaleString("en-IN")}
@@ -772,22 +917,15 @@ const ProductDetails = () => {
                                                         background: isSelected ? "#f0f5ff" : "#fff",
                                                     }}
                                                 >
-                                                    {/* Swatch — thumbnail priority, fallback hex color circle */}
                                                     {thumb ? (
-                                                        <img
-                                                            src={thumb}
-                                                            alt={cName}
-                                                            style={{ width: 32, height: 32, objectFit: "cover", borderRadius: 4, border: "1px solid #e0e0e0", flexShrink: 0 }}
-                                                        />
+                                                        <img src={thumb} alt={cName} style={{ width: 32, height: 32, objectFit: "cover", borderRadius: 4, border: "1px solid #e0e0e0", flexShrink: 0 }} />
                                                     ) : variant.hex ? (
                                                         <span style={{ width: 24, height: 24, borderRadius: "50%", background: variant.hex, border: "2px solid #e0e0e0", display: "inline-block", flexShrink: 0 }} />
                                                     ) : null}
-
                                                     <div style={{ textAlign: "left" }}>
                                                         <div style={{ fontSize: 12, fontWeight: 600, color: isSelected ? "#2874f0" : "#212121", textTransform: "capitalize" }}>
                                                             {cName}
                                                         </div>
-                                                        {/* Variant ka price — agar base se alag hai */}
                                                         {variant.price != null && Number(variant.price) > 0 && Number(variant.price) !== Number(product.price) && (
                                                             <div style={{ fontSize: 11, color: "#388e3c", fontWeight: 700 }}>
                                                                 ₹{Number(variant.price).toLocaleString("en-IN")}
@@ -797,7 +935,6 @@ const ProductDetails = () => {
                                                             <div style={{ fontSize: 10, color: "#ff6161", fontWeight: 600 }}>Out of stock</div>
                                                         )}
                                                     </div>
-
                                                     {isSelected && <span className="pd-color-check">✓</span>}
                                                 </button>
                                             );
@@ -887,12 +1024,12 @@ const ProductDetails = () => {
                                 );
                             })()}
 
-                            {/* ══ CTA Buttons ══ */}
+                            {/* CTA Buttons */}
                             {variantInStock ? (
                                 <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
                                     <button
                                         onClick={handleAddToCart}
-                                        className={`pd-btn pd-cart`}
+                                        className="pd-btn pd-cart"
                                         style={addedFlash ? { background: "#4caf50", color: "#fff" } : {}}
                                     >
                                         <FaShoppingCart size={16} />
@@ -1105,12 +1242,23 @@ const ProductDetails = () => {
                         </div>
                     </div>
 
-                    {/* Related Products */}
+                    {/* ── Related Products ── */}
                     {relatedProducts.length > 0 && (
-                        <div style={{ borderTop: "1px solid #f0f0f0", padding: "24px 28px" }}>
-                            <p style={{ fontSize: 11, fontWeight: 800, color: "#2874f0", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 }}>You May Also Like</p>
-                            <h2 style={{ fontSize: "1.15rem", fontWeight: 700, color: "#212121", marginBottom: 20 }}>Similar Products</h2>
-                            <RelatedProductsSlider products={relatedProducts} />
+                        <div style={{ borderTop: "1px solid #e5e7eb", padding: "24px 16px", background: "linear-gradient(135deg, #fafafa 0%, #fff 100%)" }}>
+                            <div style={{ marginBottom: 20 }}>
+                                <p style={{ fontSize: 11, fontWeight: 900, color: "#2874f0", textTransform: "uppercase", letterSpacing: ".15em", marginBottom: 6 }}>
+                                    ✨ Recommended For You
+                                </p>
+                                <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#1f2937", marginBottom: 4, letterSpacing: "-.5px" }}>
+                                    Similar Products
+                                </h2>
+                                <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>Customers also viewed these products</p>
+                            </div>
+                            <div className="pd-related-scroll">
+                                {relatedProducts.map(rp => (
+                                    <RelatedCard key={rp._id} rp={rp} />
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>

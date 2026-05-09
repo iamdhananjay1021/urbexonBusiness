@@ -77,20 +77,18 @@ const AppRoutes = () => (
     <ScrollToTop />
     <Suspense fallback={<Loader />}>
       <Routes>
-        {/* Public only */}
+        {/* Public only (outside MainLayout) */}
         <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
         <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password/:token" element={<ResetPassword />} />
-        <Route path="/order-success/:id" element={<RequireAuth><OrderSuccess /></RequireAuth>} />
 
-        {/* Standalone pages (no MainLayout) */}
+        {/* Standalone checkout pages (no MainLayout, no Footer) */}
         <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />
         <Route path="/uh-checkout" element={<RequireAuth><UHCheckout /></RequireAuth>} />
         <Route path="/uh-product/:id" element={<PageTransition><UHProductDetail /></PageTransition>} />
 
-        {/* Main Layout routes */}
+        {/* Main Layout routes — all public + protected routes grouped here */}
         <Route element={<MainLayout />}>
+          {/* Public pages */}
           <Route path="/" element={<PageTransition><Home /></PageTransition>} />
           <Route path="/products" element={<PageTransition><ProductsPage /></PageTransition>} />
           <Route path="/category/:slug" element={<PageTransition><CategoryPage /></PageTransition>} />
@@ -101,6 +99,7 @@ const AppRoutes = () => (
           <Route path="/urbexon-hour" element={<PageTransition><UrbexonHour /></PageTransition>} />
           <Route path="/urbexon-hour/:slug" element={<PageTransition><UrbexonHour /></PageTransition>} />
 
+          {/* Policy & Info pages */}
           <Route path="/privacy-policy" element={<PageTransition><PrivacyPolicy /></PageTransition>} />
           <Route path="/terms-conditions" element={<PageTransition><TermsConditions /></PageTransition>} />
           <Route path="/refund-policy" element={<PageTransition><RefundPolicy /></PageTransition>} />
@@ -110,15 +109,21 @@ const AppRoutes = () => (
           <Route path="/become-delivery" element={<PageTransition><BecomeDelivery /></PageTransition>} />
           <Route path="/vendor/:slug" element={<PageTransition><VendorStore /></PageTransition>} />
 
-          {/* Protected */}
+          {/* Authentication — Password reset inside MainLayout */}
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
+
+          {/* Protected routes */}
           <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
+          <Route path="/uh-cart" element={<RequireAuth><UHCart /></RequireAuth>} />
           <Route path="/orders" element={<RequireAuth><MyOrders /></RequireAuth>} />
           <Route path="/orders/:id" element={<RequireAuth><OrderDetails /></RequireAuth>} />
+          <Route path="/order-success/:id" element={<RequireAuth><OrderSuccess /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
-          <Route path="/uh-cart" element={<RequireAuth><UHCart /></RequireAuth>} />
           <Route path="/wishlist" element={<RequireAuth><Wishlist /></RequireAuth>} />
         </Route>
 
+        {/* Catch-all 404 */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>
