@@ -20,7 +20,7 @@ import { registerVendor } from "./vendor/vendorAuth.js";
 const OTP_EXPIRY_MS = 10 * 60 * 1000;   // 10 min
 const RESET_EXPIRY_MS = 15 * 60 * 1000;   // 15 min
 const MAX_OTP_ATTEMPTS = 5;
-const BCRYPT_ROUNDS = 12;
+const BCRYPT_ROUNDS = 8;
 const JWT_EXPIRY = "30d";
 
 const BRAND = {
@@ -123,16 +123,24 @@ export const register = async (req, res) => {
 ═══════════════════════════════════════════════════ */
 export const verifyOtp = async (req, res) => {
     try {
-        const { email, otp } = req.body;
+        // Support both email and phone number for OTP verification
+        const { email, phone, otp } = req.body;
+        const identifier = email || phone;
 
-        if (!email?.trim() || !otp?.trim())
-            return res.status(400).json({ success: false, message: "Email and OTP are required" });
+        if (!identifier?.trim() || !otp?.trim())
+            return res.status(400).json({ success: false, message: "Email/phone and OTP are required" });
 
-        const user = await User.findOne({ email: sanitizeEmail(email) })
+        // Determine if identifier is email or phone
+        const isEmail = identifier.includes("@");
+        const query = isEmail
+            ? { email: sanitizeEmail(identifier) }
+            : { phone: identifier.trim() };
+
+        const user = await User.findOne(query)
             .select("+emailOtp +emailOtpExpires +emailOtpAttempts");
 
         if (!user)
-            return res.status(404).json({ success: false, message: "No account found with this email" });
+            return res.status(404).json({ success: false, message: "No account found with this identifier" });
 
         if (user.isEmailVerified)
             return res.status(400).json({ success: false, message: "Email is already verified. Please login." });
@@ -211,16 +219,25 @@ export const resendOtp = async (req, res) => {
 ═══════════════════════════════════════════════════ */
 export const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
-        if (!email?.trim() || !password?.trim())
-            return res.status(400).json({ success: false, message: "Email and password are required" });
+        // Support both email and phone number as login identifier
+        const { email, phone, password } = req.body;
+        const identifier = email || phone;
 
-        const user = await User.findOne({ email: sanitizeEmail(email) })
+        if (!identifier?.trim() || !password?.trim())
+            return res.status(400).json({ success: false, message: "Email/phone and password are required" });
+
+        // Determine if identifier is email or phone
+        const isEmail = identifier.includes("@");
+        const query = isEmail
+            ? { email: sanitizeEmail(identifier) }
+            : { phone: identifier.trim() };
+
+        const user = await User.findOne(query)
             .select("+password +emailOtp +emailOtpExpires +emailOtpAttempts");
-        if (!user) return res.status(401).json({ success: false, message: "Invalid email or password" });
+        if (!user) return res.status(401).json({ success: false, message: "Invalid credentials" });
 
         const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) return res.status(401).json({ success: false, message: "Invalid email or password" });
+        if (!isMatch) return res.status(401).json({ success: false, message: "Invalid credentials" });
 
         if (["admin", "owner"].includes(user.role))
             return res.status(403).json({ success: false, message: "Admin accounts must login via the Admin Panel." });
@@ -249,12 +266,20 @@ export const login = async (req, res) => {
 ═══════════════════════════════════════════════════ */
 export const adminLogin = async (req, res) => {
     try {
-        const { email, password } = req.body;
-        if (!email?.trim() || !password?.trim())
-            return res.status(400).json({ success: false, message: "Email and password are required" });
+        // Support both email and phone number as login identifier
+        const { email, phone, password } = req.body;
+        const identifier = email || phone;
 
-        const user = await User.findOne({ email: sanitizeEmail(email), role: { $in: ["admin", "owner"] } })
-            .select("+password");
+        if (!identifier?.trim() || !password?.trim())
+            return res.status(400).json({ success: false, message: "Email/phone and password are required" });
+
+        // Determine if identifier is email or phone
+        const isEmail = identifier.includes("@");
+        const query = isEmail
+            ? { email: sanitizeEmail(identifier), role: { $in: ["admin", "owner"] } }
+            : { phone: identifier.trim(), role: { $in: ["admin", "owner"] } };
+
+        const user = await User.findOne(query).select("+password");
 
         if (!user) return res.status(401).json({ success: false, message: "Invalid credentials" });
 

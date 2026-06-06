@@ -226,7 +226,7 @@ const VendorApply = () => {
 
     // Fetch dynamic categories
     useEffect(() => {
-        api.get("/categories", { params: { type: "urbexon_hour" } })
+        api.get("/categories", { params: { type: "ecommerce" } })
             .then(({ data }) => {
                 const cats = Array.isArray(data) ? data : data.categories || [];
                 setCategoryList(cats.filter(c => c.isActive !== false).map(c => c.name));

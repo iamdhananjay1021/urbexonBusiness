@@ -221,7 +221,7 @@ const AllProductsSection = () => {
 
     return (
         <section style={{ background: "#fafafa", borderTop: "1px solid #f0f0f0" }}>
-            <div className="container" style={{ paddingTop: 56, paddingBottom: 64 }}>
+            <div className="container" style={{ paddingTop: 15, paddingBottom: 15 }}>
                 <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
                     <div>
                         <h2 style={{ fontSize: "clamp(18px, 2.2vw, 24px)", fontWeight: 800, color: "#1a1a1a", letterSpacing: "-0.02em", margin: 0, display: "flex", alignItems: "center", gap: 10, fontFamily: "'Inter', 'Poppins', -apple-system, sans-serif" }}>
@@ -526,117 +526,88 @@ const Home = () => {
 
             {/* ━━ HERO BANNER ━━ */}
             {loading && slides.length === 0 ? (
-                <div style={{ background: "#1a1a1a", minHeight: 280 }}>
-                    <div className="container" style={{ paddingTop: 64, paddingBottom: 64, display: "flex", flexDirection: "column", gap: 16 }}>
-                        {["150px", "60%", "45%", "25%"].map((w, i) => (
-                            <div key={i} style={{ height: i === 0 ? 14 : i === 1 ? 24 : i === 2 ? 18 : 13, width: w, background: "rgba(255,255,255,0.08)", borderRadius: 8, animation: "pulse 1.8s ease-in-out infinite" }} />
-                        ))}
-                    </div>
+                <div className="w-full bg-zinc-900 h-[280px] sm:h-[350px] md:h-[450px] lg:h-[500px] xl:h-[600px] flex flex-col gap-4 justify-center px-6 sm:px-12 animate-pulse">
+                    <div className="h-4 w-24 bg-white/10 rounded-full" />
+                    <div className="h-8 sm:h-12 w-3/4 sm:w-1/2 bg-white/10 rounded-lg" />
+                    <div className="h-4 sm:h-6 w-1/2 sm:w-1/3 bg-white/10 rounded-md" />
+                    <div className="h-10 sm:h-12 w-32 bg-white/10 rounded-xl mt-4" />
                 </div>
             ) : slides.length > 0 ? (
-                <div style={{ position: "relative", width: "100%", background: "#1a1a1a", overflow: "hidden" }}
-                    className="hero-aspect">
+                <div className="relative w-full bg-zinc-900 overflow-hidden h-[320px] xs:h-[380px] sm:h-[450px] md:h-[500px] lg:h-[550px] xl:h-[600px] group">
                     {slides.map((slide, i) => {
                         const bg = slide.image?.url || (typeof slide.image === "string" ? slide.image : null) || "/banner-fallback.jpg";
                         return (
-                            <div key={slide._id} style={{
-                                position: "absolute", inset: 0, width: "100%", height: "100%",
-                                opacity: i === heroIdx ? 1 : 0, zIndex: i === heroIdx ? 10 : 0,
-                                transition: "opacity 0.7s ease",
-                                display: "flex", alignItems: "center",
-                            }}>
-                                <img
-                                    src={bg} alt={slide.title || "Banner"}
-                                    loading={i === 0 ? "eager" : "lazy"}
-                                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center" }}
-                                />
-                                {/* Gradient: left heavy, fades right */}
-                                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(105deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.45) 45%, rgba(0,0,0,0.05) 100%)" }} />
+                            <div key={slide._id}
+                                className={`absolute inset-0 w-full h-full transition-opacity duration-700 ease-in-out flex items-center ${i === heroIdx ? "opacity-100 z-10" : "opacity-0 z-0"}`}>
 
-                                <div className="container" style={{ position: "relative", zIndex: 2, width: "100%", paddingTop: 32, paddingBottom: 32 }}>
-                                    <div style={{ maxWidth: 520 }}>
+                                {/* Background Image with safe object-fit */}
+                                <div className="absolute inset-0 w-full h-full">
+                                    <img
+                                        src={bg} alt={slide.title || "Banner"}
+                                        loading={i === 0 ? "eager" : "lazy"}
+                                        className="w-full h-full object-cover object-center sm:object-cover"
+                                    />
+                                    {/* Gradient Overlay for Text Readability */}
+                                    <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/60 to-black/10 sm:from-black/80 sm:via-black/40 sm:to-transparent" />
+                                    {/* Additional bottom gradient for mobile to make dots/arrows visible */}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent sm:hidden" />
+                                </div>
+
+                                {/* Content Overlay */}
+                                <div className="container relative z-10 w-full pt-8 pb-12 sm:py-12 flex flex-col justify-center h-full">
+                                    <div className="w-full max-w-[90%] sm:max-w-[450px] md:max-w-[550px] lg:max-w-[650px] flex flex-col items-start">
+
                                         {slide.tag && (
-                                            <div style={{
-                                                display: "inline-flex", alignItems: "center", gap: 6,
-                                                padding: "5px 12px", borderRadius: 100,
-                                                background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.18)",
-                                                fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.9)",
-                                                letterSpacing: "0.1em", textTransform: "uppercase",
-                                                marginBottom: 14, backdropFilter: "blur(8px)",
-                                            }}>
+                                            <div className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-white/10 border border-white/20 text-[10px] sm:text-xs font-bold text-white tracking-widest uppercase mb-3 sm:mb-4 backdrop-blur-md shadow-sm">
                                                 🔥 {slide.tag}
                                             </div>
                                         )}
-                                        <h1 style={{
-                                            fontSize: "clamp(22px,5vw,56px)", fontWeight: 900,
-                                            color: "#fff", lineHeight: 1.08, letterSpacing: "-0.03em",
-                                            margin: "0 0 12px",
-                                        }}>
+
+                                        <h1 className="text-2xl xs:text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white leading-[1.15] tracking-tight mb-2 sm:mb-4 drop-shadow-lg">
                                             {slide.title}
                                             {slide.highlight && (
-                                                <em style={{ color: "#facc15", display: "block", fontStyle: "normal" }}>{slide.highlight}</em>
+                                                <em className="text-yellow-400 block not-italic mt-1 sm:mt-2 drop-shadow-md">{slide.highlight}</em>
                                             )}
                                         </h1>
+
                                         {(slide.subtitle || slide.desc || slide.description) && (
-                                            <p style={{
-                                                fontSize: 14, color: "rgba(255,255,255,0.65)",
-                                                lineHeight: 1.6, marginBottom: 24, maxWidth: 420,
-                                                display: "none",
-                                            }} className="hero-desc">
+                                            <p className="text-sm sm:text-base lg:text-lg text-white/90 leading-relaxed mb-5 sm:mb-8 max-w-[95%] sm:max-w-[90%] drop-shadow-md line-clamp-2 sm:line-clamp-none">
                                                 {slide.subtitle || slide.desc || slide.description}
                                             </p>
                                         )}
-                                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+
+                                        {/* Buttons */}
+                                        <div className="flex gap-3 sm:gap-4 flex-wrap mt-2 sm:mt-0">
                                             <button
                                                 onClick={() => {
                                                     const t = slide.link || slide.ctaLink || "/";
                                                     t.startsWith("http") ? window.open(t, "_blank", "noopener") : navigate(t);
                                                 }}
-                                                style={{
-                                                    padding: "11px 24px", borderRadius: 12,
-                                                    background: "#fff", color: "#0a0a0a",
-                                                    fontSize: 13, fontWeight: 800,
-                                                    border: "none", cursor: "pointer",
-                                                    display: "flex", alignItems: "center", gap: 8,
-                                                    letterSpacing: "-0.01em",
-                                                    transition: "all 0.15s",
-                                                    boxShadow: "0 4px 20px rgba(0,0,0,0.25)",
-                                                }}
-                                                onMouseEnter={e => { e.currentTarget.style.background = "#f0f0f0"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-                                                onMouseLeave={e => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.transform = "translateY(0)"; }}
+                                                className="px-5 py-2.5 sm:px-8 sm:py-3.5 rounded-lg sm:rounded-xl bg-white text-zinc-900 text-xs sm:text-sm md:text-base font-extrabold border-none cursor-pointer flex items-center gap-2 hover:bg-zinc-100 active:scale-95 transition-all shadow-lg"
                                             >
                                                 {slide.buttonText || slide.cta || "Shop Now"} <FaArrowRight size={11} />
                                             </button>
+
                                             {slide.secondary && (
                                                 <button
                                                     onClick={() => navigate(slide.secondaryLink || "/deals")}
-                                                    style={{
-                                                        padding: "11px 22px", borderRadius: 12,
-                                                        background: "rgba(255,255,255,0.1)", border: "1.5px solid rgba(255,255,255,0.25)",
-                                                        color: "#fff", fontSize: 13, fontWeight: 600,
-                                                        cursor: "pointer", backdropFilter: "blur(8px)",
-                                                        transition: "all 0.15s",
-                                                    }}
-                                                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.18)"; }}
-                                                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }}
+                                                    className="px-5 py-2.5 sm:px-6 sm:py-3.5 rounded-lg sm:rounded-xl bg-white/10 border border-white/20 text-white text-xs sm:text-sm md:text-base font-semibold cursor-pointer backdrop-blur-md hover:bg-white/20 active:scale-95 transition-all"
                                                 >
                                                     {slide.secondary}
                                                 </button>
                                             )}
                                         </div>
+
                                         {/* Stats — desktop */}
-                                        <div className="hero-stats">
+                                        <div className="hidden md:flex gap-4 mt-10">
                                             {[
                                                 { v: "Free", l: "Delivery ₹499+" },
                                                 { v: stats.products ? `${stats.products.toLocaleString()}+` : "—", l: "Products" },
                                                 { v: stats.categories || "—", l: "Categories" },
                                             ].map(({ v, l }) => (
-                                                <div key={l} style={{
-                                                    background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
-                                                    borderRadius: 12, padding: "10px 16px", backdropFilter: "blur(8px)",
-                                                }}>
-                                                    <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>{v}</div>
-                                                    <div style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginTop: 2 }}>{l}</div>
+                                                <div key={l} className="bg-white/10 border border-white/10 rounded-xl px-5 py-3 backdrop-blur-md shadow-sm">
+                                                    <div className="text-lg lg:text-xl font-black text-white leading-none mb-1">{v}</div>
+                                                    <div className="text-[10px] lg:text-xs text-white/60 font-bold uppercase tracking-widest">{l}</div>
                                                 </div>
                                             ))}
                                         </div>
@@ -648,47 +619,37 @@ const Home = () => {
 
                     {slides.length > 1 && (
                         <>
-                            <button onClick={() => goHero(-1)} className="hero-nav hero-nav-l"><FaChevronLeft size={12} /></button>
-                            <button onClick={() => goHero(1)} className="hero-nav hero-nav-r"><FaChevronRight size={12} /></button>
-                            <div style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 6, zIndex: 20 }}>
+                            {/* Navigation Arrows */}
+                            <button onClick={() => goHero(-1)} className="absolute left-2 sm:left-4 md:left-6 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-black/20 hover:bg-black/40 border border-white/20 flex items-center justify-center text-white cursor-pointer backdrop-blur-md transition-all active:scale-95 opacity-100 sm:opacity-0 group-hover:opacity-100">
+                                <FaChevronLeft size={14} className="mr-0.5" />
+                            </button>
+                            <button onClick={() => goHero(1)} className="absolute right-2 sm:right-4 md:right-6 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-black/20 hover:bg-black/40 border border-white/20 flex items-center justify-center text-white cursor-pointer backdrop-blur-md transition-all active:scale-95 opacity-100 sm:opacity-0 group-hover:opacity-100">
+                                <FaChevronRight size={14} className="ml-0.5" />
+                            </button>
+
+                            {/* Dots Indicator */}
+                            <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-20 bg-black/20 px-3 py-1.5 rounded-full backdrop-blur-sm border border-white/10">
                                 {slides.map((_, i) => (
-                                    <button key={i} onClick={() => { setHeroIdx(i); resetTimer(); }} style={{
-                                        height: 4, borderRadius: 4, background: "rgba(255,255,255,0.9)", border: "none", cursor: "pointer",
-                                        width: i === heroIdx ? 24 : 6, opacity: i === heroIdx ? 1 : 0.35,
-                                        transition: "all 0.3s", padding: 0,
-                                    }} />
+                                    <button key={i} onClick={() => { setHeroIdx(i); resetTimer(); }}
+                                        className={`h-1.5 sm:h-2 rounded-full border-none cursor-pointer transition-all duration-300 p-0 ${i === heroIdx ? "w-6 sm:w-8 bg-white" : "w-1.5 sm:w-2 bg-white/40 hover:bg-white/60"}`}
+                                        aria-label={`Go to slide ${i + 1}`} />
                                 ))}
                             </div>
                         </>
                     )}
                 </div>
             ) : !loading && (
-                <div style={{
-                    background: "linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)",
-                    display: "flex", alignItems: "center",
-                    minHeight: 420,
-                    borderRadius: 0,
-                }}>
-                    <div className="container" style={{ paddingTop: 64, paddingBottom: 64 }}>
-                        <div style={{ maxWidth: 540 }}>
-                            <h1 style={{ fontSize: "clamp(28px,5vw,52px)", fontWeight: 900, color: "#fff", lineHeight: 1.1, letterSpacing: "-0.02em", marginBottom: 16, fontFamily: "'Inter', 'Poppins', -apple-system, sans-serif" }}>
-                                Welcome to <em style={{ color: "#facc15", display: "inline", fontStyle: "normal" }}>Urbexon</em>
-                                <br style={{ display: "none" }} className="mobile-br" />
+                <div className="w-full bg-gradient-to-br from-zinc-900 to-zinc-800 flex items-center min-h-[300px] sm:min-h-[420px]">
+                    <div className="container py-12 sm:py-16">
+                        <div className="max-w-[540px]">
+                            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white leading-tight tracking-tight mb-4">
+                                Welcome to <em className="text-yellow-400 not-italic">Urbexon</em>
                             </h1>
-                            <p style={{ fontSize: 15, color: "rgba(255,255,255,0.65)", marginBottom: 32, lineHeight: 1.7, maxWidth: 460 }}>
+                            <p className="text-sm sm:text-base text-white/70 mb-8 leading-relaxed max-w-[460px]">
                                 Discover premium products from verified sellers with fast delivery and secure checkout.
                             </p>
-                            <button onClick={() => navigate("/deals")} style={{
-                                padding: "12px 28px", background: "#fff", color: "#1a1a1a",
-                                border: "none", borderRadius: 8, fontSize: 14, fontWeight: 700,
-                                cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8,
-                                letterSpacing: "-0.01em",
-                                fontFamily: "'Inter', -apple-system, sans-serif",
-                                transition: "all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                            }}
-                                onMouseEnter={e => { e.currentTarget.style.background = "#f0f0f0"; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                                onMouseLeave={e => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.transform = "translateY(0)"; }}
-                            >
+                            <button onClick={() => navigate("/deals")}
+                                className="px-6 py-3 bg-white text-zinc-900 rounded-xl text-sm font-bold cursor-pointer inline-flex items-center gap-2 hover:bg-zinc-100 hover:-translate-y-0.5 transition-all shadow-lg">
                                 Explore Deals <FaArrowRight size={12} />
                             </button>
                         </div>
@@ -795,7 +756,7 @@ const Home = () => {
             {/* ━━ TRENDING ━━ */}
             {(loading || featured.length > 0) && (
                 <section style={{ background: "#fff", borderTop: "1px solid #f0f0f0" }}>
-                    <div className="container" style={{ paddingTop: 56, paddingBottom: 56 }}>
+                    <div className="container" style={{ paddingTop: 10, paddingBottom: 10 }}>
                         <SecHead title="Trending Now" sub="Most popular products right now" to="/products?sort=rating" label="See all" />
                         <PGrid products={featured} loading={loading} skCount={8} />
                     </div>
@@ -805,7 +766,7 @@ const Home = () => {
             {/* ━━ NEW ARRIVALS ━━ */}
             {(loading || newArrivals.length > 0) && (
                 <section style={{ background: "#fafafa", borderTop: "1px solid #f0f0f0" }}>
-                    <div className="container" style={{ paddingTop: 56, paddingBottom: 56 }}>
+                    <div className="container" style={{ paddingTop: 10, paddingBottom: 10 }}>
                         <SecHead title="New Arrivals" sub="Fresh drops and latest collections" to="/products?sort=newest" label="See all" />
                         <HScrollRow products={newArrivals} loading={loading} skCount={6} />
                     </div>
@@ -815,7 +776,7 @@ const Home = () => {
             {/* ━━ RECENTLY VIEWED ━━ */}
             {ecRecent.length > 0 && (
                 <section style={{ background: "#fff", borderTop: "1px solid #f0f0f0" }}>
-                    <div className="container" style={{ paddingTop: 56, paddingBottom: 56 }}>
+                    <div className="container" style={{ paddingTop: 10, paddingBottom: 10 }}>
                         <SecHead title="Recently Viewed" sub="Continue where you left off" />
                         <HScrollRow products={ecRecent.slice(0, 12)} loading={false} />
                     </div>
@@ -825,7 +786,7 @@ const Home = () => {
             {/* ━━ FOR YOU ━━ */}
             {forYouProducts.length > 0 && (
                 <section style={{ background: "#fafafa", borderTop: "1px solid #f0f0f0" }}>
-                    <div className="container" style={{ paddingTop: 56, paddingBottom: 56 }}>
+                    <div className="container" style={{ paddingTop: 15, paddingBottom: 15 }}>
                         <SecHead
                             title={`Similar to "${forYouTerm}"`}
                             sub="Handpicked recommendations just for you"
@@ -841,7 +802,7 @@ const Home = () => {
 
             {/* ━━ WHY CHOOSE URBEXON ━━ */}
             <section style={{ background: "#fff", borderTop: "1px solid #f0f0f0" }}>
-                <div className="container" style={{ paddingTop: 56, paddingBottom: 64 }}>
+                <div className="container" style={{ paddingTop: 15, paddingBottom: 15 }}>
                     <div style={{ textAlign: "center", marginBottom: 40 }}>
                         <h2 style={{ fontSize: "clamp(22px, 3vw, 28px)", fontWeight: 800, color: "#1a1a1a", letterSpacing: "-0.02em", margin: 0, fontFamily: "'Inter', 'Poppins', -apple-system, sans-serif" }}>
                             Why Choose Urbexon?
@@ -911,7 +872,6 @@ const Home = () => {
                                     padding: "14px 24px",
                                     background: "#fff", color: "#1a1a1a",
                                     border: "none", fontSize: 13, fontWeight: 800,
-                                    cursor: "pointer", whiteSpace: "nowrap",
                                     letterSpacing: "-0.01em",
                                     fontFamily: "'Inter', -apple-system, sans-serif",
                                     opacity: nlStatus === "sending" ? 0.7 : 1,
@@ -1006,48 +966,6 @@ const GLOBAL_CSS = `
     .container { padding-left: 60px; padding-right: 60px; }
   }
 
-  /* ━━━━━━━━━━━━━━━━━━ HERO SECTION ━━━━━━━━━━━━━━━━━━ */
-  .hero-aspect {
-    aspect-ratio: 5/4;
-    border-radius: var(--radius-2xl);
-    overflow: hidden;
-  }
-  @media (min-width: 640px) {
-    .hero-aspect { aspect-ratio: 18/7; border-radius: var(--radius-2xl); }
-    .hero-desc { display: block !important; }
-    .hero-stats { display: flex !important; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
-  }
-  @media (min-width: 1024px) {
-    .hero-aspect { aspect-ratio: 19/6; }
-  }
-  .hero-stats { display: none; }
-
-  .hero-nav {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 20;
-    width: 40px; height: 40px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.95);
-    border: 1px solid rgba(0,0,0,0.08);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    color: var(--text-primary);
-    box-shadow: var(--shadow-lg);
-    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-    backdrop-filter: blur(8px);
-  }
-  .hero-nav:hover { background: #fff; transform: translateY(-50%) scale(1.08); }
-  .hero-nav:active { transform: translateY(-50%) scale(0.96); }
-  @media (min-width: 640px) {
-    .hero-nav { display: flex; }
-  }
-  .hero-nav-l { left: 16px; }
-  .hero-nav-r { right: 16px; }
-
   /* ━━━━━━━━━━━━━━━━━━ HORIZONTAL SCROLL ━━━━━━━━━━━━━━━━━━ */
   .group-row {
     position: relative;
@@ -1060,7 +978,7 @@ const GLOBAL_CSS = `
     z-index: 10;
     width: 38px; height: 38px;
     border-radius: 50%;
-    background: var(--bg-white);
+    background: rgba(255, 255, 255, 0.95);
     border: 1px solid var(--border);
     box-shadow: var(--shadow-md);
     display: none;
@@ -1082,8 +1000,16 @@ const GLOBAL_CSS = `
     .hscroll-btn { display: flex; }
     .group-row:hover .hscroll-btn { opacity: 1; }
   }
-  .hscroll-btn-l { left: 0; }
-  .hscroll-btn-r { right: 0; }
+  .hscroll-btn-l { left: -16px; }
+  .hscroll-btn-r { right: -16px; }
+  @media (min-width: 1024px) {
+    .hscroll-btn-l { left: -40px; }
+    .hscroll-btn-r { right: -40px; }
+  }
+  @media (min-width: 1280px) {
+    .hscroll-btn-l { left: -52px; }
+    .hscroll-btn-r { right: -52px; }
+  }
 
   .hscroll-item {
     width: 140px !important;

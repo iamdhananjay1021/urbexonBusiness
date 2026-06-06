@@ -109,8 +109,14 @@ export const AuthProvider = ({ children }) => {
   // ✅ LOGIN
   const login = async (email, password) => {
     try {
+      // Support both email and phone number as login identifier
+      const isEmail = email.includes("@");
+      const loginPayload = isEmail
+        ? { email, password }
+        : { phone: email, password };
+
       // Step 1: Login via /auth/login
-      const { data } = await api.post("/auth/login", { email, password });
+      const { data } = await api.post("/auth/login", loginPayload);
 
       // If email verification required, throw error with response attached
       if (!data.token && data.requiresVerification) {

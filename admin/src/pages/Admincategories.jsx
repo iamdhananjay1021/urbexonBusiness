@@ -9,6 +9,7 @@ const AdminCategories = () => {
     const [loading, setLoading] = useState(true);
     const [deletingId, setDeletingId] = useState(null);
     const [toast, setToast] = useState(null);
+    const [activeTab, setActiveTab] = useState("all"); // all, ecommerce, urbexon_hour
 
     const showToast = (type, msg) => {
         setToast({ type, msg });
@@ -27,6 +28,11 @@ const AdminCategories = () => {
             }
         })();
     }, []);
+
+    // Filter categories by type
+    const filteredCategories = activeTab === "all"
+        ? categories
+        : categories.filter(cat => cat.type === activeTab);
 
     const handleDelete = async (slug) => {
         if (!window.confirm("Delete this category?")) return;
@@ -83,13 +89,40 @@ const AdminCategories = () => {
                     </button>
                     <div>
                         <h1 style={{ fontSize: 20, fontWeight: 700, color: "#1e293b", margin: 0 }}>Categories</h1>
-                        <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{categories.length} categor{categories.length !== 1 ? "ies" : "y"} total</p>
+                        <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{filteredCategories.length} categor{filteredCategories.length !== 1 ? "ies" : "y"}</p>
                     </div>
                 </div>
                 <button onClick={() => navigate("/admin/categories/new")}
                     style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 18px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                     <FiPlus size={15} /> Add Category
                 </button>
+            </div>
+
+            {/* Tabs */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
+                {[
+                    { id: "all", label: "📋 All", count: categories.length },
+                    { id: "ecommerce", label: "🛒 E-Commerce", count: categories.filter(c => c.type === "ecommerce").length },
+                    { id: "urbexon_hour", label: "⚡ Urbexon Hour", count: categories.filter(c => c.type === "urbexon_hour").length },
+                ].map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        style={{
+                            padding: "8px 16px",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            border: "none",
+                            borderBottom: activeTab === tab.id ? "2px solid #2563eb" : "2px solid transparent",
+                            background: "transparent",
+                            color: activeTab === tab.id ? "#2563eb" : "#94a3b8",
+                            cursor: "pointer",
+                            transition: "all 0.2s"
+                        }}
+                    >
+                        {tab.label} ({tab.count})
+                    </button>
+                ))}
             </div>
 
             {loading && (
@@ -110,9 +143,17 @@ const AdminCategories = () => {
                 </div>
             )}
 
-            {!loading && categories.length > 0 && (
+            {!loading && categories.length > 0 && filteredCategories.length === 0 && (
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "64px 24px", textAlign: "center" }}>
+                    <FiTag size={36} style={{ color: "#cbd5e1", marginBottom: 12 }} />
+                    <p style={{ fontSize: 15, fontWeight: 600, color: "#1e293b", marginBottom: 6 }}>No categories in this section</p>
+                    <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 20 }}>Switch to another tab or create new category</p>
+                </div>
+            )}
+
+            {!loading && filteredCategories.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {categories.map((cat) => (
+                    {filteredCategories.map((cat) => (
                         <div key={cat._id} className="cat-row" style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 18px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
 
                             {/* Emoji / Image */}

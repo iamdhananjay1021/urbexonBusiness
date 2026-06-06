@@ -51,6 +51,7 @@ const Navbar = () => {
     const [ecoCategories, setEcoCategories] = useState([]);
     const [uhCategories, setUhCategories] = useState([]);
     const [navHidden, setNavHidden] = useState(false);
+    const [scrolled, setScrolled] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
     const [searchOverlay, setSearchOverlay] = useState(false);
@@ -105,6 +106,7 @@ const Navbar = () => {
     useEffect(() => {
         const onScroll = () => {
             const y = window.scrollY;
+            setScrolled(y > 20);
             if (!mobileMenuOpen && !searchOverlay) setNavHidden(y > lastScrollY.current && y > 80);
             lastScrollY.current = y;
         };
@@ -256,7 +258,7 @@ const Navbar = () => {
                 className={`hidden md:block fixed top-0 left-0 right-0 z-[600] transition-transform duration-300 ${navHidden ? "-translate-y-full" : "translate-y-0"}`}
             >
                 {/* ── Main bar: white with bottom shadow ── */}
-                <div className="bg-white border-b border-gray-100 shadow-[0_1px_12px_rgba(0,0,0,0.06)]">
+                <div className={`border-b border-gray-100 shadow-[0_1px_12px_rgba(0,0,0,0.06)] transition-colors duration-300 ${scrolled ? "bg-white/85 backdrop-blur-md" : "bg-white"}`}>
                     <div className="max-w-[1400px] mx-auto px-4 lg:px-8 h-[60px] flex items-center gap-4">
 
                         {/* Logo */}
@@ -524,7 +526,7 @@ const Navbar = () => {
 
                 {/* ── Desktop Category Bar ── */}
                 {shouldShowCatBar && (
-                    <div className="bg-white border-b border-gray-100">
+                    <div className={`border-b border-gray-100 transition-colors duration-300 ${scrolled ? "bg-white/85 backdrop-blur-md" : "bg-white"}`}>
                         <div className="max-w-[1400px] mx-auto px-4 lg:px-8 flex items-center overflow-x-auto ux-scrollbar-hide gap-0">
                             {isUH ? (
                                 <>
@@ -592,7 +594,7 @@ const Navbar = () => {
             ════════════════════════════════════════ */}
             <div
                 id="urbexon-navbar"
-                className={`md:hidden fixed top-0 left-0 right-0 z-[600] transition-transform duration-300 bg-white border-b border-gray-100 shadow-[0_1px_8px_rgba(0,0,0,0.06)] ${navHidden ? "-translate-y-full" : "translate-y-0"}`}
+                className={`md:hidden fixed top-0 left-0 right-0 z-[600] transition-all duration-300 border-b border-gray-100 shadow-[0_1px_8px_rgba(0,0,0,0.06)] ${navHidden ? "-translate-y-full" : "translate-y-0"} ${scrolled ? "bg-white/85 backdrop-blur-md" : "bg-white"}`}
             >
                 <div className="flex items-center h-[54px] px-2 xs:px-3 gap-1.5">
 
@@ -684,7 +686,7 @@ const Navbar = () => {
             ════════════════════════════════════════ */}
             <div
                 id="urbexon-navbar"
-                className="md:hidden fixed bottom-0 left-0 right-0 z-[600] bg-white border-t border-gray-100 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
+                className={`md:hidden fixed bottom-0 left-0 right-0 z-[600] border-t border-gray-100 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] transition-colors duration-300 ${scrolled ? "bg-white/85 backdrop-blur-md" : "bg-white"}`}
             >
                 <div className="flex items-stretch h-[56px]">
                     {[

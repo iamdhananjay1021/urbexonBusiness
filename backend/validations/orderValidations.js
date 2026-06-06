@@ -40,6 +40,7 @@
 import Product from "../models/Product.js";
 import Pincode from "../models/vendorModels/Pincode.js";
 import Coupon from "../models/Coupon.js";
+import Vendor from "../models/vendorModels/Vendor.js";
 import { DELIVERY_CONFIG, DELIVERY_TYPES } from "../config/deliveryConfig.js";
 
 /* ─────────────────────────────────────────────────────────────
@@ -121,17 +122,26 @@ export const validateEcommerceItems = async (frontendItems) => {
     const formattedItems = [];
     let itemsTotal = 0;
 
+    // Optimized: Fetch all products in a single DB call
+    const productIds = frontendItems.map(item => item.productId || item._id).filter(Boolean);
+    const products = await Product.find({ _id: { $in: productIds }, isActive: true })
+        .select(
+            "name price mrp inStock stock images productType vendorId " +
+            "isCancellable isReturnable isReplaceable returnWindow " +
+            "replacementWindow cancelWindow nonReturnableReason colorVariants"
+        )
+        .lean();
+
+    const productMap = products.reduce((acc, p) => {
+        acc[p._id.toString()] = p;
+        return acc;
+    }, {});
+
     for (const item of frontendItems) {
         const productId = item.productId || item._id;
         if (!productId) throw new Error("Invalid product ID in cart");
 
-        const product = await Product.findOne({ _id: productId, isActive: true })
-            .select(
-                "name price mrp inStock stock images productType vendorId " +
-                "isCancellable isReturnable isReplaceable returnWindow " +
-                "replacementWindow cancelWindow nonReturnableReason colorVariants"
-            )
-            .lean();
+        const product = productMap[productId.toString()];
 
         if (!product) throw new Error(`Product not found: ${productId}`);
 
@@ -226,17 +236,26 @@ export const validateUrbexonHourItems = async (frontendItems) => {
     let itemsTotal = 0;
     const vendorIds = new Set();
 
+    // Optimized: Fetch all products in a single DB call
+    const productIds = frontendItems.map(item => item.productId || item._id).filter(Boolean);
+    const products = await Product.find({ _id: { $in: productIds }, isActive: true })
+        .select(
+            "name price mrp inStock stock images productType vendorId " +
+            "isCancellable isReturnable isReplaceable returnWindow " +
+            "replacementWindow cancelWindow nonReturnableReason prepTimeMinutes colorVariants"
+        )
+        .lean();
+
+    const productMap = products.reduce((acc, p) => {
+        acc[p._id.toString()] = p;
+        return acc;
+    }, {});
+
     for (const item of frontendItems) {
         const productId = item.productId || item._id;
         if (!productId) throw new Error("Invalid product ID in cart");
 
-        const product = await Product.findOne({ _id: productId, isActive: true })
-            .select(
-                "name price mrp inStock stock images productType vendorId " +
-                "isCancellable isReturnable isReplaceable returnWindow " +
-                "replacementWindow cancelWindow nonReturnableReason prepTimeMinutes colorVariants"
-            )
-            .lean();
+        const product = productMap[productId.toString()];
 
         if (!product) throw new Error(`Product not found: ${productId}`);
 
@@ -372,22 +391,37 @@ export const validatePaymentMethod = async (method, pincode, orderChannel = "eco
 /* ─────────────────────────────────────────────────────────────
    VALIDATION 4: Delivery serviceability
    • Ecommerce: no distance check (Shiprocket = pan-India)
-   • UH: distance check from shop location
+   • UH: STRICT distance check from specific vendor location
 ───────────────────────────────────────────────────────────── */
-export const validateDeliveryServiceability = (deliveryType, latitude, longitude) => {
+export const validateDeliveryServiceability = async (deliveryType, latitude, longitude, vendorId, pincode) => {
     if (deliveryType === "URBEXON_HOUR") {
         if (!DELIVERY_CONFIG.URBEXON_HOUR?.ENABLED)
             throw new Error("Urbexon Hour delivery is currently unavailable");
 
-        const shopLat = DELIVERY_CONFIG.SHOP_LAT;
-        const shopLng = DELIVERY_CONFIG.SHOP_LNG;
+        const vendor = await Vendor.findById(vendorId).select("location deliveryRadius servicePincodes").lean();
+        if (!vendor) throw new Error("Vendor not found.");
 
-        // ✅ BUG2 FIX: lat/lng is optional for UH orders.
-        // If not provided (e.g. browser geo permission denied), we fallback to shop
-        // coordinates so order placement doesn't fail. The assignment engine also
-        // falls back to SHOP_LAT/LNG when order coords are missing.
-        const orderLat = latitude ? Number(latitude) : shopLat;
-        const orderLng = longitude ? Number(longitude) : shopLng;
+        // 🚨 CRITICAL FIX: Stop trusting omitted coordinates. If no GPS, strictly verify pincode whitelist.
+        if (!latitude || !longitude) {
+            if (!pincode) throw new Error("Precise location or valid pincode is strictly required for express delivery.");
+            if (!vendor.servicePincodes || !vendor.servicePincodes.includes(String(pincode))) {
+                throw new Error("Your pincode is outside the delivery zone for this vendor.");
+            }
+            return { realDistanceKm: 0 }; // Fallback approved via Pincode whitelist
+        }
+
+        const orderLat = Number(latitude);
+        const orderLng = Number(longitude);
+
+        if (!vendor.location || !vendor.location.coordinates || vendor.location.coordinates.length < 2 || (vendor.location.coordinates[0] === 0 && vendor.location.coordinates[1] === 0)) {
+            // If vendor has no coordinates setup, rely on their pincode whitelist
+            if (!pincode || !vendor.servicePincodes?.includes(String(pincode))) throw new Error("Vendor location unverified and pincode not explicitly serviced.");
+            return { realDistanceKm: 0 };
+        }
+
+        const shopLng = vendor.location.coordinates[0];
+        const shopLat = vendor.location.coordinates[1];
+        const maxRadius = vendor.deliveryRadius || DELIVERY_CONFIG.URBEXON_HOUR.MAX_RADIUS_KM;
 
         // Server-side distance calculation — DO NOT TRUST client distanceKm
         const toRad = (d) => (d * Math.PI) / 180;
@@ -402,10 +436,10 @@ export const validateDeliveryServiceability = (deliveryType, latitude, longitude
         const realDistanceKm =
             Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
 
-        if (realDistanceKm > DELIVERY_CONFIG.URBEXON_HOUR.MAX_RADIUS_KM) {
+        if (realDistanceKm > maxRadius) {
             throw new Error(
-                `Your location is outside our delivery radius. ` +
-                `Maximum: ${DELIVERY_CONFIG.URBEXON_HOUR.MAX_RADIUS_KM}km, ` +
+                `Your location is outside the vendor's delivery radius. ` +
+                `Maximum: ${maxRadius}km, ` +
                 `Your distance: ${realDistanceKm}km`
             );
         }
@@ -421,7 +455,7 @@ export const validateDeliveryServiceability = (deliveryType, latitude, longitude
    VALIDATION 5: Coupon validation
    (Preserved from original — unchanged)
 ───────────────────────────────────────────────────────────── */
-export const validateCoupon = async (couponId, couponCode, userId) => {
+export const validateCoupon = async (couponId, couponCode, userId, orderTotal) => {
     if (!couponId && !couponCode) return null;
 
     const coupon = couponId
@@ -433,6 +467,9 @@ export const validateCoupon = async (couponId, couponCode, userId) => {
 
     if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate))
         throw new Error("Coupon has expired");
+
+    if (coupon.minOrderValue && orderTotal < coupon.minOrderValue)
+        throw new Error(`Order total must be at least ₹${coupon.minOrderValue} to use this coupon.`);
 
     if (coupon.usageLimit && coupon.usageCount >= coupon.usageLimit)
         throw new Error("Coupon usage limit reached");
@@ -548,16 +585,18 @@ export const validateOrderParams = async ({
         // ── Step 4: Delivery serviceability ──────────────────────────────
         // Ecommerce: no distance check (Shiprocket = pan-India)
         // UH: server-side distance check
-        const { realDistanceKm } = validateDeliveryServiceability(
+        const { realDistanceKm } = await validateDeliveryServiceability(
             effectiveDeliveryType,
             latitude,
-            longitude
+            longitude,
+            vendorId,
+            pincode
         );
 
         // ── Step 5: Coupon validation ─────────────────────────────────────
         let couponDoc = null;
         if (couponId || couponCode) {
-            couponDoc = await validateCoupon(couponId, couponCode, userId);
+            couponDoc = await validateCoupon(couponId, couponCode, userId, itemsTotal);
         }
 
         // ── Return complete validated data ────────────────────────────────

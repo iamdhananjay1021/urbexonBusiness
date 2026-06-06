@@ -63,7 +63,8 @@ const RelatedProductsSlider = ({ products }) => {
                     transform: translateY(-50%);
                     z-index: 10;
                     width: 36px; height: 36px;
-                    background: white;
+                    background: rgba(255, 255, 255, 0.95);
+                    backdrop-filter: blur(4px);
                     border: 1px solid #e7e5e4;
                     border-radius: 0;
                     display: flex; align-items: center; justify-content: center;
@@ -73,8 +74,16 @@ const RelatedProductsSlider = ({ products }) => {
                 }
                 .rps-arrow:hover { background: #1c1917; color: white; border-color: #1c1917; }
                 .rps-arrow:disabled { opacity: 0; pointer-events: none; }
-                .rps-arrow-left { left: -18px; }
-                .rps-arrow-right { right: -18px; }
+                .rps-arrow-left { left: -16px; }
+                .rps-arrow-right { right: -16px; }
+                @media (min-width: 1024px) {
+                    .rps-arrow-left { left: -40px; }
+                    .rps-arrow-right { right: -40px; }
+                }
+                @media (min-width: 1280px) {
+                    .rps-arrow-left { left: -52px; }
+                    .rps-arrow-right { right: -52px; }
+                }
                 @media (max-width: 640px) {
                     .rps-arrow { display: none; }
                 }

@@ -74,8 +74,9 @@ export const startAssignment = async (orderId) => {
         console.log(`[Assignment] Order ${key} already assigned — skipping`);
         return;
     }
-    if (order.orderStatus !== "READY_FOR_PICKUP") {
-        console.log(`[Assignment] Order ${key} status is ${order.orderStatus} — must be READY_FOR_PICKUP`);
+    const allowedStatuses = ["PLACED", "CONFIRMED", "PACKED", "READY_FOR_PICKUP"];
+    if (!allowedStatuses.includes(order.orderStatus)) {
+        console.log(`[Assignment] Order ${key} status is ${order.orderStatus} — must be one of: ${allowedStatuses.join(", ")}`);
         return;
     }
 
@@ -153,11 +154,10 @@ export const handleRiderAccept = async (orderId, riderId, riderUserId) => {
                 _id: orderId,
                 "delivery.assignedTo": null,
                 orderMode: "URBEXON_HOUR",       // ✅ Check orderMode not provider
-                orderStatus: "READY_FOR_PICKUP",
+                orderStatus: { $in: ["PLACED", "CONFIRMED", "PACKED", "READY_FOR_PICKUP"] },
             },
             {
                 $set: {
-                    orderStatus: "READY_FOR_PICKUP",
                     "delivery.assignedTo": rider._id,
                     "delivery.riderName": rider.name,
                     "delivery.riderPhone": rider.phone,
@@ -200,10 +200,10 @@ export const handleRiderAccept = async (orderId, riderId, riderUserId) => {
     if (order.user) {
         sendToUser(String(order.user), "order_status", {
             orderId: key,
-            status: "READY_FOR_PICKUP",
+            status: order.orderStatus,
             deliveryStatus: "RIDER_ASSIGNED",
             riderName: rider.name,
-            message: `${rider.name} is heading to pick up your order.`,
+            message: `${rider.name} has been assigned to pick up your order.`,
         });
     }
     broadcastToUsers([], "order:status:update", {

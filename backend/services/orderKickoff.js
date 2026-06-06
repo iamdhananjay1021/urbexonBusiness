@@ -13,6 +13,7 @@ import Vendor from "../models/vendorModels/Vendor.js";
 import { sendEmail } from "../utils/emailService.js";
 import { vendorNewOrderEmail } from "../utils/emailTemplates.js";
 import { broadcastToUsers } from "../utils/wsHub.js";
+import { startAssignment } from "./assignmentEngine.js"; // [FIX] import startAssignment
 
 const toEmailVendorItems = (items = []) =>
     items.map((i) => ({
@@ -75,8 +76,16 @@ export const kickoffNewOrder = async ({ order, items = [] }) => {
             console.warn("[OrderKickoff] Vendor notify failed:", vendorErr.message);
         }
 
-        // Rider assignment intentionally does not start at order creation.
-        // It is triggered when the vendor marks the order READY_FOR_PICKUP.
+        // 2) [FIX] Instantly start rider assignment for Urbexon Hour orders 
+        if (order.orderMode === "URBEXON_HOUR" && order.delivery?.provider !== "VENDOR_SELF") {
+            try {
+                startAssignment(orderId).catch(err => {
+                    console.error("[OrderKickoff] startAssignment error:", err.message);
+                });
+            } catch (assignErr) {
+                console.warn("[OrderKickoff] Assignment start failed:", assignErr.message);
+            }
+        }
     } catch (err) {
         // This module is best-effort and must never break order creation.
         console.warn("[OrderKickoff] Unexpected error:", err.message);

@@ -8,31 +8,37 @@ import { Link } from "react-router-dom";
 import { FaInstagram, FaWhatsapp, FaMapMarkerAlt, FaPhoneAlt, FaEnvelope, FaBolt, FaFacebookF } from "react-icons/fa";
 
 const CSS = `
-.ft-root{background:#0a0812;color:rgba(255,255,255,0.55);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.ft-top{max-width:1200px;margin:0 auto;padding:60px clamp(16px,5vw,60px) 48px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px}
-@media(max-width:900px){.ft-top{grid-template-columns:1fr 1fr}}
-@media(max-width:560px){.ft-top{grid-template-columns:1fr}}
-.ft-brand-name{font-size:22px;font-weight:800;color:#c9a84c;letter-spacing:4px;text-transform:uppercase;margin-bottom:6px}
-.ft-brand-sub{font-size:10px;color:rgba(255,255,255,.3);letter-spacing:3px;text-transform:uppercase;margin-bottom:16px}
-.ft-tagline{font-size:13px;line-height:1.7;color:rgba(255,255,255,.45);max-width:280px;margin-bottom:20px}
-.ft-social{display:flex;gap:10px}
-.ft-soc-btn{width:36px;height:36px;border-radius:8px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.5);transition:all .2s;text-decoration:none;cursor:pointer}
-.ft-soc-btn:hover{background:rgba(201,168,76,.15);border-color:rgba(201,168,76,.3);color:#c9a84c}
-.ft-col-title{font-size:11px;font-weight:700;color:#fff;letter-spacing:2px;text-transform:uppercase;margin-bottom:18px}
-.ft-link{display:block;font-size:13px;color:rgba(255,255,255,.45);text-decoration:none;margin-bottom:10px;transition:color .2s}
-.ft-link:hover{color:#c9a84c}
-.ft-contact-item{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;font-size:13px;color:rgba(255,255,255,.45);text-decoration:none;transition:color .2s}
-.ft-contact-item:hover{color:#c9a84c}
-.ft-contact-item svg{margin-top:2px;flex-shrink:0;color:rgba(201,168,76,.7)}
-.ft-uh-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.25);color:#c9a84c;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;cursor:pointer;text-decoration:none;transition:all .2s}
-.ft-uh-badge:hover{background:rgba(201,168,76,.2)}
-.ft-bottom{border-top:1px solid rgba(255,255,255,.06);padding:20px clamp(16px,5vw,60px)}
-@media(max-width:767px){.ft-bottom{padding-bottom:80px}}
-.ft-bottom-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
-.ft-copy{font-size:12px;color:rgba(255,255,255,.3)}
-.ft-legal{display:flex;gap:20px;flex-wrap:wrap}
-.ft-legal a{font-size:12px;color:rgba(255,255,255,.3);text-decoration:none;transition:color .2s}
-.ft-legal a:hover{color:rgba(201,168,76,.7)}
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+.ft-root { background: #0f172a; color: #94a3b8; font-family: 'DM Sans', sans-serif; border-top: 1px solid #1e293b; }
+.ft-top { max-width: 1280px; margin: 0 auto; padding: 72px 24px 48px; display: grid; grid-template-columns: 2.5fr 1fr 1fr 1fr; gap: 48px; }
+@media (max-width: 1024px) { .ft-top { grid-template-columns: 1fr 1fr 1fr; gap: 40px; } .ft-brand-col { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .ft-top { grid-template-columns: 1fr; gap: 40px; padding: 48px 24px 32px; } }
+.ft-brand-name { font-size: 28px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px; margin-bottom: 6px; }
+.ft-brand-sub { font-size: 12px; color: #3b82f6; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 20px; }
+.ft-tagline { font-size: 14px; line-height: 1.7; color: #94a3b8; max-width: 340px; margin-bottom: 24px; }
+.ft-social { display: flex; gap: 12px; }
+.ft-soc-btn { width: 38px; height: 38px; border-radius: 50%; background: #1e293b; display: flex; align-items: center; justify-content: center; color: #cbd5e1; transition: all 0.2s ease; text-decoration: none; }
+.ft-soc-btn:hover { background: #3b82f6; color: #ffffff; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
+.ft-col-title { font-size: 15px; font-weight: 700; color: #ffffff; margin-bottom: 20px; letter-spacing: 0.3px; }
+.ft-link { display: inline-block; font-size: 14px; color: #94a3b8; text-decoration: none; margin-bottom: 14px; transition: color 0.2s ease; font-weight: 500; }
+.ft-link:hover { color: #3b82f6; }
+.ft-contact-item { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; font-size: 14px; color: #94a3b8; text-decoration: none; transition: color 0.2s ease; line-height: 1.5; font-weight: 500; }
+.ft-contact-item:hover { color: #ffffff; }
+.ft-contact-item svg { margin-top: 3px; flex-shrink: 0; color: #64748b; transition: color 0.2s ease; }
+.ft-contact-item:hover svg { color: #3b82f6; }
+.ft-uh-badge { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #1e293b, #0f172a); border: 1px solid #334155; color: #f59e0b; padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 700; margin-bottom: 24px; text-decoration: none; transition: all 0.2s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.ft-uh-badge:hover { border-color: #f59e0b; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(245,158,11,0.15); color: #fbbf24; }
+.ft-bottom { border-top: 1px solid #1e293b; padding: 24px; background: #0b1120; }
+.ft-bottom-inner { max-width: 1280px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.ft-copy { font-size: 13px; color: #64748b; font-weight: 500; }
+.ft-legal { display: flex; gap: 24px; flex-wrap: wrap; }
+.ft-legal a { font-size: 13px; color: #64748b; text-decoration: none; transition: color 0.2s ease; font-weight: 500; }
+.ft-legal a:hover { color: #ffffff; }
+@media(max-width: 767px) { 
+  .ft-bottom { padding-bottom: 80px; } 
+  .ft-bottom-inner { flex-direction: column; text-align: center; justify-content: center; } 
+  .ft-legal { justify-content: center; gap: 16px; } 
+}
 `;
 
 const Footer = () => (
@@ -40,7 +46,7 @@ const Footer = () => (
         <style>{CSS}</style>
         <div className="ft-top">
             {/* Brand */}
-            <div>
+            <div className="ft-brand-col">
                 <div className="ft-brand-name">Urbexon</div>
                 <div className="ft-brand-sub">Premium Commerce</div>
                 <p className="ft-tagline">

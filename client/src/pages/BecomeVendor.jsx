@@ -58,6 +58,7 @@ const BecomeVendor = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [files, setFiles] = useState({});
+  const [categories, setCategories] = useState([]);
   const [form, setForm] = useState({
     shopName: "", shopDescription: "", shopCategory: "",
     ownerName: user?.name || "", email: user?.email || "", phone: user?.phone || "",
@@ -66,6 +67,16 @@ const BecomeVendor = () => {
     bankHolder: "", bankAccount: "", bankIFSC: "", bankName: "",
   });
 
+  // ✅ Fetch categories independently on mount to ensure dropdown always populates
+  useEffect(() => {
+    api.get("/categories", { params: { type: "ecommerce" } })
+      .then(({ data }) => {
+        const cats = Array.isArray(data) ? data : data.categories || data.data || [];
+        setCategories(cats.filter(c => c.isActive !== false));
+      })
+      .catch((err) => console.error("Failed to fetch categories:", err));
+  }, []);
+
   // ✅ Authentication guard - check FIRST before anything else
   useEffect(() => {
     if (authLoading) return; // Wait for auth to load
@@ -73,6 +84,7 @@ const BecomeVendor = () => {
       navigate("/login", { state: { from: "/become-vendor" } });
       return;
     }
+
     // ✅ Only check vendor status if user is authenticated
     api.get("/vendor/status")
       .then(({ data }) => {
@@ -97,6 +109,8 @@ const BecomeVendor = () => {
       return setError("Enter a valid 6-digit pincode");
     if (!/^[6-9]\d{9}$/.test(form.phone.trim()))
       return setError("Enter a valid 10-digit mobile number");
+    if (!form.shopCategory)
+      return setError("Please select a shop category");
 
     setSubmitting(true); setError("");
     try {
@@ -225,21 +239,13 @@ const BecomeVendor = () => {
             <div className="bv-grid">
               <Field label="Shop Name *"><input className="bv-inp" value={form.shopName} onChange={set("shopName")} placeholder="Your shop name" /></Field>
               <Field label="Shop Category *">
-                <select className="bv-inp" value={form.shopCategory} onChange={set("shopCategory")}>
+                <select className="bv-inp" value={form.shopCategory} onChange={set("shopCategory")} required>
                   <option value="">-- Select Category --</option>
-                  <option value="grocery">Grocery &amp; Staples</option>
-                  <option value="food">Food &amp; Beverages</option>
-                  <option value="fashion">Fashion &amp; Apparel</option>
-                  <option value="electronics">Electronics &amp; Gadgets</option>
-                  <option value="home">Home &amp; Kitchen</option>
-                  <option value="beauty">Beauty &amp; Personal Care</option>
-                  <option value="health">Health &amp; Wellness</option>
-                  <option value="sports">Sports &amp; Fitness</option>
-                  <option value="books">Books &amp; Stationery</option>
-                  <option value="toys">Toys &amp; Baby Products</option>
-                  <option value="furniture">Furniture &amp; Decor</option>
-                  <option value="automotive">Automotive</option>
-                  <option value="pets">Pet Supplies</option>
+                  {categories.map((cat) => (
+                    <option key={cat._id || cat.slug} value={cat.slug || cat.name}>
+                      {cat.emoji ? `${cat.emoji} ` : ""}{cat.name}
+                    </option>
+                  ))}
                   <option value="other">Other</option>
                 </select>
               </Field>

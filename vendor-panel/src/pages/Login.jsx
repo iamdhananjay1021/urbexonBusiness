@@ -1,36 +1,43 @@
 /**
- * Login.jsx — Production v3.0
- * Clean dark gradient login, matches Figma branding
+ * Login.jsx — Production v3.1
+ * ✅ Support login with email OR phone number
  * ✅ Forgot Password link added
  * ✅ Production-ready registration section
  */
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { FiMail, FiLock, FiAlertCircle, FiEye, FiEyeOff } from "react-icons/fi";
+import { FiMail, FiLock, FiAlertCircle, FiEye, FiEyeOff, FiPhone } from "react-icons/fi";
 
 const Login = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ identifier: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPwd, setShowPwd] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.email || !form.password) { setError("Please fill in all fields"); return; }
+    if (!form.identifier || !form.password) { setError("Please fill in all fields"); return; }
 
     try {
       setLoading(true);
       setError("");
-      await login(form.email, form.password);
+
+      // Determine if identifier is email or phone
+      const isEmail = form.identifier.includes("@");
+      const loginPayload = isEmail
+        ? { email: form.identifier, password: form.password }
+        : { phone: form.identifier, password: form.password };
+
+      await login(loginPayload.email || loginPayload.phone, form.password);
       navigate("/dashboard");
     } catch (err) {
       // Check if email verification is required (403 with requiresVerification)
       if (err.response?.status === 403 && err.response?.data?.requiresVerification) {
         navigate("/verify-email", {
-          state: { email: form.email }
+          state: { email: form.identifier }
         });
         return;
       }
@@ -104,20 +111,23 @@ const Login = () => {
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 18 }}>
             <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 7 }}>
-              Email Address
+              Email or Mobile Number
             </label>
             <div style={{ position: "relative" }}>
               <FiMail size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
               <input
-                type="email"
+                type="text"
                 className="login-input"
                 style={fieldStyle}
-                placeholder="vendor@example.com"
-                value={form.email}
-                onChange={e => setForm({ ...form, email: e.target.value })}
+                placeholder="vendor@example.com or 9876543210"
+                value={form.identifier}
+                onChange={e => setForm({ ...form, identifier: e.target.value })}
                 disabled={loading}
               />
             </div>
+            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4, margin: 0 }}>
+              Enter your email or 10-digit mobile number
+            </p>
           </div>
 
           <div style={{ marginBottom: 24 }}>

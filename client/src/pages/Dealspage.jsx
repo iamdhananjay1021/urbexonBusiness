@@ -56,12 +56,16 @@ const DealProductCard = ({ product }) => {
    SKELETON
 ════════════════════════════════════ */
 const SkeletonCard = () => (
-    <div style={{ overflow: "hidden", border: "1px solid #e8e4d9", height: "100%", display: "flex", flexDirection: "column" }}>
-        <div style={{ aspectRatio: "3/4", background: "linear-gradient(90deg,#f0ece4 25%,#e8e4da 50%,#f0ece4 75%)", backgroundSize: "200% 100%", animation: "shimmer 1.5s ease-in-out infinite" }} />
-        <div style={{ padding: "12px 14px 14px" }}>
-            <div style={{ height: 10, width: "40%", background: "#f0ede8", marginBottom: 8, borderRadius: 2 }} />
-            <div style={{ height: 13, width: "80%", background: "#f0ede8", marginBottom: 6, borderRadius: 2 }} />
-            <div style={{ height: 20, width: "35%", background: "#f0ede8", borderRadius: 2 }} />
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden flex flex-col h-full w-full shadow-sm">
+        <div className="w-full aspect-[4/5] bg-gray-100 animate-pulse shrink-0" />
+        <div className="p-3 sm:p-4 flex flex-col gap-2 flex-1">
+            <div className="h-2 w-1/3 bg-gray-200 rounded animate-pulse" />
+            <div className="h-3 w-4/5 bg-gray-200 rounded animate-pulse" />
+            <div className="h-3 w-1/2 bg-gray-200 rounded animate-pulse" />
+            <div className="mt-auto pt-2 space-y-2">
+                <div className="h-4 w-2/5 bg-gray-200 rounded animate-pulse" />
+                <div className="h-8 bg-gray-200 rounded animate-pulse" />
+            </div>
         </div>
     </div>
 );
@@ -92,7 +96,6 @@ const Deals = () => {
     return (
         <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif", minHeight: "100vh", background: "#faf9f7" }}>
             <SEO title="Deals & Offers" description="Grab the hottest deals and limited-time offers on Urbexon. Save big on fashion, electronics, and more." path="/deals" />
-            <style>{`@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
             {/* Header Banner */}
             <div style={{ background: "linear-gradient(135deg, #1c1917 0%, #1a1740 60%, #c9a84c22 100%)", padding: "48px clamp(16px,5vw,80px)" }}>
@@ -114,8 +117,8 @@ const Deals = () => {
 
                 {/* Loading */}
                 {loading && (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 20 }}>
-                        {Array(8).fill(0).map((_, i) => <SkeletonCard key={i} />)}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+                        {Array(10).fill(0).map((_, i) => <SkeletonCard key={i} />)}
                     </div>
                 )}
 
@@ -156,7 +159,7 @@ const Deals = () => {
                                 <b style={{ color: "#1c1917" }}>{deals.length}</b> active deal{deals.length !== 1 ? "s" : ""} — hurry, limited time!
                             </p>
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 16 }}>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
                             {deals.map(p => <DealProductCard key={p._id || p.id} product={p} />)}
                         </div>
                     </>

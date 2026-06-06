@@ -19,9 +19,8 @@ import jwt from "jsonwebtoken";
 import { createNotification } from "../admin/notificationController.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/vendor/register  (PUBLIC — no protect middleware needed)
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /api/vendor/register (PROTECTED — user must be authenticated)
+// POST /api/vendor/register  (PUBLIC — open vendor registration)
+// Creates user account if needed, then creates vendor record
 // ─────────────────────────────────────────────────────────────────────────────
 export const registerVendor = async (req, res) => {
     try {
@@ -39,16 +38,26 @@ export const registerVendor = async (req, res) => {
             });
         }
 
-        // ✅ Use authenticated user from protect middleware
-        if (!req.user) {
-            return res.status(401).json({
-                success: false,
-                message: "Authentication required. Please login first.",
-            });
-        }
+        // ── 0. Get or create user (handles both authenticated and public registrations) ─
+        let user = req.user;
+        let userId = user?._id;
 
-        const userId = req.user._id;
-        const user = req.user;
+        if (!user) {
+            // Check if user with this email already exists
+            user = await User.findOne({ email });
+            if (!user) {
+                // Create new user account for vendor registration
+                user = await User.create({
+                    email,
+                    firstName: ownerName.split(" ")[0],
+                    lastName: ownerName.split(" ").slice(1).join(" "),
+                    phone,
+                    isVerified: false,
+                    password: await bcrypt.hash(phone, 10), // Default password is phone number
+                });
+            }
+            userId = user._id;
+        }
 
         // ── 1. Check for duplicate application ───────────────────────────────
         const existing = await Vendor.findOne({ userId, isDeleted: false });

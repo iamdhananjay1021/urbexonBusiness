@@ -69,20 +69,16 @@ export const approveVendor = async (req, res) => {
             return res.status(409).json({ success: false, message: "Vendor is already approved" });
         }
 
-        const now = new Date();
-        const expiry = new Date();
-        expiry.setDate(expiry.getDate() + 30);
-
-        // FIX #2 — Atomic upsert: only create trial if one doesn't exist
+        // Atomic upsert: create an inactive subscription so vendor must pay to start
         await Subscription.findOneAndUpdate(
             { vendorId: vendor._id, status: { $exists: false } }, // only if no sub at all
             {
                 $setOnInsert: {
                     vendorId: vendor._id, plan: "basic",
-                    monthlyFee: 0, maxProducts: 30,
-                    status: "active", startDate: now,
-                    expiryDate: expiry, isTrialActive: true, trialEndsAt: expiry,
-                    payments: [{ amount: 0, method: "free_trial", months: 1, date: now, reference: "TRIAL-" + Date.now() }],
+                    monthlyFee: 499, maxProducts: 30,
+                    status: "inactive", startDate: null,
+                    expiryDate: null, isTrialActive: false,
+                    payments: [],
                 },
             },
             { upsert: true }
@@ -93,11 +89,11 @@ export const approveVendor = async (req, res) => {
         // Sync embedded subscription only if no active sub exists
         const existingSub = await Subscription.findOne({ vendorId: vendor._id }).lean();
         if (!existingSub || !existingSub.status || existingSub.status !== "active") {
-            vendor.subscription = { plan: "basic", startDate: now, expiryDate: expiry, isActive: true, autoRenew: false };
+            vendor.subscription = { plan: "basic", isActive: false, autoRenew: false };
             await vendor.save();
         }
 
-        res.json({ success: true, vendor: vendor.toObject(), message: "Vendor approved with 30-day free trial" });
+        res.json({ success: true, vendor: vendor.toObject(), message: "Vendor approved. Vendor must activate subscription to start." });
     } catch (err) {
         console.error("[approveVendor]", err);
         res.status(500).json({ success: false, message: "Failed" });

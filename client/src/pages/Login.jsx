@@ -111,7 +111,7 @@ const Login = () => {
         }
     }, [loginWithData, navigate, from]);
 
-    const [email, setEmail] = useState("");
+    const [identifier, setIdentifier] = useState("");
     const [password, setPassword] = useState("");
     const [showPwd, setShowPwd] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -144,10 +144,15 @@ const Login = () => {
 
     const handleLogin = useCallback(async (e) => {
         e.preventDefault();
-        if (!email.trim() || !password.trim()) return setError("Email and password are required");
+        if (!identifier.trim() || !password.trim()) return setError("Email/phone and password are required");
         try {
             setLoading(true); setError("");
-            const { data } = await api.post("/auth/login", { email: email.trim(), password: password.trim() });
+            // Determine if identifier is email or phone
+            const isEmail = identifier.includes("@");
+            const loginPayload = isEmail
+                ? { email: identifier.trim(), password: password.trim() }
+                : { phone: identifier.trim(), password: password.trim() };
+            const { data } = await api.post("/auth/login", loginPayload);
             if (["admin", "owner"].includes(data.role)) {
                 setError("Admin accounts must use the Admin Panel.");
                 return;
@@ -163,19 +168,24 @@ const Login = () => {
                 setError(msg);
             }
         } finally { setLoading(false); }
-    }, [email, password, redirectAfterAuth]);
+    }, [identifier, password, redirectAfterAuth]);
 
     const handleVerifyOtp = useCallback(async (e) => {
         e.preventDefault();
         if (!otp.trim() || otp.length !== 6) return setError("Enter valid 6-digit OTP");
         try {
             setOtpLoading(true); setError("");
-            const { data } = await api.post("/auth/verify-otp", { email: email.trim(), otp: otp.trim() });
+            // Use email or phone for OTP verification
+            const isEmail = identifier.includes("@");
+            const verifyPayload = isEmail
+                ? { email: identifier.trim(), otp: otp.trim() }
+                : { phone: identifier.trim(), otp: otp.trim() };
+            const { data } = await api.post("/auth/verify-otp", verifyPayload);
             redirectAfterAuth(data);
         } catch (err) {
             setError(err?.response?.data?.message || "Invalid OTP");
         } finally { setOtpLoading(false); }
-    }, [otp, email, redirectAfterAuth]);
+    }, [otp, identifier, redirectAfterAuth]);
 
     return (
         <div className="lg-root">
@@ -199,11 +209,11 @@ const Login = () => {
 
                             <form onSubmit={handleLogin}>
                                 <div className="lg-field">
-                                    <label className="lg-label">Email Address</label>
+                                    <label className="lg-label">Email or Phone</label>
                                     <div className="lg-inp-wrap">
                                         <span className="lg-icon"><FaEnvelope size={13} /></span>
-                                        <input className="lg-inp" type="email" placeholder="your@email.com"
-                                            value={email} onChange={e => { setEmail(e.target.value); setError(""); }} autoComplete="email" />
+                                        <input className="lg-inp" type="text" placeholder="your@email.com or 9876543210"
+                                            value={identifier} onChange={e => { setIdentifier(e.target.value); setError(""); }} autoComplete="email" />
                                     </div>
                                 </div>
                                 <div className="lg-field">
@@ -240,7 +250,7 @@ const Login = () => {
                     ) : (
                         <>
                             <div className="lg-title">Verify Email</div>
-                            <div className="lg-sub">OTP sent to {email}</div>
+                            <div className="lg-sub">OTP sent to {identifier}</div>
 
                             <div className="lg-otp-notice">◆ &nbsp;Check your spam / junk folder if not received</div>
 

@@ -100,6 +100,10 @@ const userSchema = new mongoose.Schema(
         passwordResetToken: { type: String, default: undefined, select: false },
         passwordResetExpires: { type: Date, default: undefined, select: false },
 
+        // ── Two-Factor Authentication (2FA) ──
+        is2faEnabled: { type: Boolean, default: false },
+        twoFactorSecret: { type: String, select: false },
+
         // ── Block ──
         isBlocked: { type: Boolean, default: false },
         blockedAt: { type: Date, default: null },

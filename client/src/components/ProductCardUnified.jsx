@@ -5,7 +5,7 @@
  * BUG FIXES: null safety, stock handling, navigation URL fallback
  * UI: Preserved original styling - no visual changes
  */
-import { useCallback, useState, memo } from "react";
+import { useCallback, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../hooks/useCart";
 import { FaStar, FaRegStar, FaShoppingCart, FaBolt, FaCheckCircle } from "react-icons/fa";
@@ -18,7 +18,8 @@ const ProductCardUnified = memo(({
 }) => {
     const navigate = useNavigate();
     const { cartItems, addItem } = useCart();
-    const [hovered, setHovered] = useState(false);
+
+    // Local flash state for "Add to Cart" success feedback
     const [flashAdded, setFlashAdded] = useState(false);
 
     // ═══════════════════════════════════════════════════════
@@ -27,20 +28,12 @@ const ProductCardUnified = memo(({
     // ═══════════════════════════════════════════════════════════════
     if (!product) {
         return (
-            <div style={{
-                background: "#fff",
-                border: "1px solid #e8e4d9",
-                borderRadius: 8,
-                overflow: "hidden",
-                aspectRatio: "3/4",
-                display: "flex",
-                flexDirection: "column",
-            }}>
-                <div style={{ flex: 1, background: "#f7f4ee" }} />
-                <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
-                    <div style={{ height: 8, width: "30%", background: "#ede9e4", borderRadius: 4 }} />
-                    <div style={{ height: 16, width: "80%", background: "#ede9e4", borderRadius: 4 }} />
-                    <div style={{ height: 14, width: "60%", background: "#ede9e4", borderRadius: 4 }} />
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden flex flex-col w-full h-full shadow-sm">
+                <div className="w-full aspect-[4/5] sm:aspect-[3/4] bg-gray-100 animate-pulse shrink-0" />
+                <div className="p-3 sm:p-4 flex flex-col gap-2 flex-1">
+                    <div className="h-2 w-1/3 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-3 w-4/5 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-3 w-1/2 bg-gray-200 rounded animate-pulse" />
                 </div>
             </div>
         );
@@ -97,93 +90,44 @@ const ProductCardUnified = memo(({
     }, [navigate, product, productId]);
 
     // Styles based on variant
-    const containerStyles = {
-        default: {
-            background: "#fff",
-            border: `1px solid ${hovered ? "#c9a84c" : "#e8e4d9"}`,
-            borderRadius: 8,
-            overflow: "hidden",
-            cursor: "pointer",
-            transition: "all .2s ease",
-            transform: hovered ? "translateY(-2px)" : "translateY(0)",
-            boxShadow: hovered ? "0 4px 16px rgba(0,0,0,0.08)" : "none",
-            aspectRatio: "3/4",
-            display: "flex",
-            flexDirection: "column",
-        },
-        deal: {
-            background: "#fff",
-            border: `1px solid ${hovered ? "#c9a84c" : "#e8e4d9"}`,
-            borderRadius: 8,
-            overflow: "hidden",
-            cursor: "pointer",
-            transition: "all .28s cubic-bezier(.22,1,.36,1)",
-            transform: hovered ? "translateY(-4px)" : "translateY(0)",
-            boxShadow: hovered ? "0 12px 36px rgba(28,25,23,.12)" : "0 2px 8px rgba(0,0,0,.04)",
-            aspectRatio: "3/4",
-            display: "flex",
-            flexDirection: "column",
-        },
-        compact: {
-            background: "#fff",
-            border: "1px solid #e8e4d9",
-            borderRadius: 6,
-            overflow: "hidden",
-            cursor: "pointer",
-            transition: "all .2s ease",
-            transform: hovered ? "scale(1.02)" : "scale(1)",
-            boxShadow: hovered ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
-            aspectRatio: "3/4",
-            display: "flex",
-            flexDirection: "column",
-        },
+    const containerClasses = {
+        default: "group relative bg-white border border-stone-200 hover:border-[#c9a84c] rounded-xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] flex flex-col h-full",
+        deal: "group relative bg-white border border-stone-200 hover:border-[#c9a84c] rounded-xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1.5 shadow-sm hover:shadow-[0_12px_36px_rgba(28,25,23,0.12)] flex flex-col h-full",
+        compact: "group relative bg-white border border-stone-200 rounded-lg overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-md flex flex-col h-full",
     };
 
     return (
         <div
             onClick={handleQuickView}
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            style={containerStyles[variant]}
+            className={containerClasses[variant]}
         >
             {/* Image Container */}
-            <div style={{ position: "relative", background: "#f7f4ee", overflow: "hidden", aspectRatio: "3/4", flexShrink: 0 }}>
+            <div className="relative bg-[#f9f9f9] overflow-hidden aspect-[4/5] sm:aspect-[3/4] shrink-0 w-full group">
                 {imgSrc ? (
                     <img
                         src={imgSrc}
                         alt={product.name}
                         loading="lazy"
-                        style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                            objectPosition: "center",
-                            display: "block",
-                            transform: hovered ? "scale(1.06)" : "scale(1)",
-                            transition: "transform .5s cubic-bezier(.34,1.1,.64,1)",
-                            filter: isOOS ? "grayscale(.7) opacity(.6)" : "none"
-                        }}
+                        className={`absolute inset-0 w-full h-full object-contain p-4 sm:p-6 transition-transform duration-500 ease-out mix-blend-multiply group-hover:scale-105 ${isOOS ? "grayscale opacity-60" : ""}`}
                     />
                 ) : (
-                    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#d1ccc7", fontSize: 40 }}>
-                        📦
-                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center text-[#d1ccc7] text-4xl">📦</div>
                 )}
 
                 {/* Badges */}
-                <div style={{ position: "absolute", top: 10, left: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div className="absolute top-2.5 left-2.5 flex flex-col gap-1.5 z-10">
                     {!isOOS && discPct && (
-                        <span style={{ background: "#dc2626", color: "#fff", fontSize: 10, fontWeight: 800, padding: "4px 8px", borderRadius: 4 }}>
-                            -{discPct}%
+                        <span className="bg-red-600 text-white text-[10px] font-extrabold px-2 py-1 rounded tracking-wide">
+                            {discPct}% OFF
                         </span>
                     )}
                     {isOOS && (
-                        <span style={{ background: "#1c1917", color: "#fff", fontSize: 9, fontWeight: 800, padding: "4px 8px", borderRadius: 4 }}>
+                        <span className="bg-stone-900 text-white text-[9px] font-extrabold px-2 py-1 rounded tracking-wide">
                             SOLD OUT
                         </span>
                     )}
                     {showDealBadge && !isOOS && (
-                        <span style={{ background: "#f59e0b", color: "#fff", fontSize: 9, fontWeight: 800, padding: "4px 8px", borderRadius: 4 }}>
+                        <span className="bg-amber-500 text-white text-[9px] font-extrabold px-2 py-1 rounded tracking-wide">
                             🔥 DEAL
                         </span>
                     )}
@@ -191,144 +135,99 @@ const ProductCardUnified = memo(({
 
                 {/* Hover Buttons - Stacked */}
                 {variant !== "compact" && (
-                    <div style={{
-                        position: "absolute",
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        background: "linear-gradient(to top, rgba(255,255,255,1), rgba(255,255,255,.95))",
-                        padding: "12px 10px 10px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 8,
-                        transform: hovered ? "translateY(0)" : "translateY(100%)",
-                        transition: "transform .25s cubic-bezier(.22,1,.36,1)",
-                        zIndex: 2,
-                    }}>
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white/95 to-transparent p-2.5 flex flex-col gap-2 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-20 hidden md:flex">
                         <button
                             onClick={handleCart}
                             disabled={inCart || isOOS}
-                            style={{
-                                width: "100%",
-                                padding: "10px 0",
-                                fontSize: 11,
-                                fontWeight: 700,
-                                letterSpacing: ".08em",
-                                textTransform: "uppercase",
-                                border: "none",
-                                cursor: inCart || isOOS ? "default" : "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                gap: 6,
-                                background: inCart ? "#dcfce7" : flashAdded ? "#22c55e" : isOOS ? "#f5f5f5" : "#1c1917",
-                                color: inCart ? "#15803d" : flashAdded ? "#fff" : isOOS ? "#a1a1aa" : "#fff",
-                                fontFamily: "inherit",
-                                borderRadius: 5,
-                                transition: "all .15s ease",
-                            }}
+                            className={`w-full py-2.5 text-[11px] font-bold tracking-wider uppercase border-none rounded flex items-center justify-center gap-1.5 transition-colors ${inCart ? "bg-green-100 text-green-700 cursor-default" :
+                                    flashAdded ? "bg-green-500 text-white" :
+                                        isOOS ? "bg-stone-100 text-stone-400 cursor-default" :
+                                            "bg-stone-900 text-white hover:bg-stone-800 cursor-pointer"
+                                }`}
                         >
-                            {inCart ? <><FaCheckCircle size={10} /> In Cart</> : flashAdded ? <>✓ Added!</> : <><FaShoppingCart size={10} /> Add to Cart</>}
+                            {inCart ? <><FaCheckCircle size={11} /> In Cart</> : flashAdded ? <>✓ Added!</> : <><FaShoppingCart size={11} /> Add to Cart</>}
                         </button>
                         <button
                             onClick={handleQuickView}
                             disabled={isOOS}
-                            style={{
-                                width: "100%",
-                                padding: "10px 0",
-                                fontSize: 11,
-                                fontWeight: 700,
-                                letterSpacing: ".08em",
-                                textTransform: "uppercase",
-                                background: isOOS ? "#f5f5f5" : "#c9a84c",
-                                color: isOOS ? "#a1a1aa" : "#fff",
-                                border: "none",
-                                cursor: isOOS ? "default" : "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                gap: 6,
-                                transition: "all .15s ease",
-                                fontFamily: "inherit",
-                                borderRadius: 5,
-                                opacity: isOOS ? 0.6 : 1,
-                            }}
+                            className={`w-full py-2.5 text-[11px] font-bold tracking-wider uppercase border-none rounded flex items-center justify-center gap-1.5 transition-colors ${isOOS ? "bg-stone-100 text-stone-400 cursor-default opacity-60" : "bg-[#c9a84c] text-white hover:bg-[#b5953e] cursor-pointer"
+                                }`}
                         >
-                            <FaBolt size={10} /> Quick View
+                            <FaBolt size={11} /> Quick View
                         </button>
                     </div>
                 )}
             </div>
 
             {/* Info Section */}
-            <div style={{ padding: "12px 14px 14px", flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+            <div className="p-3 sm:p-4 flex-1 flex flex-col gap-1 sm:gap-1.5 min-w-0">
                 {/* Category */}
-                <p style={{ fontSize: 9, fontWeight: 700, color: "#c9a84c", letterSpacing: ".12em", textTransform: "uppercase", marginBottom: 2 }}>
-                    {product.category || "Product"}
-                </p>
-
-                {/* Brand */}
-                {product.brand && (
-                    <p style={{ fontSize: 9, fontWeight: 600, color: "#6b7280", marginBottom: 2 }}>
-                        {product.brand}
+                <div className="flex justify-between items-center mb-0.5">
+                    <p className="text-[9px] font-bold text-[#c9a84c] tracking-widest uppercase truncate">
+                        {product.category || "Product"}
                     </p>
-                )}
+                    {product.brand && (
+                        <p className="text-[9px] font-semibold text-gray-400 truncate max-w-[50%] text-right uppercase tracking-wider">
+                            {product.brand}
+                        </p>
+                    )}
+                </div>
 
                 {/* Name */}
-                <h3 style={{ fontSize: 13, fontWeight: 700, color: "#1c1917", lineHeight: 1.3, marginBottom: 4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                <h3 className="text-[13px] sm:text-[14px] font-bold text-stone-900 leading-snug line-clamp-2 min-h-[2.6em] mb-1 group-hover:text-blue-600 transition-colors">
                     {product.name}
                 </h3>
 
                 {/* Quick Details/Specs */}
                 {product.specs && product.specs.length > 0 && (
-                    <div style={{ fontSize: 9, color: "#6b7280", marginBottom: 4, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    <div className="text-[10px] color-gray-500 mb-1 line-clamp-1 truncate">
                         {product.specs.slice(0, 1).map((spec, i) => (
-                            <span key={i}>
-                                {spec.name}: <span style={{ fontWeight: 600 }}>{spec.value}</span>
+                            <span key={i} className="text-gray-500">
+                                {spec.name}: <span className="font-semibold text-gray-700">{spec.value}</span>
                             </span>
                         ))}
                     </div>
                 )}
 
                 {/* Stock Availability */}
-                <div style={{ fontSize: 9, fontWeight: 600, marginBottom: 4 }}>
+                <div className="text-[10px] font-semibold mb-1 flex items-center gap-2">
                     {isOOS ? (
-                        <span style={{ color: "#dc2626" }}>❌ Out of Stock</span>
+                        <span className="text-red-600">❌ Out of Stock</span>
                     ) : (
-                        <span style={{ color: "#16a34a" }}>✓ In Stock</span>
+                        <span className="text-green-600">✓ In Stock</span>
                     )}
                     {stockNum > 0 && stockNum <= 5 && !isOOS && (
-                        <span style={{ marginLeft: 8, color: "#f59e0b", fontWeight: 700 }}>Only {stockNum} left</span>
+                        <span className="text-amber-500 font-bold">Only {stockNum} left</span>
                     )}
                 </div>
 
                 {/* Rating */}
                 {product.numReviews > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
-                        <div style={{ display: "flex", gap: 1 }}>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                        <div className="flex gap-[1px]">
                             {[...Array(5)].map((_, i) => (
                                 <span key={i}>
                                     {i < Math.floor(product.rating || 0) ? (
-                                        <FaStar size={9} color="#f59e0b" />
+                                        <FaStar size={10} className="text-amber-500" />
                                     ) : (
-                                        <FaRegStar size={9} color="#d1d5db" />
+                                        <FaRegStar size={10} className="text-gray-300" />
                                     )}
                                 </span>
                             ))}
                         </div>
-                        <span style={{ fontSize: 9, color: "#9ca3af" }}>
+                        <span className="text-[10px] sm:text-[11px] text-gray-400 font-medium">
                             {product.rating?.toFixed(1)} ({product.numReviews})
                         </span>
                     </div>
                 )}
 
                 {/* Price */}
-                <div style={{ marginTop: "auto", display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: isOOS ? "#a8a29e" : "#1c1917" }}>
+                <div className="mt-auto pt-2 flex items-baseline gap-1.5 flex-wrap">
+                    <span className={`text-[15px] sm:text-[16px] font-extrabold ${isOOS ? "text-stone-400" : "text-stone-900"}`}>
                         ₹{Number(product.price).toLocaleString("en-IN")}
                     </span>
                     {hasDisc && !isOOS && (
-                        <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af", textDecoration: "line-through" }}>
+                        <span className="text-[11px] sm:text-[12px] font-semibold text-gray-400 line-through">
                             ₹{Number(product.mrp).toLocaleString("en-IN")}
                         </span>
                     )}
@@ -336,16 +235,16 @@ const ProductCardUnified = memo(({
 
                 {/* Savings */}
                 {hasDisc && !isOOS && (
-                    <p style={{ fontSize: 9, color: "#16a34a", fontWeight: 700, marginTop: 2 }}>
+                    <p className="text-[10px] text-green-600 font-bold mt-0.5">
                         Save ₹{(Number(product.mrp) - Number(product.price)).toLocaleString("en-IN")}
                     </p>
                 )}
 
                 {/* Deal Countdown */}
                 {dealCountdown && (
-                    <div style={{ marginTop: 10, padding: "6px 8px", background: "#fff8f0", border: "1px solid #fed7aa", borderRadius: 6, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 8, color: "#dc2626", fontWeight: 800 }}>⏱ Ends in:</span>
-                        <div style={{ display: "flex", gap: 3 }}>
+                    <div className="mt-2.5 p-2 bg-orange-50 border border-orange-200 rounded-md flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[9px] text-red-600 font-extrabold uppercase tracking-wide">⏱ Ends in:</span>
+                        <div className="flex gap-1 text-[11px] font-bold text-orange-800">
                             {dealCountdown}
                         </div>
                     </div>

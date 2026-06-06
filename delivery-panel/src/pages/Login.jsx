@@ -39,7 +39,7 @@ const CSS = `
 const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [pass, setPass] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -49,7 +49,7 @@ const Login = () => {
     e.preventDefault();
     setLoading(true); setError("");
     try {
-      await login(email.trim(), pass.trim());
+      await login(identifier.trim(), pass.trim());
       navigate("/dashboard");
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Login fail ho gayi");
@@ -66,8 +66,8 @@ const Login = () => {
           <p className="dl-sub">URBEXON — Delivery App</p>
         </div>
         <form onSubmit={submit}>
-          <label className="dl-label">Email</label>
-          <input className="dl-inp" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="aapka@email.com" required />
+          <label className="dl-label">Email or Phone</label>
+          <input className="dl-inp" type="text" value={identifier} onChange={e => setIdentifier(e.target.value)} placeholder="aapka@email.com or 9876543210" required />
           <label className="dl-label">Password</label>
           <div className="dl-pw">
             <input className="dl-inp" type={show ? "text" : "password"} value={pass} onChange={e => setPass(e.target.value)} required minLength={8} placeholder="Min. 8 characters" style={{ paddingRight: 40 }} />

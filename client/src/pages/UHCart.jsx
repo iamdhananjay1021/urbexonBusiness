@@ -176,7 +176,7 @@ const UHCart = () => {
                         <span>{fmt(uhTotal)}</span>
                     </div>
                     <div className="uhc-row">
-                        <span>Delivery</span>
+                        <span>Est. Delivery</span>
                         <span className={deliveryCharge === 0 ? "uhc-free" : ""}>
                             {deliveryCharge === 0 ? "FREE" : fmt(deliveryCharge)}
                         </span>
@@ -187,8 +187,11 @@ const UHCart = () => {
                     </div>
                     <div className="uhc-divider" />
                     <div className="uhc-row uhc-total-row">
-                        <span>Total</span>
+                        <span>Est. Total</span>
                         <span>{fmt(grandTotal)}</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: "#9ca3af", marginTop: -4, marginBottom: 12 }}>
+                        Final delivery & fees calculated at checkout
                     </div>
 
                     <div className="uhc-eta">
@@ -200,7 +203,7 @@ const UHCart = () => {
                         className="uhc-checkout-btn"
                         onClick={() => navigate("/uh-checkout")}
                     >
-                        Proceed to Checkout — {fmt(grandTotal)}
+                        Proceed to Checkout
                     </button>
 
                     <div className="uhc-trust">

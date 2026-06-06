@@ -188,7 +188,7 @@ const RelatedCard = ({ rp }) => {
                         src={imgUrl.card(rp.images[0].url)}
                         alt={rp.name}
                         loading="lazy"
-                        style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center", padding: "8px", transition: "transform .3s" }}
+                        style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center", padding: "28px 12px 12px", transition: "transform .3s" }}
                     />
                     : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>🎁</div>
                 }
@@ -669,7 +669,7 @@ const ProductDetails = () => {
 .pd-hero-img { aspect-ratio:3/4; background:#fafafa; border:1px solid #f0f0f0; border-radius:4px; overflow:hidden; cursor:zoom-in; position:relative; display:flex; align-items:center; justify-content:center; }
 .pd-hero-img img { width:100%; height:100%; object-fit:contain; object-position:center; transition:.3s; }
 
-.pd-share-btn { position:absolute; top:10px; right:10px; background:#fff; border:none; border-radius:20px; padding:6px 12px; font-size:11px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.1); }
+.pd-share-btn { position:absolute; top:10px; right:10px; z-index:10; display:flex; align-items:center; gap:5px; background:#fff; border:none; border-radius:20px; padding:6px 12px; font-size:11px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.1); }
 .pd-trust { display:flex; align-items:center; gap:8px; padding:10px 0; font-size:12px; border-bottom:1px solid #f0f0f0; }
 
 .pd-color-btn { display:flex; align-items:center; gap:8px; padding:6px 12px 6px 8px; border-radius:6px; cursor:pointer; transition:all .18s; position:relative; min-height:42px; font-family:'Roboto',sans-serif; }

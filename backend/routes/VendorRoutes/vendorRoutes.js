@@ -1,12 +1,18 @@
 /**
- * vendorRoutes.js — Production v2.0
+ * vendorRoutes.js — Production v2.1
  * Clean, no duplicates, correct middleware usage
  *
  * PUBLIC:
- *   POST /vendor/register     → apply as vendor (auto creates user account)
- *   GET  /vendor/status       → check application status (needs user login)
- *   GET  /pincode/check/:code → check delivery availability
- *   POST /pincode/waitlist    → join waitlist
+ *   POST /vendor/register     → apply as vendor (creates user + vendor account)
+ *   POST /send-otp            → send OTP for vendor registration
+ *   POST /verify-otp-register → verify OTP and create account
+ *   POST /login-otp           → vendor login via OTP
+ *   GET  /featured            → get featured vendors
+ *   GET  /nearby              → get nearby vendors
+ *   GET  /store/:slug         → get vendor store details
+ *
+ * PROTECTED (user JWT):
+ *   GET  /vendor/status       → check application status
  *
  * VENDOR (protectVendor):
  *   GET    /vendor/me
@@ -79,10 +85,9 @@ router.post("/login-otp", validateBody({ email: { required: true, type: "email" 
 
 
 
-// ── Vendor Registration (PROTECTED — user must be logged in) ────────────────────
+// ── Vendor Registration (PUBLIC — open registration)
 router.post(
     "/register",
-    protect,  // ✅ REQUIRED: User must be authenticated with valid JWT
     docUpload,
     validateBody({
         shopName: { required: true, minLength: 2, maxLength: 100 },
