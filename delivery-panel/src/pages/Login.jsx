@@ -50,7 +50,15 @@ const Login = () => {
     setLoading(true); setError("");
     try {
       await login(identifier.trim(), pass.trim());
-      navigate("/dashboard");
+      // The login function in AuthContext will now hit the correct endpoint.
+      // We can add a role check here for extra client-side safety,
+      // though the backend now enforces it.
+      const authData = JSON.parse(localStorage.getItem('deliveryAuth'));
+      if (authData?.rider?.role === 'delivery_boy') {
+        navigate("/dashboard");
+      } else {
+        setError("This is not a delivery partner account.");
+      }
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Login fail ho gayi");
     } finally { setLoading(false); }

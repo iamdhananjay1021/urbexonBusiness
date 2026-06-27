@@ -213,10 +213,10 @@ const Profile = () => {
         <div style={{ fontSize: 13, fontWeight: 700, color: G.text, marginBottom: 10 }}>Documents</div>
         <div style={{ background: G.white, border: `1px solid ${G.border}`, borderRadius: 12, overflow: "hidden" }}>
           {[
-            { key: "aadhaarPhoto", label: "Aadhaar Card", icon: "🪪" },
-            { key: "licensePhoto", label: "Driving License", icon: "📄" },
-            { key: "vehicleRc", label: "Vehicle RC", icon: "🚗" },
-            { key: "selfie", label: "Selfie", icon: "🤳" },
+            { key: "aadhaarPhoto", label: "Aadhaar Card", icon: "🪪", serverKey: "documents.aadhaar" },
+            { key: "drivingLicensePhoto", label: "Driving License", icon: "📄", serverKey: "drivingLicense.photoUrl" },
+            { key: "vehicleRCPhoto", label: "Vehicle RC", icon: "🚗", serverKey: "documents.vehicleRC" },
+            { key: "profilePhoto", label: "Profile Photo", icon: "🤳", serverKey: "profilePhotoUrl" },
           ].map((doc, i, arr) => {
             const url = docs[doc.key];
             const status = r?.documentStatus?.[doc.key] || "pending";

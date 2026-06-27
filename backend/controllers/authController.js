@@ -30,7 +30,7 @@ const BRAND = {
     website: process.env.SHOP_WEBSITE || "urbexon.in",
 };
 
-const PUBLIC_ROLES = ["user", "vendor", "delivery"];
+const PUBLIC_ROLES = ["user", "vendor", "delivery_boy"];
 
 /* ─────────────────────────────────────────────
    Helpers
@@ -71,7 +71,7 @@ export const register = async (req, res) => {
 
         // If a user tries to register as a vendor, they are first created as a 'user'.
         // They can apply to be a vendor after verifying their email.
-        const isVendorRegistration = role === 'vendor' || role === 'delivery';
+        const isVendorRegistration = role === 'vendor' || role === 'delivery_boy';
         const assignedRole = isVendorRegistration ? 'user' : (PUBLIC_ROLES.includes(role) ? role : "user");
 
         const exists = await User.findOne({ email: sanitizeEmail(email) })
@@ -262,6 +262,56 @@ export const login = async (req, res) => {
 
     } catch (err) {
         console.error("[Auth] LOGIN ERROR:", err);
+        return res.status(500).json({ success: false, message: "Login failed. Please try again." });
+    }
+};
+
+/* ═══════════════════════════════════════════════════
+   DELIVERY BOY LOGIN
+═══════════════════════════════════════════════════ */
+export const deliveryLogin = async (req, res) => {
+    try {
+        const { email, phone, password } = req.body;
+        const identifier = email || phone;
+
+        if (!identifier?.trim() || !password?.trim()) {
+            return res.status(400).json({ success: false, message: "Email/phone and password are required" });
+        }
+
+        const isEmail = identifier.includes("@");
+        const query = isEmail
+            ? { email: sanitizeEmail(identifier) }
+            : { phone: identifier.trim() };
+
+        const user = await User.findOne(query)
+            .select("+password +emailOtp +emailOtpExpires +emailOtpAttempts");
+
+        if (!user) {
+            return res.status(401).json({ success: false, message: "Invalid credentials" });
+        }
+
+        // ✅ CRITICAL FIX: Ensure only users with 'delivery_boy' role can log in
+        if (user.role !== 'delivery_boy') {
+            return res.status(403).json({ success: false, message: "Access denied. This is not a delivery partner account." });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: "Invalid credentials" });
+        }
+
+        if (user.isBlocked) {
+            return res.status(403).json({ success: false, message: "Your account has been blocked. Please contact support." });
+        }
+
+        if (!user.isEmailVerified) {
+            // OTP logic remains the same for unverified accounts
+            return res.status(403).json({ success: false, message: "Please verify your email first. An OTP has been sent.", requiresVerification: true, email: user.email });
+        }
+
+        return res.status(200).json({ success: true, ...safeUserPayload(user, generateToken(user._id, user.role)) });
+    } catch (err) {
+        console.error("[Auth] DELIVERY LOGIN ERROR:", err);
         return res.status(500).json({ success: false, message: "Login failed. Please try again." });
     }
 };
@@ -792,7 +842,7 @@ export const adminGetDashboard = async (req, res) => {
    EMAIL BUILDERS (private)
 ═══════════════════════════════════════════════════ */
 function buildOtpEmail(email, name, otp, role = "user") {
-    const roleLabel = role === "vendor" ? "Vendor Account" : role === "delivery" ? "Delivery Partner Account" : "Account";
+    const roleLabel = role === "vendor" ? "Vendor Account" : role === "delivery_boy" ? "Delivery Partner Account" : "Account";
     return {
         to: email,
         subject: `${otp} is your ${BRAND.name} verification code`,
