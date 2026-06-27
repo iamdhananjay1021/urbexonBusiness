@@ -119,109 +119,7 @@ export const validateOrderRequest = (body) => {
    • [FIX-1] No "Unable to determine vendor" error for ecommerce
 ───────────────────────────────────────────────────────────── */
 export const validateEcommerceItems = async (frontendItems) => {
-    if (!Array.isArray(frontendItems) || frontendItems.length === 0)
-        throw new Error("Cart is empty");
-
-    const formattedItems = [];
-    let itemsTotal = 0;
-
-    // Optimized: Fetch all products in a single DB call
-    const productIds = frontendItems.map(item => item.productId || item._id).filter(Boolean);
-    const products = await Product.find({ _id: { $in: productIds }, isActive: true })
-        .select(
-            "name price mrp inStock stock images productType vendorId " +
-            "isCancellable isReturnable isReplaceable returnWindow " +
-            "replacementWindow cancelWindow nonReturnableReason colorVariants"
-        )
-        .lean();
-
-    const productMap = products.reduce((acc, p) => {
-        acc[p._id.toString()] = p;
-        return acc;
-    }, {});
-
-    for (const item of frontendItems) {
-        const productId = item.productId || item._id;
-        if (!productId) throw new Error("Invalid product ID in cart");
-
-        const product = productMap[productId.toString()];
-
-        if (!product) throw new Error(`Product not found: ${productId}`);
-
-        // [FIX-4] Block vendor UH products from ecommerce checkout
-        if (product.productType === "urbexon_hour") {
-            throw new Error(
-                `"${product.name}" is an Urbexon Hour item and cannot be ordered via Ecommerce checkout. ` +
-                `Please use the Urbexon Hour section.`
-            );
-        }
-
-        // Qty validation
-        const qty = Math.min(Math.max(1, Number(item.qty || item.quantity || 1)), 100);
-
-        // Inventory check
-        if (!product.inStock || product.stock < qty) {
-            throw new Error(
-                `"${product.name}" ${product.stock < qty
-                    ? `has insufficient stock (available: ${product.stock}, requested: ${qty})`
-                    : "is out of stock"
-                }`
-            );
-        }
-
-        let dbPrice = Number(product.price);
-        let dbMrp = product.mrp ? Number(product.mrp) : null;
-        let finalImage = product.images?.[0]?.url || "";
-
-        if (item.selectedColor && product.colorVariants?.length > 0) {
-            const variant = product.colorVariants.find((v, idx) => {
-                const cName = v.name || v.color || `Color ${idx + 1}`;
-                return cName === item.selectedColor;
-            });
-            if (variant) {
-                if (variant.price != null && variant.price > 0) dbPrice = Number(variant.price);
-                if (variant.mrp != null && variant.mrp > 0) dbMrp = Number(variant.mrp);
-                if (variant.images?.length > 0) finalImage = variant.images[0].url;
-            }
-        }
-
-        itemsTotal += dbPrice * qty;
-
-        formattedItems.push({
-            productId: product._id,
-            name: String(product.name).slice(0, 200),
-            price: dbPrice,
-            mrp: dbMrp,
-            qty,
-            image: typeof item.image === "string" && item.image.startsWith("http") ? item.image : finalImage,
-            customization: {
-                text: String(item.customization?.text || "").trim().slice(0, 500),
-                imageUrl: String(item.customization?.imageUrl || "").trim().slice(0, 1000),
-                note: String(item.customization?.note || "").trim().slice(0, 1000),
-            },
-            selectedSize: String(item.selectedSize || "").trim().slice(0, 50),
-            selectedColor: String(item.selectedColor || "").trim().slice(0, 50),
-            // [FIX-1] productType: ecommerce, vendorId: null — CORRECT for admin products
-            productType: "ecommerce",
-            vendorId: null,
-            policy: {
-                isCancellable: product.isCancellable !== false,
-                isReturnable: product.isReturnable !== false,
-                isReplaceable: product.isReplaceable === true,
-                returnWindow: product.returnWindow ?? 7,
-                replacementWindow: product.replacementWindow ?? 7,
-                cancelWindow: product.cancelWindow ?? 0,
-                nonReturnableReason: product.nonReturnableReason || "",
-            },
-        });
-    }
-
-    return {
-        formattedItems,
-        itemsTotal,
-        vendorId: null, // [FIX-1] Ecommerce = no vendor. Delivery via Shiprocket.
-        orderMode: "ECOMMERCE",
-    };
+    return validateAndFormatItems(frontendItems, "ecommerce");
 };
 
 /* ─────────────────────────────────────────────────────────────
@@ -232,6 +130,13 @@ export const validateEcommerceItems = async (frontendItems) => {
    (Original logic preserved from v1)
 ───────────────────────────────────────────────────────────── */
 export const validateUrbexonHourItems = async (frontendItems) => {
+    return validateAndFormatItems(frontendItems, "urbexon_hour");
+};
+
+/**
+ * REFACTORED: Unified item validation logic
+ */
+const validateAndFormatItems = async (frontendItems, channel) => {
     if (!Array.isArray(frontendItems) || frontendItems.length === 0)
         throw new Error("Cart is empty");
 
@@ -239,72 +144,77 @@ export const validateUrbexonHourItems = async (frontendItems) => {
     let itemsTotal = 0;
     const vendorIds = new Set();
 
-    // Optimized: Fetch all products in a single DB call
     const productIds = frontendItems.map(item => item.productId || item._id).filter(Boolean);
     const products = await Product.find({ _id: { $in: productIds }, isActive: true })
         .select(
             "name price mrp inStock stock images productType vendorId " +
-            "isCancellable isReturnable isReplaceable returnWindow " +
-            "replacementWindow cancelWindow nonReturnableReason prepTimeMinutes colorVariants"
+            "isCancellable isReturnable isReplaceable returnWindow replacementWindow " +
+            "cancelWindow nonReturnableReason prepTimeMinutes colorVariants"
         )
         .lean();
 
-    const productMap = products.reduce((acc, p) => {
-        acc[p._id.toString()] = p;
-        return acc;
-    }, {});
+    const productMap = new Map(products.map(p => [p._id.toString(), p]));
 
     for (const item of frontendItems) {
         const productId = item.productId || item._id;
         if (!productId) throw new Error("Invalid product ID in cart");
 
-        const product = productMap[productId.toString()];
-
+        const product = productMap.get(productId.toString());
         if (!product) throw new Error(`Product not found: ${productId}`);
 
-        // Block ecommerce products from UH checkout
-        if (product.productType === "ecommerce") {
-            throw new Error(
-                `"${product.name}" is an Ecommerce item and cannot be ordered via Urbexon Hour. ` +
-                `Please use the Ecommerce section.`
-            );
+        // Channel validation
+        if (channel === "ecommerce" && product.productType === "urbexon_hour") {
+            throw new Error(`"${product.name}" is an Urbexon Hour item and cannot be ordered via Ecommerce checkout.`);
+        }
+        if (channel === "urbexon_hour" && product.productType === "ecommerce") {
+            throw new Error(`"${product.name}" is an Ecommerce item and cannot be ordered via Urbexon Hour.`);
+        }
+        if (channel === "urbexon_hour" && !product.vendorId) {
+            throw new Error(`"${product.name}" has no vendor assigned for Urbexon Hour.`);
         }
 
-        // vendorId is REQUIRED for UH products
-        if (!product.vendorId) {
-            throw new Error(`"${product.name}" has no vendor assigned. Please contact support.`);
-        }
-
-        vendorIds.add(String(product.vendorId));
+        if (product.vendorId) vendorIds.add(String(product.vendorId));
 
         const qty = Math.min(Math.max(1, Number(item.qty || item.quantity || 1)), 100);
 
         if (!product.inStock || product.stock < qty) {
-            throw new Error(
-                `"${product.name}" ${product.stock < qty
-                    ? `has insufficient stock (available: ${product.stock}, requested: ${qty})`
-                    : "is out of stock"
-                }`
-            );
+            throw new Error(`"${product.name}" is out of stock or has insufficient quantity.`);
         }
 
         let dbPrice = Number(product.price);
         let dbMrp = product.mrp ? Number(product.mrp) : null;
         let finalImage = product.images?.[0]?.url || "";
 
-        if (item.selectedColor && product.colorVariants?.length > 0) {
-            const variant = product.colorVariants.find((v, idx) => {
-                const cName = v.name || v.color || `Color ${idx + 1}`;
-                return cName === item.selectedColor;
-            });
+        if (item.selectedColor && product.colorVariants?.length) {
+            const variant = product.colorVariants.find(v => (v.name || v.color) === item.selectedColor);
             if (variant) {
                 if (variant.price != null && variant.price > 0) dbPrice = Number(variant.price);
                 if (variant.mrp != null && variant.mrp > 0) dbMrp = Number(variant.mrp);
-                if (variant.images?.length > 0) finalImage = variant.images[0].url;
+                if (variant.images?.length) finalImage = variant.images[0].url;
             }
         }
 
         itemsTotal += dbPrice * qty;
+
+        const policy = (channel === "ecommerce")
+            ? {
+                isCancellable: product.isCancellable !== false,
+                isReturnable: product.isReturnable !== false,
+                isReplaceable: product.isReplaceable === true,
+                returnWindow: product.returnWindow ?? 7,
+                replacementWindow: product.replacementWindow ?? 7,
+                cancelWindow: product.cancelWindow ?? 0,
+                nonReturnableReason: product.nonReturnableReason || "",
+            }
+            : { // Urbexon Hour policies
+                isCancellable: product.isCancellable !== false,
+                isReturnable: false,
+                isReplaceable: false,
+                returnWindow: 0,
+                replacementWindow: 0,
+                cancelWindow: product.cancelWindow ?? 0,
+                nonReturnableReason: "Urbexon Hour orders are non-returnable",
+            };
 
         formattedItems.push({
             productId: product._id,
@@ -312,7 +222,7 @@ export const validateUrbexonHourItems = async (frontendItems) => {
             price: dbPrice,
             mrp: dbMrp,
             qty,
-            image: typeof item.image === "string" && item.image.startsWith("http") ? item.image : finalImage,
+            image: (typeof item.image === "string" && item.image.startsWith("http")) ? item.image : finalImage,
             customization: {
                 text: String(item.customization?.text || "").trim().slice(0, 500),
                 imageUrl: String(item.customization?.imageUrl || "").trim().slice(0, 1000),
@@ -320,42 +230,35 @@ export const validateUrbexonHourItems = async (frontendItems) => {
             },
             selectedSize: String(item.selectedSize || "").trim().slice(0, 50),
             selectedColor: String(item.selectedColor || "").trim().slice(0, 50),
-            productType: "urbexon_hour",
-            vendorId: product.vendorId,
-            prepTimeMinutes: product.prepTimeMinutes || 10,
-            policy: {
-                isCancellable: product.isCancellable !== false,
-                isReturnable: false,       // UH orders are non-returnable
-                isReplaceable: false,      // UH orders are non-replaceable
-                returnWindow: 0,
-                replacementWindow: 0,
-                cancelWindow: product.cancelWindow ?? 0,
-                nonReturnableReason: "Urbexon Hour orders are non-returnable",
-            },
+            productType: channel,
+            vendorId: product.vendorId || null,
+            ...(channel === "urbexon_hour" && { prepTimeMinutes: product.prepTimeMinutes || 10 }),
+            policy,
         });
     }
 
-    // Single vendor enforcement for UH
-    if (vendorIds.size > 1) {
-        throw new Error(
-            "Your cart contains items from multiple vendors. " +
-            "Urbexon Hour orders must be from a single vendor."
-        );
+    if (channel === "ecommerce") {
+        return {
+            formattedItems,
+            itemsTotal,
+            vendorId: null,
+            orderMode: "ECOMMERCE",
+        };
     }
 
-    if (vendorIds.size === 0) {
-        throw new Error("Unable to determine vendor for Urbexon Hour items. Please contact support.");
-    }
-
-    const vendorId = Array.from(vendorIds)[0];
+    // Urbexon Hour specific checks
+    if (vendorIds.size > 1)
+        throw new Error("Your cart contains items from multiple vendors. Urbexon Hour orders must be from a single vendor.");
+    if (vendorIds.size === 0)
+        throw new Error("Unable to determine vendor for Urbexon Hour items.");
 
     return {
         formattedItems,
         itemsTotal,
-        vendorId,
+        vendorId: Array.from(vendorIds)[0],
         orderMode: "URBEXON_HOUR",
     };
-};
+}
 
 /* ─────────────────────────────────────────────────────────────
    VALIDATION 3: Payment method eligibility
@@ -396,62 +299,81 @@ export const validatePaymentMethod = async (method, pincode, orderChannel = "eco
    • Ecommerce: no distance check (Shiprocket = pan-India)
    • UH: STRICT distance check from specific vendor location
 ───────────────────────────────────────────────────────────── */
-export const validateDeliveryServiceability = async (deliveryType, latitude, longitude, vendorId, pincode) => {
-    if (deliveryType === "URBEXON_HOUR") {
-        if (!DELIVERY_CONFIG.URBEXON_HOUR?.ENABLED)
-            throw new Error("Urbexon Hour delivery is currently unavailable");
+export const validateDeliveryServiceability = async (
+    deliveryType, latitude, longitude, vendorId, pincode
+) => {
+    if (deliveryType !== "URBEXON_HOUR") return { realDistanceKm: 0 };
 
-        const vendor = await Vendor.findById(vendorId).select("location deliveryRadius servicePincodes").lean();
-        if (!vendor) throw new Error("Vendor not found.");
+    if (!DELIVERY_CONFIG.URBEXON_HOUR?.ENABLED)
+        throw new Error("Urbexon Hour delivery is currently unavailable");
 
-        // 🚨 CRITICAL FIX: Stop trusting omitted coordinates. If no GPS, strictly verify pincode whitelist.
-        if (!latitude || !longitude) {
-            if (!pincode) throw new Error("Precise location or valid pincode is strictly required for express delivery.");
-            if (!vendor.servicePincodes || !vendor.servicePincodes.includes(String(pincode))) {
-                throw new Error("Your pincode is outside the delivery zone for this vendor.");
-            }
-            return { realDistanceKm: 0 }; // Fallback approved via Pincode whitelist
-        }
+    const vendor = await Vendor.findById(vendorId)
+        .select("location deliveryRadius servicePincodes")
+        .lean();
+    if (!vendor) throw new Error("Vendor not found.");
 
-        const orderLat = Number(latitude);
-        const orderLng = Number(longitude);
+    const hasValidCoords =
+        vendor.location?.coordinates?.length === 2 &&
+        !(vendor.location.coordinates[0] === 0 &&
+            vendor.location.coordinates[1] === 0);
 
-        if (!vendor.location || !vendor.location.coordinates || vendor.location.coordinates.length < 2 || (vendor.location.coordinates[0] === 0 && vendor.location.coordinates[1] === 0)) {
-            // If vendor has no coordinates setup, rely on their pincode whitelist
-            if (!pincode || !vendor.servicePincodes?.includes(String(pincode))) throw new Error("Vendor location unverified and pincode not explicitly serviced.");
-            return { realDistanceKm: 0 };
-        }
+    const hasServicePincodes =
+        Array.isArray(vendor.servicePincodes) &&
+        vendor.servicePincodes.length > 0;
 
-        const shopLng = vendor.location.coordinates[0];
-        const shopLat = vendor.location.coordinates[1];
-        const maxRadius = vendor.deliveryRadius || DELIVERY_CONFIG.URBEXON_HOUR.MAX_RADIUS_KM;
-
-        // Server-side distance calculation — DO NOT TRUST client distanceKm
-        const toRad = (d) => (d * Math.PI) / 180;
-        const R = 6371;
-        const dLat = toRad(orderLat - shopLat);
-        const dLon = toRad(orderLng - shopLng);
-        const a =
-            Math.sin(dLat / 2) ** 2 +
-            Math.cos(toRad(shopLat)) *
-            Math.cos(toRad(orderLat)) *
-            Math.sin(dLon / 2) ** 2;
-        const realDistanceKm =
-            Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
-
-        if (realDistanceKm > maxRadius) {
-            throw new Error(
-                `Your location is outside the vendor's delivery radius. ` +
-                `Maximum: ${maxRadius}km, ` +
-                `Your distance: ${realDistanceKm}km`
-            );
-        }
-
-        return { realDistanceKm };
+    // Vendor ne kuch configure nahi kiya → allow by default
+    if (!hasValidCoords && !hasServicePincodes) {
+        return { realDistanceKm: 0 };
     }
 
-    // Ecommerce: Shiprocket delivers pan-India — no distance restriction
-    return { realDistanceKm: 0 };
+    // Customer ne GPS nahi diya
+    if (!latitude || !longitude) {
+        if (!pincode) throw new Error("Pincode required for express delivery.");
+        if (hasServicePincodes &&
+            !vendor.servicePincodes.includes(String(pincode))) {
+            throw new Error(
+                "Your pincode is outside the delivery zone for this vendor."
+            );
+        }
+        return { realDistanceKm: 0 };
+    }
+
+    // GPS hai but vendor coordinates nahi → allow
+    if (!hasValidCoords) {
+        return { realDistanceKm: 0 };
+    }
+
+    // Dono hain → distance check karo
+    const orderLat = Number(latitude);
+    const orderLng = Number(longitude);
+    const shopLng = vendor.location.coordinates[0];
+    const shopLat = vendor.location.coordinates[1];
+    const maxRadius =
+        vendor.deliveryRadius ||
+        DELIVERY_CONFIG.URBEXON_HOUR.MAX_RADIUS_KM;
+
+    const toRad = (d) => (d * Math.PI) / 180;
+    const R = 6371;
+    const dLat = toRad(orderLat - shopLat);
+    const dLon = toRad(orderLng - shopLng);
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(shopLat)) *
+        Math.cos(toRad(orderLat)) *
+        Math.sin(dLon / 2) ** 2;
+    const realDistanceKm =
+        Math.round(
+            R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10
+        ) / 10;
+
+    if (realDistanceKm > maxRadius) {
+        throw new Error(
+            `Your location is outside the vendor's delivery radius. ` +
+            `Maximum: ${maxRadius}km, Your distance: ${realDistanceKm}km`
+        );
+    }
+
+    return { realDistanceKm };
 };
 
 /* ─────────────────────────────────────────────────────────────

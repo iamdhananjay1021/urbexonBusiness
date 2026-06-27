@@ -36,6 +36,7 @@ const deliveryConfigSchema = new mongoose.Schema(
 
         // ── Policies ──
         codAvailablePanIndia: { type: Boolean, default: true },
+        codEnabledGlobally: { type: Boolean, default: true },
         returnDays: { type: Number, default: 7 },
 
         // ── Shiprocket ──

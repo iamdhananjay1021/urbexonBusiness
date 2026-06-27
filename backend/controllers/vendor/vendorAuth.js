@@ -38,26 +38,12 @@ export const registerVendor = async (req, res) => {
             });
         }
 
-        // ── 0. Get or create user (handles both authenticated and public registrations) ─
-        let user = req.user;
-        let userId = user?._id;
-
+        // The `protect` middleware ensures req.user exists.
+        const user = req.user;
         if (!user) {
-            // Check if user with this email already exists
-            user = await User.findOne({ email });
-            if (!user) {
-                // Create new user account for vendor registration
-                user = await User.create({
-                    name: ownerName.trim(),          // ← yeh add karo
-                    email,
-                    phone,
-                    isVerified: false,
-                    password: await bcrypt.hash(phone, 10), // Default password is phone number
-                    role: "user",
-                });
-            }
-            userId = user._id;
+            return res.status(401).json({ success: false, message: "Authentication required to register as a vendor." });
         }
+        const userId = user._id;
 
         // ── 1. Check for duplicate application ───────────────────────────────
         const existing = await Vendor.findOne({ userId, isDeleted: false });
@@ -184,13 +170,6 @@ export const registerVendor = async (req, res) => {
             ...uploads,
         });
 
-        // ── 9. Issue JWT ─────────────────────────────────────────────────────
-        const token = jwt.sign(
-            { id: user._id, role: user.role },
-            process.env.JWT_SECRET,
-            { expiresIn: "30d" }
-        );
-
         // Admin notification (fire-and-forget)
         createNotification({
             type: "vendor",
@@ -203,8 +182,7 @@ export const registerVendor = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: "Application submitted successfully! Pending admin review. Your default password is your phone number.",
-            token,
+            message: "Application submitted successfully! You will be notified upon review.",
             vendor: {
                 _id: vendor._id,
                 shopName: vendor.shopName,

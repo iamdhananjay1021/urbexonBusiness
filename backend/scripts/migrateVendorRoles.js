@@ -51,7 +51,7 @@ const migrateRoles = async () => {
 
     // --- Migrate Delivery Partners ---
     console.log("Starting delivery partner role migration...");
-    // Also find any users with the old 'delivery_boy' role
+    // Find users with the old 'delivery_boy' role
     const approvedPartners = await DeliveryBoy.find({ status: "approved" }).lean(); // Using DeliveryBoy model
     const oldRoleUsers = await User.find({ role: "delivery_boy" }).lean();
     const userIdsToUpdate = new Set([
@@ -64,7 +64,7 @@ const migrateRoles = async () => {
     } else {
         let updatedPartners = 0;
         for (const userId of userIdsToUpdate) {
-            const result = await User.updateOne(
+            const result = await User.updateMany(
                 { _id: userId, role: { $ne: "delivery" } },
                 { $set: { role: "delivery" } }
             );

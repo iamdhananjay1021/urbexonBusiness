@@ -15,8 +15,8 @@ import { signInWithPopup } from "firebase/auth";
 const getRoleRedirect = (role) => {
     switch (role) {
         case "vendor":
-            return { external: false, url: "/become-vendor" };
-        case "delivery_boy":
+            return { external: true, url: process.env.REACT_APP_VENDOR_URL || "http://localhost:3001" };
+        case "delivery":
             return { external: false, url: "/become-delivery" };
         case "admin":
         case "owner":
