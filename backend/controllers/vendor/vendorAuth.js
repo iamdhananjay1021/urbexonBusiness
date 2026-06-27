@@ -48,12 +48,12 @@ export const registerVendor = async (req, res) => {
             if (!user) {
                 // Create new user account for vendor registration
                 user = await User.create({
+                    name: ownerName.trim(),          // ← yeh add karo
                     email,
-                    firstName: ownerName.split(" ")[0],
-                    lastName: ownerName.split(" ").slice(1).join(" "),
                     phone,
                     isVerified: false,
                     password: await bcrypt.hash(phone, 10), // Default password is phone number
+                    role: "user",
                 });
             }
             userId = user._id;

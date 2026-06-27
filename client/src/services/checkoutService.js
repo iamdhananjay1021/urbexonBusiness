@@ -2,17 +2,16 @@
  * checkoutService.js
  * ✅ All checkout API calls in one place
  * ✅ No pricing logic here — that's backend's job
+ * ✅ FIX: orderMode now passed in placeCODOrder & serializeItems
  */
 
 import api from "../api/axios";
 
 /**
  * Fetch server-calculated pricing for given cart items
- * @param {Array} items - cart items
- * @param {"COD"|"RAZORPAY"} paymentMethod
  */
 export const fetchCheckoutPricing = async (items, paymentMethod = "RAZORPAY", options = {}) => {
-    if (!items || items.length === 0) return null; // ← YEH LINE ADD KARO
+    if (!items || items.length === 0) return null;
     const { data } = await api.post("/orders/pricing", {
         items: serializeItems(items),
         paymentMethod,
@@ -23,7 +22,6 @@ export const fetchCheckoutPricing = async (items, paymentMethod = "RAZORPAY", op
         ...(options.couponCode && { couponCode: options.couponCode }),
     });
     return data;
-    // Returns: { itemsTotal, deliveryCharge, platformFee, finalTotal, freeDeliveryThreshold, amountForFreeDelivery }
 };
 
 /**
@@ -40,7 +38,6 @@ export const fetchAddresses = async () => {
 export const verifyPincode = async (pincode) => {
     const { data } = await api.get(`/addresses/pincode/${pincode}`);
     return data;
-    // Returns: { city, state, codAllowed, codStatus, deliveryETA, ... }
 };
 
 /**
@@ -53,7 +50,6 @@ export const fetchShippingRate = async (pincode, paymentMethod = "online", weigh
         paymentMethod: paymentMethod === "cod" ? "COD" : "PREPAID",
     });
     return data;
-    // Returns: { success, rate, courier, etd, mock }
 };
 
 /**
@@ -61,7 +57,7 @@ export const fetchShippingRate = async (pincode, paymentMethod = "online", weigh
  */
 export const addAddress = async (form) => {
     const { data } = await api.post("/addresses", form);
-    return data; // { addresses, success }
+    return data;
 };
 
 /**
@@ -90,9 +86,19 @@ export const setDefaultAddress = async (addressId) => {
 
 /**
  * Place COD order
+ * ✅ FIX: orderMode now accepted and sent to backend
  * ✅ Does NOT send totalAmount — backend calculates
  */
-export const placeCODOrder = async ({ items, contact, address, pincode, deliveryType = "ECOMMERCE_STANDARD", distanceKm = 0, coupon = null }) => {
+export const placeCODOrder = async ({
+    items,
+    contact,
+    address,
+    pincode,
+    deliveryType = "ECOMMERCE_STANDARD",
+    orderMode = "ECOMMERCE",          // ✅ FIX: was missing entirely
+    distanceKm = 0,
+    coupon = null,
+}) => {
     const { data } = await api.post("/orders", {
         items: serializeItems(items),
         customerName: contact.name,
@@ -102,19 +108,16 @@ export const placeCODOrder = async ({ items, contact, address, pincode, delivery
         pincode: address.pincode,
         city: address.city || "",
         state: address.state || "",
-        // ✅ BUG2 FIX: address object uses latitude/longitude fields (not lat/lng)
-        // Also support both naming conventions for robustness
         latitude: address.latitude || address.lat || null,
         longitude: address.longitude || address.lng || null,
         paymentMethod: "COD",
         deliveryType,
+        orderMode,                    // ✅ FIX: now sent to backend
         distanceKm,
         ...(coupon?.couponId && { couponId: coupon.couponId }),
         ...(coupon?.code && { couponCode: coupon.code }),
-
     });
     return data;
-    // Returns: { orderId, invoiceNumber, orderStatus, itemsTotal, deliveryCharge, finalTotal }
 };
 
 /**
@@ -124,7 +127,7 @@ export const placeCODOrder = async ({ items, contact, address, pincode, delivery
 export const serializeItems = (items) =>
     items.map((item) => ({
         productId: item.productId || item._id,
-        name: item.name,                    // for display only, backend fetches from DB
+        name: item.name,
         qty: Number(item.quantity) || 1,
         image: typeof item.image === "string" ? item.image : item.images?.[0]?.url || "",
         customization: {
@@ -133,6 +136,7 @@ export const serializeItems = (items) =>
             note: item.customization?.note?.trim() || "",
         },
         selectedSize: item.selectedSize || "",
+        selectedColor: item.selectedColor || "",  // ✅ color variant support
         // ✅ price NOT sent — backend uses DB price
     }));
 

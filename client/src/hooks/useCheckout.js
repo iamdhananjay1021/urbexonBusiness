@@ -3,6 +3,8 @@
  * ✅ Central state + logic for entire checkout flow
  * ✅ Pricing always fetched from server
  * ✅ No business logic in components
+ * ✅ TESTING MODE: COD force-enabled (verifyPincode bypass)
+ * ✅ FIX: orderMode passed for URBEXON_HOUR orders
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -24,6 +26,11 @@ import {
 } from "../services/checkoutService";
 import { initiateOnlinePayment } from "../services/paymentService";
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🔧 TESTING FLAG — production mein false kar dena
+const FORCE_COD_AVAILABLE = true;
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -37,7 +44,7 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
     const [error, setError] = useState("");
 
     /* ── Coupon (passed from Cart) ── */
-    const [coupon, setCoupon] = useState(couponFromCart); // { couponId, code, discount, ... }
+    const [coupon, setCoupon] = useState(couponFromCart);
 
     /* ── Contact ── */
     const [contact, setContact] = useState({
@@ -57,26 +64,30 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
 
     /* ── Payment ── */
     const [paymentMethod, setPaymentMethod] = useState("");
-    const [payState, setPayState] = useState("idle"); // idle | processing | success | failed
+    const [payState, setPayState] = useState("idle");
     const [loading, setLoading] = useState(false);
 
     /* ── COD availability ── */
-    const [codStatus, setCodStatus] = useState(null); // null | "available" | "coming_soon" | "unavailable" | "blocked"
+    const [codStatus, setCodStatus] = useState(null);
     const [codDistance, setCodDistance] = useState(null);
     const [codChecking, setCodChecking] = useState(false);
     const [deliveryETA, setDeliveryETA] = useState("");
 
     /* ── Shiprocket rate info ── */
-    const [shippingInfo, setShippingInfo] = useState(null); // { courier, etd, rate, mock }
+    const [shippingInfo, setShippingInfo] = useState(null);
 
     /* ── Pricing (server-driven) ── */
-    const [pricing, setPricing] = useState(null);  // { itemsTotal, deliveryCharge, finalTotal, ... }
+    const [pricing, setPricing] = useState(null);
     const [pricingLoading, setPricingLoading] = useState(false);
+
     // Auto-detect delivery type from cart product types
     const cartProductType = checkoutItems?.[0]?.productType || "ecommerce";
     const [deliveryType, setDeliveryType] = useState(
         cartProductType === "urbexon_hour" ? "URBEXON_HOUR" : "ECOMMERCE_STANDARD"
     );
+
+    // ✅ FIX: Derive orderMode from cart items
+    const orderMode = cartProductType === "urbexon_hour" ? "URBEXON_HOUR" : "ECOMMERCE";
 
     /* ── Mobile ── */
     const [mobileSummaryOpen, setMobileSummaryOpen] = useState(false);
@@ -101,12 +112,11 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
 
     useEffect(() => {
         if (!checkoutItems || checkoutItems.length === 0) return;
-
         loadAddresses();
-    }, [loadAddresses]); // ✅ re-runs when user changes
+    }, [loadAddresses]);
+
     /* ════════════════════════════════════════
        FETCH PRICING FROM SERVER
-       Called whenever payment method changes
     ════════════════════════════════════════ */
     const pricingDebounce = useRef(null);
 
@@ -135,45 +145,51 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
         }, 300);
     }, [checkoutItems, paymentMethod, deliveryType, codDistance, selectedAddress?.pincode, coupon]);
 
-    // Cleanup debounce on unmount
     useEffect(() => () => clearTimeout(pricingDebounce.current), []);
 
-    // Initial pricing fetch
     useEffect(() => {
         if (checkoutItems?.length > 0) refreshPricing("RAZORPAY");
     }, []); // eslint-disable-line
 
-    // Refresh when payment method changes
     useEffect(() => {
         if (paymentMethod) refreshPricing(paymentMethod === "cod" ? "COD" : "RAZORPAY");
     }, [paymentMethod]); // eslint-disable-line
-
 
     useEffect(() => {
         if (step === 3) {
             refreshPricing(paymentMethod ? (paymentMethod === "cod" ? "COD" : "RAZORPAY") : "RAZORPAY");
         }
-    }, [deliveryType, codDistance]);
+    }, [deliveryType, codDistance]); // eslint-disable-line
 
     /* ════════════════════════════════════════
        CHECK COD AVAILABILITY
-       Called when reaching step 3
     ════════════════════════════════════════ */
     useEffect(() => {
         if (step !== 3 || !selectedAddress?.pincode) {
-            setCodStatus(null);
+            // ✅ TESTING: jab step 3 pe aao aur pincode nahi toh bhi COD available rakho
+            if (FORCE_COD_AVAILABLE) setCodStatus("available");
+            else setCodStatus(null);
             return;
         }
+
+        // ✅ TESTING MODE: verifyPincode call skip, COD hamesha available
+        if (FORCE_COD_AVAILABLE) {
+            setCodStatus("available");
+            setCodDistance(0);
+            setDeliveryETA("45–120 mins");
+            return;
+        }
+
+        // Production code (FORCE_COD_AVAILABLE = false hone par chalega)
         const checkCOD = async () => {
             try {
                 setCodChecking(true);
                 const data = await verifyPincode(selectedAddress.pincode);
-                // ✅ Use actual backend response (Flipkart-style per-pincode COD)
                 setCodStatus(data.codStatus || (data.codAllowed ? "available" : "unavailable"));
                 setCodDistance(data.distanceKm);
                 setDeliveryETA(data.deliveryETA || "");
             } catch {
-                setCodStatus("unavailable"); // On error, don't assume COD is available
+                setCodStatus("unavailable");
             } finally {
                 setCodChecking(false);
             }
@@ -181,7 +197,7 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
         checkCOD();
     }, [selectedAddress?.pincode, step]);
 
-    /* ── Fetch Shiprocket rate for courier/ETA info ── */
+    /* ── Fetch Shiprocket rate ── */
     useEffect(() => {
         if (step !== 3 || !selectedAddress?.pincode || deliveryType === "URBEXON_HOUR") {
             setShippingInfo(null);
@@ -192,17 +208,18 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
                 const data = await fetchShippingRate(selectedAddress.pincode, paymentMethod || "online");
                 if (data.success) setShippingInfo(data);
             } catch {
-                // Non-critical — don't block checkout
+                // Non-critical
             }
         };
         fetchRate();
     }, [selectedAddress?.pincode, step, deliveryType, paymentMethod]);
 
-    const codAvailable = codStatus === "available";
+    // ✅ TESTING: codAvailable always true jab FORCE_COD_AVAILABLE on ho
+    const codAvailable = FORCE_COD_AVAILABLE ? true : codStatus === "available";
 
-    // Reset payment method if COD was selected but pincode check reveals unavailable
+    // Reset payment method if COD unavailable (only in production mode)
     useEffect(() => {
-        if (paymentMethod === "cod" && codStatus && !codAvailable) {
+        if (!FORCE_COD_AVAILABLE && paymentMethod === "cod" && codStatus && !codAvailable) {
             setPaymentMethod("");
         }
     }, [codAvailable, codStatus]); // eslint-disable-line
@@ -212,7 +229,6 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
             setDeliveryType("ECOMMERCE_STANDARD");
         }
     }, [codDistance, deliveryType]);
-
 
     /* ════════════════════════════════════════
        STEP NAVIGATION
@@ -231,7 +247,7 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
 
     const handleAddressContinue = useCallback(() => {
         if (!selectedAddress) return setError("Please select or add a delivery address");
-        if (paymentMethod === "cod" && !codAvailable) setPaymentMethod("");
+        if (!FORCE_COD_AVAILABLE && paymentMethod === "cod" && !codAvailable) setPaymentMethod("");
         setError("");
         setStep(3);
     }, [selectedAddress, paymentMethod, codAvailable]);
@@ -290,7 +306,7 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
 
     /* ════════════════════════════════════════
        PLACE COD ORDER
-       ✅ No WhatsApp, direct navigate
+       ✅ orderMode included for UH orders
     ════════════════════════════════════════ */
     const handleCOD = useCallback(async () => {
         try {
@@ -303,6 +319,7 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
                 address: selectedAddress,
                 pincode: selectedAddress?.pincode,
                 deliveryType,
+                orderMode,          // ✅ "URBEXON_HOUR" ya "ECOMMERCE"
                 distanceKm: codDistance || 0,
                 coupon: coupon || null,
             });
@@ -322,11 +339,11 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
         } finally {
             setLoading(false);
         }
-    }, [checkoutItems, contact, selectedAddress, buyNowItem, clear, navigate]);
+    }, [checkoutItems, contact, selectedAddress, buyNowItem, clear, navigate, orderMode, codDistance, coupon]);
 
     /* ════════════════════════════════════════
        ONLINE PAYMENT
-       ✅ Amount comes from server
+       ✅ orderMode included for UH orders
     ════════════════════════════════════════ */
     const handlePayOnline = useCallback(async () => {
         try {
@@ -354,6 +371,7 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
                     setLoading(false);
                 },
                 deliveryType,
+                orderMode,          // ✅ "URBEXON_HOUR" ya "ECOMMERCE"
                 distanceKm: codDistance || 0,
                 coupon: coupon || null,
             });
@@ -363,7 +381,7 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
         } finally {
             setLoading(false);
         }
-    }, [checkoutItems, contact, selectedAddress, buyNowItem, clear, navigate]);
+    }, [checkoutItems, contact, selectedAddress, buyNowItem, clear, navigate, orderMode, codDistance, coupon]);
 
     /* ════════════════════════════════════════
        SELECT PAYMENT METHOD
@@ -404,6 +422,7 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
         mobileSummaryOpen, setMobileSummaryOpen,
         checkoutItems,
         coupon,
+        orderMode,          // ✅ expose karo agar component ko chahiye
 
         // Actions
         handleContactContinue,

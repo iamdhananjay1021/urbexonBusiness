@@ -1,9 +1,14 @@
 /**
- * orderController.js — Production v4.1
+ * orderController.js — Production v4.2
  *
- * FIXES APPLIED:
+ * FIXES FROM v4.1:
+ * ✅ FIX-1: orderMode accepted from frontend request body (was missing entirely)
+ * ✅ FIX-2: orderChannel detection uses frontend orderMode as primary signal
+ * ✅ FIX-3: Fallback product-based detection still works if frontend doesn't send orderMode
+ * ✅ FIX-4: URBEXON_HOUR COD orders auto-trigger startAssignment after CONFIRMED
+ *
+ * FIXES FROM v4.1 (preserved):
  * [FIX-O1] "Unable to determine vendor" — ecommerce products have vendorId: null (admin-managed)
- *          validateOrderParams was rejecting them. Now ecommerce orders skip vendor requirement.
  * [FIX-O2] Cross-type guard: ecommerce items cannot mix with urbexon_hour items in one cart.
  * [FIX-O3] Vendor products (productType: urbexon_hour) cannot appear in ecommerce checkout.
  * [FIX-O4] Admin ecommerce products (productType: ecommerce, vendorId: null) → Shiprocket delivery.
@@ -91,11 +96,9 @@ const checkFraud = async ({ userId, ip, amount, paymentId }) => {
 ══════════════════════════════════════════════ */
 export const streamMyOrderEvents = (req, res) => {
     try {
-        // 🔥 MUST: SSE headers first
         res.setHeader("Content-Type", "text/event-stream");
         res.setHeader("Cache-Control", "no-cache");
         res.setHeader("Connection", "keep-alive");
-
         res.flushHeaders?.();
 
         let token = req.query?.token;
@@ -118,11 +121,8 @@ export const streamMyOrderEvents = (req, res) => {
         }
 
         const userId = decoded.id || decoded._id;
-
-        // ✅ connected event
         res.write(`event: connected\ndata: ${JSON.stringify({ userId })}\n\n`);
 
-        // heartbeat
         const interval = setInterval(() => {
             res.write(`event: ping\ndata: ${Date.now()}\n\n`);
         }, 25000);
@@ -137,6 +137,7 @@ export const streamMyOrderEvents = (req, res) => {
         res.end();
     }
 };
+
 /* ══════════════════════════════════════════════
    AUTO-CREATE SHIPROCKET SHIPMENT (async helper)
 ══════════════════════════════════════════════ */
@@ -173,22 +174,13 @@ const autoCreateShipment = async (orderId) => {
 };
 
 /* ══════════════════════════════════════════════
-   [FIX-O1][FIX-O2][FIX-O3][FIX-O4][FIX-O5]
    ECOMMERCE ORDER VALIDATOR
-   ─────────────────────────────────────────────
-   Called BEFORE validateOrderParams for ecommerce orders.
-   Ensures:
-   • All cart items are productType: "ecommerce"  (blocks vendor UH products)
-   • No mixing of ecommerce + urbexon_hour items
-   • vendorId is NOT required for ecommerce (admin-managed, vendorId: null)
-   • deliveryType must be ECOMMERCE (not URBEXON_HOUR)
 ══════════════════════════════════════════════ */
 const validateEcommerceItems = async (items, deliveryType) => {
     if (!Array.isArray(items) || items.length === 0) {
         throw new Error("Cart is empty");
     }
 
-    // [FIX-O5] Delivery type guard for ecommerce
     if (deliveryType === "URBEXON_HOUR") {
         throw new Error("Ecommerce orders cannot use Urbexon Hour delivery. Please select E-commerce Standard delivery.");
     }
@@ -196,7 +188,6 @@ const validateEcommerceItems = async (items, deliveryType) => {
     const productIds = items.map(i => i.productId).filter(Boolean);
     if (productIds.length === 0) throw new Error("Invalid cart items — missing product IDs");
 
-    // Fetch all products in one query
     const products = await Product.find({ _id: { $in: productIds }, isActive: true })
         .select("_id name productType vendorId inStock stock")
         .lean();
@@ -216,19 +207,15 @@ const validateEcommerceItems = async (items, deliveryType) => {
             continue;
         }
 
-        // [FIX-O3] Block vendor UH products from ecommerce checkout
         if (product.productType === "urbexon_hour") {
             uhItems.push(product.name || pid);
         } else if (product.productType === "ecommerce") {
-            // [FIX-O1] Admin ecommerce products have vendorId: null — this is CORRECT and expected
-            // Do NOT throw error for null vendorId on ecommerce products
             ecomItems.push(product.name || pid);
         } else {
             errors.push(`Unknown product type for "${product.name}": ${product.productType}`);
         }
     }
 
-    // [FIX-O2] Block mixed cart
     if (uhItems.length > 0 && ecomItems.length > 0) {
         throw new Error(
             `Cannot mix Ecommerce and Urbexon Hour items in one order. ` +
@@ -236,7 +223,6 @@ const validateEcommerceItems = async (items, deliveryType) => {
         );
     }
 
-    // [FIX-O3] Block pure UH cart from ecommerce checkout
     if (uhItems.length > 0 && ecomItems.length === 0) {
         throw new Error(
             `These items (${uhItems.join(", ")}) are only available via Urbexon Hour. ` +
@@ -248,23 +234,15 @@ const validateEcommerceItems = async (items, deliveryType) => {
         throw new Error(errors.join("; "));
     }
 
-    // All good — ecommerce products, vendorId: null is expected
-    return {
-        isEcommerceOrder: true,
-        // [FIX-O4] Ecommerce orders always use Shiprocket — vendorId null is fine
-        vendorId: null,
-    };
+    return { isEcommerceOrder: true, vendorId: null };
 };
 
 /* ══════════════════════════════════════════════
    CREATE ORDER (COD)
-   ✅ [FIX-O1] Ecommerce products (vendorId: null) now work correctly
-   ✅ [FIX-O2] Mixed cart blocked (ecommerce + UH)
-   ✅ [FIX-O3] Vendor UH products blocked in ecommerce checkout
-   ✅ [FIX-O4] Ecommerce → Shiprocket delivery always
-   ✅ Prices recalculated from DB — frontend totalAmount IGNORED
-   ✅ COD validated server-side
-   ✅ Stock deducted immediately after save
+   ✅ FIX-1: orderMode accepted from frontend
+   ✅ FIX-2: Frontend orderMode is primary detection signal
+   ✅ FIX-3: Product-based fallback detection preserved
+   ✅ FIX-4: UH COD orders auto-trigger startAssignment
 ══════════════════════════════════════════════ */
 export const createOrder = async (req, res) => {
     try {
@@ -279,6 +257,7 @@ export const createOrder = async (req, res) => {
             state,
             paymentMethod,
             deliveryType,
+            orderMode: frontendOrderMode,   // ✅ FIX-1: accept from frontend
             latitude,
             longitude,
             couponId,
@@ -291,45 +270,78 @@ export const createOrder = async (req, res) => {
         if (!address?.trim()) return res.status(400).json({ success: false, message: "Delivery address is required" });
         if (!items?.length) return res.status(400).json({ success: false, message: "Cart is empty" });
 
-        // ─── Determine order channel from items ──────────────────────────
-        // [FIX-O1][FIX-O2][FIX-O3] Validate items BEFORE validateOrderParams
-        // For ecommerce orders: vendorId is null (admin-managed) — this is correct
-        let orderChannel = "ecommerce"; // default
-        let ecommerceValidation = null;
+        // ─── Determine order channel ──────────────────────────────────────
+        // ✅ FIX-2: Frontend orderMode is primary signal — trust it first
+        let orderChannel = "ecommerce";
 
-        try {
-            // Peek at first product to detect channel
-            const firstProductId = items[0]?.productId;
-            if (firstProductId) {
-                const firstProduct = await Product.findById(firstProductId)
-                    .select("productType vendorId")
-                    .lean();
+        if (frontendOrderMode === "URBEXON_HOUR") {
+            // Frontend explicitly says UH — trust it, just validate no mixed cart
+            orderChannel = "urbexon_hour";
 
-                if (firstProduct?.productType === "ecommerce") {
-                    // [FIX-O1][FIX-O3][FIX-O5] Run ecommerce-specific validation
-                    ecommerceValidation = await validateEcommerceItems(items, deliveryType);
-                    orderChannel = "ecommerce";
-                } else if (firstProduct?.productType === "urbexon_hour") {
-                    orderChannel = "urbexon_hour";
-                    // [FIX-O2] Still check for mixed cart in UH path
-                    const allProductIds = items.map(i => i.productId).filter(Boolean);
+            const allProductIds = items.map(i => i.productId).filter(Boolean);
+            if (allProductIds.length > 0) {
+                try {
                     const allProducts = await Product.find({ _id: { $in: allProductIds }, isActive: true })
-                        .select("_id name productType")
+                        .select("_id name productType vendorId")
                         .lean();
-                    const ecomInUH = allProducts.filter(p => p.productType === "ecommerce");
+                    const ecomInUH = allProducts.filter(p => p.productType === "ecommerce" && !p.vendorId);
                     if (ecomInUH.length > 0) {
                         return res.status(400).json({
                             success: false,
-                            message: `Cannot mix Ecommerce and Urbexon Hour items. Please place separate orders. Ecommerce items found: ${ecomInUH.map(p => p.name).join(", ")}`,
+                            message: `Cannot mix Ecommerce and Urbexon Hour items. Ecommerce items found: ${ecomInUH.map(p => p.name).join(", ")}`,
                         });
                     }
+                } catch (checkErr) {
+                    console.warn("[Order] Mixed cart check failed:", checkErr.message);
+                    // Non-fatal — continue
                 }
             }
-        } catch (channelErr) {
-            return res.status(400).json({ success: false, message: channelErr.message });
+        } else if (frontendOrderMode === "ECOMMERCE") {
+            // Frontend says ecommerce — validate
+            orderChannel = "ecommerce";
+            try {
+                await validateEcommerceItems(items, deliveryType);
+            } catch (channelErr) {
+                return res.status(400).json({ success: false, message: channelErr.message });
+            }
+        } else {
+            // ✅ FIX-3: No orderMode from frontend — fallback to product-based detection
+            try {
+                const firstProductId = items[0]?.productId;
+                if (firstProductId) {
+                    const firstProduct = await Product.findById(firstProductId)
+                        .select("productType vendorId")
+                        .lean();
+
+                    if (firstProduct && (firstProduct.vendorId || firstProduct.productType === "urbexon_hour")) {
+                        orderChannel = "urbexon_hour";
+
+                        const allProductIds = items.map(i => i.productId).filter(Boolean);
+                        const allProducts = await Product.find({ _id: { $in: allProductIds }, isActive: true })
+                            .select("_id name productType")
+                            .lean();
+                        const ecomInUH = allProducts.filter(p => p.productType === "ecommerce");
+                        if (ecomInUH.length > 0) {
+                            return res.status(400).json({
+                                success: false,
+                                message: `Cannot mix Ecommerce and Urbexon Hour items. Ecommerce items found: ${ecomInUH.map(p => p.name).join(", ")}`,
+                            });
+                        }
+                    } else if (firstProduct?.productType === "ecommerce" && !firstProduct.vendorId) {
+                        orderChannel = "ecommerce";
+                        try {
+                            await validateEcommerceItems(items, deliveryType);
+                        } catch (channelErr) {
+                            return res.status(400).json({ success: false, message: channelErr.message });
+                        }
+                    }
+                }
+            } catch (channelErr) {
+                return res.status(400).json({ success: false, message: channelErr.message });
+            }
         }
 
-        // ─── validateOrderParams (existing service) ───────────────────────
+        // ─── validateOrderParams ──────────────────────────────────────────
         let validation;
         try {
             validation = await validateOrderParams({
@@ -346,7 +358,6 @@ export const createOrder = async (req, res) => {
                 couponId,
                 couponCode,
                 userId: req.user._id,
-                // [FIX-O1] Tell validateOrderParams to skip vendor requirement for ecommerce
                 skipVendorCheck: orderChannel === "ecommerce",
             });
         } catch (valErr) {
@@ -362,13 +373,12 @@ export const createOrder = async (req, res) => {
             paymentMethod: method,
         } = validation;
 
-        // [FIX-O1] For ecommerce orders, override vendorId to null — these are admin products
         const finalVendorId = orderChannel === "ecommerce" ? null : (vendorId || null);
 
         let pricing;
         try {
             pricing = await calculateOrderPricing(formattedItems, method, {
-                deliveryType: orderChannel === "ecommerce" ? "ECOMMERCE_STANDARD" : deliveryType,
+                deliveryType: orderChannel === "ecommerce" ? "ECOMMERCE_STANDARD" : (deliveryType || "URBEXON_HOUR"),
                 distanceKm: realDistanceKm,
                 pincode,
                 couponId: validatedCoupon?._id,
@@ -415,11 +425,9 @@ export const createOrder = async (req, res) => {
             platformFee,
             deliveryCharge,
             delivery: {
-                // [FIX-O4] Ecommerce always uses ECOMMERCE delivery type
                 type: orderChannel === "ecommerce" ? "ECOMMERCE_STANDARD" : finalDeliveryType,
                 distanceKm: finalDistanceKm,
-                // [FIX-O4] Ecommerce always uses Shiprocket — never local rider
-                provider: orderChannel === "ecommerce" ? "SHIPROCKET" : deliveryProvider,
+                provider: orderChannel === "ecommerce" ? "SHIPROCKET" : (deliveryProvider || "LOCAL_RIDER"),
                 eta: deliveryETA,
             },
             payment: {
@@ -441,9 +449,8 @@ export const createOrder = async (req, res) => {
             coupon: appliedCoupon
                 ? { code: appliedCoupon.couponCode, discount: appliedCoupon.discount || 0 }
                 : undefined,
-            // [FIX-O4] orderMode based on channel — ecommerce never gets URBEXON_HOUR
+            // ✅ FIX-1: orderMode correctly set from detected channel
             orderMode: orderChannel === "ecommerce" ? "ECOMMERCE" : "URBEXON_HOUR",
-            // [FIX-O1] vendorId is null for admin ecommerce orders — correct behavior
             vendorId: finalVendorId,
             orderStatus: initialStatus,
             statusTimeline: autoConfirm
@@ -453,7 +460,7 @@ export const createOrder = async (req, res) => {
 
         const savedOrder = await order.save();
 
-        // ✅ Deduct stock atomically — cancel order if stock fails
+        // ✅ Deduct stock atomically
         try {
             await deductStock(formattedItems);
         } catch (stockErr) {
@@ -481,13 +488,22 @@ export const createOrder = async (req, res) => {
             await markCouponUsed(appliedCoupon.couponId, req.user._id).catch(() => { });
         }
 
-        // Kick off notifications (async, non-blocking)
         kickoffNewOrder({ order: savedOrder, items: formattedItems }).catch(() => { });
 
-        // [FIX-O4] Ecommerce orders → always create Shiprocket shipment
-        // Urbexon Hour orders → never use Shiprocket
+        // Ecommerce → Shiprocket; UH → local rider assignment
         if (orderChannel === "ecommerce") {
             autoCreateShipment(savedOrder._id).catch(() => { });
+        }
+
+        // ✅ FIX-4: UH COD orders — auto-trigger rider assignment immediately
+        // COD orders skip PLACED and go straight to CONFIRMED
+        // Assignment engine expects CONFIRMED or higher status
+        if (orderChannel === "urbexon_hour" && autoConfirm) {
+            setTimeout(() => {
+                startAssignment(savedOrder._id).catch(err =>
+                    console.warn("[Assignment] Auto-start on UH COD order failed:", err.message)
+                );
+            }, 1500);
         }
 
         res.status(201).json({
@@ -503,7 +519,7 @@ export const createOrder = async (req, res) => {
             deliveryProvider: savedOrder.delivery.provider,
         });
 
-        // Async emails
+        // ── Async emails ──
         const userMail = getOrderStatusEmailTemplate({
             customerName: customerName.trim(),
             orderId: savedOrder._id,
@@ -549,17 +565,18 @@ export const getCheckoutPricing = async (req, res) => {
 
         const method = paymentMethod === "COD" ? "COD" : "RAZORPAY";
 
-        // [FIX-O1] Detect channel for pricing — ecommerce uses fixed delivery, not distance-based
         let pricingDeliveryType = deliveryType;
         if (items?.length) {
             try {
                 const firstProduct = await Product.findById(items[0]?.productId)
-                    .select("productType")
+                    .select("productType vendorId")
                     .lean();
-                if (firstProduct?.productType === "ecommerce") {
+                if (firstProduct && (firstProduct.vendorId || firstProduct.productType === "urbexon_hour")) {
+                    // leave as passed
+                } else if (firstProduct?.productType === "ecommerce" && !firstProduct.vendorId) {
                     pricingDeliveryType = "ECOMMERCE_STANDARD";
                 }
-            } catch { /* ignore, fallback to passed deliveryType */ }
+            } catch { /* ignore */ }
         }
 
         try {
@@ -631,7 +648,6 @@ export const cancelOrder = async (req, res) => {
                 message: `Cannot cancel — order is ${order.orderStatus.toLowerCase().replace(/_/g, " ")}. Cancellation only allowed before packing.`,
             });
 
-        // ✅ Atomic update — prevents concurrent double-cancel
         const cancelledOrder = await Order.findOneAndUpdate(
             { _id: order._id, orderStatus: { $in: ["PLACED", "CONFIRMED"] } },
             {
@@ -651,7 +667,6 @@ export const cancelOrder = async (req, res) => {
             });
         }
 
-        // Auto-refund for prepaid — double-refund safe
         if (
             cancelledOrder.payment.method === "RAZORPAY" &&
             cancelledOrder.payment.status === "PAID" &&
@@ -716,7 +731,6 @@ export const cancelOrder = async (req, res) => {
         const finalOrder = await Order.findById(cancelledOrder._id);
         await restoreStock(cancelledOrder.items);
 
-        // UH orders: cancel rider assignment; ecommerce orders: no assignment to cancel
         if (cancelledOrder.orderMode === "URBEXON_HOUR") {
             cancelAssignment(cancelledOrder._id);
         }
@@ -890,7 +904,6 @@ export const updateOrderStatus = async (req, res) => {
                 message: `Cannot transition from ${currentOrder.orderStatus} to ${status}`,
             });
 
-        // [FIX-O4] Ecommerce orders use Shiprocket — block UH-specific status for ecommerce
         if (status === "SHIPPED" && currentOrder.orderMode === "URBEXON_HOUR")
             return res.status(400).json({ success: false, message: "UH orders use local delivery, SHIPPED status is not applicable" });
         if (
@@ -964,7 +977,6 @@ export const updateOrderStatus = async (req, res) => {
             if (order.delivery?.assignedTo) {
                 Order.updateOne({ _id: order._id }, { $set: { "delivery.status": "CANCELLED" } }).catch(() => { });
             }
-            // Only UH orders use assignment engine
             if (order.orderMode === "URBEXON_HOUR") {
                 cancelAssignment(order._id);
             }
@@ -1013,7 +1025,7 @@ export const updateOrderStatus = async (req, res) => {
             })();
         }
 
-        // [FIX-O4] Shiprocket: create shipment on PACKED — ONLY for ecommerce orders
+        // Shiprocket: create shipment on PACKED — ONLY for ecommerce orders
         if (order.orderMode === "ECOMMERCE" && !order.shipping?.shipmentId && status === "PACKED") {
             (async () => {
                 try {
@@ -1041,7 +1053,7 @@ export const updateOrderStatus = async (req, res) => {
             })();
         }
 
-        // [FIX-O4] Shiprocket: schedule pickup on SHIPPED — ONLY for ecommerce orders
+        // Shiprocket: schedule pickup on SHIPPED — ONLY for ecommerce orders
         if (order.orderMode === "ECOMMERCE" && order.shipping?.shipmentId && status === "SHIPPED") {
             (async () => {
                 try {
@@ -1068,9 +1080,6 @@ export const updateOrderStatus = async (req, res) => {
         res.json(order);
 
         // Auto-create Settlement on DELIVERED — ONLY for vendor UH orders
-        // [FIX-O1][FIX-O4] Ecommerce admin orders have vendorId: null — skip settlement
-        // ✅ BUG3 FIX: Use atomic $setOnInsert upsert — safe if vendor panel already created settlement
-        // FLOW: Admin marks DELIVERED only in exceptional cases; rider OTP flow is the normal path.
         if (status === "DELIVERED" && order.orderMode === "URBEXON_HOUR") {
             (async () => {
                 try {
@@ -1096,7 +1105,6 @@ export const updateOrderStatus = async (req, res) => {
                         const commissionAmount = Math.round((orderAmount * commissionRate) / 100);
                         const vendorEarning = Math.max(0, orderAmount - commissionAmount);
 
-                        // ✅ Atomic upsert — won't double-create if vendor panel already settled
                         const result = await Settlement.updateOne(
                             { orderId: order._id },
                             {
@@ -1115,7 +1123,6 @@ export const updateOrderStatus = async (req, res) => {
                             { upsert: true }
                         );
 
-                        // Only update vendor stats if settlement was newly created
                         if (result.upsertedCount > 0) {
                             await Vendor.findByIdAndUpdate(vid, {
                                 $inc: {
@@ -1163,7 +1170,7 @@ export const updateOrderStatus = async (req, res) => {
             }
         }
 
-        // Notify vendor(s) — only for UH orders that have vendors
+        // Notify vendor(s) — only for UH orders
         if (order.orderMode === "URBEXON_HOUR") {
             (async () => {
                 try {
@@ -1238,7 +1245,6 @@ export const getLocalDeliveryQueue = async (req, res) => {
         const limit = Math.min(50, parseInt(req.query.limit) || 20);
         const skip = (page - 1) * limit;
 
-        // [FIX-O4] Only UH orders appear in local delivery queue
         const filter = {
             orderMode: "URBEXON_HOUR",
             orderStatus: { $nin: ["DELIVERED", "CANCELLED"] },
@@ -1269,8 +1275,6 @@ export const assignLocalDelivery = async (req, res) => {
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
-        // [BUG-FIX-A2] CRITICAL: Enforce — only UH orders can be assigned via local delivery
-        // Ecommerce orders MUST use Shiprocket, never local delivery
         if (order.orderMode !== "URBEXON_HOUR")
             return res.status(400).json({
                 success: false,
@@ -1278,7 +1282,6 @@ export const assignLocalDelivery = async (req, res) => {
                 orderType: order.orderMode,
             });
 
-        // [BUG-FIX-A2] Validate: order must be in correct status for assignment
         if (!["PLACED", "CONFIRMED", "PACKED", "READY_FOR_PICKUP"].includes(order.orderStatus)) {
             return res.status(400).json({
                 success: false,
@@ -1450,7 +1453,6 @@ export const processRefund = async (req, res) => {
         if (!paymentId)
             return res.status(400).json({ success: false, message: "No Razorpay payment ID found" });
 
-        // ✅ Set PROCESSING immediately — prevents concurrent duplicate admin calls
         order.refund.status = "PROCESSING";
         order.markModified("refund");
         await order.save();

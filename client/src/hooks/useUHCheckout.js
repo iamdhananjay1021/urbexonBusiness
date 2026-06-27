@@ -195,13 +195,22 @@ export const useUHCheckout = () => {
     const handleCOD = useCallback(async () => {
         try {
             setLoading(true); setError("");
+
+            // DEBUG — console mein dekho kya ja raha hai
+            console.log("=== UH COD Debug ===");
+            console.log("checkoutItems:", checkoutItems);
+            console.log("contact:", contact);
+            console.log("selectedAddress:", selectedAddress);
+
             const data = await placeCODOrder({
                 items: checkoutItems,
                 contact,
                 address: selectedAddress,
                 pincode: selectedAddress?.pincode,
-                deliveryType,
+                deliveryType: "URBEXON_HOUR",
+                orderMode: "URBEXON_HOUR",
                 distanceKm: 0,
+                coupon: null,
             });
             clearUH();
             navigate(`/order-success/${data.orderId}`, {
@@ -209,6 +218,7 @@ export const useUHCheckout = () => {
                 state: { paymentMethod: "COD", orderId: data.orderId, finalTotal: data.finalTotal },
             });
         } catch (err) {
+            console.error("=== COD Error ===", err.response?.data || err.message);
             setError(err.response?.data?.message || "Order placement failed. Please try again.");
         } finally { setLoading(false); }
     }, [checkoutItems, contact, selectedAddress, clearUH, navigate]);
@@ -225,8 +235,10 @@ export const useUHCheckout = () => {
                 onSuccess: () => { clearUH(); setPayState("success"); },
                 onFailure: (msg) => { setError(msg); setPayState("failed"); setLoading(false); },
                 onCancel: (msg) => { setError(msg); setPayState("failed"); setLoading(false); },
-                deliveryType,
+                deliveryType: "URBEXON_HOUR",  // ← yeh add karo
+                orderMode: "URBEXON_HOUR",
                 distanceKm: 0,
+                coupon: null, // Pass null for coupon
             });
         } catch (err) {
             setError(err.message || "Payment initialization failed.");

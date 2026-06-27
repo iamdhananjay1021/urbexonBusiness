@@ -65,8 +65,11 @@ const detectOrderChannel = async (items) => {
         throw new Error(`Some products are unavailable or not found: ${missing.join(", ")}`);
     }
 
-    const ecomItems = products.filter(p => p.productType === "ecommerce");
-    const uhItems = products.filter(p => p.productType === "urbexon_hour");
+    // Robust detection: prefer explicit vendorId (vendor-managed products)
+    // Some product records may have incorrect `productType` due to manual edits.
+    // Treat any product with a non-null vendorId as an Urbexon Hour item.
+    const ecomItems = products.filter(p => !p.vendorId && p.productType === "ecommerce");
+    const uhItems = products.filter(p => p.vendorId || p.productType === "urbexon_hour");
 
     // [FIX-5] Block mixed cart
     if (ecomItems.length > 0 && uhItems.length > 0) {
