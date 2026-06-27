@@ -1,10 +1,13 @@
-# https://www.robotstxt.org/robotstxt.html
+# robots.txt for Urbexon
+
 User-agent: *
 Allow: /
+
+# Private/User Pages
 Disallow: /cart
 Disallow: /checkout
-Disallow: /uh-checkout
 Disallow: /uh-cart
+Disallow: /uh-checkout
 Disallow: /orders
 Disallow: /profile
 Disallow: /wishlist
@@ -14,5 +17,9 @@ Disallow: /forgot-password
 Disallow: /reset-password
 Disallow: /order-success
 
+# Admin / Internal (agar ye same domain par kabhi aaye)
+Disallow: /admin
+Disallow: /vendor
+
 # Sitemap
-Sitemap: https://www.urbexon.in/api/sitemap.xml
+Sitemap: https://urbexon.in/sitemap.xml

@@ -1,80 +1,79 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
 
-  <!-- Homepage -->
-  <url>
-    <loc>https://www.urbexon.in</loc>
-    <lastmod>2026-04-19</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>
+<urlset
+    xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+    xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
 
-  <!-- Main Pages -->
-  <url>
-    <loc>https://www.urbexon.in/products</loc>
-    <lastmod>2026-04-19</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
+    <!-- Homepage -->
+    <url>
+        <loc>https://urbexon.in/</loc>
+        <lastmod>2026-06-27</lastmod>
+        <changefreq>daily</changefreq>
+        <priority>1.0</priority>
+    </url>
 
-  <url>
-    <loc>https://www.urbexon.in/urbexon-hour</loc>
-    <lastmod>2026-04-19</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.8</priority>
-  </url>
+    <!-- Products -->
+    <url>
+        <loc>https://urbexon.in/products</loc>
+        <lastmod>2026-06-27</lastmod>
+        <changefreq>daily</changefreq>
+        <priority>0.9</priority>
+    </url>
 
-  <url>
-    <loc>https://www.urbexon.in/cart</loc>
-    <lastmod>2026-04-19</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>
+    <!-- Urbexon Hour -->
+    <url>
+        <loc>https://urbexon.in/urbexon-hour</loc>
+        <lastmod>2026-06-27</lastmod>
+        <changefreq>daily</changefreq>
+        <priority>0.8</priority>
+    </url>
 
-  <!-- Legal Pages -->
-  <url>
-    <loc>https://www.urbexon.in/privacy-policy</loc>
-    <lastmod>2026-04-19</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
+    <!-- Contact -->
+    <url>
+        <loc>https://urbexon.in/contact-us</loc>
+        <lastmod>2026-06-27</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
 
-  <url>
-    <loc>https://www.urbexon.in/terms-conditions</loc>
-    <lastmod>2026-04-19</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
+    <!-- Become Vendor -->
+    <url>
+        <loc>https://urbexon.in/become-vendor</loc>
+        <lastmod>2026-06-27</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
 
-  <url>
-    <loc>https://www.urbexon.in/refund-policy</loc>
-    <lastmod>2026-04-19</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
+    <!-- Become Delivery Partner -->
+    <url>
+        <loc>https://urbexon.in/become-delivery</loc>
+        <lastmod>2026-06-27</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
 
-  <!-- Contact & Support -->
-  <url>
-    <loc>https://www.urbexon.in/contact-us</loc>
-    <lastmod>2026-04-19</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
+    <!-- Privacy Policy -->
+    <url>
+        <loc>https://urbexon.in/privacy-policy</loc>
+        <lastmod>2026-06-27</lastmod>
+        <changefreq>yearly</changefreq>
+        <priority>0.3</priority>
+    </url>
 
-  <!-- Partner Pages -->
-  <url>
-    <loc>https://www.urbexon.in/become-vendor</loc>
-    <lastmod>2026-04-19</lastmod>
-    <changefreq>quarterly</changefreq>
-    <priority>0.7</priority>
-  </url>
+    <!-- Terms & Conditions -->
+    <url>
+        <loc>https://urbexon.in/terms-conditions</loc>
+        <lastmod>2026-06-27</lastmod>
+        <changefreq>yearly</changefreq>
+        <priority>0.3</priority>
+    </url>
 
-  <url>
-    <loc>https://www.urbexon.in/become-delivery</loc>
-    <lastmod>2026-04-19</lastmod>
-    <changefreq>quarterly</changefreq>
-    <priority>0.7</priority>
-  </url>
+    <!-- Refund Policy -->
+    <url>
+        <loc>https://urbexon.in/refund-policy</loc>
+        <lastmod>2026-06-27</lastmod>
+        <changefreq>yearly</changefreq>
+        <priority>0.3</priority>
+    </url>
 
 </urlset>

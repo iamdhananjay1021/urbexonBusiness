@@ -45,6 +45,7 @@ import { notFound, errorHandler } from "./middlewares/errorMiddleware.js";
 import scheduler from "./jobs/scheduler.js";
 import logger from "./utils/logger.js";
 import { refreshDeliveryConfig } from "./config/deliveryConfig.js";
+import { getEmailStatus } from "./utils/emailService.js";
 
 dotenv.config();
 
@@ -173,6 +174,20 @@ server.listen(PORT, async () => {
 
     console.log("📡 Allowed Origins:");
     allowedOrigins.forEach(o => console.log("   ✅", o));
+
+    // Email configuration status
+    try {
+        const emailStatus = getEmailStatus();
+        console.log("📧 Email status:", emailStatus.provider);
+        console.log("   → Resend configured:", emailStatus.useResend);
+        console.log("   → SMTP configured:", emailStatus.smtpConfigured);
+        console.log("   → From address:", emailStatus.fromEmail);
+        if (emailStatus.provider === "none") {
+            console.warn("⚠️ No email provider configured. Set RESEND_API_KEY or SMTP_* env vars before going to production.");
+        }
+    } catch (e) {
+        console.warn("⚠️ Failed to determine email status:", e.message || e);
+    }
 
     initWebSocket(server);
     await refreshDeliveryConfig();
