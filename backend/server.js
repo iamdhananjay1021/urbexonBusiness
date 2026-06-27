@@ -75,37 +75,46 @@ app.use(mongoSanitize());
 
 /* ───────── CORS FIX (FINAL) ───────── */
 const allowedOrigins = [
+    // Main Website
     "https://urbexon.in",
+    "https://www.urbexon.in",
+
+    // Panels
     "https://admin.urbexon.in",
     "https://vendor.urbexon.in",
     "https://delivery.partner.urbexon.in",
+
+    // Local Development
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:5175",
     "http://localhost:5176",
     "http://localhost:5177",
+
+    // Environment Variables
     process.env.FRONTEND_URL,
+    process.env.CLIENT_URL,
     process.env.ADMIN_FRONTEND_URL,
     process.env.VENDOR_FRONTEND_URL,
     process.env.DELIVERY_FRONTEND_URL,
-    process.env.CLIENT_URL,
 ].filter(Boolean);
 
-app.use(cors({
-    origin: (origin, callback) => {
+const corsOptions = {
+    origin(origin, callback) {
         if (!origin) return callback(null, true);
 
         if (allowedOrigins.includes(origin)) {
             return callback(null, true);
         }
 
-        console.error("❌ CORS BLOCKED:", origin);
-        return callback(new Error("CORS not allowed"));
+        console.error(`❌ CORS BLOCKED: ${origin}`);
+        callback(new Error("CORS not allowed"));
     },
     credentials: true,
-}));
+};
 
-app.options("*", cors());
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 /* ───────── LIMITERS ───────── */
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
