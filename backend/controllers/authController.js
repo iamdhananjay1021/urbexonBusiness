@@ -559,7 +559,7 @@ export const adminForgotPassword = async (req, res) => {
         admin.passwordResetExpires = Date.now() + RESET_EXPIRY_MS;
         await admin.save({ validateBeforeSave: false });
 
-        const resetUrl = `${process.env.ADMIN_FRONTEND_URL || process.env.CLIENT_URL}/admin/reset-password/${resetToken}`;
+        const resetUrl = `${process.env.ADMIN_FRONTEND_URL || "https://admin.urbexon.in"}/admin/reset-password/${resetToken}`;
         sendEmailBackground({ to: admin.email, subject: `${BRAND.name} Admin — Password Reset`, html: buildAdminResetEmail(admin.name, resetUrl), label: "AdminAuth/ForgotPassword" });
         res.json(SAFE);
     } catch (err) {
