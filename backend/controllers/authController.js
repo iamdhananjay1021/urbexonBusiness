@@ -656,7 +656,7 @@ export const deliveryForgotPassword = async (req, res) => {
         if (!email?.trim()) return res.status(400).json({ success: false, message: "Email is required" });
         const SAFE = { success: true, message: "If this email is registered, a reset link has been sent." };
 
-        const rider = await User.findOne({ email: sanitizeEmail(email), role: "delivery" });
+        const rider = await User.findOne({ email: sanitizeEmail(email), role: "delivery_boy" });
         if (!rider) return res.json(SAFE);
 
         const resetToken = crypto.randomBytes(32).toString("hex");
@@ -686,7 +686,7 @@ export const deliveryResetPassword = async (req, res) => {
         const rider = await User.findOne({
             passwordResetToken: hashedToken,
             passwordResetExpires: { $gt: Date.now() },
-            role: "delivery",
+            role: "delivery_boy",
         });
         if (!rider) return res.status(400).json({ success: false, message: "Reset link is invalid or has expired" });
 
