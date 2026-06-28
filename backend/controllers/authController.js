@@ -328,6 +328,55 @@ export const deliveryLogin = async (req, res) => {
 };
 
 /* ═══════════════════════════════════════════════════
+   VENDOR LOGIN
+═══════════════════════════════════════════════════ */
+export const vendorLogin = async (req, res) => {
+    try {
+        const { email, phone, password } = req.body;
+        const identifier = email || phone;
+
+        if (!identifier?.trim() || !password?.trim()) {
+            return res.status(400).json({ success: false, message: "Email/phone and password are required" });
+        }
+
+        const isEmail = identifier.includes("@");
+        const query = isEmail
+            ? { email: sanitizeEmail(identifier) }
+            : { phone: identifier.trim() };
+
+        const user = await User.findOne(query)
+            .select("+password +emailOtp +emailOtpExpires +emailOtpAttempts");
+
+        if (!user) {
+            return res.status(401).json({ success: false, message: "Invalid credentials" });
+        }
+
+        // ✅ CRITICAL FIX: Ensure only users with 'vendor' role can log in
+        if (user.role !== 'vendor') {
+            return res.status(403).json({ success: false, message: "Access denied. This is not a vendor account." });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: "Invalid credentials" });
+        }
+
+        if (user.isBlocked) {
+            return res.status(403).json({ success: false, message: "Your account has been blocked. Please contact support." });
+        }
+
+        if (!user.isEmailVerified) {
+            return res.status(403).json({ success: false, message: "Please verify your email first. An OTP has been sent.", requiresVerification: true, email: user.email });
+        }
+
+        return res.status(200).json({ success: true, ...safeUserPayload(user, generateToken(user._id, user.role)) });
+    } catch (err) {
+        console.error("[Auth] VENDOR LOGIN ERROR:", err);
+        return res.status(500).json({ success: false, message: "Login failed. Please try again." });
+    }
+};
+
+/* ═══════════════════════════════════════════════════
    ADMIN LOGIN
 ═══════════════════════════════════════════════════ */
 export const adminLogin = async (req, res) => {
@@ -773,7 +822,7 @@ export const refreshToken = async (req, res) => {
         const token = authHeader.split(" ")[1];
         let decoded;
         try {
-            decoded = jwt.verify(token, process.env.JWT_SECRET, { clockTolerance: 60 * 60 * 24 * 30 });
+            decoded = jwt.verify(token, process.env.JWT_SECRET, { ignoreExpiration: true });
         } catch {
             return res.status(401).json({ success: false, message: "Token invalid or too old to refresh" });
         }

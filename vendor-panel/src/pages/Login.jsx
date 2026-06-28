@@ -31,8 +31,7 @@ const Login = () => {
         ? { email: form.identifier, password: form.password }
         : { phone: form.identifier, password: form.password };
 
-      await login(loginPayload.email || loginPayload.phone, form.password);
-      navigate("/dashboard");
+      await login(loginPayload); // Pass the whole payload to the context
     } catch (err) {
       // Check if email verification is required (403 with requiresVerification)
       if (err.response?.status === 403 && err.response?.data?.requiresVerification) {

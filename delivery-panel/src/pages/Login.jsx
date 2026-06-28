@@ -48,10 +48,8 @@ const Login = () => {
     if (!identifier.trim() || !pass.trim()) { setError("Please fill in all fields."); return; }
     setLoading(true); setError("");
     try {
-      await login(identifier.trim(), pass.trim());
-      const auth = JSON.parse(localStorage.getItem("deliveryAuth") || "{}");
-      if (auth?.rider?.role === "delivery_boy") navigate("/dashboard");
-      else setError("This account is not registered as a delivery partner.");
+      await login({ identifier: identifier.trim(), password: pass.trim() });
+      navigate("/dashboard");
     } catch (err) {
       setError(err.response?.data?.message || "Login failed. Please check your credentials.");
     } finally { setLoading(false); }
@@ -185,7 +183,7 @@ const Login = () => {
                   type="text"
                   value={identifier}
                   onChange={e => setIdentifier(e.target.value)}
-                  placeholder="you@email.com or 9876543210"
+                  placeholder="Email"
                   required
                   autoComplete="username"
                   style={S.input}
@@ -303,7 +301,7 @@ const Login = () => {
             }}>
               <p style={{ fontSize: 12.5, fontWeight: 700, color: "#065f46", marginBottom: 6 }}>Need help?</p>
               <p style={{ fontSize: 12, color: "#047857", lineHeight: 1.8, margin: 0 }}>
-                📞 <strong>+91-1234-567890</strong><br />
+                📞 <strong>+91-8808485840</strong><br />
                 ✉️ <strong>support@urbexon.in</strong>
               </p>
             </div>
