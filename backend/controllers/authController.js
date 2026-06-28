@@ -101,6 +101,8 @@ export const register = async (req, res) => {
             role: assignedRole,
             isEmailVerified: false,
             emailOtp: otp,
+            // ✅ FIX: Store the originally requested role to use after OTP verification.
+            originalRole: role,
             emailOtpExpires: Date.now() + OTP_EXPIRY_MS,
             emailOtpAttempts: 0,
         });
@@ -186,7 +188,16 @@ export const verifyOtp = async (req, res) => {
         user.emailOtp = undefined; user.emailOtpExpires = undefined; user.emailOtpAttempts = 0;
         await user.save();
 
-        return res.status(200).json({ success: true, ...safeUserPayload(user, generateToken(user._id, user.role)) });
+        // ✅ FIX: Include the original role if it was a vendor/delivery registration attempt.
+        // This allows the frontend to redirect to the correct application page.
+        const payload = {
+            success: true,
+            ...safeUserPayload(user, generateToken(user._id, user.role)),
+        };
+        if (user.originalRole && user.originalRole !== 'user') {
+            payload.originalRole = user.originalRole;
+        }
+        return res.status(200).json(payload);
 
     } catch (err) {
         console.error("[Auth] VERIFY OTP ERROR:", err);

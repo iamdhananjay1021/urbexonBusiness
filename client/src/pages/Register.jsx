@@ -164,9 +164,10 @@ const Register = () => {
         if (from) {
             // ✅ FIX: go back to original destination (e.g. /checkout, /products/xyz)
             navigate(from, { replace: true });
-        } else if (data.role === "vendor") {
+            // ✅ FIX: Check for originalRole first for vendor/delivery application flow.
+        } else if (data.originalRole === "vendor") {
             navigate("/become-vendor", { replace: true });
-        } else if (data.role === "delivery_boy") {
+        } else if (data.originalRole === "delivery_boy") {
             navigate("/become-delivery", { replace: true });
         } else {
             // ✅ FIX: user role → go home, NOT /cart
