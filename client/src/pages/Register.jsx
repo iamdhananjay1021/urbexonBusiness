@@ -2,8 +2,10 @@
  * Register.jsx — v3 Complete Tailwind Rewrite
  * ─────────────────────────────────────────────
  * ✅ Full Tailwind CSS — zero <style> / inline CSS blocks
- * ✅ Redirect fix: after registration, goes back to `from` (e.g. checkout)
- *    instead of always going to /cart or /
+ * ✅ FIXED: vendor/delivery_boy redirect now correctly goes to
+ *    /become-vendor or /become-delivery after OTP verification,
+ *    regardless of `from` state.
+ * ✅ FIXED: `from` redirect only applies to regular `user` role.
  * ✅ Clean split-panel design — left brand panel + right form
  * ✅ All business logic 100% preserved
  */
@@ -148,31 +150,42 @@ const Register = () => {
     const location = useLocation();
     const { loginWithData } = useAuth();
 
-    /* ── FIX: preserve `from` through OTP step ── */
     const from = location.state?.from || null;
 
     /* ─────────────────────────────────────────────────────
-        REDIRECT FIX
-        After successful auth, go back to wherever user came from.
-        e.g. if they tried to checkout → /checkout
-             if they came from a product page → that page
-             fallback: role-based default
+        REDIRECT LOGIC — FIXED
+        Priority order:
+        1. vendor/delivery_boy → ALWAYS go to application page
+           (their registration intent overrides `from`)
+        2. Regular user with `from` → go back to original page
+        3. Regular user, no `from` → go to home "/"
+
+        WHY: vendor/delivery users register specifically to apply.
+        Sending them back to a random `from` page breaks their flow.
+        They must complete the application form first.
     ───────────────────────────────────────────────────── */
     const redirectAfterAuth = useCallback((data) => {
         loginWithData(data);
 
-        if (from) {
-            // ✅ FIX: go back to original destination (e.g. /checkout, /products/xyz)
-            navigate(from, { replace: true });
-            // ✅ FIX: Check for originalRole first for vendor/delivery application flow.
-        } else if (data.originalRole === "vendor") {
+        // ✅ FIX 1: originalRole check FIRST — vendor/delivery always go to
+        // their application page, regardless of `from`.
+        if (data.originalRole === "vendor") {
             navigate("/become-vendor", { replace: true });
-        } else if (data.originalRole === "delivery_boy") {
-            navigate("/become-delivery", { replace: true });
-        } else {
-            // ✅ FIX: user role → go home, NOT /cart
-            navigate("/", { replace: true });
+            return;
         }
+        if (data.originalRole === "delivery_boy") {
+            navigate("/become-delivery", { replace: true });
+            return;
+        }
+
+        // ✅ FIX 2: Regular user — respect `from` if it exists
+        if (from) {
+            navigate(from, { replace: true });
+            return;
+        }
+
+        // ✅ FIX 3: Default — go to home, not /cart
+        navigate("/", { replace: true });
     }, [loginWithData, navigate, from]);
 
     const [step, setStep] = useState("register");
@@ -528,6 +541,20 @@ const Register = () => {
                                 </p>
                                 <p className="text-sm font-semibold text-neutral-900 mt-0.5">{form.email}</p>
                             </div>
+
+                            {/* Role-aware message for vendor/delivery */}
+                            {(selectedRole === "vendor" || selectedRole === "delivery_boy") && (
+                                <div className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-xs font-medium
+                                    ${selectedRole === "vendor"
+                                        ? "bg-violet-50 border border-violet-100 text-violet-700"
+                                        : "bg-green-50 border border-green-100 text-green-700"}`}>
+                                    <span className="shrink-0 mt-0.5">
+                                        {selectedRole === "vendor" ? "🏪" : "🛵"}
+                                    </span>
+                                    After verification, you'll be redirected to complete your{" "}
+                                    {selectedRole === "vendor" ? "seller" : "delivery partner"} application.
+                                </div>
+                            )}
 
                             {/* Spam notice */}
                             <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100

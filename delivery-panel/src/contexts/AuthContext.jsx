@@ -1,5 +1,9 @@
 /**
- * Delivery Panel AuthContext — Production v2.0
+ * Delivery Panel AuthContext — Production v3.0
+ * FIXES:
+ * - login() now accepts { identifier, password } (email OR phone)
+ * - Server-side token validation on mount (not just localStorage)
+ * - Role check: only delivery_boy allowed
  */
 import { createContext, useContext, useState, useEffect } from "react";
 import api from "../api/axios";
@@ -11,30 +15,111 @@ export const AuthProvider = ({ children }) => {
   const [rider, setRider] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  /* ── Rehydrate from localStorage + validate token ── */
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
+    let cancelled = false;
+    const rehydrate = async () => {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+
         const parsed = JSON.parse(raw);
-        if (parsed?.token) {
-          setRider(parsed.rider || parsed.user || null);
-          api.defaults.headers.common["Authorization"] = `Bearer ${parsed.token}`;
+        if (!parsed?.token) {
+          localStorage.removeItem(STORAGE_KEY);
+          return;
         }
+
+        // Set immediately for fast UI
+        const savedRider = parsed.rider || parsed.user || null;
+        if (savedRider) setRider(savedRider);
+
+        // Set auth header
+        api.defaults.headers.common["Authorization"] = `Bearer ${parsed.token}`;
+
+        // Validate with server
+        try {
+          const { data } = await api.get("/delivery/status");
+          if (!cancelled) {
+            const freshRider = data.rider || savedRider;
+            setRider(freshRider);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+              token: parsed.token,
+              rider: freshRider,
+            }));
+          }
+        } catch {
+          // Token invalid — clear auth
+          if (!cancelled) {
+            localStorage.removeItem(STORAGE_KEY);
+            delete api.defaults.headers.common["Authorization"];
+            setRider(null);
+          }
+        }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch { localStorage.removeItem(STORAGE_KEY); }
-    finally { setLoading(false); }
+    };
+
+    rehydrate();
+    return () => { cancelled = true; };
   }, []);
 
-  const login = async (email, password) => {
-    const { data } = await api.post("/auth/login", { email, password });
-    if (!["delivery_boy"].includes(data.role)) throw new Error("Not a delivery partner account");
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ token: data.token, rider: { _id: data._id, name: data.name, email: data.email, phone: data.phone, role: data.role } }));
+  /* ── Login — accepts email OR phone as identifier ── */
+  const login = async ({ identifier, password }) => {
+    if (!identifier?.trim() || !password?.trim()) {
+      throw new Error("Email/phone and password are required");
+    }
+
+    // Determine if identifier is email or phone
+    const isEmail = identifier.includes("@");
+    const payload = isEmail
+      ? { email: identifier.trim(), password }
+      : { phone: identifier.trim(), password };
+
+    // Use delivery-specific login endpoint
+    const { data } = await api.post("/auth/delivery/login", payload);
+
+    if (!data.success) {
+      throw new Error(data.message || "Login failed");
+    }
+
+    // Role guard — only delivery_boy allowed
+    if (data.role !== "delivery_boy") {
+      throw new Error("Access denied. This is not a delivery partner account.");
+    }
+
+    // Save to localStorage
+    const riderData = {
+      _id: data._id,
+      name: data.name,
+      email: data.email,
+      phone: data.phone || "",
+      role: data.role,
+    };
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      token: data.token,
+      rider: riderData,
+    }));
+
     api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
-    // Fetch delivery profile
+
+    // Fetch delivery profile (optional, don't fail if it errors)
     try {
       const { data: status } = await api.get("/delivery/status");
-      setRider(status.rider || { _id: data._id, name: data.name, email: data.email, phone: data.phone, role: data.role });
-    } catch { setRider({ _id: data._id, name: data.name, email: data.email, phone: data.phone, role: data.role }); }
+      const fullRider = status.rider || riderData;
+      setRider(fullRider);
+      // Update stored rider with full profile
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        token: data.token,
+        rider: fullRider,
+      }));
+    } catch {
+      setRider(riderData);
+    }
+
     return data;
   };
 

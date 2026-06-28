@@ -1,14 +1,15 @@
 /**
- * AuthContext.jsx — Production v4.0 FINAL
- * ✅ Proper vendor detection
- * ✅ Token persistence
- * ✅ Auto-refresh on mount
- * ✅ Handles pending/approved states
+ * AuthContext.jsx — Production v5.0
+ * FIXES:
+ * - login() now accepts { email/phone, password } object format
+ * - Uses /auth/vendor/login endpoint (role-specific)
+ * - Role guard: only vendor allowed
+ * - Register link → client app /register
  */
 import { createContext, useContext, useState, useEffect } from "react";
 import api from "../api/axios";
 
-// ✅ Robust Axios Request Interceptor to ensure token is ALWAYS sent
+/* ── Axios: always attach token from localStorage ── */
 api.interceptors.request.use(
   (config) => {
     try {
@@ -25,12 +26,11 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ✅ Global Response Interceptor for 401 Unauthorized handling
+/* ── Axios: handle 401 globally ── */
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      console.error("[Axios] 401 Unauthorized - Dispatching logout event");
       window.dispatchEvent(new Event("auth:unauthorized"));
     }
     return Promise.reject(error);
@@ -44,54 +44,47 @@ export const AuthProvider = ({ children }) => {
   const [vendor, setVendor] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Listen for global unauthorized events to trigger fallback
+  /* ── Listen for global 401 → logout ── */
   useEffect(() => {
     const handleUnauthorized = () => logout();
     window.addEventListener("auth:unauthorized", handleUnauthorized);
     return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
   }, []);
 
-  // ✅ Initialize: Load from localStorage and verify with backend
+  /* ── Rehydrate from localStorage + validate with server ── */
   useEffect(() => {
+    let cancelled = false;
     const init = async () => {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) {
-          setLoading(false);
-          return;
-        }
+        if (!raw) return;
 
         const { token, vendor: cachedVendor } = JSON.parse(raw);
-        if (!token) {
-          localStorage.removeItem(STORAGE_KEY);
-          setLoading(false);
-          return;
-        }
+        if (!token) { localStorage.removeItem(STORAGE_KEY); return; }
 
-        // Set token in axios
+        // Set immediately for fast UI
+        if (cachedVendor) setVendor(cachedVendor);
         api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
-        // Verify token is still valid by fetching fresh vendor data
+        // Validate with server
         try {
           const { data } = await api.get("/vendor/me");
-          if (data.success && data.vendor) {
-            const updatedVendor = { ...data.vendor, token };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, vendor: updatedVendor }));
-            setVendor(updatedVendor);
-          } else {
-            throw new Error("Invalid vendor response");
+          if (!cancelled && data.success && data.vendor) {
+            const updated = { ...data.vendor, token };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, vendor: updated }));
+            setVendor(updated);
           }
         } catch (err) {
-          console.error("[Auth] Failed to verify token:", err.response?.data);
-
-          // If 404, user hasn't applied as vendor yet - use cached data
-          if (err.response?.status === 404) {
-            setVendor(cachedVendor);
-          } else {
-            // Token expired/invalid - clear auth
-            localStorage.removeItem(STORAGE_KEY);
-            delete api.defaults.headers.common["Authorization"];
-            setVendor(null);
+          if (!cancelled) {
+            if (err.response?.status === 404) {
+              // Vendor profile not created yet — keep cached user data
+              setVendor(cachedVendor);
+            } else {
+              // Token invalid — clear auth
+              localStorage.removeItem(STORAGE_KEY);
+              delete api.defaults.headers.common["Authorization"];
+              setVendor(null);
+            }
           }
         }
       } catch (err) {
@@ -99,104 +92,93 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem(STORAGE_KEY);
         setVendor(null);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     init();
+    return () => { cancelled = true; };
   }, []);
 
-  // ✅ LOGIN
-  const login = async (email, password) => {
-    try {
-      // Support both email and phone number as login identifier
-      const isEmail = email.includes("@");
-      const loginPayload = isEmail
-        ? { email, password }
-        : { phone: email, password };
-
-      // Step 1: Login via /auth/login
-      const { data } = await api.post("/auth/login", loginPayload);
-
-      // If email verification required, throw error with response attached
-      if (!data.token && data.requiresVerification) {
-        const err = new Error(data.message);
-        err.response = { status: 403, data: { requiresVerification: true, email: data.email, message: data.message } };
-        throw err;
-      }
-
-      if (!data.token) {
-        throw new Error("No token received from server");
-      }
-
-      const token = data.token;
-      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-
-      // ✨ CRITICAL FIX: Persist base user + token immediately.
-      // If they haven't completed the vendor profile (/vendor/me returns 404),
-      // they still need to be authenticated to access /apply and submit POST /vendor/register
-      let vendorProfile = {
-        ...data.user,
-        email: data.email || email,
-        role: data.role,
-        token,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, vendor: vendorProfile }));
-      setVendor(vendorProfile);
-
-      // Step 2: Try to fetch vendor profile
-      try {
-        const vRes = await api.get("/vendor/me");
-        if (vRes.data.success && vRes.data.vendor) {
-          vendorProfile = { ...vRes.data.vendor, token };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, vendor: vendorProfile }));
-          setVendor(vendorProfile);
-        }
-      } catch (err) {
-        console.warn("[Auth] Vendor profile not found:", err.response?.data);
-
-        // If 404, user hasn't applied as vendor
-        if (err.response?.status === 404) {
-          setVendor(vendorProfile); // Keep base authenticated state
-          throw new Error("Please complete vendor registration first. Go to /apply");
-        }
-      }
-
-      return vendorProfile;
-    } catch (err) {
-      console.error("[Auth] Login failed:", err.message);
-      throw err;
+  /* ── LOGIN — accepts { identifier, password } ── */
+  const login = async ({ identifier, password }) => {
+    if (!identifier?.trim() || !password?.trim()) {
+      throw new Error("Email/phone and password are required");
     }
+
+    // Determine if identifier is email or phone
+    const isEmail = identifier.includes("@");
+    const payload = isEmail
+      ? { email: identifier.trim(), password }
+      : { phone: identifier.trim(), password };
+
+    // ✅ FIX: Use vendor-specific login endpoint
+    const { data } = await api.post("/auth/vendor/login", payload);
+
+    if (!data.success) throw new Error(data.message || "Login failed");
+
+    // Role guard
+    if (data.role !== "vendor") {
+      throw new Error("Access denied. This is not a vendor account.");
+    }
+
+    const token = data.token;
+    api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+    // Base vendor profile from auth response
+    let vendorProfile = {
+      _id: data._id,
+      name: data.name,
+      email: data.email,
+      phone: data.phone || "",
+      role: data.role,
+      token,
+    };
+
+    // Save immediately so user is authenticated
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, vendor: vendorProfile }));
+    setVendor(vendorProfile);
+
+    // Try to fetch full vendor profile
+    try {
+      const { data: vData } = await api.get("/vendor/me");
+      if (vData.success && vData.vendor) {
+        vendorProfile = { ...vData.vendor, token };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, vendor: vendorProfile }));
+        setVendor(vendorProfile);
+      }
+    } catch (err) {
+      if (err.response?.status === 404) {
+        // First time login — vendor profile not created yet, stay on base profile
+        console.warn("[Auth] Vendor profile not found — needs to apply");
+      }
+      // Don't throw — user is still authenticated
+    }
+
+    return vendorProfile;
   };
 
-
-
-  // ✅ LOGOUT
+  /* ── LOGOUT ── */
   const logout = () => {
     localStorage.removeItem(STORAGE_KEY);
     delete api.defaults.headers.common["Authorization"];
     setVendor(null);
   };
 
-  // ✅ REFRESH VENDOR (after profile updates)
+  /* ── REFRESH VENDOR (after profile updates) ── */
   const refreshVendor = async () => {
     try {
       const { data } = await api.get("/vendor/me");
       if (data.success && data.vendor) {
         const raw = localStorage.getItem(STORAGE_KEY);
         const { token } = raw ? JSON.parse(raw) : {};
-
         const updated = { ...data.vendor, token };
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, vendor: updated }));
         setVendor(updated);
       }
     } catch (err) {
       console.error("[Auth] Refresh failed:", err);
-
-      // If 401, logout
-      if (err.response?.status === 401) {
-        logout();
-      }
+      if (err.response?.status === 401) logout();
     }
   };
 
@@ -209,8 +191,6 @@ export const AuthProvider = ({ children }) => {
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used inside AuthProvider");
-  }
+  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
   return ctx;
 };

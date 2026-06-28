@@ -1,5 +1,7 @@
 /**
  * User.js — Updated with vendor & delivery_boy roles
+ * FIX: Added `originalRole` field so vendor/delivery registration intent
+ *      is preserved across the OTP verification step.
  */
 
 import mongoose from "mongoose";
@@ -65,11 +67,22 @@ const userSchema = new mongoose.Schema(
             default: "user",
         },
 
+        // ── FIX: Store original intended role during registration ──
+        // When vendor/delivery_boy registers, they are created as 'user' first
+        // (pending email verification). This field remembers their intended role
+        // so after OTP verification we can redirect them to the correct panel.
+        // Cleared after role is properly assigned or application is processed.
+        originalRole: {
+            type: String,
+            enum: ["user", "vendor", "delivery_boy", null],
+            default: null,
+        },
+
         // ── Email Verification ──
         isEmailVerified: { type: Boolean, default: false },
         emailOtp: { type: String, default: undefined, select: false },
         emailOtpExpires: { type: Date, default: undefined, select: false },
-        emailOtpAttempts: { type: Number, default: 0 },
+        emailOtpAttempts: { type: Number, default: 0, select: false },
 
         // ── GPS Location ──
         location: {

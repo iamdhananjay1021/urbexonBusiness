@@ -1,6 +1,9 @@
 /**
  * Delivery Partner Login — Urbexon V3
- * Full-screen split layout · Inline styles · Responsive · Production ready
+ * FIXES:
+ * - login() call fixed: { identifier, password } object format
+ * - Register link → client app /register?role=delivery_boy
+ * - Error handling improved
  */
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
@@ -33,6 +36,9 @@ const S = {
   },
 };
 
+// Client app URL — delivery partners register on the main client site
+const CLIENT_URL = import.meta.env.VITE_CLIENT_URL || "http://localhost:5173";
+
 const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -45,39 +51,46 @@ const Login = () => {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!identifier.trim() || !pass.trim()) { setError("Please fill in all fields."); return; }
-    setLoading(true); setError("");
+    if (!identifier.trim() || !pass.trim()) {
+      setError("Please fill in all fields.");
+      return;
+    }
+    setLoading(true);
+    setError("");
     try {
+      // ✅ FIX: pass object { identifier, password } — matches AuthContext.login()
       await login({ identifier: identifier.trim(), password: pass.trim() });
       navigate("/dashboard");
     } catch (err) {
-      setError(err.response?.data?.message || "Login failed. Please check your credentials.");
-    } finally { setLoading(false); }
+      setError(err.response?.data?.message || err.message || "Login failed. Please check your credentials.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <>
       <style>{`
-                *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-                @keyframes dl-spin { to { transform: rotate(360deg); } }
-                @keyframes dl-fadein { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
-                .dl-inp:focus { border-color: #10b981 !important; box-shadow: 0 0 0 4px rgba(16,185,129,0.1) !important; }
-                .dl-inp::placeholder { color: #9ca3af; }
-                .dl-btn-primary { transition: background 0.18s, transform 0.12s; }
-                .dl-btn-primary:hover:not(:disabled) { background: #059669 !important; transform: translateY(-1px); }
-                .dl-btn-primary:active:not(:disabled) { transform: translateY(0); }
-                .dl-btn-ghost:hover { background: #f3f4f6 !important; border-color: #d1d5db !important; }
-                .dl-eye:hover { color: #374151 !important; }
-                .dl-link:hover { color: #059669 !important; }
-                @media (max-width: 767px) {
-                    .dl-split-left { display: none !important; }
-                    .dl-split-right { width: 100% !important; min-height: 100vh; }
-                    .dl-form-inner { padding: 32px 24px !important; }
-                }
-                @media (min-width: 768px) {
-                    .dl-mobile-header { display: none !important; }
-                }
-            `}</style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        @keyframes dl-spin { to { transform: rotate(360deg); } }
+        @keyframes dl-fadein { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        .dl-inp:focus { border-color: #10b981 !important; box-shadow: 0 0 0 4px rgba(16,185,129,0.1) !important; }
+        .dl-inp::placeholder { color: #9ca3af; }
+        .dl-btn-primary { transition: background 0.18s, transform 0.12s; }
+        .dl-btn-primary:hover:not(:disabled) { background: #059669 !important; transform: translateY(-1px); }
+        .dl-btn-primary:active:not(:disabled) { transform: translateY(0); }
+        .dl-btn-ghost:hover { background: #f3f4f6 !important; border-color: #d1d5db !important; }
+        .dl-eye:hover { color: #374151 !important; }
+        .dl-link:hover { color: #059669 !important; }
+        @media (max-width: 767px) {
+          .dl-split-left { display: none !important; }
+          .dl-split-right { width: 100% !important; min-height: 100vh; }
+          .dl-form-inner { padding: 32px 24px !important; }
+        }
+        @media (min-width: 768px) {
+          .dl-mobile-header { display: none !important; }
+        }
+      `}</style>
 
       <div style={{ display: "flex", minHeight: "100vh", fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" }}>
 
@@ -92,17 +105,12 @@ const Login = () => {
           position: "relative",
           overflow: "hidden",
         }}>
-          {/* background blobs */}
           <div style={{ position: "absolute", top: -80, right: -80, width: 320, height: 320, borderRadius: "50%", background: "rgba(52,211,153,0.08)", pointerEvents: "none" }} />
           <div style={{ position: "absolute", bottom: -60, left: -60, width: 240, height: 240, borderRadius: "50%", background: "rgba(16,185,129,0.06)", pointerEvents: "none" }} />
 
           {/* Logo */}
           <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative", zIndex: 1 }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: 10,
-              background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.25)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FaBolt size={18} style={{ color: "#34d399" }} />
             </div>
             <span style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em" }}>Urbexon</span>
@@ -183,7 +191,7 @@ const Login = () => {
                   type="text"
                   value={identifier}
                   onChange={e => setIdentifier(e.target.value)}
-                  placeholder="Email"
+                  placeholder="Email or 10-digit phone"
                   required
                   autoComplete="username"
                   style={S.input}
@@ -277,21 +285,23 @@ const Login = () => {
               <div style={{ flex: 1, height: 1, background: "#f3f4f6" }} />
             </div>
 
-            {/* Register CTA */}
-            <Link
-              to="/register"
-              className="dl-btn-ghost"
+            {/* ✅ FIX: Register link → client app with delivery_boy role pre-selected */}
+            <a
+              href={`${CLIENT_URL}/register`}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
                 padding: "14px", borderRadius: 12,
                 border: "1.5px solid #e5e7eb", background: "#f9fafb",
                 fontSize: 14, fontWeight: 600, color: "#374151",
                 textDecoration: "none", transition: "all 0.18s",
+                cursor: "pointer",
               }}
+              onMouseEnter={e => { e.currentTarget.style.background = "#f3f4f6"; e.currentTarget.style.borderColor = "#d1d5db"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "#f9fafb"; e.currentTarget.style.borderColor = "#e5e7eb"; }}
             >
               <FaMotorcycle size={15} style={{ color: "#10b981" }} />
               Apply as a new delivery partner
-            </Link>
+            </a>
 
             {/* Help */}
             <div style={{

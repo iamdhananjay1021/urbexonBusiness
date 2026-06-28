@@ -1,13 +1,17 @@
 /**
- * Login.jsx — Production v3.1
- * ✅ Support login with email OR phone number
- * ✅ Forgot Password link added
- * ✅ Production-ready registration section
+ * Login.jsx — Production v4.0
+ * FIXES:
+ * - login() call fixed: passes { identifier, password } object
+ * - "Apply as Vendor" → client app URL
+ * - Error handling improved
  */
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { FiMail, FiLock, FiAlertCircle, FiEye, FiEyeOff, FiPhone } from "react-icons/fi";
+import { FiMail, FiLock, FiAlertCircle, FiEye, FiEyeOff } from "react-icons/fi";
+
+// Client app URL — vendors register on the main client site
+const CLIENT_URL = import.meta.env.VITE_CLIENT_URL || "http://localhost:5173";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -19,28 +23,25 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.identifier || !form.password) { setError("Please fill in all fields"); return; }
+    if (!form.identifier || !form.password) {
+      setError("Please fill in all fields");
+      return;
+    }
 
     try {
       setLoading(true);
       setError("");
 
-      // Determine if identifier is email or phone
-      const isEmail = form.identifier.includes("@");
-      const loginPayload = isEmail
-        ? { email: form.identifier, password: form.password }
-        : { phone: form.identifier, password: form.password };
+      // ✅ FIX: pass { identifier, password } object — matches AuthContext.login()
+      await login({ identifier: form.identifier.trim(), password: form.password });
 
-      await login(loginPayload); // Pass the whole payload to the context
+      navigate("/dashboard");
     } catch (err) {
-      // Check if email verification is required (403 with requiresVerification)
+      // Email verification required
       if (err.response?.status === 403 && err.response?.data?.requiresVerification) {
-        navigate("/verify-email", {
-          state: { email: form.identifier }
-        });
+        navigate("/verify-email", { state: { email: form.identifier } });
         return;
       }
-
       setError(err.response?.data?.message || err.message || "Login failed. Check your credentials.");
     } finally {
       setLoading(false);
@@ -68,6 +69,7 @@ const Login = () => {
         .login-input:focus { border-color: #7c3aed !important; box-shadow: 0 0 0 3px rgba(124,58,237,0.15) !important; background: #fff !important; }
         .login-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(124,58,237,0.4); }
         .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .apply-btn:hover { background: #ede9fe !important; border-color: #c4b5fd !important; }
       `}</style>
 
       <div style={{
@@ -108,6 +110,7 @@ const Login = () => {
         )}
 
         <form onSubmit={handleSubmit}>
+          {/* Email / Phone */}
           <div style={{ marginBottom: 18 }}>
             <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 7 }}>
               Email or Mobile Number
@@ -122,13 +125,15 @@ const Login = () => {
                 value={form.identifier}
                 onChange={e => setForm({ ...form, identifier: e.target.value })}
                 disabled={loading}
+                autoComplete="username"
               />
             </div>
-            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4, margin: 0 }}>
+            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
               Enter your email or 10-digit mobile number
             </p>
           </div>
 
+          {/* Password */}
           <div style={{ marginBottom: 24 }}>
             <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 7 }}>
               Password
@@ -143,6 +148,7 @@ const Login = () => {
                 value={form.password}
                 onChange={e => setForm({ ...form, password: e.target.value })}
                 disabled={loading}
+                autoComplete="current-password"
               />
               <button type="button" onClick={() => setShowPwd(!showPwd)} style={{
                 position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
@@ -182,34 +188,32 @@ const Login = () => {
         </form>
 
         <div style={{ marginTop: 28, paddingTop: 20, borderTop: "1px solid #e5e7eb" }}>
-          {/* Register Section */}
+          {/* ✅ FIX: Register → client app */}
           <div style={{ marginBottom: 16 }}>
-            <p style={{ fontSize: 13, color: "#6b7280", textAlign: "center", margin: 0, marginBottom: 10 }}>
+            <p style={{ fontSize: 13, color: "#6b7280", textAlign: "center", marginBottom: 10 }}>
               ✨ New to Urbexon?
             </p>
-            <a href="/apply" style={{
-              display: "inline-block", width: "100%", padding: "11px",
-              background: "#f3f4f6", border: "1.5px solid #e5e7eb",
-              borderRadius: 10, color: "#7c3aed", fontSize: 14, fontWeight: 700,
-              textDecoration: "none", textAlign: "center",
-              transition: "all 0.2s", fontFamily: "inherit"
-            }} onMouseEnter={e => {
-              e.target.style.background = "#e5e7eb";
-              e.target.style.borderColor = "#d1d5db";
-            }} onMouseLeave={e => {
-              e.target.style.background = "#f3f4f6";
-              e.target.style.borderColor = "#e5e7eb";
-            }}>
+            <a
+              href={`${CLIENT_URL}/register`}
+              className="apply-btn"
+              style={{
+                display: "block", width: "100%", padding: "11px",
+                background: "#f3f4f6", border: "1.5px solid #e5e7eb",
+                borderRadius: 10, color: "#7c3aed", fontSize: 14, fontWeight: 700,
+                textDecoration: "none", textAlign: "center",
+                transition: "all 0.2s", boxSizing: "border-box",
+              }}
+            >
               Apply as Vendor Now
             </a>
-            <p style={{ fontSize: 11, color: "#9ca3af", textAlign: "center", marginTop: 8, margin: 0 }}>
+            <p style={{ fontSize: 11, color: "#9ca3af", textAlign: "center", marginTop: 8 }}>
               Join our partner network and grow your business
             </p>
           </div>
 
-          {/* Help Section */}
+          {/* Help */}
           <div style={{ marginTop: 16, padding: "12px 14px", background: "#f9fafb", borderRadius: 10, textAlign: "center" }}>
-            <p style={{ fontSize: 12, color: "#6b7280", margin: 0, marginBottom: 8 }}>
+            <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
               Need help? Contact our vendor support team
             </p>
             <a href="mailto:vendor-support@urbexon.in" style={{ fontSize: 12, color: "#7c3aed", fontWeight: 600, textDecoration: "none" }}>
