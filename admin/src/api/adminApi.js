@@ -56,7 +56,10 @@ api.interceptors.response.use(
             if (auth?.token) {
                 try {
                     if (!_refreshing) {
-                        _refreshing = axios.post(`${API_URL}/auth/refresh-token`, { token: auth.token })
+                        // ✅ FIX: Send token in header, not body, to match backend `refreshToken` controller
+                        _refreshing = axios.post(`${API_URL}/auth/refresh`, {}, {
+                            headers: { Authorization: `Bearer ${auth.token}` }
+                        })
                             .finally(() => { _refreshing = null; });
                     }
                     const { data } = await _refreshing;

@@ -4,7 +4,13 @@
  */
 
 import express from "express";
-import { registerDeliveryPartner, deliveryLogin } from "../controllers/delivery/deliveryBoyAuth.js";
+import {
+    registerDeliveryPartner,
+    deliveryLogin,
+    deliveryForgotPassword,
+    deliveryResetPassword,
+} from "../controllers/delivery/deliveryBoyAuth.js";
+import { validateBody } from "../middlewares/validate.js";
 import { protect } from "../middleware/authMiddleware.js";
 import multer from "multer";
 
@@ -19,7 +25,10 @@ const upload = multer({ storage });
  * @desc    Login as a delivery partner
  * @access  Public
  */
-router.post("/login", deliveryLogin);
+router.post("/login",
+    validateBody({ password: { required: true } }),
+    deliveryLogin
+);
 
 /**
  * @route   POST /api/delivery/register
@@ -36,6 +45,21 @@ router.post(
         { name: "aadhaarPhoto", maxCount: 1 },
     ]),
     registerDeliveryPartner
+);
+
+/**
+ * @route   POST /api/delivery/forgot-password
+ * @desc    Request password reset for a delivery partner
+ * @access  Public
+ */
+router.post("/forgot-password",
+    validateBody({ email: { required: true, type: "email" } }),
+    deliveryForgotPassword
+);
+
+router.post("/reset-password/:token",
+    validateBody({ password: { required: true, minLength: 8 } }),
+    deliveryResetPassword
 );
 
 export default router;

@@ -9,7 +9,11 @@
  */
 
 import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
-import { login as deliveryLogin } from '../authController.js';
+import {
+    login as deliveryLogin,
+    deliveryForgotPassword,
+    deliveryResetPassword,
+} from '../authController.js';
 import User from "../../models/User.js";
 import { uploadToCloudinary } from "../../config/cloudinary.js";
 import { createNotification } from "../admin/notificationController.js";
@@ -136,4 +140,4 @@ export const registerDeliveryPartner = async (req, res) => {
     }
 };
 
-export { deliveryLogin };
+export { deliveryLogin, deliveryForgotPassword, deliveryResetPassword };

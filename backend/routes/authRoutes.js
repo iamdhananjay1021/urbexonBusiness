@@ -7,14 +7,11 @@ import { validateBody } from "../middlewares/validate.js";
 import { protect, adminOnly } from "../middlewares/authMiddleware.js";
 import {
     register, login, adminLogin,
-    vendorLogin, deliveryLogin,
     verifyOtp, resendOtp, refreshToken,
     getProfile, updateProfile, changePassword, saveLocation,
     getAllUsers, toggleBlockUser,
     forgotPassword, resetPassword,
     adminForgotPassword, adminResetPassword,
-    vendorForgotPassword, vendorResetPassword,
-    deliveryForgotPassword, deliveryResetPassword,
     adminGetDashboard,
     googleLogin,
 } from "../controllers/authController.js";
@@ -84,42 +81,6 @@ router.post("/admin/forgot-password",
 router.post("/admin/reset-password/:token",
     validateBody({ password: { required: true, minLength: 8 } }),
     adminResetPassword,
-);
-
-/* ── Vendor auth ── */
-router.post("/vendor/login",
-    validateBody({
-        password: { required: true },
-    }),
-    vendorLogin,
-);
-
-router.post("/vendor/forgot-password",
-    validateBody({ email: { required: true, type: "email" } }),
-    vendorForgotPassword,
-);
-
-router.post("/vendor/reset-password/:token",
-    validateBody({ password: { required: true, minLength: 8 } }),
-    vendorResetPassword,
-);
-
-/* ── Delivery auth ── */
-router.post("/delivery/login",
-    validateBody({
-        password: { required: true },
-    }),
-    deliveryLogin,
-);
-
-router.post("/delivery/forgot-password",
-    validateBody({ email: { required: true, type: "email" } }),
-    deliveryForgotPassword,
-);
-
-router.post("/delivery/reset-password/:token",
-    validateBody({ password: { required: true, minLength: 8 } }),
-    deliveryResetPassword,
 );
 
 /* ── Protected user routes ── */
