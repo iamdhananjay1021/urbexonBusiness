@@ -79,7 +79,7 @@ export const AuthProvider = ({ children }) => {
       : { phone: identifier.trim(), password };
 
     // Use delivery-specific login endpoint
-    const { data } = await api.post("/auth/delivery/login", payload);
+    const { data } = await api.post("/delivery/login", payload);
 
     if (!data.success) {
       throw new Error(data.message || "Login failed");

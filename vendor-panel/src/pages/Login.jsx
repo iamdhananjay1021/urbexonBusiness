@@ -32,9 +32,7 @@ const Login = () => {
       setLoading(true);
       setError("");
 
-      // ✅ FIX: pass { identifier, password } object — matches AuthContext.login()
-      await login({ identifier: form.identifier.trim(), password: form.password });
-
+      await login(form.identifier.trim(), form.password);
       navigate("/dashboard");
     } catch (err) {
       // Email verification required

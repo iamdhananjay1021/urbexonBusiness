@@ -58,8 +58,7 @@ const Login = () => {
     setLoading(true);
     setError("");
     try {
-      // ✅ FIX: pass object { identifier, password } — matches AuthContext.login()
-      await login({ identifier: identifier.trim(), password: pass.trim() });
+      await login(identifier.trim(), pass.trim());
       navigate("/dashboard");
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Login failed. Please check your credentials.");

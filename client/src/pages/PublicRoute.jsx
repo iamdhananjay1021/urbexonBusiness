@@ -11,11 +11,11 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
 const PublicRoute = () => {
-    const { vendor } = useAuth();
+    const { user } = useAuth();
     const location = useLocation();
 
     // Allow access to reset-password page even if logged in
-    if (vendor && !location.pathname.includes('/reset-password')) {
+    if (user && !location.pathname.includes('/reset-password')) {
         return <Navigate to="/dashboard" replace />;
     }
 

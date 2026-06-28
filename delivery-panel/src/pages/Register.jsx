@@ -21,10 +21,10 @@ const VEHICLE_TYPES = [
 ];
 
 const DOC_FIELDS = [
-    { key: "aadhaarPhoto", label: "Aadhaar Card", Icon: FaIdCard, required: true },
-    { key: "licensePhoto", label: "Driving License", Icon: FaIdCard, required: false },
-    { key: "vehicleRc", label: "Vehicle RC", Icon: FaCar, required: false },
-    { key: "selfie", label: "Selfie", Icon: FaCamera, required: true },
+    { key: "aadhaarPhoto", label: "Aadhaar Card", Icon: FaIdCard, required: true, serverKey: "aadhaarPhoto" },
+    { key: "drivingLicensePhoto", label: "Driving License", Icon: FaIdCard, required: false, serverKey: "drivingLicensePhoto" },
+    { key: "vehicleRCPhoto", label: "Vehicle RC", Icon: FaCar, required: false, serverKey: "vehicleRCPhoto" },
+    { key: "profilePhoto", label: "Profile Photo", Icon: FaCamera, required: true, serverKey: "profilePhoto" },
 ];
 
 const S = {
@@ -116,12 +116,12 @@ const Register = () => {
         setSubmitting(true); setError("");
         try {
             const fd = new FormData();
+            fd.append("fullName", name.trim());
             fd.append("phone", phone.trim());
             fd.append("city", city.trim());
             fd.append("vehicleType", vehicleType);
             fd.append("vehicleNumber", vehicleNumber.trim());
-            fd.append("vehicleModel", vehicleModel.trim());
-            Object.entries(docs).forEach(([key, file]) => { if (file) fd.append(key, file); });
+            Object.entries(docs).forEach(([key, file]) => { if (file) fd.append(DOC_FIELDS.find(f => f.key === key)?.serverKey || key, file); });
             await api.post("/delivery/register", fd, { headers: { "Content-Type": "multipart/form-data" }, timeout: 60000 });
             setSuccess(true); setStep(3);
         } catch (err) {

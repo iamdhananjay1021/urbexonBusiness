@@ -775,7 +775,7 @@ export const deliveryForgotPassword = async (req, res) => {
         rider.passwordResetExpires = Date.now() + RESET_EXPIRY_MS;
         await rider.save({ validateBeforeSave: false });
 
-        const resetUrl = `${process.env.DELIVERY_FRONTEND_URL || "https://delivery.partner.urbexon.in"}/reset-password/${resetToken}`;
+        const resetUrl = `${process.env.DELIVERY_FRONTEND_URL || process.env.CLIENT_URL || "https://delivery.partner.urbexon.in"}/reset-password/${resetToken}`;
         sendEmailBackground({ to: rider.email, subject: `${BRAND.name} Delivery — Password Reset`, html: buildDeliveryResetEmail(rider.name, resetUrl), label: "DeliveryAuth/ForgotPassword" });
         res.json(SAFE);
     } catch (err) {

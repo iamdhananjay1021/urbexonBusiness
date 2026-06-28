@@ -1,4 +1,4 @@
-/**
+t/**
  * AppRoutes.jsx — Production v3.1
  * ✅ SubscriptionRoute: approved + active subscription required
  * ✅ ApprovedRoute: approved vendor required (subscription page itself accessible)
@@ -91,10 +91,12 @@ const AppRoutes = () => (
     <Routes>
       {/* Public Routes */}
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-      <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/apply" element={<PublicRoute><VendorApply /></PublicRoute>} />
       <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
-      <Route path="/reset-password/:token" element={<PublicRoute><ResetPassword /></PublicRoute>} />
+
+      {/* Routes accessible to anyone */}
+      <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/reset-password/:token" element={<ResetPassword />} />
 
       {/* Protected Routes */}
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
@@ -126,4 +128,3 @@ const AppRoutes = () => (
 );
 
 export default AppRoutes;
-
