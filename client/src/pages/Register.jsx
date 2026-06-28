@@ -165,27 +165,29 @@ const Register = () => {
         They must complete the application form first.
     ───────────────────────────────────────────────────── */
     const redirectAfterAuth = useCallback((data) => {
-        loginWithData(data);
+        // ✅ CRITICAL FIX: Determine destination FIRST, then loginWithData.
+        // If loginWithData is called first → user state sets → PublicOnly
+        // sees logged-in user → immediately redirects to "/" before our
+        // navigate() can run. So we navigate() first, THEN set auth state.
 
-        // ✅ FIX 1: originalRole check FIRST — vendor/delivery always go to
-        // their application page, regardless of `from`.
+        let destination = "/";
+
+        // Priority 1: vendor/delivery → always go to application page
         if (data.originalRole === "vendor") {
-            navigate("/become-vendor", { replace: true });
-            return;
+            destination = "/become-vendor";
+        } else if (data.originalRole === "delivery_boy") {
+            destination = "/become-delivery";
+        } else if (from) {
+            // Priority 2: regular user came from somewhere specific
+            destination = from;
         }
-        if (data.originalRole === "delivery_boy") {
-            navigate("/become-delivery", { replace: true });
-            return;
-        }
+        // Priority 3: default → "/"
 
-        // ✅ FIX 2: Regular user — respect `from` if it exists
-        if (from) {
-            navigate(from, { replace: true });
-            return;
-        }
+        // Navigate FIRST (before user state is set, so PublicOnly doesn't intercept)
+        navigate(destination, { replace: true });
 
-        // ✅ FIX 3: Default — go to home, not /cart
-        navigate("/", { replace: true });
+        // THEN set auth state (user is now on the right page)
+        loginWithData(data);
     }, [loginWithData, navigate, from]);
 
     const [step, setStep] = useState("register");
