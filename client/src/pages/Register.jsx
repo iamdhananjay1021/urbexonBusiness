@@ -174,9 +174,9 @@ const Register = () => {
         let destination = "/";
 
         // Priority 1: vendor/delivery → always go to application page
-        if (data.originalRole === "vendor") {
+        if (data.user.role === "vendor") {
             destination = "/become-vendor";
-        } else if (data.originalRole === "delivery_boy") {
+        } else if (data.user.role === "delivery_boy") {
             destination = "/become-delivery";
         } else if (from) {
             // Priority 2: regular user came from somewhere specific

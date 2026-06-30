@@ -212,8 +212,8 @@ export const register = asyncHandler(async (req, res) => {
     if (password.length < 8)
         return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
 
-    const isVendorRegistration = role === "vendor" || role === "delivery_boy";
-    const assignedRole = isVendorRegistration ? "user" : (PUBLIC_ROLES.includes(role) ? role : "user");
+    // Directly assign the role requested by the user, ensuring it's a valid public role.
+    const assignedRole = PUBLIC_ROLES.includes(role) ? role : "user";
 
     const exists = await User.findOne({ email: sanitizeEmail(email) })
         .select("+emailOtp +emailOtpExpires +emailOtpAttempts");
@@ -242,7 +242,6 @@ export const register = asyncHandler(async (req, res) => {
         role: assignedRole,
         isEmailVerified: false,
         emailOtp: otp,
-        originalRole: role,
         emailOtpExpires: Date.now() + OTP_EXPIRY_MS,
         emailOtpAttempts: 0,
     });
@@ -251,7 +250,7 @@ export const register = asyncHandler(async (req, res) => {
 
     return res.status(201).json({
         success: true,
-        message: isVendorRegistration
+        message: (role === 'vendor' || role === 'delivery_boy')
             ? "Account created! Please verify your email with the OTP sent, then you can complete your vendor application."
             : "OTP sent to your email. Please verify to continue.",
         email: user.email,
@@ -312,15 +311,16 @@ export const verifyOtp = asyncHandler(async (req, res) => {
         });
     }
 
+    // ✅ FIX: Mark email as verified upon successful OTP entry.
+    // This was the critical bug causing users to get stuck in an OTP loop on subsequent logins.
     user.emailOtp = undefined; user.emailOtpExpires = undefined; user.emailOtpAttempts = 0;
-    await user.save();
+    user.isEmailVerified = true;
+    await user.save({ validateBeforeSave: false }); // Use false to avoid re-validating fields not being changed
 
     const accessToken = await issueTokens(res, user);
+    // The user object in the payload already contains the correct role.
     const payload = { success: true, token: accessToken, user: safeUserPayload(user) };
 
-    if (user.originalRole && user.originalRole !== "user") {
-        payload.originalRole = user.originalRole;
-    }
     return res.status(200).json(payload);
 });
 

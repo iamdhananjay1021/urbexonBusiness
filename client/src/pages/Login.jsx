@@ -16,7 +16,7 @@ const getRoleRedirect = (role) => {
     switch (role) {
         case "vendor":
             return { external: true, url: process.env.REACT_APP_VENDOR_URL || "http://localhost:3001" };
-        case "delivery":
+        case "delivery_boy":
             return { external: false, url: "/become-delivery" };
         case "admin":
         case "owner":
@@ -103,7 +103,8 @@ const Login = () => {
         }
 
         // For vendor/delivery roles, always go to their portal
-        const redirect = getRoleRedirect(data.role);
+        // ✅ FIX: Role is on the nested `user` object
+        const redirect = getRoleRedirect(data.user.role);
         if (redirect?.external) {
             window.location.href = redirect.url;
         } else {
@@ -130,7 +131,8 @@ const Login = () => {
             const result = await signInWithPopup(auth, googleProvider);
             const idToken = await result.user.getIdToken();
             const { data } = await api.post("/auth/google", { idToken });
-            if (["admin", "owner"].includes(data.role)) {
+            // ✅ FIX: Role is on the nested `user` object
+            if (["admin", "owner"].includes(data.user.role)) {
                 setError("Admin accounts must use the Admin Panel.");
                 return;
             }
@@ -153,7 +155,8 @@ const Login = () => {
                 ? { email: identifier.trim(), password: password.trim() }
                 : { phone: identifier.trim(), password: password.trim() };
             const { data } = await api.post("/auth/login", loginPayload);
-            if (["admin", "owner"].includes(data.role)) {
+            // ✅ FIX: Role is on the nested `user` object
+            if (["admin", "owner"].includes(data.user.role)) {
                 setError("Admin accounts must use the Admin Panel.");
                 return;
             }

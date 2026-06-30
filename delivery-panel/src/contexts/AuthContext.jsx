@@ -84,16 +84,18 @@ export const AuthProvider = ({ children }) => {
       throw new Error(data.message || "Login failed");
     }
 
-    if (data.role !== "delivery_boy") {
+    // ✅ FIX: Role check is on the nested `user` object.
+    if (data.user?.role !== "delivery_boy") {
       throw new Error("Access denied. This is not a delivery partner account.");
     }
 
+    // ✅ FIX: User data is nested in the `user` object from the API response.
     const riderData = {
-      _id: data._id,
-      name: data.name,
-      email: data.email,
-      phone: data.phone || "",
-      role: data.role,
+      _id: data.user._id,
+      name: data.user.name,
+      email: data.user.email,
+      phone: data.user.phone || "",
+      role: data.user.role,
     };
 
     localStorage.setItem(

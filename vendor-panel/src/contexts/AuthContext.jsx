@@ -118,20 +118,21 @@ export const AuthProvider = ({ children }) => {
     if (!data.success) throw new Error(data.message || "Login failed");
 
     // Role guard
-    if (data.role !== "vendor") {
+    // ✅ FIX: Role check is on the nested `user` object.
+    if (data.user?.role !== "vendor") {
       throw new Error("Access denied. This is not a vendor account.");
     }
 
     const token = data.token;
     api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
-    // Base vendor profile from auth response
+    // ✅ FIX: User data is nested in the `user` object from the API response.
     let vendorProfile = {
-      _id: data._id,
-      name: data.name,
-      email: data.email,
-      phone: data.phone || "",
-      role: data.role,
+      _id: data.user._id,
+      name: data.user.name,
+      email: data.user.email,
+      phone: data.user.phone || "",
+      role: data.user.role,
       token,
     };
 
