@@ -46,8 +46,10 @@ router.post(
 );
 
 router.post("/register", protect, docUpload, validateBody({ name: { required: true, minLength: 2 }, phone: { required: true, pattern: /^[6-9]\d{9}$/ }, vehicleType: { required: true, enum: ['bicycle', 'scooter', 'motorcycle', 'car', 'other'] } }), registerDeliveryBoy);
-router.get("/status", protect, getDeliveryStatus);
+router.get("/status", protect, deliveryOnly, getDeliveryStatus);
 router.patch("/toggle-status", protect, deliveryOnly, toggleOnlineStatus);
+
+// ✅ FIX: Replaced placeholder with the actual controller to fetch orders.
 router.get("/orders", protect, deliveryOnly, getDeliveryOrders);
 router.patch("/orders/:id/accept", protect, deliveryOnly, acceptOrder);
 router.patch("/orders/:id/pickup", protect, deliveryOnly, pickupOrder);

@@ -78,6 +78,8 @@ export const AuthProvider = ({ children }) => {
       ? { email: identifier.trim(), password }
       : { phone: identifier.trim(), password };
 
+    // ✅ FIX: The delivery login route is defined under /delivery, not /auth.
+    // Using the correct endpoint to resolve the 404 Not Found error.
     const { data } = await api.post("/delivery/login", payload);
 
     if (!data.success) {

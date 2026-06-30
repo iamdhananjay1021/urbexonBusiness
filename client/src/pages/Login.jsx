@@ -15,7 +15,8 @@ import { signInWithPopup } from "firebase/auth";
 const getRoleRedirect = (role) => {
     switch (role) {
         case "vendor":
-            return { external: true, url: process.env.REACT_APP_VENDOR_URL || "https://vendor.urbexon.in" };
+            // ✅ FIX: Standardize on Vite environment variables
+            return { external: true, url: import.meta.env.VITE_VENDOR_URL || "https://vendor.urbexon.in" };
         case "delivery_boy":
             return { external: false, url: "/become-delivery" };
         case "admin":

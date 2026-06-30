@@ -93,11 +93,11 @@ const allowedOrigins = [
     "http://localhost:5177",
 
     // Environment Variables
-    process.env.FRONTEND_URL,
+    process.env.VITE_API_URL,
     process.env.CLIENT_URL,
-    process.env.ADMIN_FRONTEND_URL,
-    process.env.VENDOR_FRONTEND_URL,
-    process.env.DELIVERY_FRONTEND_URL,
+    process.env.ADMIN_VITE_API_URL,
+    process.env.VENDOR_VITE_API_URL,
+    process.env.DELIVERY_VITE_API_URL,
 ].filter(Boolean);
 
 const corsOptions = {

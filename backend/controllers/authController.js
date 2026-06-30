@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import Vendor from "../models/vendorModels/Vendor.js";
+import DeliveryBoy from "../models/deliveryModels/DeliveryBoy.js";
 
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -181,6 +182,24 @@ const authenticateByRole = asyncHandler(async (req, res, { roleFilter, deniedMes
         return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 
+    // ✅ FIX: Check for vendor/delivery boy approval status before allowing login to their respective panels.
+    // This prevents users with a 'pending' application from accessing the dashboard.
+    if (roleFilter && roleFilter.includes('vendor')) {
+        const vendor = await Vendor.findOne({ userId: user._id }).lean();
+        if (!vendor || vendor.status !== 'approved') {
+            return res.status(403).json({ success: false, message: "Your vendor account is not approved. Please check your application status on the main website." });
+        }
+    }
+    if (roleFilter && roleFilter.includes('delivery_boy')) {
+        const deliveryBoy = await DeliveryBoy.findOne({ userId: user._id }).lean();
+        if (!deliveryBoy || deliveryBoy.status !== 'approved') {
+            return res.status(403).json({
+                success: false,
+                message: "Your delivery partner account is not approved. Please complete your application or wait for approval."
+            });
+        }
+    }
+
     if (!user.isEmailVerified) {
         const otp = generateOtp();
         user.emailOtp = otp;
@@ -191,7 +210,21 @@ const authenticateByRole = asyncHandler(async (req, res, { roleFilter, deniedMes
         return res.status(403).json({ success: false, message: "Please verify your email first. OTP sent.", requiresVerification: true, email: user.email });
     }
 
-    await user.registerSuccessfulLogin(getClientIp(req), getDeviceLabel(req));
+    // ✅ FIX: Replaced missing `registerSuccessfulLogin` method with its direct implementation.
+    // This resolves the "is not a function" TypeError during login.
+    user.lastLoginAt = new Date();
+    user.loginAttempts = 0; // Reset login attempts on success
+    if (!user.loginHistory) user.loginHistory = [];
+    user.loginHistory.unshift({
+        ip: getClientIp(req),
+        device: getDeviceLabel(req),
+        loggedInAt: new Date(),
+    });
+    // Keep login history to a reasonable size
+    if (user.loginHistory.length > 10) {
+        user.loginHistory.splice(10);
+    }
+    await user.save({ validateBeforeSave: false });
 
     const accessToken = await issueTokens(res, user);
     return res.status(200).json({ success: true, token: accessToken, user: safeUserPayload(user) });
@@ -474,7 +507,21 @@ export const googleLogin = asyncHandler(async (req, res) => {
             await user.save({ validateBeforeSave: false });
         }
 
-        await user.registerSuccessfulLogin(getClientIp(req), getDeviceLabel(req));
+        // ✅ FIX: Replaced missing `registerSuccessfulLogin` method with its direct implementation.
+        // This resolves the "is not a function" TypeError during login.
+        user.lastLoginAt = new Date();
+        user.loginAttempts = 0; // Reset login attempts on success
+        if (!user.loginHistory) user.loginHistory = [];
+        user.loginHistory.unshift({
+            ip: getClientIp(req),
+            device: getDeviceLabel(req),
+            loggedInAt: new Date(),
+        });
+        // Keep login history to a reasonable size
+        if (user.loginHistory.length > 10) {
+            user.loginHistory.splice(10);
+        }
+        await user.save({ validateBeforeSave: false });
         const accessToken = await issueTokens(res, user);
         return res.json({ success: true, token: accessToken, user: safeUserPayload(user) });
     }
@@ -591,7 +638,7 @@ async function handleResetPassword({ roleFilter }, req, res) {
 export const forgotPassword = asyncHandler(async (req, res) => {
     handleForgotPassword({
         roleFilter: null,
-        frontendUrlEnv: "FRONTEND_URL", defaultFrontendUrl: process.env.CLIENT_URL || "https://urbexon.in",
+        frontendUrlEnv: "CLIENT_URL", defaultFrontendUrl: process.env.CLIENT_URL || "https://urbexon.in",
         emailBuilder: buildResetEmail, subject: `Reset Your Password — ${BRAND.name}`, label: "Auth/ForgotPassword",
     }, req, res);
 });
@@ -603,7 +650,7 @@ export const resetPassword = asyncHandler(async (req, res) => {
 export const adminForgotPassword = asyncHandler(async (req, res) => {
     handleForgotPassword({
         roleFilter: { $in: ["admin", "owner"] },
-        frontendUrlEnv: "ADMIN_FRONTEND_URL", defaultFrontendUrl: process.env.ADMIN_URL || "https://admin.urbexon.in",
+        frontendUrlEnv: "ADMIN_URL", defaultFrontendUrl: process.env.ADMIN_URL || "https://admin.urbexon.in",
         emailBuilder: buildAdminResetEmail, subject: `${BRAND.name} Admin — Password Reset`, label: "AdminAuth/ForgotPassword",
     }, req, res);
 });
@@ -615,7 +662,7 @@ export const adminResetPassword = asyncHandler(async (req, res) => {
 export const vendorForgotPassword = asyncHandler(async (req, res) => {
     handleForgotPassword({
         roleFilter: "vendor",
-        frontendUrlEnv: "VENDOR_FRONTEND_URL", defaultFrontendUrl: process.env.VENDOR_URL || "https://vendor.urbexon.in",
+        frontendUrlEnv: "VENDOR_URL", defaultFrontendUrl: process.env.VENDOR_URL || "https://vendor.urbexon.in",
         emailBuilder: buildVendorResetEmail, subject: `${BRAND.name} Vendor — Password Reset`, label: "VendorAuth/ForgotPassword",
     }, req, res);
 });
@@ -627,7 +674,7 @@ export const vendorResetPassword = asyncHandler(async (req, res) => {
 export const deliveryForgotPassword = asyncHandler(async (req, res) => {
     handleForgotPassword({
         roleFilter: "delivery_boy",
-        frontendUrlEnv: "DELIVERY_FRONTEND_URL", defaultFrontendUrl: process.env.DELIVERY_URL || "https://delivery.partner.urbexon.in",
+        frontendUrlEnv: "DELIVERY_URL", defaultFrontendUrl: process.env.DELIVERY_URL || "https://delivery.partner.urbexon.in",
         emailBuilder: buildDeliveryResetEmail, subject: `${BRAND.name} Delivery — Password Reset`, label: "DeliveryAuth/ForgotPassword",
     }, req, res);
 });

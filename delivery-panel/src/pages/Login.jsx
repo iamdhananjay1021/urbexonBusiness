@@ -37,7 +37,8 @@ const S = {
 };
 
 // Client app URL — delivery partners register on the main client site
-const CLIENT_URL = import.meta.env.FRONTEND_URL || "https://urbexon.in";
+// ✅ FIX: Use the correct environment variable for the client URL.
+const CLIENT_URL = import.meta.env.VITE_CLIENT_URL || "https://urbexon.in";
 
 const Login = () => {
   const { login } = useAuth();

@@ -1,7 +1,11 @@
 /**
- * Delivery Panel AppRoutes — Production v5.0
+ * Delivery Panel AppRoutes — Production v5.1
  * ✅ React.lazy code splitting
  * ✅ Urbexon design system with 5-tab navigation
+ * ✅ FIXED: Added missing "/apply" route (alias to Register) —
+ *    the "Apply as a new delivery partner" button was navigating
+ *    to a route that didn't exist, causing a silent redirect loop
+ *    back to /login.
  */
 import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
@@ -120,6 +124,12 @@ const AppRoutes = () => (
     <Routes>
       <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
       <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
+      {/* ✅ FIX: "/apply" alias — Login page's "Apply as a new delivery partner"
+          button points here. Without this route it silently bounced back to
+          /login via the catch-all redirect. Register.jsx already contains the
+          full application form (name, phone, vehicle type, documents) so we
+          simply route /apply to the same component. */}
+      <Route path="/apply" element={<PublicOnly><Register /></PublicOnly>} />
       <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />
       <Route path="/reset-password/:token" element={<PublicOnly><ResetPassword /></PublicOnly>} />
       <Route path="/dashboard" element={<Protected><PrivateLayout><Dashboard /></PrivateLayout></Protected>} />

@@ -27,10 +27,10 @@ const buildAllowedWsOrigins = () => {
         'http://localhost:5176',
     ];
     const fromEnv = [
-        process.env.FRONTEND_URL,
-        process.env.ADMIN_FRONTEND_URL,
-        process.env.VENDOR_FRONTEND_URL,
-        process.env.DELIVERY_FRONTEND_URL,
+        process.env.VITE_API_URL,
+        process.env.ADMIN_VITE_API_URL,
+        process.env.VENDOR_VITE_API_URL,
+        process.env.DELIVERY_VITE_API_URL,
         process.env.CLIENT_URL,
     ].filter(Boolean);
     return [...new Set([...allowedOrigins, ...fromEnv])];
