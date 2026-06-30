@@ -37,7 +37,7 @@ const S = {
 };
 
 // Client app URL — delivery partners register on the main client site
-const CLIENT_URL = import.meta.env.FRONTEND_URL || "http://localhost:5173";
+const CLIENT_URL = import.meta.env.FRONTEND_URL || "https://urbexon.in";
 
 const Login = () => {
   const { login } = useAuth();

@@ -603,7 +603,7 @@ export const resetPassword = asyncHandler(async (req, res) => {
 export const adminForgotPassword = asyncHandler(async (req, res) => {
     handleForgotPassword({
         roleFilter: { $in: ["admin", "owner"] },
-        frontendUrlEnv: "ADMIN_FRONTEND_URL", defaultFrontendUrl: "https://admin.urbexon.in",
+        frontendUrlEnv: "ADMIN_FRONTEND_URL", defaultFrontendUrl: process.env.ADMIN_URL || "https://admin.urbexon.in",
         emailBuilder: buildAdminResetEmail, subject: `${BRAND.name} Admin — Password Reset`, label: "AdminAuth/ForgotPassword",
     }, req, res);
 });
@@ -615,7 +615,7 @@ export const adminResetPassword = asyncHandler(async (req, res) => {
 export const vendorForgotPassword = asyncHandler(async (req, res) => {
     handleForgotPassword({
         roleFilter: "vendor",
-        frontendUrlEnv: "VENDOR_FRONTEND_URL", defaultFrontendUrl: "https://vendor.urbexon.in",
+        frontendUrlEnv: "VENDOR_FRONTEND_URL", defaultFrontendUrl: process.env.VENDOR_URL || "https://vendor.urbexon.in",
         emailBuilder: buildVendorResetEmail, subject: `${BRAND.name} Vendor — Password Reset`, label: "VendorAuth/ForgotPassword",
     }, req, res);
 });
@@ -627,7 +627,7 @@ export const vendorResetPassword = asyncHandler(async (req, res) => {
 export const deliveryForgotPassword = asyncHandler(async (req, res) => {
     handleForgotPassword({
         roleFilter: "delivery_boy",
-        frontendUrlEnv: "DELIVERY_FRONTEND_URL", defaultFrontendUrl: process.env.CLIENT_URL || "https://delivery.partner.urbexon.in",
+        frontendUrlEnv: "DELIVERY_FRONTEND_URL", defaultFrontendUrl: process.env.DELIVERY_URL || "https://delivery.partner.urbexon.in",
         emailBuilder: buildDeliveryResetEmail, subject: `${BRAND.name} Delivery — Password Reset`, label: "DeliveryAuth/ForgotPassword",
     }, req, res);
 });
