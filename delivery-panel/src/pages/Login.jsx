@@ -58,7 +58,7 @@ const Login = () => {
     setLoading(true);
     setError("");
     try {
-      await login(identifier.trim(), pass.trim());
+      await login({ identifier: identifier.trim(), password: pass.trim() });
       navigate("/dashboard");
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Login failed. Please check your credentials.");
@@ -286,7 +286,7 @@ const Login = () => {
 
             {/* ✅ FIX: Register link → client app with delivery_boy role pre-selected */}
             <a
-              href={`${CLIENT_URL}/register`}
+              href={`${CLIENT_URL}/register?role=delivery_boy`}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
                 padding: "14px", borderRadius: 12,

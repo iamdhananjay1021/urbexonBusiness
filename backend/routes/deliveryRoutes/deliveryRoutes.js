@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import multer from "multer";
 import { validateBody } from "../../middlewares/validate.js";
 import { protect, deliveryOnly } from "../../middlewares/authMiddleware.js";
+import { deliveryLogin } from "../../controllers/authController.js";
 import {
     registerDeliveryBoy, getDeliveryStatus, toggleOnlineStatus,
     getDeliveryOrders, acceptOrder, pickupOrder, markDelivered,
@@ -36,6 +37,13 @@ const docUpload = upload.fields([
 ]);
 
 const router = express.Router();
+router.post(
+    "/login",
+    validateBody({
+        password: { required: true },
+    }),
+    deliveryLogin
+);
 
 router.post("/register", protect, docUpload, validateBody({ name: { required: true, minLength: 2 }, phone: { required: true, pattern: /^[6-9]\d{9}$/ }, vehicleType: { required: true, enum: ['bicycle', 'scooter', 'motorcycle', 'car', 'other'] } }), registerDeliveryBoy);
 router.get("/status", protect, getDeliveryStatus);

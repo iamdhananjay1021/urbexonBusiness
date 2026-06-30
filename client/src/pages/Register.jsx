@@ -10,7 +10,7 @@
  * ✅ All business logic 100% preserved
  */
 import { useState, useCallback, useMemo } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import {
     FaUser, FaEnvelope, FaLock, FaEye, FaEyeSlash,
     FaPhone, FaStore, FaMotorcycle, FaArrowLeft,
@@ -148,6 +148,7 @@ const PrimaryBtn = ({ loading, loadingText, children, className = "", ...props }
 const Register = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const [searchParams] = useSearchParams();
     const { loginWithData } = useAuth();
 
     const from = location.state?.from || null;
@@ -191,7 +192,11 @@ const Register = () => {
     }, [loginWithData, navigate, from]);
 
     const [step, setStep] = useState("register");
-    const [selectedRole, setSelectedRole] = useState("user");
+    const [selectedRole, setSelectedRole] = useState(() => {
+        const roleFromQuery = searchParams.get("role");
+        // Ensure the role from query is one of the valid roles
+        return ROLES.some(r => r.value === roleFromQuery) ? roleFromQuery : "user";
+    });
     const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
     const [otp, setOtp] = useState("");
     const [showPassword, setShowPassword] = useState(false);

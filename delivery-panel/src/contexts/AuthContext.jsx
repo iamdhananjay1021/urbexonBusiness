@@ -72,25 +72,22 @@ export const AuthProvider = ({ children }) => {
       throw new Error("Email/phone and password are required");
     }
 
-    // Determine if identifier is email or phone
     const isEmail = identifier.includes("@");
+
     const payload = isEmail
       ? { email: identifier.trim(), password }
       : { phone: identifier.trim(), password };
 
-    // Use delivery-specific login endpoint
     const { data } = await api.post("/delivery/login", payload);
 
     if (!data.success) {
       throw new Error(data.message || "Login failed");
     }
 
-    // Role guard — only delivery_boy allowed
     if (data.role !== "delivery_boy") {
       throw new Error("Access denied. This is not a delivery partner account.");
     }
 
-    // Save to localStorage
     const riderData = {
       _id: data._id,
       name: data.name,
@@ -99,30 +96,20 @@ export const AuthProvider = ({ children }) => {
       role: data.role,
     };
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      token: data.token,
-      rider: riderData,
-    }));
-
-    api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
-
-    // Fetch delivery profile (optional, don't fail if it errors)
-    try {
-      const { data: status } = await api.get("/delivery/status");
-      const fullRider = status.rider || riderData;
-      setRider(fullRider);
-      // Update stored rider with full profile
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
         token: data.token,
-        rider: fullRider,
-      }));
-    } catch {
-      setRider(riderData);
-    }
+        rider: riderData,
+      })
+    );
+
+    api.defaults.headers.common.Authorization = `Bearer ${data.token}`;
+
+    setRider(riderData);
 
     return data;
   };
-
   const logout = () => {
     localStorage.removeItem(STORAGE_KEY);
     delete api.defaults.headers.common["Authorization"];
