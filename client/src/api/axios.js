@@ -13,6 +13,7 @@ const api = axios.create({
     baseURL: API_URL,
     timeout: 30000,
     headers: { "Content-Type": "application/json" },
+    withCredentials: true,
 });
 
 const getStoredToken = () => {
@@ -37,9 +38,9 @@ api.interceptors.request.use(
 api.interceptors.response.use(
     (response) => response,
     async (error) => {
-        const status        = error.response?.status;
-        const originalReq   = error.config;
-        const isNetworkErr  = !error.response && error.code === "ERR_NETWORK";
+        const status = error.response?.status;
+        const originalReq = error.config;
+        const isNetworkErr = !error.response && error.code === "ERR_NETWORK";
 
         // Dispatch global event so components can show toast without prop drilling
         if (isNetworkErr) {
@@ -58,6 +59,7 @@ api.interceptors.response.use(
                 if (stored) {
                     const parsed = JSON.parse(stored);
                     const { data } = await axios.post(`${API_URL}/auth/refresh`, {}, {
+                        withCredentials: true,
                         headers: { Authorization: `Bearer ${parsed.token}` },
                     });
                     if (data?.token) {

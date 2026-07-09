@@ -1,9 +1,6 @@
 /**
- * Home.jsx — Urbexon v3 · Hero Redesign
- * ─ Vibrant, light-mode hero with Tailwind animations
- * ─ Removed heavy dark overlays — modern gradient approach
- * ─ Animated floating orbs, slide transitions, stat chips
- * ─ All business logic 100% preserved
+ * Home.jsx — Urbexon · Professional Redesign
+ * Same logic, same colors — clean structured layout
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
@@ -25,9 +22,8 @@ import {
 const CACHE_TTL = 3 * 60 * 1000;
 let _homeCache = null;
 const PAGE_SIZE = 20;
-
-const CARD_SIZE =
-    "w-[180px] min-w-[180px] sm:w-[190px] sm:min-w-[190px] lg:w-[220px] lg:min-w-[220px]";
+const C = "max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16";
+const CARD_SIZE = "w-[180px] min-w-[180px] sm:w-[200px] sm:min-w-[200px] lg:w-[220px] lg:min-w-[220px]";
 
 const ALL_SORT_OPTIONS = [
     { key: "newest", label: "New Arrivals" },
@@ -39,7 +35,7 @@ const ALL_SORT_OPTIONS = [
 
 const WHY = [
     { Icon: FaShippingFast, label: "Fast Delivery", sub: "Free shipping above ₹499", iconBg: "bg-orange-50", iconColor: "text-orange-500" },
-    { Icon: FaLock, label: "Secure Payment", sub: "100% encrypted checkout", iconBg: "bg-green-50", iconColor: "text-green-700" },
+    { Icon: FaLock, label: "Secure Payment", sub: "100% encrypted checkout", iconBg: "bg-green-50", iconColor: "text-green-600" },
     { Icon: FaMedal, label: "Quality Products", sub: "Verified & authentic", iconBg: "bg-yellow-50", iconColor: "text-yellow-600" },
     { Icon: FaHeadset, label: "24/7 Support", sub: "Always here for you", iconBg: "bg-indigo-50", iconColor: "text-indigo-600" },
 ];
@@ -53,33 +49,55 @@ const saveSearch = t => {
     localStorage.setItem(SEARCH_KEY, JSON.stringify(h.slice(0, 15)));
 };
 
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   CARD WRAPPER
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   SHARED COMPONENTS
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
 const CardWrap = ({ children }) => (
     <div className="flex flex-col bg-white rounded-xl border border-neutral-100 overflow-hidden
-                    w-full h-full transition-all duration-200 hover:-translate-y-1 hover:shadow-lg">
+                    w-full h-full transition-all duration-200 hover:-translate-y-1 hover:shadow-lg group">
         {children}
     </div>
 );
 
-/* ─── SKELETON CARD ─── */
 const SkCard = () => (
     <CardWrap>
         <div className="w-full aspect-[4/3] bg-neutral-100 animate-pulse" />
         <div className="p-3 flex flex-col gap-2 flex-1">
             <div className="h-2.5 w-2/5 bg-neutral-100 rounded-full animate-pulse" />
-            <div className="h-3   w-4/5 bg-neutral-100 rounded-full animate-pulse" />
+            <div className="h-3 w-4/5 bg-neutral-100 rounded-full animate-pulse" />
             <div className="h-2.5 w-3/5 bg-neutral-100 rounded-full animate-pulse" />
-            <div className="mt-auto pt-2 flex flex-col gap-2">
-                <div className="h-3 w-2/5 bg-neutral-100 rounded-full animate-pulse" />
-                <div className="h-8 w-full bg-neutral-100 rounded-lg  animate-pulse" />
-            </div>
         </div>
     </CardWrap>
 );
 
-/* ─── FLASH TIMER ─── */
+/* Section header — eyebrow + title + view-all link */
+const SecHead = ({ eyebrow, title, sub, to, label = "View all", icon }) => (
+    <div className="flex items-end justify-between mb-5 gap-3 flex-wrap">
+        <div className="flex-1">
+            {eyebrow && (
+                <span className="inline-block pl-2.5 border-l-[3px] border-orange-500
+                                 text-[10px] font-bold tracking-widest uppercase text-orange-500 mb-1.5 leading-none block">
+                    {eyebrow}
+                </span>
+            )}
+            <h2 className="text-xl sm:text-2xl font-extrabold text-neutral-900 tracking-tight leading-tight flex items-center gap-2 m-0">
+                {icon && icon}
+                {title}
+            </h2>
+            {sub && <p className="text-xs text-neutral-400 mt-1">{sub}</p>}
+        </div>
+        {to && (
+            <Link to={to}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-orange-500
+                           no-underline whitespace-nowrap hover:text-orange-600 transition-colors">
+                {label} <FaArrowRight size={9} />
+            </Link>
+        )}
+    </div>
+);
+
+/* Countdown timer */
 const FlashTimer = ({ endsAt }) => {
     const calc = useCallback(() => {
         const end = endsAt
@@ -95,52 +113,21 @@ const FlashTimer = ({ endsAt }) => {
         <div className="flex items-center gap-1.5">
             {[{ v: t.h, l: "H" }, { v: t.m, l: "M" }, { v: t.s, l: "S" }].map(({ v, l }, i) => (
                 <div key={l} className="contents">
-                    <div className="w-11 h-11 bg-white/10 border border-white/20 rounded-xl
+                    <div className="w-11 h-11 bg-white/15 border border-white/25 rounded-xl
                                     flex flex-col items-center justify-center">
                         <span className="text-base font-black text-white tabular-nums leading-none">{pad(v)}</span>
-                        <span className="text-[7px] text-white/50 font-bold mt-0.5 tracking-widest">{l}</span>
+                        <span className="text-[7px] text-white/60 font-bold mt-0.5 tracking-widest">{l}</span>
                     </div>
-                    {i < 2 && <span className="text-white/30 font-black text-lg leading-none">:</span>}
+                    {i < 2 && <span className="text-white/40 font-black text-base">:</span>}
                 </div>
             ))}
         </div>
     );
 };
 
-/* ─── SECTION HEADER ─── */
-const SecHead = ({ eyebrow, title, sub, to, label = "View all", icon }) => (
-    <div className="flex items-end justify-between mb-4 gap-3 flex-wrap">
-        <div className="flex-1">
-            {eyebrow && (
-                <span className="inline-block pl-2.5 border-l-[3px] border-orange-500
-                                 text-[10px] font-bold tracking-widest uppercase text-orange-500
-                                 mb-2 leading-none">
-                    {eyebrow}
-                </span>
-            )}
-            <h2 className="text-xl sm:text-2xl font-extrabold text-neutral-900 tracking-tight leading-tight
-                           flex items-center gap-2.5 m-0">
-                {icon && icon}
-                {title}
-            </h2>
-            {sub && <p className="text-xs text-neutral-400 mt-1.5 font-normal">{sub}</p>}
-        </div>
-        {to && (
-            <Link to={to}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-orange-500
-                           no-underline whitespace-nowrap tracking-wide
-                           hover:text-orange-600 hover:translate-x-0.5 transition-all duration-150">
-                {label} <FaArrowRight size={9} />
-            </Link>
-        )}
-    </div>
-);
-
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   PRODUCT GRID — 2→3→4→5 cols
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+/* Product grid */
 const PGrid = ({ products = [], loading, skCount = 10 }) => (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
         {loading
             ? Array(skCount).fill(0).map((_, i) => <SkCard key={i} />)
             : products.map(p => (
@@ -152,45 +139,39 @@ const PGrid = ({ products = [], loading, skCount = 10 }) => (
     </div>
 );
 
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   HORIZONTAL SCROLL ROW
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+/* Horizontal scroll row */
 const HScrollRow = ({ products = [], loading, skCount = 6 }) => {
     const rowRef = useRef(null);
-    const scroll = dir => rowRef.current?.scrollBy({ left: dir * 220, behavior: "smooth" });
+    const scroll = dir => rowRef.current?.scrollBy({ left: dir * 230, behavior: "smooth" });
     return (
         <div className="relative group/hrow">
             <button onClick={() => scroll(-1)}
-                className="absolute left-0 top-1/2 -translate-y-1/2 z-10
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 -translate-x-1/2
                            w-9 h-9 rounded-full bg-white border border-neutral-200 shadow-md
                            items-center justify-center text-neutral-500 hover:text-neutral-900
-                           transition-all duration-150 hidden md:flex
-                           opacity-0 group-hover/hrow:opacity-100 -translate-x-1/2">
+                           cursor-pointer transition-all duration-150 hidden md:flex
+                           opacity-0 group-hover/hrow:opacity-100">
                 <FaChevronLeft size={11} />
             </button>
             <button onClick={() => scroll(1)}
-                className="absolute right-0 top-1/2 -translate-y-1/2 z-10
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 translate-x-1/2
                            w-9 h-9 rounded-full bg-white border border-neutral-200 shadow-md
                            items-center justify-center text-neutral-500 hover:text-neutral-900
-                           transition-all duration-150 hidden md:flex
-                           opacity-0 group-hover/hrow:opacity-100 translate-x-1/2">
+                           cursor-pointer transition-all duration-150 hidden md:flex
+                           opacity-0 group-hover/hrow:opacity-100">
                 <FaChevronRight size={11} />
             </button>
             <div ref={rowRef}
-                className="flex gap-2.5 overflow-x-auto pb-2 pt-0.5
-                           scroll-smooth [scroll-snap-type:x_mandatory]
+                className="flex gap-3 overflow-x-auto pb-1 scroll-smooth
+                           [scroll-snap-type:x_mandatory]
                            [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {loading
                     ? Array(skCount).fill(0).map((_, i) => (
-                        <div key={i} className={`${CARD_SIZE} flex-shrink-0 [scroll-snap-align:start]`}>
-                            <SkCard />
-                        </div>
+                        <div key={i} className={`${CARD_SIZE} flex-shrink-0 [scroll-snap-align:start]`}><SkCard /></div>
                     ))
                     : products.map(p => (
                         <div key={p._id || p.id} className={`${CARD_SIZE} flex-shrink-0 [scroll-snap-align:start]`}>
-                            <CardWrap>
-                                <ProductCard product={p} hideActions />
-                            </CardWrap>
+                            <CardWrap><ProductCard product={p} hideActions /></CardWrap>
                         </div>
                     ))
                 }
@@ -199,7 +180,9 @@ const HScrollRow = ({ products = [], loading, skCount = 6 }) => {
     );
 };
 
-/* ─── ALL PRODUCTS SECTION ─── */
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   ALL PRODUCTS SECTION
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 const AllProductsSection = () => {
     const [sort, setSort] = useState("newest");
     const [products, setProducts] = useState([]);
@@ -231,46 +214,48 @@ const AllProductsSection = () => {
     }, [sort, page, loadingMore, hasMore]);
 
     return (
-        <section className="bg-neutral-50 border-t border-neutral-100 py-7">
-            <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16">
-                <SecHead eyebrow="Catalog" title="All Products" sub="Browse our complete collection"
-                    to="/products" label="Full catalog"
-                    icon={<FaThLarge size={15} className="text-orange-500" />} />
-                <div className="flex gap-2 flex-wrap mb-4">
-                    {ALL_SORT_OPTIONS.map(o => (
-                        <button key={o.key} onClick={() => setSort(o.key)}
-                            className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-all duration-150 whitespace-nowrap
-                                ${sort === o.key
-                                    ? "bg-neutral-900 border-neutral-900 text-white"
-                                    : "bg-white border-neutral-200 text-neutral-500 hover:border-neutral-300"}`}>
-                            {o.label}
-                        </button>
-                    ))}
+        <section className="bg-neutral-50 border-t border-neutral-100 py-8">
+            <div className={C}>
+                <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+                    <SecHead eyebrow="Catalog" title="All Products"
+                        icon={<FaThLarge size={14} className="text-orange-500" />} />
+                    <div className="flex gap-2 flex-wrap -mt-1">
+                        {ALL_SORT_OPTIONS.map(o => (
+                            <button key={o.key} onClick={() => setSort(o.key)}
+                                className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-all duration-150 whitespace-nowrap
+                                    ${sort === o.key
+                                        ? "bg-neutral-900 border-neutral-900 text-white"
+                                        : "bg-white border-neutral-200 text-neutral-500 hover:border-neutral-400"}`}>
+                                {o.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
                 <div className="relative">
                     {isSorting && (
-                        <div className="absolute inset-0 bg-neutral-50/80 backdrop-blur-sm z-10
-                                        flex items-center justify-center rounded-xl">
+                        <div className="absolute inset-0 bg-neutral-50/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
                             <div className="w-6 h-6 rounded-full border-2 border-neutral-200 border-t-neutral-900 animate-spin" />
                         </div>
                     )}
-                    {loading ? <PGrid loading skCount={PAGE_SIZE} />
-                        : products.length > 0 ? <PGrid products={products} />
+                    {loading
+                        ? <PGrid loading skCount={PAGE_SIZE} />
+                        : products.length > 0
+                            ? <PGrid products={products} />
                             : (
                                 <div className="flex flex-col items-center py-14 text-center">
                                     <FaStore size={36} className="text-neutral-200 mb-3" />
-                                    <p className="font-bold text-neutral-400">No products found</p>
+                                    <p className="font-semibold text-neutral-400">No products found</p>
                                 </div>
                             )
                     }
                 </div>
                 {!loading && hasMore && (
-                    <div className="flex justify-center mt-6">
+                    <div className="flex justify-center mt-7">
                         <button onClick={loadMore} disabled={loadingMore}
-                            className="inline-flex items-center gap-2 px-8 py-3
-                                       border-[1.5px] border-neutral-900 rounded-lg
-                                       bg-white text-neutral-900 text-sm font-bold
-                                       hover:bg-neutral-900 hover:text-white hover:-translate-y-0.5
+                            className="inline-flex items-center gap-2 px-8 py-2.5
+                                       border border-neutral-900 rounded-xl
+                                       bg-white text-neutral-900 text-sm font-semibold
+                                       hover:bg-neutral-900 hover:text-white
                                        disabled:opacity-50 transition-all duration-200">
                             {loadingMore
                                 ? <><div className="w-3.5 h-3.5 rounded-full border-2 border-current/30 border-t-current animate-spin" /> Loading…</>
@@ -284,44 +269,49 @@ const AllProductsSection = () => {
     );
 };
 
-/* ─── FLASH DEALS SECTION ─── */
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   FLASH DEALS SECTION
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 const FlashDealsSection = ({ deals, loading, nearestDealEnd }) => {
     if (!loading && deals.length === 0) return null;
     return (
-        <section className="bg-white border-t border-neutral-100 py-7">
-            <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16">
+        <section className="bg-white border-t border-neutral-100 py-8">
+            <div className={C}>
                 <SecHead eyebrow="Limited time" title="Flash Deals"
-                    sub="Stock is running out — grab yours now" to="/deals" label="All deals" />
-                <div className="relative overflow-hidden bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500
-                                rounded-2xl p-4 flex items-center justify-between flex-wrap gap-4 mb-5">
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0
-                                    animate-[shimmer_2.5s_ease-in-out_infinite]" />
-                    <div className="absolute -top-6 right-20 w-32 h-32 rounded-full bg-yellow-300/20 blur-2xl pointer-events-none" />
-                    <div className="absolute -bottom-6 left-10 w-24 h-24 rounded-full bg-rose-300/20 blur-2xl pointer-events-none" />
-                    <div className="flex items-center gap-4 relative z-10">
-                        <div className="w-10 h-10 bg-white/20 border border-white/30
-                                        rounded-xl flex items-center justify-center text-lg flex-shrink-0 animate-bounce">
-                            ⚡
+                    sub="Stock is running out — grab yours now"
+                    to="/deals" label="All deals" icon={<span className="text-base">⚡</span>} />
+
+                {/* Countdown banner */}
+                <div className="relative overflow-hidden rounded-2xl mb-6
+                                bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500
+                                p-4 sm:p-5 flex items-center justify-between flex-wrap gap-4">
+                    <div className="absolute inset-0 opacity-10"
+                        style={{ backgroundImage: "radial-gradient(circle at 20% 50%, white 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
+                    <div className="flex items-center gap-3 relative z-10">
+                        <div className="w-10 h-10 bg-white/20 border border-white/30 rounded-xl
+                                        flex items-center justify-center text-xl flex-shrink-0">
+                            🔥
                         </div>
                         <div>
-                            <p className="text-sm font-extrabold text-white tracking-tight">Flash Sale — Live Now</p>
+                            <p className="text-sm font-extrabold text-white">Flash Sale — Live Now</p>
                             <p className="text-xs text-white/70 mt-0.5">Deep discounts · Limited quantities</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-3 relative z-10">
-                        <span className="text-[9px] font-bold text-white/70 uppercase tracking-widest">Ends in</span>
+                        <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest hidden sm:block">Ends in</span>
                         <FlashTimer endsAt={nearestDealEnd} />
                     </div>
                 </div>
+
                 <PGrid products={deals} loading={loading} skCount={8} />
+
                 {!loading && deals.length > 0 && (
                     <div className="flex justify-center mt-5">
                         <Link to="/deals"
-                            className="inline-flex items-center gap-2 px-7 py-2.5 rounded-lg
+                            className="inline-flex items-center gap-2 px-7 py-2.5 rounded-xl
                                        bg-neutral-900 text-white text-sm font-bold no-underline
-                                       hover:bg-neutral-800 hover:-translate-y-0.5 hover:shadow-lg
-                                       transition-all duration-200">
-                            <FaTag size={11} /> View all deals <FaArrowRight size={11} />
+                                       hover:bg-neutral-800 hover:-translate-y-0.5 transition-all duration-200">
+                            <FaTag size={11} /> View all deals
                         </Link>
                     </div>
                 )}
@@ -330,86 +320,55 @@ const FlashDealsSection = ({ deals, loading, nearestDealEnd }) => {
     );
 };
 
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   ★  HERO SLIDE COMPONENT  ★
-   — Light-mode-first, vibrant gradient bg, animated
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-const HeroSlide = ({ slide, active, stats, onCta, navigate }) => {
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   HERO SLIDE
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+const HeroSlide = ({ slide, active, stats, navigate }) => {
     const bg = slide.image?.url || (typeof slide.image === "string" ? slide.image : null) || "/banner-fallback.jpg";
-
     return (
         <div className={`absolute inset-0 transition-all duration-700 ease-in-out
-                         ${active ? "opacity-100 z-10 scale-100" : "opacity-0 z-0 scale-[1.01]"}`}>
-
-            {/* ── Background image ── */}
+                         ${active ? "opacity-100 z-10" : "opacity-0 z-0"}`}>
+            {/* BG image + fade */}
             <div className="absolute inset-0">
-                <img src={bg} alt={slide.title || "Banner"}
-                    className="w-full h-full object-cover object-center" />
-                {/*
-                    Light gradient: left side gets a warm-to-white fade
-                    so text is readable without killing the image
-                */}
-                <div className="absolute inset-0
-                                bg-gradient-to-r
-                                from-white/95 via-white/75 to-white/0
-                                sm:from-white/90 sm:via-white/65 sm:to-white/0" />
-                {/* Bottom fade for mobile readability */}
-                <div className="absolute inset-0
-                                bg-gradient-to-t from-white/80 via-transparent to-transparent
-                                sm:hidden" />
+                <img src={bg} alt={slide.title || "Banner"} className="w-full h-full object-cover object-center" />
+                <div className="absolute inset-0 bg-gradient-to-r from-white/92 via-white/70 to-white/10" />
+                <div className="absolute inset-0 bg-gradient-to-t from-white/60 via-transparent to-transparent sm:hidden" />
             </div>
 
-            {/* ── Decorative animated blobs ── */}
-            <div className="absolute top-8 left-[38%] w-48 h-48 rounded-full
-                            bg-gradient-to-br from-orange-300/25 to-rose-300/20
-                            blur-3xl pointer-events-none
-                            animate-[pulse_4s_ease-in-out_infinite]" />
-            <div className="absolute bottom-6 left-[28%] w-32 h-32 rounded-full
-                            bg-gradient-to-br from-violet-300/20 to-indigo-300/15
-                            blur-2xl pointer-events-none
-                            animate-[pulse_6s_ease-in-out_infinite_1s]" />
+            {/* Soft blobs */}
+            <div className="absolute top-8 left-[40%] w-56 h-56 rounded-full bg-orange-300/20 blur-3xl pointer-events-none" />
+            <div className="absolute bottom-8 left-[30%] w-36 h-36 rounded-full bg-violet-300/15 blur-2xl pointer-events-none" />
 
-            {/* ── Content ── */}
-            <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16
-                            relative z-10 w-full h-full flex items-center py-10">
-                <div className="max-w-[520px] flex flex-col items-start">
+            {/* Content */}
+            <div className={`${C} relative z-10 h-full flex items-center`}>
+                <div className="max-w-[500px] flex flex-col items-start">
 
-                    {/* Tag pill */}
                     {slide.tag && (
-                        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
                                         bg-orange-50 border border-orange-200
-                                        text-[10px] font-extrabold text-orange-600 tracking-widest uppercase mb-4
-                                        animate-[fadeSlideDown_0.5s_ease_both]">
-                            <FaFire size={9} className="text-orange-500 animate-pulse" />
+                                        text-[10px] font-extrabold text-orange-600 tracking-widest uppercase mb-4">
+                            <FaFire size={8} className="text-orange-500" />
                             {slide.tag}
                         </div>
                     )}
 
-                    {/* Headline */}
-                    <h1 className="text-[clamp(28px,4.5vw,58px)] font-black
-                                   text-neutral-900 leading-[1.05] tracking-[-0.03em]
-                                   m-0 mb-3
-                                   animate-[fadeSlideUp_0.5s_ease_0.1s_both]">
+                    <h1 className="text-[clamp(26px,4.2vw,56px)] font-black text-neutral-900
+                                   leading-[1.05] tracking-tight m-0 mb-3">
                         {slide.title}
                         {slide.highlight && (
-                            <span className="block bg-gradient-to-r from-orange-500 to-rose-500
-                                             bg-clip-text text-transparent mt-1">
+                            <span className="block bg-gradient-to-r from-orange-500 to-rose-500 bg-clip-text text-transparent">
                                 {slide.highlight}
                             </span>
                         )}
                     </h1>
 
-                    {/* Subtitle */}
                     {(slide.subtitle || slide.desc || slide.description) && (
-                        <p className="text-[clamp(13px,1.3vw,15px)] text-neutral-500
-                                      leading-relaxed mb-6 max-w-[420px]
-                                      animate-[fadeSlideUp_0.5s_ease_0.2s_both]">
+                        <p className="text-sm text-neutral-500 leading-relaxed mb-6 max-w-[400px]">
                             {slide.subtitle || slide.desc || slide.description}
                         </p>
                     )}
 
-                    {/* CTA Buttons */}
-                    <div className="flex gap-3 flex-wrap mb-8 animate-[fadeSlideUp_0.5s_ease_0.3s_both]">
+                    <div className="flex gap-3 flex-wrap mb-7">
                         <button
                             onClick={() => {
                                 const t = slide.link || slide.ctaLink || "/";
@@ -417,10 +376,9 @@ const HeroSlide = ({ slide, active, stats, onCta, navigate }) => {
                             }}
                             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl
                                        bg-gradient-to-r from-orange-500 to-rose-500
-                                       text-white text-sm font-black border-none cursor-pointer
-                                       shadow-[0_4px_20px_rgba(249,115,22,0.4)]
-                                       hover:shadow-[0_6px_28px_rgba(249,115,22,0.5)]
-                                       hover:-translate-y-0.5 hover:from-orange-600 hover:to-rose-600
+                                       text-white text-sm font-bold border-none cursor-pointer
+                                       shadow-[0_4px_18px_rgba(249,115,22,0.38)]
+                                       hover:-translate-y-0.5 hover:shadow-[0_6px_24px_rgba(249,115,22,0.48)]
                                        active:scale-95 transition-all duration-200">
                             {slide.buttonText || slide.cta || "Shop Now"}
                             <FaArrowRight size={11} />
@@ -428,32 +386,28 @@ const HeroSlide = ({ slide, active, stats, onCta, navigate }) => {
                         {slide.secondary && (
                             <button onClick={() => navigate(slide.secondaryLink || "/deals")}
                                 className="inline-flex items-center gap-2 px-5 py-3 rounded-xl
-                                           bg-white/90 backdrop-blur-sm
-                                           border border-neutral-200 text-neutral-700 text-sm font-semibold
-                                           cursor-pointer hover:bg-white hover:border-neutral-300
-                                           hover:-translate-y-0.5 active:scale-95 transition-all duration-200
-                                           shadow-sm hover:shadow-md">
+                                           bg-white/90 border border-neutral-200
+                                           text-neutral-700 text-sm font-semibold cursor-pointer
+                                           hover:bg-white hover:border-neutral-300
+                                           hover:-translate-y-0.5 active:scale-95 transition-all duration-200 shadow-sm">
                                 {slide.secondary}
                             </button>
                         )}
                     </div>
 
-                    {/* Stats chips */}
-                    <div className="flex gap-2.5 flex-wrap animate-[fadeSlideUp_0.5s_ease_0.4s_both]">
+                    {/* Stat chips */}
+                    <div className="flex gap-2.5 flex-wrap">
                         {[
-                            { v: "Free", l: "Delivery ₹499+", icon: "🚚" },
-                            { v: stats.products ? `${stats.products.toLocaleString()}+` : "500+", l: "Products", icon: "📦" },
-                            { v: stats.categories || "20+", l: "Categories", icon: "🏷️" },
-                        ].map(({ v, l, icon }) => (
-                            <div key={l} className="flex items-center gap-2
-                                                     px-3.5 py-2 rounded-xl
-                                                     bg-white/80 backdrop-blur-sm
-                                                     border border-neutral-200/80
-                                                     shadow-sm hover:shadow-md
-                                                     transition-shadow duration-200">
-                                <span className="text-base leading-none">{icon}</span>
+                            { v: "Free", l: "Delivery ₹499+", emoji: "🚚" },
+                            { v: stats.products ? `${stats.products.toLocaleString()}+` : "500+", l: "Products", emoji: "📦" },
+                            { v: stats.categories || "20+", l: "Categories", emoji: "🏷️" },
+                        ].map(({ v, l, emoji }) => (
+                            <div key={l}
+                                className="flex items-center gap-2 px-3 py-2 rounded-xl
+                                           bg-white/80 border border-neutral-200/80 shadow-sm">
+                                <span className="text-base leading-none">{emoji}</span>
                                 <div>
-                                    <div className="text-[13px] font-black text-neutral-900 leading-none">{v}</div>
+                                    <div className="text-[12px] font-black text-neutral-900 leading-none">{v}</div>
                                     <div className="text-[9px] text-neutral-400 font-semibold mt-0.5 whitespace-nowrap">{l}</div>
                                 </div>
                             </div>
@@ -465,27 +419,21 @@ const HeroSlide = ({ slide, active, stats, onCta, navigate }) => {
     );
 };
 
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   ★  HERO SKELETON  ★
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 const HeroSkeleton = () => (
-    <div className="w-full bg-gradient-to-br from-orange-50 via-rose-50 to-violet-50
-                    h-[260px] sm:h-[360px] md:h-[440px] lg:h-[500px]
-                    flex flex-col justify-center gap-4 px-6 sm:px-12 animate-pulse relative overflow-hidden">
-        {/* shimmer blobs */}
-        <div className="absolute top-0 right-0 w-72 h-72 rounded-full bg-orange-200/30 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 w-48 h-48 rounded-full bg-violet-200/25 blur-3xl" />
-        <div className="h-4 w-20 bg-orange-200/60 rounded-full relative z-10" />
-        <div className="h-10 sm:h-14 w-3/4 sm:w-1/2 bg-neutral-200/60 rounded-xl relative z-10" />
-        <div className="h-8 sm:h-10 w-2/3 sm:w-2/5 bg-neutral-200/40 rounded-xl relative z-10" />
-        <div className="h-4 w-1/2 sm:w-1/3 bg-neutral-200/40 rounded-lg relative z-10" />
-        <div className="h-11 w-36 bg-orange-300/50 rounded-xl mt-2 relative z-10" />
+    <div className="w-full h-[260px] sm:h-[360px] md:h-[440px] lg:h-[500px]
+                    bg-gradient-to-br from-orange-50 via-rose-50 to-violet-50
+                    flex flex-col justify-center gap-4 px-6 sm:px-16 animate-pulse relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-72 h-72 rounded-full bg-orange-200/25 blur-3xl" />
+        <div className="h-4 w-16 bg-orange-200/70 rounded-full" />
+        <div className="h-10 sm:h-14 w-3/4 sm:w-1/2 bg-neutral-200/60 rounded-xl" />
+        <div className="h-4 w-1/2 sm:w-1/3 bg-neutral-200/40 rounded-lg" />
+        <div className="h-11 w-36 bg-orange-300/50 rounded-xl mt-1" />
     </div>
 );
 
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    HOME COMPONENT
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 const Home = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -513,7 +461,7 @@ const Home = () => {
     const { recentlyViewed } = useRecentlyViewed();
     const ecRecent = recentlyViewed.filter(p => p.productType !== "urbexon_hour");
 
-    /* Fetch homepage */
+    /* ─ Fetch homepage ─ */
     useEffect(() => {
         if (_homeCache && Date.now() - _homeCache._ts < CACHE_TTL) { setLoading(false); return; }
         let cancelled = false;
@@ -552,7 +500,7 @@ const Home = () => {
         return () => { cancelled = true; };
     }, []);
 
-    /* For You */
+    /* ─ For You ─ */
     useEffect(() => {
         const h = getHistory(); if (!h.length) return;
         const term = h[0]; setForYouTerm(term);
@@ -560,7 +508,7 @@ const Home = () => {
             .then(r => setForYouProducts(r.data?.products || [])).catch(() => { });
     }, []);
 
-    /* Hero autoplay */
+    /* ─ Hero autoplay ─ */
     const resetTimer = useCallback(() => {
         clearInterval(heroTimer.current);
         if (slides.length > 1) heroTimer.current = setInterval(() => setHeroIdx(i => (i + 1) % slides.length), 5500);
@@ -570,7 +518,7 @@ const Home = () => {
         setHeroIdx(i => (i + dir + slides.length) % slides.length); resetTimer();
     }, [slides.length, resetTimer]);
 
-    /* Search */
+    /* ─ Search ─ */
     useEffect(() => {
         if (!searchQuery.trim()) { setSearchResults([]); return; }
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -582,7 +530,7 @@ const Home = () => {
         return () => ctrl.abort();
     }, [searchQuery]);
 
-    /* Newsletter */
+    /* ─ Newsletter ─ */
     const handleNL = async e => {
         e.preventDefault(); if (!nlEmail.trim()) return;
         setNlStatus("sending");
@@ -590,29 +538,29 @@ const Home = () => {
         catch { setNlStatus("error"); }
     };
 
-    const C = "max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16";
-
-    /* ── SEARCH VIEW ── */
+    /* ── SEARCH RESULTS VIEW ── */
     if (searchQuery.trim()) return (
         <div className="bg-neutral-50 min-h-screen">
             <div className={`${C} pt-10 pb-20`}>
-                <span className="inline-block pl-2.5 border-l-[3px] border-orange-500
-                                 text-[10px] font-bold tracking-widest uppercase text-orange-500 mb-2 leading-none">
-                    Search
+                <span className="block pl-2.5 border-l-[3px] border-orange-500
+                                 text-[10px] font-bold tracking-widest uppercase text-orange-500 mb-2">
+                    Search Results
                 </span>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight mt-1.5">
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight">
                     Results for <em className="not-italic text-orange-500">"{searchQuery}"</em>
                 </h1>
                 <p className="text-xs text-neutral-400 mt-2 mb-8">
                     {searching ? "Searching…" : `${searchResults.length} product${searchResults.length !== 1 ? "s" : ""} found`}
                 </p>
-                {searching ? <PGrid loading skCount={12} />
-                    : searchResults.length > 0 ? <PGrid products={searchResults} />
+                {searching
+                    ? <PGrid loading skCount={12} />
+                    : searchResults.length > 0
+                        ? <PGrid products={searchResults} />
                         : (
                             <div className="flex flex-col items-center py-24 text-center">
                                 <FaSearch size={44} className="text-neutral-200 mb-4" />
-                                <p className="font-bold text-neutral-400 text-base">No products match "{searchQuery}"</p>
-                                <p className="text-xs text-neutral-400 mt-2">Try a broader term or browse categories</p>
+                                <p className="font-bold text-neutral-400">No products match "{searchQuery}"</p>
+                                <p className="text-xs text-neutral-400 mt-1.5">Try a broader term or browse categories</p>
                             </div>
                         )
                 }
@@ -620,183 +568,130 @@ const Home = () => {
         </div>
     );
 
-    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
        MAIN RENDER
        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
     return (
         <div className="bg-neutral-50 overflow-x-hidden w-full">
 
-            {/* ── Keyframes injected once ── */}
             <style>{`
-                @keyframes fadeSlideDown {
-                    from { opacity: 0; transform: translateY(-10px); }
-                    to   { opacity: 1; transform: translateY(0);     }
-                }
-                @keyframes fadeSlideUp {
-                    from { opacity: 0; transform: translateY(14px); }
-                    to   { opacity: 1; transform: translateY(0);    }
-                }
-                @keyframes shimmer {
-                    0%   { transform: translateX(-100%); }
-                    100% { transform: translateX(100%);  }
-                }
-                @keyframes floatUp {
-                    0%, 100% { transform: translateY(0);    }
-                    50%       { transform: translateY(-8px); }
+                @keyframes progressBar {
+                    from { width: 0%; }
+                    to   { width: 100%; }
                 }
                 @keyframes gradientShift {
-                    0%   { background-position: 0%   50%; }
+                    0%   { background-position: 0% 50%; }
                     100% { background-position: 300% 50%; }
                 }
             `}</style>
 
-            <SEO title="Premium Online Shopping — Urbexon"
+            <SEO
+                title="Premium Online Shopping — Urbexon"
                 description="Discover premium products from verified sellers with fast delivery and secure checkout."
-                path="/" />
+                path="/"
+            />
 
-            {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                ★  HERO  ★
-                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+            {/* ══════════════════════════════════════
+                1. HERO BANNER
+                ══════════════════════════════════════ */}
             {loading && slides.length === 0 ? (
                 <HeroSkeleton />
             ) : slides.length > 0 ? (
-
                 <div className="relative w-full overflow-hidden
                                 h-[260px] sm:h-[360px] md:h-[440px] lg:h-[500px] xl:h-[540px]
-                                bg-gradient-to-br from-orange-50 via-white to-violet-50
-                                group">
+                                bg-gradient-to-br from-orange-50 via-white to-violet-50 group">
 
-                    {/* Slides */}
                     {slides.map((slide, i) => (
-                        <HeroSlide
-                            key={slide._id || i}
-                            slide={slide}
-                            active={i === heroIdx}
-                            stats={stats}
-                            navigate={navigate}
-                        />
+                        <HeroSlide key={slide._id || i} slide={slide} active={i === heroIdx} stats={stats} navigate={navigate} />
                     ))}
 
-                    {/* ── Nav arrows ── */}
                     {slides.length > 1 && (
                         <>
+                            {/* Arrows */}
                             <button onClick={() => goHero(-1)}
                                 className="absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 z-20
-                                           w-9 h-9 rounded-full
-                                           bg-white/80 backdrop-blur-sm
+                                           w-9 h-9 rounded-full bg-white/85 backdrop-blur-sm
                                            border border-neutral-200 shadow-md
-                                           flex items-center justify-center
-                                           text-neutral-600 hover:text-neutral-900
-                                           cursor-pointer transition-all duration-200
-                                           hover:bg-white hover:scale-105
-                                           opacity-100 sm:opacity-0 group-hover:opacity-100">
+                                           flex items-center justify-center text-neutral-600
+                                           cursor-pointer hover:bg-white hover:scale-105
+                                           opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all duration-200">
                                 <FaChevronLeft size={13} />
                             </button>
                             <button onClick={() => goHero(1)}
                                 className="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 z-20
-                                           w-9 h-9 rounded-full
-                                           bg-white/80 backdrop-blur-sm
+                                           w-9 h-9 rounded-full bg-white/85 backdrop-blur-sm
                                            border border-neutral-200 shadow-md
-                                           flex items-center justify-center
-                                           text-neutral-600 hover:text-neutral-900
-                                           cursor-pointer transition-all duration-200
-                                           hover:bg-white hover:scale-105
-                                           opacity-100 sm:opacity-0 group-hover:opacity-100">
+                                           flex items-center justify-center text-neutral-600
+                                           cursor-pointer hover:bg-white hover:scale-105
+                                           opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all duration-200">
                                 <FaChevronRight size={13} />
                             </button>
 
-                            {/* ── Dot indicators ── */}
-                            <div className="absolute bottom-4 sm:bottom-5 left-1/2 -translate-x-1/2 z-20
-                                            flex gap-1.5
-                                            bg-white/70 backdrop-blur-sm
-                                            border border-neutral-200/60
-                                            px-3 py-2 rounded-full shadow-sm">
+                            {/* Dot indicators */}
+                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20
+                                            flex gap-1.5 bg-white/70 backdrop-blur-sm
+                                            border border-neutral-200/50 px-3 py-2 rounded-full shadow-sm">
                                 {slides.map((_, i) => (
                                     <button key={i}
                                         onClick={() => { setHeroIdx(i); resetTimer(); }}
-                                        aria-label={`Slide ${i + 1}`}
-                                        className={`h-1.5 rounded-full border-none cursor-pointer p-0
-                                                    transition-all duration-300
-                                                    ${i === heroIdx
-                                                ? "w-6 bg-orange-500"
-                                                : "w-1.5 bg-neutral-300 hover:bg-neutral-400"}`} />
+                                        className={`h-1.5 rounded-full border-none cursor-pointer p-0 transition-all duration-300
+                                                    ${i === heroIdx ? "w-6 bg-orange-500" : "w-1.5 bg-neutral-300"}`} />
                                 ))}
                             </div>
 
-                            {/* ── Slide counter — top right ── */}
-                            <div className="absolute top-4 right-4 z-20
-                                            bg-white/70 backdrop-blur-sm
-                                            border border-neutral-200/60
-                                            text-[10px] font-bold text-neutral-500
-                                            px-2.5 py-1 rounded-full hidden sm:block">
+                            {/* Slide counter */}
+                            <div className="absolute top-4 right-4 z-20 hidden sm:block
+                                            bg-white/70 backdrop-blur-sm border border-neutral-200/50
+                                            text-[10px] font-bold text-neutral-500 px-2.5 py-1 rounded-full">
                                 {heroIdx + 1} / {slides.length}
                             </div>
-                        </>
-                    )}
 
-                    {/* ── Progress bar at the bottom ── */}
-                    {slides.length > 1 && (
-                        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-neutral-100 z-20">
-                            <div
-                                key={heroIdx}
-                                className="h-full bg-gradient-to-r from-orange-400 to-rose-500 rounded-full"
-                                style={{
-                                    animation: "progressBar 5.5s linear forwards",
-                                }} />
-                        </div>
+                            {/* Progress bar */}
+                            <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-neutral-100 z-20">
+                                <div key={heroIdx} className="h-full bg-gradient-to-r from-orange-400 to-rose-500 rounded-full"
+                                    style={{ animation: "progressBar 5.5s linear forwards" }} />
+                            </div>
+                        </>
                     )}
                 </div>
 
             ) : !loading && (
-                /* ── Fallback hero when no banners ── */
-                <div className="w-full relative overflow-hidden
-                                min-h-[260px] sm:min-h-[380px]
-                                bg-gradient-to-br from-orange-50 via-amber-50 to-rose-50
-                                flex items-center">
-                    {/* Blobs */}
-                    <div className="absolute top-0 right-0 w-80 h-80 rounded-full
-                                    bg-gradient-to-br from-orange-200/40 to-rose-200/30
-                                    blur-3xl pointer-events-none" />
-                    <div className="absolute bottom-0 left-1/4 w-48 h-48 rounded-full
-                                    bg-violet-200/25 blur-3xl pointer-events-none" />
-
+                /* Fallback hero */
+                <div className="w-full relative overflow-hidden min-h-[260px] sm:min-h-[380px]
+                                bg-gradient-to-br from-orange-50 via-amber-50 to-rose-50 flex items-center">
+                    <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-orange-200/35 blur-3xl pointer-events-none" />
+                    <div className="absolute bottom-0 left-1/4 w-48 h-48 rounded-full bg-violet-200/20 blur-3xl pointer-events-none" />
                     <div className={`${C} py-14 relative z-10 w-full`}>
-                        <div className="max-w-[540px]">
-                            {/* Eyebrow */}
-                            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full
+                        <div className="max-w-[520px]">
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
                                             bg-orange-100 border border-orange-200
                                             text-[10px] font-extrabold text-orange-600 tracking-widest uppercase mb-5">
-                                <FaStar size={8} className="text-orange-500 animate-pulse" />
-                                Premium Shopping
+                                <FaStar size={8} className="text-orange-500" /> Premium Shopping
                             </div>
-                            <h1 className="text-3xl sm:text-5xl font-black
-                                           text-neutral-900 leading-tight tracking-tight mb-4">
+                            <h1 className="text-3xl sm:text-5xl font-black text-neutral-900 leading-tight tracking-tight mb-4">
                                 Welcome to{" "}
-                                <span className="bg-gradient-to-r from-orange-500 to-rose-500
-                                                 bg-clip-text text-transparent">
+                                <span className="bg-gradient-to-r from-orange-500 to-rose-500 bg-clip-text text-transparent">
                                     Urbexon
                                 </span>
                             </h1>
-                            <p className="text-sm sm:text-base text-neutral-500 mb-8 leading-relaxed max-w-[440px]">
-                                Premium products · Fast delivery · Secure checkout.
+                            <p className="text-sm text-neutral-500 mb-8 leading-relaxed max-w-[420px]">
+                                Premium products · Fast delivery · Secure checkout.<br />
                                 Shop from thousands of verified sellers.
                             </p>
                             <div className="flex gap-3 flex-wrap">
                                 <button onClick={() => navigate("/deals")}
-                                    className="inline-flex items-center gap-2 px-6 py-3
+                                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl
                                                bg-gradient-to-r from-orange-500 to-rose-500
-                                               text-white rounded-xl text-sm font-bold cursor-pointer
-                                               shadow-[0_4px_20px_rgba(249,115,22,0.35)]
-                                               hover:-translate-y-0.5 hover:shadow-[0_6px_28px_rgba(249,115,22,0.45)]
-                                               transition-all duration-200">
+                                               text-white text-sm font-bold cursor-pointer border-none
+                                               shadow-[0_4px_18px_rgba(249,115,22,0.35)]
+                                               hover:-translate-y-0.5 transition-all duration-200">
                                     Explore deals <FaArrowRight size={12} />
                                 </button>
                                 <button onClick={() => navigate("/products")}
-                                    className="inline-flex items-center gap-2 px-5 py-3
+                                    className="inline-flex items-center gap-2 px-5 py-3 rounded-xl
                                                bg-white border border-neutral-200
-                                               text-neutral-700 rounded-xl text-sm font-semibold cursor-pointer
-                                               hover:border-neutral-300 hover:-translate-y-0.5
-                                               transition-all duration-200 shadow-sm hover:shadow-md">
+                                               text-neutral-700 text-sm font-semibold cursor-pointer
+                                               hover:border-neutral-300 hover:-translate-y-0.5 transition-all duration-200 shadow-sm">
                                     Browse all
                                 </button>
                             </div>
@@ -805,169 +700,9 @@ const Home = () => {
                 </div>
             )}
 
-            {/* ━━ URBEXON HOUR — Full Premium Section ━━ */}
-            <div className="w-full relative overflow-hidden bg-gradient-to-br from-[#f5f0ff] via-[#fdf4ff] to-[#fff0f7] border-y border-violet-100">
-
-                {/* ── Background decoration ── */}
-                <div className="absolute -top-16 -right-16 w-64 h-64 rounded-full bg-violet-200/30 blur-3xl pointer-events-none" />
-                <div className="absolute -bottom-10 -left-10 w-48 h-48 rounded-full bg-fuchsia-200/25 blur-3xl pointer-events-none" />
-                <div className="absolute top-1/2 right-1/4 w-32 h-32 rounded-full bg-pink-200/20 blur-2xl pointer-events-none" />
-
-                {/* ── Top animated accent line ── */}
-                <div className="absolute top-0 left-0 right-0 h-[3px]"
-                    style={{
-                        background: "linear-gradient(90deg,#7c3aed,#a855f7,#ec4899,#f97316,#a855f7,#7c3aed)",
-                        backgroundSize: "300% 100%",
-                        animation: "gradientShift 4s linear infinite",
-                    }} />
-
-                <div className={`${C} py-6 sm:py-7`}>
-                    <div
-                        onClick={() => navigate("/urbexon-hour")}
-                        className="group/uh cursor-pointer"
-                    >
-                        {/* ════ Main card ════ */}
-                        <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
-
-                            {/* ── LEFT: Brand identity block ── */}
-                            <div className="flex flex-col items-center sm:items-start gap-3 flex-shrink-0">
-
-                                {/* Logo mark */}
-                                <div className="relative">
-                                    {/* Outer glow ring */}
-                                    <div className="absolute inset-0 rounded-[20px] scale-110
-                                                    bg-gradient-to-br from-violet-400 to-fuchsia-500
-                                                    opacity-25 blur-md
-                                                    group-hover/uh:opacity-40 group-hover/uh:scale-125
-                                                    transition-all duration-500" />
-                                    {/* Ping ring */}
-                                    <div className="absolute inset-0 rounded-[20px]
-                                                    bg-gradient-to-br from-violet-400 to-fuchsia-500
-                                                    opacity-30
-                                                    animate-[ping_2.5s_ease-in-out_infinite]" />
-                                    {/* Main icon box */}
-                                    <div className="relative w-[72px] h-[72px] rounded-[20px]
-                                                    bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-600
-                                                    flex flex-col items-center justify-center gap-0.5
-                                                    shadow-[0_8px_28px_rgba(124,58,237,0.45)]
-                                                    group-hover/uh:shadow-[0_12px_36px_rgba(124,58,237,0.55)]
-                                                    group-hover/uh:-translate-y-0.5
-                                                    transition-all duration-300">
-                                        <FaBolt size={26} className="text-white drop-shadow" />
-                                        <span className="text-[8px] text-white/70 font-black tracking-[0.2em] uppercase leading-none">HOUR</span>
-                                    </div>
-                                </div>
-
-                                {/* Brand name */}
-                                <div className="text-center sm:text-left">
-                                    <div className="flex items-center gap-2 justify-center sm:justify-start">
-                                        <span className="text-[22px] font-black tracking-tight text-neutral-900 leading-none">
-                                            Urbexon
-                                        </span>
-                                        <span className="text-[22px] font-black tracking-tight leading-none"
-                                            style={{
-                                                background: "linear-gradient(135deg,#7c3aed,#a855f7,#ec4899)",
-                                                WebkitBackgroundClip: "text",
-                                                WebkitTextFillColor: "transparent",
-                                                backgroundClip: "text",
-                                            }}>
-                                            Hour
-                                        </span>
-                                        {/* Live badge */}
-                                        <span className="inline-flex items-center gap-1 px-2 py-[3px] rounded-full
-                                                         bg-gradient-to-r from-violet-600 to-fuchsia-600
-                                                         text-white text-[8px] font-black tracking-widest uppercase shadow-sm">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-[pulse_1s_ease-in-out_infinite]" />
-                                            LIVE
-                                        </span>
-                                    </div>
-                                    <p className="text-[11px] text-neutral-500 mt-1 font-medium">
-                                        Quick commerce · Hyperlocal delivery
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* ── CENTER: Headline + features ── */}
-                            <div className="flex-1 min-w-0">
-                                {/* Tagline */}
-                                <div className="mb-3.5">
-                                    <h3 className="text-[15px] sm:text-[17px] font-extrabold text-neutral-900 leading-snug tracking-tight mb-1">
-                                        Groceries & essentials at your door
-                                        <span className="block text-sm font-semibold mt-0.5"
-                                            style={{
-                                                background: "linear-gradient(90deg,#7c3aed,#ec4899)",
-                                                WebkitBackgroundClip: "text",
-                                                WebkitTextFillColor: "transparent",
-                                                backgroundClip: "text",
-                                            }}>
-                                            in just 45 minutes ⚡
-                                        </span>
-                                    </h3>
-                                </div>
-
-                                {/* Feature chips row */}
-                                <div className="flex flex-wrap gap-2">
-                                    {[
-                                        { icon: "⚡", text: "45-min delivery", bg: "bg-violet-50", border: "border-violet-200", color: "text-violet-700" },
-                                        { icon: "🛒", text: "Fresh groceries", bg: "bg-fuchsia-50", border: "border-fuchsia-200", color: "text-fuchsia-700" },
-                                        { icon: "📍", text: "Hyperlocal network", bg: "bg-pink-50", border: "border-pink-200", color: "text-pink-700" },
-                                        { icon: "✅", text: "Quality assured", bg: "bg-purple-50", border: "border-purple-200", color: "text-purple-700" },
-                                    ].map(({ icon, text, bg, border, color }) => (
-                                        <span key={text}
-                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl
-                                                        ${bg} border ${border} ${color}
-                                                        text-[11px] font-semibold whitespace-nowrap
-                                                        shadow-sm hover:shadow transition-shadow`}>
-                                            <span className="text-sm leading-none">{icon}</span>
-                                            {text}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* ── RIGHT: CTA block ── */}
-                            <div className="flex-shrink-0 flex flex-col items-center sm:items-end gap-2.5">
-                                {/* Delivery time badge */}
-                                <div className="flex items-center gap-2 px-3.5 py-2 rounded-2xl
-                                                bg-white border border-violet-200
-                                                shadow-[0_2px_12px_rgba(124,58,237,0.12)]">
-                                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600
-                                                    flex items-center justify-center flex-shrink-0">
-                                        <FaBolt size={13} className="text-white" />
-                                    </div>
-                                    <div>
-                                        <div className="text-[18px] font-black text-violet-700 leading-none tabular-nums">45<span className="text-[12px] font-bold text-violet-500"> min</span></div>
-                                        <div className="text-[9px] text-neutral-400 font-semibold uppercase tracking-wide leading-none mt-0.5">avg delivery</div>
-                                    </div>
-                                </div>
-
-                                {/* CTA button */}
-                                <button
-                                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl
-                                               bg-gradient-to-r from-violet-600 to-fuchsia-600
-                                               text-white text-[12px] font-bold
-                                               shadow-[0_4px_16px_rgba(124,58,237,0.4)]
-                                               group-hover/uh:shadow-[0_6px_22px_rgba(124,58,237,0.5)]
-                                               group-hover/uh:-translate-y-0.5
-                                               transition-all duration-250"
-                                >
-                                    Order Now
-                                    <div className="w-5 h-5 rounded-lg bg-white/20 flex items-center justify-center
-                                                    group-hover/uh:translate-x-0.5 transition-transform duration-200">
-                                        <FaArrowRight size={9} className="text-white" />
-                                    </div>
-                                </button>
-
-                                <p className="text-[10px] text-neutral-400 font-medium">
-                                    📍 Available in your area
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* ━━ CATEGORIES ━━ */}
+            {/* ══════════════════════════════════════
+                2. CATEGORIES STRIP
+                ══════════════════════════════════════ */}
             {(loading || categories.length > 0) && (
                 <div className="bg-white border-b border-neutral-100">
                     <div className={C}>
@@ -976,26 +711,95 @@ const Home = () => {
                 </div>
             )}
 
-            {/* ━━ FLASH DEALS ━━ */}
-            <FlashDealsSection deals={deals} loading={loading} nearestDealEnd={nearestDealEnd} />
+            {/* ══════════════════════════════════════
+                3. URBEXON HOUR — Compact promo strip
+                ══════════════════════════════════════ */}
+            <div
+                onClick={() => navigate("/urbexon-hour")}
+                className="w-full cursor-pointer group/uh relative overflow-hidden
+                           bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600
+                           border-b border-violet-700">
 
-            {/* ━━ TRENDING ━━ */}
-            {(loading || featured.length > 0) && (
-                <section className="bg-white border-t border-neutral-100 py-7">
-                    <div className={C}>
-                        <SecHead eyebrow="Popular" title="Trending Now" sub="Most-loved products this week"
-                            to="/products?sort=rating" label="See all" />
-                        <PGrid products={featured} loading={loading} skCount={8} />
+                {/* Subtle texture */}
+                <div className="absolute inset-0 opacity-[0.07]"
+                    style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "20px 20px" }} />
+
+                {/* Animated top line */}
+                <div className="absolute top-0 left-0 right-0 h-[2px]"
+                    style={{
+                        background: "linear-gradient(90deg,#f97316,#ec4899,#a855f7,#f97316)",
+                        backgroundSize: "200% 100%",
+                        animation: "gradientShift 3s linear infinite",
+                    }} />
+
+                <div className={`${C} py-4 relative z-10`}>
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
+
+                        {/* Left — brand */}
+                        <div className="flex items-center gap-3.5">
+                            <div className="w-11 h-11 rounded-xl bg-white/20 border border-white/30
+                                            flex items-center justify-center flex-shrink-0
+                                            shadow-[0_4px_14px_rgba(0,0,0,0.2)]
+                                            group-hover/uh:-translate-y-0.5 transition-transform duration-300">
+                                <FaBolt size={20} className="text-white" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-base font-extrabold text-white tracking-tight leading-none">
+                                        Urbexon Hour
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+                                                     bg-white/20 border border-white/30
+                                                     text-[8px] font-black text-white tracking-widest uppercase">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-white/70 mt-0.5 font-medium">
+                                    Groceries & essentials · Hyperlocal delivery in 45 min
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Center — feature chips */}
+                        <div className="hidden sm:flex items-center gap-2">
+                            {[
+                                { emoji: "⚡", text: "45-min delivery" },
+                                { emoji: "🛒", text: "Fresh groceries" },
+                                { emoji: "📍", text: "Hyperlocal" },
+                            ].map(({ emoji, text }) => (
+                                <span key={text}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg
+                                               bg-white/15 border border-white/20
+                                               text-[11px] font-semibold text-white whitespace-nowrap">
+                                    <span className="text-sm leading-none">{emoji}</span> {text}
+                                </span>
+                            ))}
+                        </div>
+
+                        {/* Right — CTA */}
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                            <div className="text-center hidden md:block">
+                                <div className="text-2xl font-black text-white leading-none tabular-nums">45</div>
+                                <div className="text-[9px] text-white/60 font-bold uppercase tracking-wider leading-none mt-0.5">min avg</div>
+                            </div>
+                            <div className="w-px h-8 bg-white/20 hidden md:block" />
+                            <button className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl
+                                               bg-white text-violet-700 text-[12px] font-bold
+                                               shadow-[0_4px_14px_rgba(0,0,0,0.2)]
+                                               group-hover/uh:-translate-y-0.5 group-hover/uh:shadow-[0_6px_18px_rgba(0,0,0,0.25)]
+                                               transition-all duration-200">
+                                Order Now <FaArrowRight size={9} />
+                            </button>
+                        </div>
                     </div>
-                </section>
-            )}
+                </div>
+            </div>
 
-            {/* ━━ ALL PRODUCTS ━━ */}
-            <AllProductsSection />
-
-            {/* ━━ NEW ARRIVALS ━━ */}
+            {/* ══════════════════════════════════════
+                4. NEW ARRIVALS
+                ══════════════════════════════════════ */}
             {(loading || newArrivals.length > 0) && (
-                <section className="bg-neutral-50 border-t border-neutral-100 py-7">
+                <section className="bg-white border-b border-neutral-100 py-8">
                     <div className={C}>
                         <SecHead eyebrow="Just in" title="New Arrivals"
                             sub="Fresh drops and latest collections"
@@ -1005,8 +809,35 @@ const Home = () => {
                 </section>
             )}
 
+            {/* ══════════════════════════════════════
+                5. FLASH DEALS
+                ══════════════════════════════════════ */}
+            <FlashDealsSection deals={deals} loading={loading} nearestDealEnd={nearestDealEnd} />
+
+            {/* ══════════════════════════════════════
+                6. TRENDING / FEATURED
+                ══════════════════════════════════════ */}
+            {(loading || featured.length > 0) && (
+                <section className="bg-white border-t border-neutral-100 py-8">
+                    <div className={C}>
+                        <SecHead eyebrow="Popular" title="Trending Now"
+                            sub="Most-loved products this week"
+                            to="/products?sort=rating" label="See all" />
+                        <PGrid products={featured} loading={loading} skCount={8} />
+                    </div>
+                </section>
+            )}
+
+            {/* ══════════════════════════════════════
+                7. ALL PRODUCTS
+                ══════════════════════════════════════ */}
+            <AllProductsSection />
+
+            {/* ══════════════════════════════════════
+                8. RECENTLY VIEWED
+                ══════════════════════════════════════ */}
             {ecRecent.length > 0 && (
-                <section className="bg-white border-t border-neutral-100 py-7">
+                <section className="bg-white border-t border-neutral-100 py-8">
                     <div className={C}>
                         <SecHead eyebrow="Your history" title="Recently Viewed"
                             sub="Continue where you left off" />
@@ -1015,8 +846,11 @@ const Home = () => {
                 </section>
             )}
 
+            {/* ══════════════════════════════════════
+                9. PICKED FOR YOU
+                ══════════════════════════════════════ */}
             {forYouProducts.length > 0 && (
-                <section className="bg-neutral-50 border-t border-neutral-100 py-7">
+                <section className="bg-neutral-50 border-t border-neutral-100 py-8">
                     <div className={C}>
                         <SecHead eyebrow="Picked for you" title={`Similar to "${forYouTerm}"`}
                             sub="Based on your recent searches"
@@ -1026,12 +860,15 @@ const Home = () => {
                 </section>
             )}
 
-            <section className="bg-white border-t border-neutral-100 py-7">
+            {/* ══════════════════════════════════════
+                10. WHY CHOOSE US
+                ══════════════════════════════════════ */}
+            <section className="bg-white border-t border-neutral-100 py-8">
                 <div className={C}>
-                    <div className="text-center mb-5">
-                        <span className="inline-block px-0 pb-1.5 border-b-2 border-orange-500
+                    <div className="text-center mb-6">
+                        <span className="inline-block pb-1.5 border-b-2 border-orange-500
                                          text-[10px] font-bold tracking-widest uppercase text-orange-500">
-                            Our promise
+                            Our Promise
                         </span>
                         <h2 className="text-xl sm:text-2xl font-extrabold text-neutral-900 tracking-tight mt-2.5">
                             Why Choose Urbexon?
@@ -1042,12 +879,12 @@ const Home = () => {
                         {WHY.map(({ Icon, label, sub, iconBg, iconColor }) => (
                             <div key={label}
                                 className="bg-white border border-neutral-100 rounded-2xl p-4 text-center
-                                           hover:-translate-y-1.5 hover:shadow-xl hover:border-transparent
-                                           transition-all duration-200 cursor-default">
-                                <div className={`w-10 h-10 ${iconBg} rounded-[12px] flex items-center justify-center mx-auto mb-2.5`}>
+                                           hover:-translate-y-1 hover:shadow-xl hover:border-transparent
+                                           transition-all duration-200">
+                                <div className={`w-10 h-10 ${iconBg} rounded-[12px] flex items-center justify-center mx-auto mb-3`}>
                                     <Icon size={18} className={iconColor} />
                                 </div>
-                                <p className="text-sm font-bold text-neutral-900 mb-1 tracking-tight">{label}</p>
+                                <p className="text-sm font-bold text-neutral-900 mb-1">{label}</p>
                                 <p className="text-xs text-neutral-400 leading-relaxed">{sub}</p>
                             </div>
                         ))}
@@ -1055,26 +892,28 @@ const Home = () => {
                 </div>
             </section>
 
-            {/* ━━ NEWSLETTER ━━ */}
-            <section className="relative overflow-hidden border-t border-neutral-100 pt-10 pb-16 sm:pb-10">
-                {/* Vibrant gradient background — replaced dark neutral-900 */}
+            {/* ══════════════════════════════════════
+                11. NEWSLETTER
+                ══════════════════════════════════════ */}
+            <section className="relative overflow-hidden border-t border-neutral-100 py-14">
+                {/* Background */}
                 <div className="absolute inset-0 bg-gradient-to-br from-orange-500 via-rose-500 to-violet-600" />
-                {/* Texture blobs */}
                 <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-white/10 blur-3xl pointer-events-none" />
                 <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full bg-black/10 blur-3xl pointer-events-none" />
 
                 <div className={`${C} relative z-10`}>
-                    <div className="max-w-[460px] mx-auto text-center">
-                        <span className="inline-block pl-2.5 border-l-[3px] border-white/50
-                                         text-[10px] font-bold tracking-widest uppercase text-white/70 mb-3 leading-none">
+                    <div className="max-w-[440px] mx-auto text-center">
+                        <span className="block pl-0 border-l-0 mb-2
+                                         text-[10px] font-bold tracking-widest uppercase text-white/60">
                             Newsletter
                         </span>
-                        <h3 className="text-[clamp(26px,4vw,34px)] font-black text-white tracking-tight mb-3">
+                        <h3 className="text-[clamp(24px,3.5vw,34px)] font-black text-white tracking-tight mb-3">
                             Stay in the Loop
                         </h3>
-                        <p className="text-sm text-white/75 leading-relaxed mb-8">
+                        <p className="text-sm text-white/75 leading-relaxed mb-7">
                             Exclusive deals, new arrivals, and special offers — straight to your inbox.
                         </p>
+
                         {nlStatus === "done" ? (
                             <div className="p-4 bg-white/15 border border-white/30 rounded-xl
                                             text-white font-bold text-sm backdrop-blur-sm">
@@ -1091,15 +930,15 @@ const Home = () => {
                                     className="flex-1 min-w-0 px-4 py-3.5 bg-transparent border-none outline-none
                                                text-sm text-white placeholder:text-white/50" />
                                 <button type="submit" disabled={nlStatus === "sending"}
-                                    className="px-5 py-3.5 bg-white hover:bg-neutral-50
-                                               text-orange-600 text-sm font-bold border-none cursor-pointer
-                                               whitespace-nowrap disabled:opacity-60 transition-colors">
+                                    className="px-5 py-3.5 bg-white text-orange-600 text-sm font-bold
+                                               border-none cursor-pointer whitespace-nowrap
+                                               hover:bg-neutral-50 disabled:opacity-60 transition-colors">
                                     {nlStatus === "sending" ? "Subscribing…" : "Subscribe"}
                                 </button>
                             </form>
                         )}
                         {nlStatus === "error" && (
-                            <p className="text-white/70 text-xs mt-2.5 bg-white/10 rounded-lg py-1.5 px-3">
+                            <p className="text-white/70 text-xs mt-3 bg-white/10 rounded-lg py-1.5 px-3">
                                 Something went wrong. Please try again.
                             </p>
                         )}
@@ -1107,13 +946,6 @@ const Home = () => {
                 </div>
             </section>
 
-            {/* Progress bar keyframe */}
-            <style>{`
-                @keyframes progressBar {
-                    from { width: 0%; }
-                    to   { width: 100%; }
-                }
-            `}</style>
         </div>
     );
 };

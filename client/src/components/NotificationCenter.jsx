@@ -54,6 +54,9 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
     const [hasMore, setHasMore] = useState(false);
 
     const rootRef = useRef(null);
+    const unreadRefreshRef = useRef(false);
+    const lastUnreadRefresh = useRef(0);
+    const notificationFetchRef = useRef(false);
 
     const refreshUnread = useCallback(async () => {
         if (!isEnabled) {
@@ -61,17 +64,28 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
             return;
         }
 
+        const now = Date.now();
+        if (unreadRefreshRef.current || now - lastUnreadRefresh.current < 3000) {
+            return;
+        }
+
+        unreadRefreshRef.current = true;
+        lastUnreadRefresh.current = now;
+
         try {
             const { data } = await api.get("/user-notifications/unread-count");
             setUnread(typeof data?.count === "number" ? data.count : 0);
         } catch {
             // Keep the last known badge state on transient failures.
+        } finally {
+            unreadRefreshRef.current = false;
         }
     }, [isEnabled]);
 
     const fetchNotifications = useCallback(async (pg = 1) => {
-        if (!isEnabled) return;
+        if (!isEnabled || notificationFetchRef.current) return;
 
+        notificationFetchRef.current = true;
         setLoading(true);
         try {
             const { data } = await api.get(`/user-notifications?page=${pg}&limit=15`);
@@ -92,6 +106,7 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
             }
         } finally {
             setLoading(false);
+            notificationFetchRef.current = false;
         }
     }, [isEnabled]);
 

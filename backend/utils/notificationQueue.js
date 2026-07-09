@@ -8,8 +8,8 @@ import { sendToUser } from "./wsHub.js";
 
 /* ── In-memory pending queue: userId -> [{ type, payload, attempts, nextRetry }] ── */
 const pendingQueue = new Map();
-const MAX_ATTEMPTS  = 3;
-const BACKOFF_MS    = [2000, 5000, 15000]; // 2s, 5s, 15s
+const MAX_ATTEMPTS = 3;
+const BACKOFF_MS = [2000, 5000, 15000]; // 2s, 5s, 15s
 
 /* ── Send with retry ── */
 export const sendNotification = (userId, type, payload = {}) => {
@@ -81,6 +81,6 @@ setInterval(() => {
 }, 3000);
 
 export const getQueueStats = () => ({
-    users:         pendingQueue.size,
-    totalPending:  [...pendingQueue.values()].reduce((s, q) => s + q.length, 0),
+    users: pendingQueue.size,
+    totalPending: [...pendingQueue.values()].reduce((s, q) => s + q.length, 0),
 });
