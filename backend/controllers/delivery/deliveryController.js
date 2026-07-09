@@ -1,5 +1,5 @@
 /**
- * deliveryController.js — Production v3.1
+ * deliveryController.js — Production v3.2
  * ✅ FIXED: Removed delivery.provider: LOCAL_RIDER filter from getDeliveryOrders
  * ✅ FIXED: handleRiderAccept now checks orderMode instead of provider
  * ✅ OTP delivery confirmation (generate + verify)
@@ -10,6 +10,9 @@
  * ✅ FCM token management
  * ✅ Reject / Cancel order
  * ✅ Smart assignment integration
+ * ✅ NEW (v3.2): getDeliveryStatus now returns a stable `applicationStatus`
+ *    field so the frontend AuthContext can route riders (apply form /
+ *    pending screen / dashboard) without guessing from `registered` + `status`.
  */
 import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
 import Order from "../../models/Order.js";
@@ -69,7 +72,12 @@ export const registerDeliveryBoy = async (req, res) => {
             vehicleModel: vehicleModel?.trim() || "",
             city: city?.trim() || "", documents: docs, status: "pending",
         });
-        res.status(201).json({ success: true, message: "Registration submitted. Pending approval.", rider });
+        res.status(201).json({
+            success: true,
+            message: "Registration submitted. Pending approval.",
+            rider,
+            applicationStatus: rider.status, // ✅ NEW — lets frontend update state immediately without a refetch
+        });
     } catch (err) {
         console.error("[registerDeliveryBoy]", err);
         res.status(500).json({ success: false, message: "Registration failed" });
@@ -77,11 +85,29 @@ export const registerDeliveryBoy = async (req, res) => {
 };
 
 // ── GET /api/delivery/status ─────────────────────────────
+// ✅ FIX: Added `applicationStatus` as an explicit, stable field
+// ('not_applied' | 'pending' | 'approved' | 'rejected' | 'suspended').
+// AuthContext on the frontend relies on this exact field name to decide
+// routing (apply form / pending screen / dashboard) without having to
+// guess from `registered` + `status`, and without merging the DeliveryBoy
+// document (which has its own _id, distinct from the User _id) into the
+// rider's identity object.
 export const getDeliveryStatus = async (req, res) => {
     try {
         const db = await DeliveryBoy.findOne({ userId: req.user._id }).lean();
-        if (!db) return res.json({ registered: false });
-        res.json({ registered: true, status: db.status, isOnline: db.isOnline, rider: db });
+        if (!db) {
+            return res.json({
+                registered: false,
+                applicationStatus: "not_applied",
+            });
+        }
+        res.json({
+            registered: true,
+            status: db.status,
+            applicationStatus: db.status, // alias, stable contract for the frontend
+            isOnline: db.isOnline,
+            rider: db,
+        });
     } catch (err) { res.status(500).json({ success: false, message: "Failed to fetch status" }); }
 };
 

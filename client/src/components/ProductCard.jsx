@@ -87,10 +87,10 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow, hideActions = false,
     };
 
     const stockNum = getStock(product);
-    const isOOS = product.inStock === false || stockNum <= 0;
-    const isLowStock = !isOOS && stockNum > 0 && stockNum <= 5;
+    const isUH = product.productType === "urbexon_hour" || !!product.vendorId;
+    const isOOS = !isUH && (product.inStock === false || stockNum <= 0);
+    const isLowStock = !isOOS && !isUH && stockNum > 0 && stockNum <= 5;
     const hasVariants = !!(product?.sizes?.length > 0 || product?.colorVariants?.length > 0);
-    const isUH = product.productType === "urbexon_hour";
 
     const rating = Number(product.rating || 0);
     const numReviews = Number(product.numReviews || 0);
@@ -99,25 +99,53 @@ const ProductCard = memo(({ product, onAddToCart, onBuyNow, hideActions = false,
     const hasDisc = mrp > price && mrp > 0;
     const discPct = hasDisc ? Math.round(((mrp - price) / mrp) * 100) : 0;
     const savedAmt = hasDisc ? (mrp - price).toLocaleString("en-IN") : 0;
-    const productUrl = `/products/${product.slug || productId}`;
+
+    const isUrbexonHourProduct = !!product.vendorId || product.productType === 'urbexon_hour';
+    // Navigation rules:
+    // - Urbexon Hour / vendor-managed products -> UH product page
+    // - Ecommerce products -> ecommerce product details
+    const productUrl = isUrbexonHourProduct
+        ? `/uh-product/${product.slug || productId}`
+        : `/products/${product.slug || productId}`;
 
     /* ── handlers (all unchanged) ── */
     const handleCart = useCallback(e => {
         e.stopPropagation();
         if (hasVariants) { navigate(productUrl); return; }
         if (inCart || isOOS) return;
-        if (onAddToCart) onAddToCart(product); else addItem(product);
+
+        // ✅ FIX: Defensively set productType before adding to cart.
+        // Any product with a `vendorId` is an Urbexon Hour product. This
+        // ensures products from vendor pages are added to the correct UH cart.
+        const itemToAdd = {
+            ...product,
+            productType: product.vendorId ? 'urbexon_hour' : (product.productType || 'ecommerce'),
+        };
+
+        if (onAddToCart) onAddToCart(itemToAdd); else addItem(itemToAdd);
         setFlash(true); setTimeout(() => setFlash(false), 1400);
     }, [inCart, isOOS, onAddToCart, product, addItem, hasVariants, navigate, productUrl]);
 
     const handleBuy = useCallback(e => {
         e.stopPropagation();
         if (hasVariants) { navigate(productUrl); return; }
-        if (isOOS) return;
-        if (onBuyNow) { onBuyNow(product); return; }
-        const item = { ...product, quantity: 1 };
+        if (isOOS) return
+
+        // ✅ FIX: Defensively set productType for Buy Now.
+        // Any product with a `vendorId` is an Urbexon Hour product.
+        const item = {
+            ...product,
+            quantity: 1,
+            productType: product.vendorId ? 'urbexon_hour' : (product.productType || 'ecommerce'),
+        };
+
+        if (onBuyNow) { onBuyNow(item); return; }
         try { sessionStorage.setItem("ux_buy_now_item", JSON.stringify(item)); } catch { }
-        navigate("/checkout", { state: { buyNowItem: item } });
+
+        // ✅ FIX: Navigate to the correct checkout page based on product type.
+        const isUrbexonHourItem = item.productType === 'urbexon_hour';
+        const checkoutUrl = isUrbexonHourItem ? "/uh-checkout" : "/checkout";
+        navigate(checkoutUrl, { state: { buyNowItem: item } });
     }, [isOOS, onBuyNow, product, navigate, hasVariants, productUrl]);
 
     const handleWish = useCallback(e => {

@@ -1,11 +1,18 @@
 /**
- * Delivery Panel AppRoutes — Production v5.1
+ * Delivery Panel AppRoutes — Production v6.0
  * ✅ React.lazy code splitting
  * ✅ Urbexon design system with 5-tab navigation
- * ✅ FIXED: Added missing "/apply" route (alias to Register) —
- *    the "Apply as a new delivery partner" button was navigating
- *    to a route that didn't exist, causing a silent redirect loop
- *    back to /login.
+ * ✅ FIX (v6.0): Protected routing is now applicationStatus-aware.
+ *    Previously, an authenticated-but-unapproved rider could reach
+ *    /dashboard at all (blocked earlier only by the old 403-on-login bug)
+ *    or get stuck unable to reach /apply once logged in (because /apply
+ *    was wrapped in PublicOnly, which redirects any logged-in user away
+ *    to /dashboard). Now:
+ *      - not logged in           → /login
+ *      - logged in, not applied  → /apply
+ *      - logged in, pending      → /pending-approval
+ *      - logged in, rejected     → /pending-approval (shows rejection msg)
+ *      - logged in, approved     → normal protected routes
  */
 import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
@@ -107,7 +114,87 @@ const PrivateLayout = ({ children }) => (
   </>
 );
 
+/* ─────────────────────────────────────────────
+   Simple inline "pending / rejected" screen.
+   Kept inline (not lazy-loaded) since it's tiny and avoids needing
+   a new page file — wire it up to its own component later if it
+   grows more complex.
+───────────────────────────────────────────── */
+const PendingApproval = () => {
+  const { rider, logout } = useAuth();
+  const rejected = rider?.applicationStatus === "rejected";
+
+  return (
+    <div style={{
+      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      background: "#f9fafb", padding: 24, fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif",
+    }}>
+      <div style={{
+        maxWidth: 420, width: "100%", background: "#fff", borderRadius: 20,
+        border: "1px solid #e5e7eb", padding: 36, textAlign: "center",
+        boxShadow: "0 4px 24px rgba(0,0,0,0.06)",
+      }}>
+        <div style={{
+          width: 64, height: 64, borderRadius: "50%", margin: "0 auto 20px",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: rejected ? "#fef2f2" : "#fffbeb",
+          border: `2px solid ${rejected ? "#fecaca" : "#fde68a"}`,
+          fontSize: 28,
+        }}>
+          {rejected ? "✕" : "⏳"}
+        </div>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: "#111827", marginBottom: 10 }}>
+          {rejected ? "Application not approved" : "Application under review"}
+        </h2>
+        <p style={{ fontSize: 14, color: "#6b7280", lineHeight: 1.7, marginBottom: 24 }}>
+          {rejected
+            ? "Your delivery partner application was not approved. Please contact support for details."
+            : "Your application is being reviewed by our team. This usually takes 24–48 hours — we'll notify you once it's approved."}
+        </p>
+        <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: "14px 16px", marginBottom: 20, textAlign: "left" }}>
+          <p style={{ fontSize: 12.5, fontWeight: 700, color: "#065f46", marginBottom: 6 }}>Need help?</p>
+          <p style={{ fontSize: 12, color: "#047857", lineHeight: 1.8, margin: 0 }}>
+            📞 <strong>+91-8808485840</strong><br />
+            ✉️ <strong>support@urbexon.in</strong>
+          </p>
+        </div>
+        <button
+          onClick={logout}
+          style={{
+            width: "100%", padding: "12px", background: "#fff", border: "1.5px solid #e5e7eb",
+            borderRadius: 12, fontSize: 14, fontWeight: 700, color: "#374151", cursor: "pointer",
+          }}
+        >
+          Log out
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────────
+   Protected — now applicationStatus-aware.
+───────────────────────────────────────────── */
 const Protected = ({ children }) => {
+  const { rider, loading } = useAuth();
+  if (loading) return <Loader />;
+  if (!rider) return <Navigate to="/login" replace />;
+
+  // ✅ FIX: route based on application status instead of blocking entirely.
+  if (rider.applicationStatus === "not_applied") {
+    return <Navigate to="/apply" replace />;
+  }
+  if (rider.applicationStatus === "pending" || rider.applicationStatus === "rejected") {
+    return <Navigate to="/pending-approval" replace />;
+  }
+
+  return children;
+};
+
+/* Guards the /apply and /pending-approval routes themselves so an
+   already-approved rider doesn't get stuck there, and so a logged-out
+   visitor is sent to /login. */
+const RequireAuth = ({ children }) => {
   const { rider, loading } = useAuth();
   if (loading) return <Loader />;
   return rider ? children : <Navigate to="/login" replace />;
@@ -123,13 +210,19 @@ const AppRoutes = () => (
   <Suspense fallback={<Loader />}>
     <Routes>
       <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-      <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
-      {/* ✅ FIX: "/apply" alias — Login page's "Apply as a new delivery partner"
-          button points here. Without this route it silently bounced back to
-          /login via the catch-all redirect. Register.jsx already contains the
-          full application form (name, phone, vehicle type, documents) so we
-          simply route /apply to the same component. */}
-      <Route path="/apply" element={<PublicOnly><Register /></PublicOnly>} />
+
+      {/* ✅ FIX: "/apply" and "/register" now use RequireAuth (not PublicOnly).
+          Register.jsx itself requires an authenticated rider to submit the
+          application — wrapping it in PublicOnly meant any logged-in user
+          (including one who still needs to apply) was redirected away to
+          /dashboard before ever seeing the form, recreating the original
+          login↔apply deadlock. */}
+      <Route path="/register" element={<RequireAuth><Register /></RequireAuth>} />
+      <Route path="/apply" element={<RequireAuth><Register /></RequireAuth>} />
+
+      {/* ✅ NEW: shown when applicationStatus is 'pending' or 'rejected' */}
+      <Route path="/pending-approval" element={<RequireAuth><PendingApproval /></RequireAuth>} />
+
       <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />
       <Route path="/reset-password/:token" element={<PublicOnly><ResetPassword /></PublicOnly>} />
       <Route path="/dashboard" element={<Protected><PrivateLayout><Dashboard /></PrivateLayout></Protected>} />

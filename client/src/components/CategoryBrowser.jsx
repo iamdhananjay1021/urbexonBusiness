@@ -299,7 +299,7 @@ const CategoryBrowser = memo(({ categories: propCategories, onCategorySelect, ac
                 setActiveSlug(prev => {
                     if (prev !== matchingCat.slug) {
                         setSubLoading(true);
-                        fetchCategorySubcategories(matchingCat.slug)
+                        fetchCategorySubcategories(matchingCat.slug, { params: { type, productType: type === "urbexon_hour" ? "urbexon_hour" : undefined } })
                             .then(({ data }) => setSubcategories(data.subcategories || []))
                             .catch(() => setSubcategories([]))
                             .finally(() => setSubLoading(false));
@@ -369,14 +369,14 @@ const CategoryBrowser = memo(({ categories: propCategories, onCategorySelect, ac
         setSubcategories([]);
 
         try {
-            const { data } = await fetchCategorySubcategories(cat.slug);
+            const { data } = await fetchCategorySubcategories(cat.slug, { params: { type, productType: type === "urbexon_hour" ? "urbexon_hour" : undefined } });
             setSubcategories(data.subcategories || []);
         } catch {
             setSubcategories([]);
         } finally {
             setSubLoading(false);
         }
-    }, [activeSlug, isCallbackMode, onCategorySelect, externalActive]);
+    }, [activeSlug, isCallbackMode, onCategorySelect, externalActive, type]);
 
     const handleSubcategoryClick = useCallback((catSlug, subcatName) => {
         if (type === "urbexon_hour") {

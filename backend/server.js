@@ -8,6 +8,7 @@ import compression from "compression";
 import morgan from "morgan";
 import xss from "xss-clean";
 import mongoSanitize from "express-mongo-sanitize";
+import cookieParser from "cookie-parser";
 
 import connectDB from "./config/db.js";
 import { connectRedis, isRedisUp, getCacheStatus } from "./config/redis.js";
@@ -15,6 +16,7 @@ import { initFirebase, isFcmAvailable } from "./config/firebase.js";
 import { getCacheStats } from "./utils/Cache.js";
 import { getStreamStats } from "./utils/realtimeHub.js";
 import { initWebSocket, getWsStats } from "./utils/wsHub.js";
+// import vendorRoutes from "./routes/VendorRoutes/vendorRoutes.js";
 
 import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
@@ -71,6 +73,8 @@ initFirebase();
 /* ───────── SECURITY ───────── */
 app.set("trust proxy", 1);
 app.use(helmet());
+app.use(cookieParser());   // ✅ NAYA — req.cookies ko populate karta hai
+
 app.use(xss());
 app.use(mongoSanitize());
 
@@ -161,6 +165,7 @@ app.use("/api/pincode", publicLimiter, pincodeRoutes);
 app.use("/api/admin", adminLimiter, adminRoutes);
 app.use("/api", sitemapRoutes);
 app.use("/api", deliveryConfigRoutes);
+
 
 /* ───────── ERROR HANDLING ───────── */
 app.use(notFound);

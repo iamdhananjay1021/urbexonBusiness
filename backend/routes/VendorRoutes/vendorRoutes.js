@@ -1,10 +1,23 @@
 /**
- * vendorRoutes.js — Production v2.2
+ * vendorRoutes.js — Production v2.3
  * Streamlined vendor registration and authentication routes.
+ *
+ * FIX (this version):
+ *  - Added GET/PUT /settings routes. Previously these lived in a separate
+ *    "settings.js" route file that was NEVER imported/mounted in server.js,
+ *    AND that file referenced a non-existent "vendorOnly" middleware.
+ *    Result: PUT /api/vendor/settings always 404'd, so the vendor "Serviceable
+ *    Pincodes" field never actually saved to the DB — this is why Urbexon Hour
+ *    homepage/category pages showed "0 verified stores" / no products even
+ *    after clicking Save.
+ *  - These new routes reuse the already-working protectVendor middleware and
+ *    keep the exact request/response shape the VendorSettings.jsx frontend
+ *    already expects (flat vendor object), so no frontend changes needed.
  */
 
 import express from "express";
 import multer from "multer";
+import slugify from "slugify";
 
 import { registerVendor, getVendorStatus } from "../../controllers/vendor/vendorAuth.js";
 import { login as vendorLogin } from "../../controllers/authController.js";
@@ -22,6 +35,8 @@ import { vendorRequestPayout, vendorGetPayouts, vendorCancelPayout } from "../..
 import { protect } from "../../middlewares/authMiddleware.js";
 import { validateBody } from "../../middlewares/validate.js";
 import { protectVendor, requireApprovedVendor, requireActiveSubscription } from "../../middlewares/vendorMiddleware.js";
+import Vendor from "../../models/vendorModels/Vendor.js";
+import { delCacheByPrefix } from "../../utils/Cache.js";
 
 // ── Multer ────────────────────────────────────────────────────────────────────
 const upload = multer({
@@ -76,6 +91,82 @@ router.get("/me", protectVendor, getMyProfile);
 router.put("/me", protectVendor, requireApprovedVendor, docUpload, updateMyProfile);
 router.patch("/toggle-shop", protectVendor, requireApprovedVendor, toggleShopOpen);
 router.patch("/location", protectVendor, requireApprovedVendor, updateLocation);
+
+// ── Vendor Settings (Shop info, delivery zone / service pincodes) ────────────
+// ✅ FIX: previously lived in an unmounted route file with a broken middleware
+// import ("vendorOnly" didn't exist). Rebuilt here using working middleware.
+router.get("/settings", protectVendor, async (req, res) => {
+    try {
+        const vendor = await Vendor.findById(req.vendor._id).select(
+            "shopName shopDescription shopCategory isOpen deliveryRadius servicePincodes location shopLat shopLng shopLogo shopBanner"
+        );
+        if (!vendor) return res.status(404).json({ message: "Vendor profile not found." });
+        res.json(vendor);
+    } catch (error) {
+        console.error("[GET /vendor/settings]", error);
+        res.status(500).json({ message: "Server error." });
+    }
+});
+
+router.put("/settings", protectVendor, async (req, res) => {
+    try {
+        const { shopName, shopDescription, isOpen, deliveryRadius, servicePincodes, lat, lng } = req.body;
+        const vendor = await Vendor.findById(req.vendor._id);
+        if (!vendor) return res.status(404).json({ message: "Vendor profile not found." });
+
+        if (shopName !== undefined && shopName.trim() !== vendor.shopName) {
+            vendor.shopName = shopName.trim();
+            // Regenerate slug if shop name changes
+            let baseSlug = slugify(vendor.shopName, { lower: true, strict: true });
+            let slug = baseSlug;
+            let count = 0;
+            while (await Vendor.findOne({ shopSlug: slug, _id: { $ne: vendor._id } })) {
+                slug = `${baseSlug}-${++count}`;
+            }
+            vendor.shopSlug = slug;
+        }
+        if (shopDescription !== undefined) vendor.shopDescription = shopDescription;
+        if (isOpen !== undefined) vendor.isOpen = isOpen;
+        if (deliveryRadius !== undefined) vendor.deliveryRadius = Number(deliveryRadius);
+
+        // ✅ Accept servicePincodes as array (from VendorSettings.jsx TagInput) or JSON string
+        if (servicePincodes !== undefined) {
+            let pins = servicePincodes;
+            if (typeof pins === "string") {
+                try { pins = JSON.parse(pins); } catch { pins = []; }
+            }
+            vendor.servicePincodes = Array.isArray(pins) ? pins.map(p => String(p).trim()) : [];
+        }
+
+        if (lat !== undefined && lng !== undefined && lat !== null && lng !== null) {
+            const latitude = parseFloat(lat);
+            const longitude = parseFloat(lng);
+            if (!isNaN(latitude) && !isNaN(longitude)) {
+                vendor.shopLat = latitude;
+                vendor.shopLng = longitude;
+                vendor.location = {
+                    type: "Point",
+                    coordinates: [longitude, latitude],
+                };
+            }
+        }
+
+        await vendor.save();
+
+        // ✅ Invalidate pincode/UH caches so the new servicePincodes take effect immediately
+        try {
+            await delCacheByPrefix("pincode:");
+            await delCacheByPrefix("uh:");
+        } catch (e) {
+            console.warn("[Cache] Failed to invalidate cache after vendor settings update");
+        }
+
+        res.json({ message: "Settings saved successfully.", vendor });
+    } catch (error) {
+        console.error("[PUT /vendor/settings]", error);
+        res.status(500).json({ message: "Server error saving settings." });
+    }
+});
 
 // ── Vendor Orders ─────────────────────────────────────────────────────────────
 router.get("/orders", protectVendor, requireApprovedVendor, requireActiveSubscription, getVendorOrders);

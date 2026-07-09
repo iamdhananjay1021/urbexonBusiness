@@ -8,6 +8,7 @@ import {
     FaSortAmountDown, FaSearch,
 } from "react-icons/fa";
 import SEO from "../components/SEO";
+import { normalizeCategory } from "../utils/normalizeCategory";
 
 const SORT_OPTIONS = [
     { val: "newest", label: "Newest First" },
@@ -65,13 +66,19 @@ const CategoryPage = () => {
         try {
             setLoading(true);
 
+            // BUG FIX: The API expects a TitleCased category slug (e.g., "Mens-Fashion")
+            // but the URL provides a lowercase one ("mens-fashion"). Normalizing it ensures a match.
+            // Also, the subcategory is likely matched case-insensitively or as lowercase on the backend.
+            // Sending it as lowercase is a safer bet to ensure a match.
+            const normalizedCat = normalizeCategory(slug);
+
             const params = new URLSearchParams({
-                category: slug,
+                category: normalizedCat,
                 sort: srt,
                 limit: LIMIT,
                 page: pg,
             });
-            if (activeSubcategory) params.set("subcategory", activeSubcategory);
+            if (activeSubcategory) params.set("subcategory", activeSubcategory.toLowerCase());
             if (srch.trim()) params.set("search", srch.trim());
 
             const { data } = await api.get(`/products?${params}`);

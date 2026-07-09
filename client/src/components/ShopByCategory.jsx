@@ -37,7 +37,7 @@ const ShopByCategory = () => {
                             <div className="w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center bg-[#f5f2ec] rounded-full text-2xl sm:text-[28px] transition-all duration-300 group-hover:scale-[1.12] group-hover:bg-[#fdf6ea]">
                                 <span>{cat.icon}</span>
                             </div>
-                            <span className="text-[10px] sm:text-[11px] font-semibold tracking-[0.04em] uppercase text-[#1c1917] group-hover:text-[#c8a96e] transition-colors line-clamp-2 leading-snug">
+                            <span className="text-[10px] sm:text-[11px] font-bold tracking-[0.04em] uppercase text-[#1c1917] group-hover:text-[#c8a96e] transition-colors line-clamp-2 leading-snug">
                                 {cat.name}
                             </span>
                         </button>

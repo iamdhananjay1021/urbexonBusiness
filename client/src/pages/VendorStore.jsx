@@ -14,6 +14,12 @@ const VendorStore = () => {
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        // Guard against undefined slug. This can happen if the URL is malformed (e.g., /vendor/ instead of /vendor/slug).
+        if (!slug) {
+            setLoading(false);
+            setError("Invalid store URL. Please ensure you are navigating to a specific vendor.");
+            return;
+        }
         const fetchStore = async () => {
             try {
                 setLoading(true);
@@ -124,7 +130,7 @@ const VendorStore = () => {
                 ) : (
                     <div className="vs-products-grid">
                         {products.map(p => (
-                            <ProductCard key={p._id} product={p} />
+                            <ProductCard key={p._id} product={{ ...p, vendorId: p.vendorId || vendor?._id }} />
                         ))}
                     </div>
                 )}

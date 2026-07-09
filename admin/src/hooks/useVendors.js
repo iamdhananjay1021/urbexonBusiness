@@ -1,7 +1,29 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import * as vendorApi from "../api/vendorApi";
+import useAdminWs from "./useAdminWs";
 
 const PAGE_LIMIT = 20;
+
+/**
+ * [FIX] Real-time vendor sync.
+ * Backend (vendorApproval.js + venderProfile.js) broadcasts these events to
+ * every connected admin via wsHub.js's broadcastToAdmins():
+ *   - "vendor:status_changed"  → approve / reject / suspend
+ *   - "vendor:updated"         → commission, subscription, profile edits,
+ *                                 shop open/close toggle, location change
+ *   - "vendor:deleted"         → soft delete
+ *
+ * Previously the admin Vendors page only ever refreshed on a manual action
+ * or full page reload — a vendor closing their shop, or an admin action
+ * from a second tab, never appeared until someone hit refresh. This hook
+ * now also listens on the shared admin WebSocket and patches local state
+ * live, matching the pattern the backend was already built to support.
+ */
+const VENDOR_WS_EVENTS = {
+    STATUS_CHANGED: "vendor:status_changed",
+    UPDATED: "vendor:updated",
+    DELETED: "vendor:deleted",
+};
 
 export const useVendors = () => {
     const [vendors, setVendors] = useState([]);
@@ -12,7 +34,12 @@ export const useVendors = () => {
     const [totalPages, setTotalPages] = useState(1);
     const [currentPage, setCurrentPage] = useState(1);
 
+    // Track current filter/search so a live-inserted vendor (e.g. new
+    // pending application) doesn't appear under a mismatched filter.
+    const filtersRef = useRef({ status: "ALL", search: "" });
+
     const fetchVendors = useCallback(async ({ page = 1, status = "ALL", search = "" } = {}) => {
+        filtersRef.current = { status, search };
         try {
             setLoading(true);
             setError("");
@@ -31,6 +58,48 @@ export const useVendors = () => {
             setLoading(false);
         }
     }, []);
+
+    /* ── Live WebSocket patching ──────────────────────────────── */
+    const handleWsMessage = useCallback((msg) => {
+        if (!msg?.type) return;
+        const { type, payload } = msg;
+
+        if (type === VENDOR_WS_EVENTS.DELETED) {
+            const vendorId = payload?.vendorId;
+            if (!vendorId) return;
+            setVendors(prev => {
+                const existed = prev.some(v => v._id === vendorId);
+                if (!existed) return prev;
+                setTotal(t => Math.max(0, t - 1));
+                return prev.filter(v => v._id !== vendorId);
+            });
+            return;
+        }
+
+        if (type === VENDOR_WS_EVENTS.STATUS_CHANGED || type === VENDOR_WS_EVENTS.UPDATED) {
+            const updatedVendor = payload?.vendor;
+            const vendorId = payload?.vendorId || updatedVendor?._id;
+            if (!vendorId) return;
+
+            setVendors(prev => {
+                const idx = prev.findIndex(v => v._id === vendorId);
+                // Vendor already visible on this page — patch it in place,
+                // merging so we never drop fields the socket payload omits.
+                if (idx !== -1) {
+                    if (!updatedVendor) return prev;
+                    const next = [...prev];
+                    next[idx] = { ...next[idx], ...updatedVendor };
+                    return next;
+                }
+                return prev;
+            });
+        }
+    }, []);
+
+    // Shared admin WebSocket — same connection AdminOrders / other admin
+    // pages use via useAdminWs (token comes from adminAuth in localStorage,
+    // auto-reconnects on drop).
+    useAdminWs(handleWsMessage);
 
     const approveVendor = useCallback(async (id, payload) => {
         setActionLoading(id);

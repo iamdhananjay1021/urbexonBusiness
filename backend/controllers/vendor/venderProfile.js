@@ -1,6 +1,21 @@
 /**
  * venderProfile.js — Production, fixed
  * Fixed: Uses req.vendor from vendorMiddleware (no double DB lookup)
+ *
+ * FIX (this version): updateMyProfile's whitelist was missing three fields
+ * that the Vendor model actually supports and the frontend Profile.jsx
+ * already sends: `website`, `isOpen`, and `deliveryRadius`. Previously:
+ *  - `website` didn't even exist on the schema (fixed separately in Vendor.js)
+ *    and was silently dropped here even after adding it to the schema.
+ *  - `isOpen` could only be changed via the separate PATCH /toggle-shop route
+ *    (a pure flip, no explicit value) — sending it through PUT /vendor/me
+ *    was silently ignored, which is why the Shop-Open toggle looked broken
+ *    when wired to this endpoint.
+ *  - `deliveryRadius` only existed on the separate (parallel) PUT
+ *    /vendor/settings route, so the main profile form couldn't save it at
+ *    all even if a field were added for it.
+ * All three are now part of the single source of truth here so the vendor
+ * Profile page can update everything through one PUT /vendor/me call.
  */
 import Vendor from "../../models/vendorModels/Vendor.js";
 import Pincode from "../../models/vendorModels/Pincode.js";
@@ -28,18 +43,35 @@ export const updateMyProfile = async (req, res) => {
 
         // Whitelist only safe, updatable vendor-profile fields.
         // email / phone / ownerName deliberately excluded — those belong to the User model.
-        const updatable = ["shopDescription", "shopCategory", "whatsapp", "alternatePhone", "address", "servicePincodes", "bankDetails", "deliveryMode", "acceptingOrders"];
+        // ✅ FIX: added "website", "isOpen", "deliveryRadius" — previously
+        // missing here, so the frontend form could set them locally but they
+        // never actually persisted (or, for isOpen, silently no-opped).
+        const updatable = [
+            "shopDescription", "shopCategory", "whatsapp", "alternatePhone",
+            "website", "address", "servicePincodes", "bankDetails",
+            "deliveryMode", "acceptingOrders", "isOpen", "deliveryRadius",
+        ];
         updatable.forEach((field) => {
-            if (req.body[field] !== undefined) {
-                let val = req.body[field];
-                if (typeof val === "string" && (field === "address" || field === "bankDetails")) {
-                    try { val = JSON.parse(val); } catch { /* use as-is */ }
-                }
-                if (field === "servicePincodes" && typeof val === "string") {
-                    try { val = JSON.parse(val); } catch { val = []; }
-                }
-                vendor[field] = val;
+            if (req.body[field] === undefined) return;
+            let val = req.body[field];
+
+            if (typeof val === "string" && (field === "address" || field === "bankDetails")) {
+                try { val = JSON.parse(val); } catch { /* use as-is */ }
             }
+            if (field === "servicePincodes" && typeof val === "string") {
+                try { val = JSON.parse(val); } catch { val = []; }
+            }
+            if (field === "isOpen" || field === "acceptingOrders") {
+                // FormData sends booleans as the strings "true"/"false"
+                val = val === true || val === "true";
+            }
+            if (field === "deliveryRadius") {
+                const num = Number(val);
+                if (!Number.isFinite(num)) return; // skip invalid values instead of crashing
+                val = Math.min(Math.max(num, 1), 50); // clamp to schema's min/max
+            }
+
+            vendor[field] = val;
         });
 
         // Handle image uploads

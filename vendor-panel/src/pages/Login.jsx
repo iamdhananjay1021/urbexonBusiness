@@ -32,8 +32,10 @@ const Login = () => {
       setLoading(true);
       setError("");
 
-      await login(form.identifier.trim(), form.password);
-      navigate("/dashboard");
+      await login({
+        identifier: form.identifier.trim(),
+        password: form.password,
+      }); navigate("/dashboard");
     } catch (err) {
       // Email verification required
       if (err.response?.status === 403 && err.response?.data?.requiresVerification) {

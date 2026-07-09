@@ -57,8 +57,9 @@ const validateCategoryInput = (body) => {
 /* ── GET ALL ACTIVE CATEGORIES (public) ── */
 export const getActiveCategories = async (req, res) => {
     try {
-        const { type } = req.query;
-        const cacheKey = type ? `categories:active:${type}` : "categories:active";
+        const { type, module, productType } = req.query;
+        const resolvedType = type || (productType === "urbexon_hour" ? "urbexon_hour" : module === "urbexon_hour" ? "urbexon_hour" : "ecommerce");
+        const cacheKey = resolvedType ? `categories:active:${resolvedType}` : "categories:active";
 
         // [FIX-C2] Anti-stampede
         const lockKey = `${cacheKey}:lock`;
@@ -76,7 +77,7 @@ export const getActiveCategories = async (req, res) => {
         await safeSetCache(lockKey, "1", 5);
 
         const filter = { isActive: true };
-        if (type) filter.type = type;
+        if (resolvedType) filter.type = resolvedType;
 
         let categories;
         try {
@@ -120,14 +121,17 @@ export const getAllCategories = async (req, res) => {
 export const getSingleCategory = async (req, res) => {
     try {
         const { slug } = req.params;
+        const { module, productType, type } = req.query;
         if (!slug) return res.status(400).json({ success: false, message: "Slug required" });
 
+        const resolvedType = type || (productType === "urbexon_hour" ? "urbexon_hour" : module === "urbexon_hour" ? "urbexon_hour" : "ecommerce");
+
         // [FIX-C6] Cache single category (300s)
-        const cacheKey = `categories:single:${slug}`;
+        const cacheKey = `categories:single:${resolvedType}:${slug}`;
         const cached = await safeGetCache(cacheKey);
         if (cached) return res.json(cached);
 
-        const cat = await Category.findOne({ slug }).lean();
+        const cat = await Category.findOne({ slug, ...(resolvedType ? { type: resolvedType } : {}) }).lean();
         if (!cat) return res.status(404).json({ success: false, message: "Category not found" });
 
         await safeSetCache(cacheKey, cat, 300);
@@ -142,19 +146,21 @@ export const getSingleCategory = async (req, res) => {
 export const getCategorySubcategories = async (req, res) => {
     try {
         const { slug } = req.params;
+        const { module, productType, type } = req.query;
         if (!slug) return res.status(400).json({ success: false, message: "Slug required" });
 
-        const cacheKey = `categories:subcats:${slug}`;
+        const resolvedType = type || (productType === "urbexon_hour" ? "urbexon_hour" : module === "urbexon_hour" ? "urbexon_hour" : "ecommerce");
+        const cacheKey = `categories:subcats:${resolvedType}:${slug}`;
         const cached = await safeGetCache(cacheKey);
         if (cached) return res.json(cached);
 
-        const cat = await Category.findOne({ slug, isActive: true }).lean();
+        const cat = await Category.findOne({ slug, isActive: true, ...(resolvedType ? { type: resolvedType } : {}) }).lean();
         if (!cat) return res.status(404).json({ success: false, message: "Category not found" });
 
         const catRegex = new RegExp(`^\\s*${cat.name.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}\\s*$`, "i");
 
         const productSubcats = await Product.aggregate([
-            { $match: { category: catRegex, isActive: true, subcategory: { $nin: [null, ""] } } },
+            { $match: { category: catRegex, isActive: true, subcategory: { $nin: [null, ""] }, ...(resolvedType === "urbexon_hour" ? { productType: "urbexon_hour" } : { productType: "ecommerce" }) } },
             {
                 $group: {
                     _id: { $toLower: { $trim: { input: "$subcategory" } } },

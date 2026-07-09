@@ -1,9 +1,16 @@
 /**
- * pricing.js — Backend pricing utility v2.0
+ * pricing.js — Backend pricing utility v2.1
  * ✅ NEVER trusts frontend prices
  * ✅ Atomic stock deduction with findOneAndUpdate (race condition fix)
  * ✅ Coupon support wired in
  * ✅ Single function used by both COD + Online flows
+ * ✅ [FIX-D1] distanceKm null-safe: distinguishes "unknown distance" (null)
+ *    from "actual zero-distance" (0). Charge/provider calculations still
+ *    get a safe numeric fallback (0) so pricing logic never breaks, but
+ *    the returned `distanceKm` for storage/display stays `null` when the
+ *    distance genuinely wasn't known — this is what fixes "Distance —"
+ *    incorrectly showing for orders where distance actually WAS known
+ *    downstream, and stops fake "0km" from masking real unknowns.
  */
 import Product from "../models/Product.js";
 import Coupon from "../models/Coupon.js";
@@ -195,14 +202,35 @@ export const markCouponUsed = async (couponId, userId) => {
 };
 
 /**
+ * [FIX-D1] Normalize an incoming distanceKm value.
+ * Returns:
+ *   - `known`: the real, storable distance value → Number or null (null = genuinely unknown)
+ *   - `forCalc`: a safe Number ALWAYS usable for charge/provider math (defaults to 0
+ *      when unknown, so downstream numeric logic never breaks or throws)
+ */
+const resolveDistanceKm = (rawDistanceKm) => {
+    if (rawDistanceKm === null || rawDistanceKm === undefined || rawDistanceKm === "") {
+        return { known: null, forCalc: 0 };
+    }
+    const n = Number(rawDistanceKm);
+    if (!Number.isFinite(n)) {
+        return { known: null, forCalc: 0 };
+    }
+    return { known: n, forCalc: n };
+};
+
+/**
  * Full pricing calculation with coupon support
  */
 export const calculateOrderPricing = async (frontendItems, paymentMethod, options = {}) => {
     const { formattedItems, itemsTotal } = await validateAndPriceItems(frontendItems);
     const deliveryType = options.deliveryType || DELIVERY_TYPES.ECOMMERCE_STANDARD;
-    const distanceKm = Number(options.distanceKm || 0);
 
-    const deliveryCharge = calcDeliveryCharge(itemsTotal, paymentMethod, { deliveryType, distanceKm });
+    // [FIX-D1] known = what we store/display (null when genuinely unknown)
+    //          forCalc = safe number for charge/provider/eta math
+    const { known: distanceKm, forCalc: distanceKmForCalc } = resolveDistanceKm(options.distanceKm);
+
+    const deliveryCharge = calcDeliveryCharge(itemsTotal, paymentMethod, { deliveryType, distanceKm: distanceKmForCalc });
 
     // Coupon
     const orderType = deliveryType === DELIVERY_TYPES.URBEXON_HOUR ? "urbexon_hour" : "ecommerce";
@@ -226,8 +254,11 @@ export const calculateOrderPricing = async (frontendItems, paymentMethod, option
         coupon: couponResult,
         finalTotal,
         deliveryType,
+        // distanceKm: Number when actually known, null when genuinely unknown.
+        // Callers (orderController.js → Order model → frontend) must treat
+        // null distinctly from 0 for correct "—" vs "0.0 km" rendering.
         distanceKm,
         deliveryETA: getDeliveryETA({ pincode: options.pincode, paymentMethod, deliveryType }),
-        deliveryProvider: getDeliveryProvider({ deliveryType, distanceKm }),
+        deliveryProvider: getDeliveryProvider({ deliveryType, distanceKm: distanceKmForCalc }),
     };
 };

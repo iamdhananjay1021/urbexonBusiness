@@ -1,6 +1,12 @@
 /**
  * authRoutes.js — Production ready
  * All auth + admin dashboard routes
+ *
+ * [FIX] logout and logoutAllDevices existed in authController.js but were
+ * never wired to any route — no panel (client/vendor/delivery/admin) could
+ * actually call logout, so the refreshToken httpOnly cookie was never
+ * cleared server-side and tokenVersion was never bumped on "logout all
+ * devices". Added both routes below.
  */
 import express from "express";
 import { validateBody } from "../middlewares/validate.js";
@@ -14,6 +20,7 @@ import {
     adminForgotPassword, adminResetPassword,
     adminGetDashboard,
     googleLogin,
+    logout, logoutAllDevices, // [FIX] now imported
 } from "../controllers/authController.js";
 
 const router = express.Router();
@@ -50,6 +57,11 @@ router.post("/resend-otp",
 );
 
 router.post("/refresh", refreshToken);
+
+// [FIX] Logout — clears the httpOnly refreshToken cookie server-side.
+// Public route: works purely off the cookie, no access-token required
+// (mirrors how /refresh doesn't require `protect` either).
+router.post("/logout", logout);
 
 /* ── Google OAuth ── */
 router.post("/google", googleLogin);
@@ -88,6 +100,10 @@ router.get("/profile", protect, getProfile);
 router.put("/profile", protect, validateBody({ name: { required: true, minLength: 2, maxLength: 100 } }), updateProfile);
 router.put("/change-password", protect, validateBody({ currentPassword: { required: true }, newPassword: { required: true, minLength: 8 } }), changePassword);
 router.post("/save-location", protect, saveLocation);
+
+// [FIX] Logout from all devices — requires a valid access token since it
+// bumps tokenVersion on req.user, invalidating every other session's token.
+router.post("/logout-all", protect, logoutAllDevices);
 
 /* ── Admin only ── */
 router.get("/users", protect, adminOnly, getAllUsers);

@@ -1,10 +1,29 @@
 /**
- * vendorApproval.js — Admin vendor management
+ * vendorApproval.js — Admin vendor management, Production v3
+ *
+ * [FIX v2] User.role sync restored on approve/reject/suspend/delete.
+ *   - approved  → User.role = "vendor"
+ *   - rejected  → User.role = "user"   (safety: covers approved→rejected)
+ *   - suspended → User.role = "user"   (revokes vendor-only access/login)
+ *   - deleted   → User.role = "user"
+ *   Wired notifyVendorApplicationApproved / notifyVendorApplicationRejected
+ *   from notificationService.js — fire-and-forget, never blocks the response.
+ *
+ * [FIX v3] Real-time admin broadcast wired via wsHub.js's broadcastToAdmins().
+ *   Every mutation an admin (or, later, a vendor) makes to vendor data now
+ *   pushes a live event to every currently-connected admin so the Vendors
+ *   list / detail page updates instantly without a manual refresh —
+ *   matches the pattern already used for order/rider notifications.
+ *   Fire-and-forget: broadcast failures are logged, never block the
+ *   underlying DB operation or the HTTP response.
  */
 import Vendor from "../../models/vendorModels/Vendor.js";
 import Subscription from "../../models/vendorModels/Subscription.js";
 import Pincode from "../../models/vendorModels/Pincode.js";
 import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
+import User from "../../models/User.js";
+import { notifyVendorApplicationApproved, notifyVendorApplicationRejected } from "../../services/notificationService.js";
+import { broadcastToAdmins, VENDOR_WS_EVENTS } from "../../utils/wsHub.js";
 
 /* ── Get all vendors ───────────────────────────────────── */
 export const getAllVendors = async (req, res) => {
@@ -45,8 +64,36 @@ export const getVendorDetail = async (req, res) => {
     }
 };
 
+/**
+ * [FIX v2] Centralized, atomic-safe User.role sync helper.
+ * Never throws — a role-sync failure must not roll back or block the
+ * vendor status change itself; it's logged loudly instead so it's easy
+ * to spot and reconcile manually if it ever happens.
+ */
+const syncUserRole = async (userId, role) => {
+    if (!userId) return;
+    try {
+        await User.findByIdAndUpdate(userId, { $set: { role } });
+    } catch (err) {
+        console.error(`[syncUserRole] FAILED to set role="${role}" for user ${userId}:`, err.message);
+    }
+};
+
+/**
+ * [FIX v3] Fire-and-forget admin broadcast wrapper. Every call site below
+ * uses this instead of calling broadcastToAdmins directly so a broadcast
+ * failure can never throw inside a request handler.
+ */
+const notifyAdmins = (type, payload) => {
+    broadcastToAdmins(type, payload).catch((err) =>
+        console.error(`[notifyAdmins:${type}] Failed:`, err.message)
+    );
+};
+
 /* ── Approve vendor ────────────────────────────────────── */
-// FIX #2 + #3: atomic status check + idempotency guard
+// FIX #2 + #3 (preserved): atomic status check + idempotency guard
+// [FIX v2] + User.role sync + approval email notification
+// [FIX v3] + real-time admin broadcast
 export const approveVendor = async (req, res) => {
     try {
         // FIX #2 — Atomic: only update if currently pending/rejected, not already approved
@@ -68,6 +115,10 @@ export const approveVendor = async (req, res) => {
             if (!existing) return res.status(404).json({ success: false, message: "Not found" });
             return res.status(409).json({ success: false, message: "Vendor is already approved" });
         }
+
+        // [FIX v2] Sync linked User.role so vendor login/permissions actually
+        // reflect approval immediately — this was silently missing.
+        await syncUserRole(vendor.userId, "vendor");
 
         // Atomic upsert: create an inactive subscription so vendor must pay to start
         await Subscription.findOneAndUpdate(
@@ -93,7 +144,21 @@ export const approveVendor = async (req, res) => {
             await vendor.save();
         }
 
-        res.json({ success: true, vendor: vendor.toObject(), message: "Vendor approved. Vendor must activate subscription to start." });
+        const vendorObj = vendor.toObject();
+
+        // [FIX v2] Fire-and-forget approval email — never blocks or fails the response
+        notifyVendorApplicationApproved(vendorObj).catch(err =>
+            console.error("[notifyVendorApplicationApproved]", err.message)
+        );
+
+        // [FIX v3] Real-time push to every connected admin
+        notifyAdmins(VENDOR_WS_EVENTS.STATUS_CHANGED, {
+            vendorId: vendorObj._id,
+            status: "approved",
+            vendor: vendorObj,
+        });
+
+        res.json({ success: true, vendor: vendorObj, message: "Vendor approved. Vendor must activate subscription to start." });
     } catch (err) {
         console.error("[approveVendor]", err);
         res.status(500).json({ success: false, message: "Failed" });
@@ -101,6 +166,8 @@ export const approveVendor = async (req, res) => {
 };
 
 /* ── Reject vendor ─────────────────────────────────────── */
+// [FIX v2] + User.role sync (safety net for approved→rejected) + rejection email
+// [FIX v3] + real-time admin broadcast
 export const rejectVendor = async (req, res) => {
     try {
         const { reason } = req.body;
@@ -108,9 +175,26 @@ export const rejectVendor = async (req, res) => {
             req.params.id,
             { status: "rejected", rejectionReason: reason || "Application does not meet requirements" },
             { new: true }
-        ).lean();
+        );
         if (!vendor) return res.status(404).json({ success: false, message: "Not found" });
-        res.json({ success: true, vendor, message: "Vendor rejected" });
+
+        // [FIX v2] A rejected vendor must not retain vendor-level access —
+        // covers both the fresh-application case and the approved→rejected case.
+        await syncUserRole(vendor.userId, "user");
+
+        const vendorObj = vendor.toObject();
+
+        notifyVendorApplicationRejected(vendorObj).catch(err =>
+            console.error("[notifyVendorApplicationRejected]", err.message)
+        );
+
+        notifyAdmins(VENDOR_WS_EVENTS.STATUS_CHANGED, {
+            vendorId: vendorObj._id,
+            status: "rejected",
+            vendor: vendorObj,
+        });
+
+        res.json({ success: true, vendor: vendorObj, message: "Vendor rejected" });
     } catch (err) {
         console.error("[rejectVendor]", err);
         res.status(500).json({ success: false, message: "Failed" });
@@ -118,6 +202,10 @@ export const rejectVendor = async (req, res) => {
 };
 
 /* ── Suspend vendor ────────────────────────────────────── */
+// [FIX v2] + User.role sync — a suspended vendor must lose vendor access
+// immediately, not just show a "suspended" badge in the admin panel while
+// still being able to log in with vendor privileges.
+// [FIX v3] + real-time admin broadcast
 export const suspendVendor = async (req, res) => {
     try {
         const { reason } = req.body;
@@ -125,9 +213,21 @@ export const suspendVendor = async (req, res) => {
             req.params.id,
             { status: "suspended", rejectionReason: reason || "Account suspended by admin" },
             { new: true }
-        ).lean();
+        );
         if (!vendor) return res.status(404).json({ success: false, message: "Not found" });
-        res.json({ success: true, vendor, message: "Vendor suspended" });
+
+        // [FIX v2] Revoke vendor role on suspension
+        await syncUserRole(vendor.userId, "user");
+
+        const vendorObj = vendor.toObject();
+
+        notifyAdmins(VENDOR_WS_EVENTS.STATUS_CHANGED, {
+            vendorId: vendorObj._id,
+            status: "suspended",
+            vendor: vendorObj,
+        });
+
+        res.json({ success: true, vendor: vendorObj, message: "Vendor suspended" });
     } catch (err) {
         console.error("[suspendVendor]", err);
         res.status(500).json({ success: false, message: "Failed" });
@@ -135,6 +235,7 @@ export const suspendVendor = async (req, res) => {
 };
 
 /* ── Update commission ─────────────────────────────────── */
+// [FIX v3] + real-time admin broadcast
 export const updateCommission = async (req, res) => {
     try {
         const { commissionRate } = req.body;
@@ -144,7 +245,15 @@ export const updateCommission = async (req, res) => {
             req.params.id, { commissionRate: Number(commissionRate) }, { new: true }
         );
         if (!vendor) return res.status(404).json({ success: false, message: "Not found" });
-        res.json({ success: true, vendor });
+
+        const vendorObj = vendor.toObject();
+
+        notifyAdmins(VENDOR_WS_EVENTS.UPDATED, {
+            vendorId: vendorObj._id,
+            vendor: vendorObj,
+        });
+
+        res.json({ success: true, vendor: vendorObj });
     } catch (err) {
         console.error("[updateCommission]", err);
         res.status(500).json({ success: false, message: "Failed" });
@@ -152,9 +261,16 @@ export const updateCommission = async (req, res) => {
 };
 
 /* ── Delete vendor ─────────────────────────────────────── */
+// [FIX v2] + User.role sync
+// [FIX v3] + real-time admin broadcast
 export const deleteVendor = async (req, res) => {
     try {
-        await Vendor.findByIdAndUpdate(req.params.id, { isDeleted: true });
+        const vendor = await Vendor.findByIdAndUpdate(req.params.id, { isDeleted: true }, { new: true });
+        // [FIX v2] A deleted vendor must also lose vendor-role access
+        if (vendor) {
+            await syncUserRole(vendor.userId, "user");
+            notifyAdmins(VENDOR_WS_EVENTS.DELETED, { vendorId: String(vendor._id) });
+        }
         res.json({ success: true, message: "Vendor deleted" });
     } catch (err) {
         console.error("[deleteVendor]", err);
@@ -208,6 +324,11 @@ export const activateVendorSubscription = async (req, res) => {
         vendor.subscription = { plan, startDate: now, expiryDate: expiry, isActive: true, autoRenew: false };
         await vendor.save();
 
+        notifyAdmins(VENDOR_WS_EVENTS.UPDATED, {
+            vendorId: String(vendor._id),
+            vendor: vendor.toObject(),
+        });
+
         res.json({ success: true, message: `${plan} plan activated for ${numMonths} month(s)`, subscription: sub });
     } catch (err) {
         console.error("[activateSubscription]", err);
@@ -232,6 +353,11 @@ export const deactivateVendorSubscription = async (req, res) => {
 
         vendor.subscription = { ...vendor.subscription?.toObject?.() || {}, isActive: false, expiryDate: new Date() };
         await vendor.save();
+
+        notifyAdmins(VENDOR_WS_EVENTS.UPDATED, {
+            vendorId: String(vendor._id),
+            vendor: vendor.toObject(),
+        });
 
         res.json({
             success: true,

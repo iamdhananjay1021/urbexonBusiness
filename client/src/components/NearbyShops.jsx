@@ -50,7 +50,7 @@ const CSS = `
 @media(max-width:540px){.ns-grid{grid-template-columns:1fr!important}}
 `;
 
-const NearbyShops = ({ pincode, pincodeLabel = '', maxResults = 20 }) => {
+const NearbyShops = ({ pincode, pincodeLabel = '', maxResults = 20, linkBase = "/vendor/" }) => {
     const [vendors, setVendors] = useState([]);
     const [loading, setLoading] = useState(false);
     const [categories, setCategories] = useState([]);
@@ -196,7 +196,7 @@ const NearbyShops = ({ pincode, pincodeLabel = '', maxResults = 20 }) => {
             {!loading && vendors.length > 0 && (
                 <div className="ns-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
                     {vendors.map((v, idx) => (
-                        <Link to={`/vendor/${v.shopSlug || v._id}`} key={v._id} className="ns-card ns-fade" style={{
+                        <Link to={`${linkBase}${v.shopSlug || v._id}`} key={v._id} className="ns-card ns-fade" style={{
                             background: C.card, borderRadius: 14, overflow: "hidden",
                             border: `1px solid ${C.borderLight}`, animationDelay: `${idx * 40}ms`,
                         }}>

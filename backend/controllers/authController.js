@@ -154,6 +154,19 @@ const buildDeliveryResetEmail = (name, resetUrl) => `
 
 /**
  * Shared login core, reused by login / vendorLogin / deliveryLogin / adminLogin.
+ *
+ * ✅ FIX (v2): Vendor/delivery approval status no longer BLOCKS login.
+ * Previously, a user who registered but hadn't completed (or wasn't yet
+ * approved for) their vendor/delivery application could never log in —
+ * which meant they could never reach the in-app "Apply"/"Complete application"
+ * screen, since that screen requires an authenticated session. This created
+ * an unrecoverable chicken-and-egg trap and meant the admin panel never saw
+ * any application data for such accounts.
+ *
+ * Now: login always succeeds (token issued) for a valid, verified, non-blocked
+ * account. The applicationStatus is returned in the response instead, and the
+ * frontend is responsible for routing the user to the application form or a
+ * "pending approval" screen as appropriate.
  */
 const authenticateByRole = asyncHandler(async (req, res, { roleFilter, deniedMessage, allowAdminRoles = false }) => {
     const { email, phone, password } = req.body;
@@ -170,6 +183,9 @@ const authenticateByRole = asyncHandler(async (req, res, { roleFilter, deniedMes
     if (user.isDeleted)
         return res.status(401).json({ success: false, message: "Invalid credentials" });
 
+    if (user.isBlocked)
+        return res.status(403).json({ success: false, message: "Your account has been blocked. Please contact support." });
+
     if (roleFilter && !roleFilter.includes(user.role)) {
         return res.status(403).json({ success: false, message: deniedMessage });
     }
@@ -182,22 +198,18 @@ const authenticateByRole = asyncHandler(async (req, res, { roleFilter, deniedMes
         return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 
-    // ✅ FIX: Check for vendor/delivery boy approval status before allowing login to their respective panels.
-    // This prevents users with a 'pending' application from accessing the dashboard.
+    // ✅ FIX: Approval status is now informational only — it does NOT block login.
+    // 'not_applied' | 'pending' | 'approved' | 'rejected'
+    let vendorApplicationStatus = null;
+    let deliveryApplicationStatus = null;
+
     if (roleFilter && roleFilter.includes('vendor')) {
         const vendor = await Vendor.findOne({ userId: user._id }).lean();
-        if (!vendor || vendor.status !== 'approved') {
-            return res.status(403).json({ success: false, message: "Your vendor account is not approved. Please check your application status on the main website." });
-        }
+        vendorApplicationStatus = vendor?.status || 'not_applied';
     }
     if (roleFilter && roleFilter.includes('delivery_boy')) {
         const deliveryBoy = await DeliveryBoy.findOne({ userId: user._id }).lean();
-        if (!deliveryBoy || deliveryBoy.status !== 'approved') {
-            return res.status(403).json({
-                success: false,
-                message: "Your delivery partner account is not approved. Please complete your application or wait for approval."
-            });
-        }
+        deliveryApplicationStatus = deliveryBoy?.status || 'not_applied';
     }
 
     if (!user.isEmailVerified) {
@@ -227,7 +239,13 @@ const authenticateByRole = asyncHandler(async (req, res, { roleFilter, deniedMes
     await user.save({ validateBeforeSave: false });
 
     const accessToken = await issueTokens(res, user);
-    return res.status(200).json({ success: true, token: accessToken, user: safeUserPayload(user) });
+    return res.status(200).json({
+        success: true,
+        token: accessToken,
+        user: safeUserPayload(user),
+        ...(vendorApplicationStatus !== null && { vendorApplicationStatus }),
+        ...(deliveryApplicationStatus !== null && { deliveryApplicationStatus }),
+    });
 });
 
 /* ═══════════════════════════════════════════════════
@@ -351,8 +369,28 @@ export const verifyOtp = asyncHandler(async (req, res) => {
     await user.save({ validateBeforeSave: false }); // Use false to avoid re-validating fields not being changed
 
     const accessToken = await issueTokens(res, user);
-    // The user object in the payload already contains the correct role.
-    const payload = { success: true, token: accessToken, user: safeUserPayload(user) };
+
+    // ✅ FIX: Also return applicationStatus right after OTP verification so the
+    // delivery/vendor panel frontend can route a freshly-verified user straight
+    // to the application form instead of bouncing through login first.
+    let vendorApplicationStatus = null;
+    let deliveryApplicationStatus = null;
+    if (user.role === 'vendor') {
+        const vendor = await Vendor.findOne({ userId: user._id }).lean();
+        vendorApplicationStatus = vendor?.status || 'not_applied';
+    }
+    if (user.role === 'delivery_boy') {
+        const deliveryBoy = await DeliveryBoy.findOne({ userId: user._id }).lean();
+        deliveryApplicationStatus = deliveryBoy?.status || 'not_applied';
+    }
+
+    const payload = {
+        success: true,
+        token: accessToken,
+        user: safeUserPayload(user),
+        ...(vendorApplicationStatus !== null && { vendorApplicationStatus }),
+        ...(deliveryApplicationStatus !== null && { deliveryApplicationStatus }),
+    };
 
     return res.status(200).json(payload);
 });
@@ -687,7 +725,7 @@ export const deliveryResetPassword = asyncHandler(async (req, res) => {
     LOGOUT
 ═══════════════════════════════════════════════════ */
 export const logout = asyncHandler(async (req, res) => {
-    const { refreshToken } = req.cookies;
+    const refreshToken = req.cookies?.refreshToken;
     if (refreshToken) {
         const user = await User.findOne({ refreshToken });
         if (user) {
@@ -709,7 +747,7 @@ export const logout = asyncHandler(async (req, res) => {
     REFRESH TOKEN
 ═══════════════════════════════════════════════════ */
 export const refreshToken = asyncHandler(async (req, res) => {
-    const { refreshToken } = req.cookies;
+    const refreshToken = req.cookies?.refreshToken;
     if (!refreshToken) {
         return res.status(401).json({ success: false, message: "Refresh token not found" });
     }

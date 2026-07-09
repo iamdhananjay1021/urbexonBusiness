@@ -5,8 +5,8 @@
  * BUG FIXES: null safety, stock handling, navigation URL fallback
  * UI: Preserved original styling - no visual changes
  */
-import { useCallback, memo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useCallback, memo } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useCart } from "../hooks/useCart";
 import { FaStar, FaRegStar, FaShoppingCart, FaBolt, FaCheckCircle } from "react-icons/fa";
 
@@ -78,15 +78,27 @@ const ProductCardUnified = memo(({
     const handleCart = useCallback((e) => {
         e.stopPropagation();
         if (inCart || isOOS) return;
-        addItem(product);
+
+        // ✅ FIX: Defensively set productType before adding to cart.
+        // Any product with a `vendorId` is an Urbexon Hour product.
+        // This prevents products from vendor pages being added to the wrong cart.
+        const itemToAdd = {
+            ...product,
+            productType: product.vendorId ? 'urbexon_hour' : (product.productType || 'ecommerce'),
+        };
+        addItem(itemToAdd);
         setFlashAdded(true);
         setTimeout(() => setFlashAdded(false), 1400);
     }, [inCart, isOOS, product, addItem]);
 
     const handleQuickView = useCallback((e) => {
         e.stopPropagation();
-        // BUG FIX: Ensure productId is always available
-        navigate(`/products/${product.slug || productId}`);
+        const isUrbexonHourProduct = !!product.vendorId || product.productType === 'urbexon_hour';
+        // Navigation: UH/vendor products -> UH product detail, Ecommerce -> ecommerce product detail
+        const productUrl = isUrbexonHourProduct
+            ? `/uh-product/${product.slug || productId}`
+            : `/products/${product.slug || productId}`;
+        navigate(productUrl);
     }, [navigate, product, productId]);
 
     // Styles based on variant
@@ -140,9 +152,9 @@ const ProductCardUnified = memo(({
                             onClick={handleCart}
                             disabled={inCart || isOOS}
                             className={`w-full py-2.5 text-[11px] font-bold tracking-wider uppercase border-none rounded flex items-center justify-center gap-1.5 transition-colors ${inCart ? "bg-green-100 text-green-700 cursor-default" :
-                                    flashAdded ? "bg-green-500 text-white" :
-                                        isOOS ? "bg-stone-100 text-stone-400 cursor-default" :
-                                            "bg-stone-900 text-white hover:bg-stone-800 cursor-pointer"
+                                flashAdded ? "bg-green-500 text-white" :
+                                    isOOS ? "bg-stone-100 text-stone-400 cursor-default" :
+                                        "bg-stone-900 text-white hover:bg-stone-800 cursor-pointer"
                                 }`}
                         >
                             {inCart ? <><FaCheckCircle size={11} /> In Cart</> : flashAdded ? <>✓ Added!</> : <><FaShoppingCart size={11} /> Add to Cart</>}

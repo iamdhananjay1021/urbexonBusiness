@@ -1,5 +1,5 @@
 /**
- * orderValidations.js — Production v5.0 FINAL
+ * orderValidations.js — Production v5.1 FINAL
  *
  * ════════════════════════════════════════════════════════════════════
  * ARCHITECTURE: TWO COMPLETELY SEPARATE ORDER CHANNELS
@@ -23,7 +23,18 @@
  *  • Requires location (lat/lng) for distance check
  *
  * ════════════════════════════════════════════════════════════════════
- * FIXES IN THIS VERSION:
+ * FIXES IN v5.1:
+ * [FIX-D1] validateDeliveryServiceability now returns realDistanceKm: null
+ *          whenever distance genuinely could NOT be calculated (missing
+ *          vendor coords, missing customer GPS, non-UH order), instead of
+ *          silently returning 0. This was the root cause of "Distance —"
+ *          on VENDOR_SELF / newly assigned UH orders: a 0 was being stored
+ *          and treated downstream as "known zero-distance" instead of
+ *          "unknown". null now flows through pricing.js → Order model →
+ *          frontend, letting each layer render "—" ONLY when truly unknown
+ *          and an honest number when it is known (including a real 0.0km).
+ *
+ * FIXES IN v5.0 (preserved):
  * [FIX-1] validateOrderItems — NO longer throws "Unable to determine vendor"
  *         for ecommerce products (vendorId: null is valid for ecommerce)
  * [FIX-2] validateOrderRequest — accepts BOTH delivery types correctly
@@ -177,13 +188,11 @@ const validateAndFormatItems = async (frontendItems, channel) => {
 
         const qty = Math.min(Math.max(1, Number(item.qty || item.quantity || 1)), 100);
 
-        if (!product.inStock || product.stock < qty) {
-            throw new Error(`"${product.name}" is out of stock or has insufficient quantity.`);
-        }
-
         let dbPrice = Number(product.price);
         let dbMrp = product.mrp ? Number(product.mrp) : null;
         let finalImage = product.images?.[0]?.url || "";
+        let effectiveStock = product.stock;
+        let effectiveInStock = product.inStock;
 
         if (item.selectedColor && product.colorVariants?.length) {
             const variant = product.colorVariants.find(v => (v.name || v.color) === item.selectedColor);
@@ -191,7 +200,17 @@ const validateAndFormatItems = async (frontendItems, channel) => {
                 if (variant.price != null && variant.price > 0) dbPrice = Number(variant.price);
                 if (variant.mrp != null && variant.mrp > 0) dbMrp = Number(variant.mrp);
                 if (variant.images?.length) finalImage = variant.images[0].url;
+                // ✅ FIX: Use variant-specific stock if available, otherwise fall back to main product stock.
+                // This was the root cause of the "out of stock" error at checkout for variants.
+                if (variant.stock !== undefined && variant.stock !== null) {
+                    effectiveStock = variant.stock;
+                    effectiveInStock = variant.inStock !== false;
+                }
             }
+        }
+
+        if (!effectiveInStock || effectiveStock < qty) {
+            throw new Error(`"${product.name}" is out of stock or has insufficient quantity.`);
         }
 
         itemsTotal += dbPrice * qty;
@@ -296,13 +315,18 @@ export const validatePaymentMethod = async (method, pincode, orderChannel = "eco
 
 /* ─────────────────────────────────────────────────────────────
    VALIDATION 4: Delivery serviceability
-   • Ecommerce: no distance check (Shiprocket = pan-India)
-   • UH: STRICT distance check from specific vendor location
+   • Ecommerce: no distance check (Shiprocket = pan-India) → realDistanceKm: null
+   • UH: STRICT distance check from specific vendor location when possible
+   • [FIX-D1] realDistanceKm is `null` whenever distance genuinely cannot
+     be computed (missing vendor coords / missing customer GPS), and only
+     a real Number when both coordinates are actually known.
+     NEVER conflate "unknown" with "0km" anymore.
 ───────────────────────────────────────────────────────────── */
 export const validateDeliveryServiceability = async (
     deliveryType, latitude, longitude, vendorId, pincode
 ) => {
-    if (deliveryType !== "URBEXON_HOUR") return { realDistanceKm: 0 };
+    // Ecommerce orders don't use distance-based delivery at all.
+    if (deliveryType !== "URBEXON_HOUR") return { realDistanceKm: null };
 
     if (!DELIVERY_CONFIG.URBEXON_HOUR?.ENABLED)
         throw new Error("Urbexon Hour delivery is currently unavailable");
@@ -321,9 +345,9 @@ export const validateDeliveryServiceability = async (
         Array.isArray(vendor.servicePincodes) &&
         vendor.servicePincodes.length > 0;
 
-    // Vendor ne kuch configure nahi kiya → allow by default
+    // Vendor ne kuch configure nahi kiya → allow by default, distance unknown
     if (!hasValidCoords && !hasServicePincodes) {
-        return { realDistanceKm: 0 };
+        return { realDistanceKm: null };
     }
 
     // Customer ne GPS nahi diya
@@ -335,15 +359,16 @@ export const validateDeliveryServiceability = async (
                 "Your pincode is outside the delivery zone for this vendor."
             );
         }
-        return { realDistanceKm: 0 };
+        // Serviceable by pincode, but we genuinely don't know the distance
+        return { realDistanceKm: null };
     }
 
-    // GPS hai but vendor coordinates nahi → allow
+    // GPS hai but vendor coordinates nahi → allow, distance unknown
     if (!hasValidCoords) {
-        return { realDistanceKm: 0 };
+        return { realDistanceKm: null };
     }
 
-    // Dono hain → distance check karo
+    // Dono hain → distance check karo (only branch that returns a real number)
     const orderLat = Number(latitude);
     const orderLng = Number(longitude);
     const shopLng = vendor.location.coordinates[0];
@@ -446,6 +471,11 @@ export const validateSingleVendor = (items) => {
 
    Returns: { formattedItems, itemsTotal, vendorId, realDistanceKm,
               coupon, paymentMethod, deliveryType, orderMode, orderChannel }
+
+   NOTE: realDistanceKm can be `null` when the distance genuinely could
+   not be determined (missing GPS / missing vendor coords). Callers
+   (pricing.js, orderController.js, Order model) must treat `null`
+   distinctly from `0` — null means "unknown", 0 means "same location".
 ═══════════════════════════════════════════════════════════════ */
 export const validateOrderParams = async ({
     items,
@@ -508,8 +538,8 @@ export const validateOrderParams = async ({
         await validatePaymentMethod(paymentMethod, pincode, orderChannel);
 
         // ── Step 4: Delivery serviceability ──────────────────────────────
-        // Ecommerce: no distance check (Shiprocket = pan-India)
-        // UH: server-side distance check
+        // Ecommerce: no distance check (Shiprocket = pan-India) → null
+        // UH: server-side distance check, null when genuinely unknown
         const { realDistanceKm } = await validateDeliveryServiceability(
             effectiveDeliveryType,
             latitude,
@@ -531,6 +561,7 @@ export const validateOrderParams = async ({
             itemsTotal,
             // vendorId: null for ecommerce (admin products), ObjectId for UH (vendor products)
             vendorId,
+            // realDistanceKm: null = genuinely unknown, Number = actual computed distance
             realDistanceKm,
             coupon: couponDoc,
             paymentMethod,

@@ -1,6 +1,16 @@
 /**
- * Delivery Partner Register — Urbexon V3
+ * Delivery Partner Register — Urbexon V3.1
  * Full-screen split layout · Inline styles · Responsive · Production ready
+ *
+ * FIXES (v3.1):
+ * - ✅ DOC_FIELDS keys now match fileRefs object keys AND backend multer
+ *   field names (aadhaarPhoto, licensePhoto, vehicleRc, selfie). Previously
+ *   "Driving License" / "Vehicle RC" / "Profile Photo" used mismatched keys
+ *   that didn't exist in fileRefs, causing a crash on click:
+ *   "Cannot read properties of undefined (reading 'current')".
+ * - ✅ After a successful submit, calls refreshApplicationStatus("pending")
+ *   so AuthContext/AppRoutes immediately reflect the new status without
+ *   requiring a full reload.
  */
 import { useState, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
@@ -20,11 +30,19 @@ const VEHICLE_TYPES = [
     { value: "other", label: "Other", emoji: "🚚" },
 ];
 
+// ✅ FIX: keys now match fileRefs object keys AND the backend's multer
+// field names (aadhaarPhoto, licensePhoto, vehicleRc, selfie — see
+// deliveryRoutes.js docUpload.fields(...)). Previously these keys
+// ("drivingLicensePhoto", "vehicleRCPhoto", "profilePhoto") didn't exist
+// in fileRefs at all, so clicking those upload buttons crashed with
+// "Cannot read properties of undefined (reading 'current')" — and even
+// the ones that didn't crash would have uploaded under field names the
+// backend doesn't recognize.
 const DOC_FIELDS = [
     { key: "aadhaarPhoto", label: "Aadhaar Card", Icon: FaIdCard, required: true, serverKey: "aadhaarPhoto" },
-    { key: "drivingLicensePhoto", label: "Driving License", Icon: FaIdCard, required: false, serverKey: "drivingLicensePhoto" },
-    { key: "vehicleRCPhoto", label: "Vehicle RC", Icon: FaCar, required: false, serverKey: "vehicleRCPhoto" },
-    { key: "profilePhoto", label: "Profile Photo", Icon: FaCamera, required: true, serverKey: "profilePhoto" },
+    { key: "licensePhoto", label: "Driving License", Icon: FaIdCard, required: false, serverKey: "licensePhoto" },
+    { key: "vehicleRc", label: "Vehicle RC", Icon: FaCar, required: false, serverKey: "vehicleRc" },
+    { key: "selfie", label: "Profile Photo", Icon: FaCamera, required: true, serverKey: "selfie" },
 ];
 
 const S = {
@@ -64,7 +82,7 @@ const S = {
 };
 
 const Register = () => {
-    const { rider } = useAuth();
+    const { rider, refreshApplicationStatus } = useAuth();
     const navigate = useNavigate();
 
     const [step, setStep] = useState(1);
@@ -116,13 +134,22 @@ const Register = () => {
         setSubmitting(true); setError("");
         try {
             const fd = new FormData();
-            fd.append("fullName", name.trim());
+            // ✅ FIX: backend's validateBody + registerDeliveryBoy controller
+            // both read req.body.name — sending "fullName" left `name` missing
+            // entirely, which validateBody rejected with 400 Bad Request.
+            fd.append("name", name.trim());
             fd.append("phone", phone.trim());
             fd.append("city", city.trim());
             fd.append("vehicleType", vehicleType);
             fd.append("vehicleNumber", vehicleNumber.trim());
             Object.entries(docs).forEach(([key, file]) => { if (file) fd.append(DOC_FIELDS.find(f => f.key === key)?.serverKey || key, file); });
-            await api.post("/delivery/register", fd, { headers: { "Content-Type": "multipart/form-data" }, timeout: 60000 });
+            const { data } = await api.post("/delivery/register", fd, { headers: { "Content-Type": "multipart/form-data" }, timeout: 60000 });
+
+            // ✅ FIX: Reflect the new "pending" status immediately in AuthContext
+            // so Protected routes (AppRoutes.js) don't bounce the rider back to
+            // /apply on the next navigation before a refetch happens.
+            refreshApplicationStatus?.(data.applicationStatus || "pending");
+
             setSuccess(true); setStep(3);
         } catch (err) {
             setError(err.response?.data?.message || "Registration failed. Please try again.");

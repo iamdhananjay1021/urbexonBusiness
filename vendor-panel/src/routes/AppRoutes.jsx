@@ -1,9 +1,4 @@
-t/**
- * AppRoutes.jsx — Production v3.1
- * ✅ SubscriptionRoute: approved + active subscription required
- * ✅ ApprovedRoute: approved vendor required (subscription page itself accessible)
- * ✅ React.lazy code splitting
- */
+
 import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";

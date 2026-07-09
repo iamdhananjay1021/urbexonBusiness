@@ -42,6 +42,12 @@ const vendorSchema = new mongoose.Schema(
         },
         whatsapp: { type: String, trim: true },
         alternatePhone: { type: String, trim: true },
+        // ✅ NEW: Profile.jsx (frontend) already had a Website input field and
+        // sent it on every save, but this field never existed on the schema
+        // — updateMyProfile's whitelist also never included it — so the
+        // value was silently dropped on every save. Added here + whitelisted
+        // in updateMyProfile.js so it now actually persists.
+        website: { type: String, trim: true },
 
         // ── Business Details ─────────────────────────────────
         gstNumber: { type: String, trim: true, uppercase: true },
@@ -80,7 +86,7 @@ const vendorSchema = new mongoose.Schema(
 
         // ── Service Area ─────────────────────────────────────
         servicePincodes: [{ type: String, trim: true }],
-        deliveryRadius: { type: Number, default: 5 }, // km
+        deliveryRadius: { type: Number, default: 5, min: 1, max: 50 }, // km
 
         // ── Documents ────────────────────────────────────────
         documents: {

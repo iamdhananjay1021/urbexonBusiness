@@ -35,10 +35,19 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { cartItems, clearEcommerce: clear } = useCart();
-    const checkoutItems = buyNowItem
-        ? [buyNowItem]
-        : (cartItems || []);
 
+    // BUG FIX: Defensively correct the productType for a buyNowItem.
+    // The product page (`/products/:slug?flow=uh`) might not correctly set the
+    // productType to 'urbexon_hour' before initiating "Buy Now". This fix
+    // ensures that if an item has a `vendorId`, it is ALWAYS treated as an
+    // Urbexon Hour item within the checkout flow, resolving the wrong orderMode.
+    const correctedBuyNowItem = buyNowItem
+        ? {
+            ...buyNowItem,
+            productType: buyNowItem.vendorId ? 'urbexon_hour' : (buyNowItem.productType || 'ecommerce'),
+        }
+        : null;
+    const checkoutItems = correctedBuyNowItem ? [correctedBuyNowItem] : (cartItems || []);
     /* ── Steps ── */
     const [step, setStep] = useState(1);
     const [error, setError] = useState("");

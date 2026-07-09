@@ -1,8 +1,11 @@
 /**
- * Delivery Partner Login — Urbexon V3
+ * Delivery Partner Login — Urbexon V3.1
  * FIXES:
  * - login() call fixed: { identifier, password } object format
- * - Register link → client app /register?role=delivery_boy
+ * - ✅ FIX: "Apply as a new delivery partner" now uses internal <Link to="/apply">
+ *   instead of an external <a href> to the client site. The external link was
+ *   bypassing the /apply route defined in AppRoutes.js entirely, so the button
+ *   never reached the in-panel Register flow.
  * - Error handling improved
  */
 import { useState } from "react";
@@ -35,10 +38,6 @@ const S = {
     transition: "border-color 0.18s, box-shadow 0.18s",
   },
 };
-
-// Client app URL — delivery partners register on the main client site
-// ✅ FIX: Use the correct environment variable for the client URL.
-const CLIENT_URL = import.meta.env.VITE_CLIENT_URL || "https://urbexon.in";
 
 const Login = () => {
   const { login } = useAuth();
@@ -285,9 +284,12 @@ const Login = () => {
               <div style={{ flex: 1, height: 1, background: "#f3f4f6" }} />
             </div>
 
-            {/* ✅ FIX: Register link → client app with delivery_boy role pre-selected */}
-            <a
-              href={`${CLIENT_URL}/register?role=delivery_boy`}
+            {/* ✅ FIX: Internal route, hits /apply defined in AppRoutes.js
+                (which renders the in-panel Register flow). Previously this
+                was an external <a href> to the client site, which never
+                reached /apply at all. */}
+            <Link
+              to="/apply"
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
                 padding: "14px", borderRadius: 12,
@@ -301,7 +303,7 @@ const Login = () => {
             >
               <FaMotorcycle size={15} style={{ color: "#10b981" }} />
               Apply as a new delivery partner
-            </a>
+            </Link>
 
             {/* Help */}
             <div style={{

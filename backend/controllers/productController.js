@@ -156,10 +156,18 @@ export const getProducts = async (req, res) => {
         // Set lock
         await safeSetCache(lockKey, "1", 5);
 
-        const filter = { isActive: true };
+        const filter = { isActive: true, inStock: true };
 
         if (productType === "urbexon_hour") {
             filter.productType = "urbexon_hour";
+            // Ensure only products from approved, non-deleted, open vendors are returned
+            const activeVendors = await Vendor.find({ status: "approved", isDeleted: false, isOpen: true }).select("_id").lean();
+            if (!activeVendors || activeVendors.length === 0) {
+                await safeSetCache(cacheKey, { products: [], total: 0, page, totalPages: 0 }, 30);
+                await safeSetCache(lockKey, "0", 1);
+                return res.json({ products: [], total: 0, page, totalPages: 0 });
+            }
+            filter.vendorId = { $in: activeVendors.map(v => v._id) };
         } else {
             filter.productType = "ecommerce";
         }
@@ -188,7 +196,7 @@ export const getProducts = async (req, res) => {
         if (searchRaw) {
             const rx = { $regex: escapeRegex(searchRaw), $options: "i" };
             filter.$or = [
-                { name: rx }, { category: rx },
+                { name: rx }, { category: rx }, { subcategory: rx },
                 { brand: rx }, { tags: { $elemMatch: rx } },
             ];
             if (!productType) filter.productType = "ecommerce";
@@ -244,7 +252,8 @@ export const getHomepageProducts = async (req, res) => {
         // CACHE MISS - proceed to DB
         console.log(`[Cache] ⚠️  MISS: ${CACHE_KEY} (will fetch from DB)`);
 
-        const base = { isActive: true, productType: "ecommerce" };
+        // Only show in-stock ecommerce products on public homepage
+        const base = { isActive: true, productType: "ecommerce", inStock: true, stock: { $gt: 0 } };
 
         const [featured, newArrivals, deals, productCount, cats] = await Promise.all([
             Product.find({ ...base, isFeatured: true })
@@ -255,16 +264,12 @@ export const getHomepageProducts = async (req, res) => {
                 .select("name slug price mrp images category rating numReviews isDeal inStock stock colorVariants sizes")
                 .sort({ createdAt: -1 }).limit(12).lean(),
 
-            Product.find({
-                ...base,
-                isDeal: true,
-                $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: new Date() } }],
-            })
+            Product.find({ ...base, isDeal: true, $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: new Date() } }] })
                 .select("name slug price mrp images category rating numReviews isDeal dealEndsAt inStock stock colorVariants sizes")
                 .sort({ createdAt: -1 }).limit(8).lean(),
 
             Product.countDocuments(base),
-            Product.distinct("category", { isActive: true, productType: "ecommerce" }),
+            Product.distinct("category", { isActive: true, productType: "ecommerce", inStock: true }),
         ]);
 
         const result = {
@@ -307,7 +312,7 @@ export const getSuggestions = async (req, res) => {
 
         const filter = {
             isActive: true, inStock: true, productType: typeFilter,
-            $or: [{ name: regex }, { category: regex }, { brand: regex }],
+            $or: [{ name: regex }, { category: regex }, { subcategory: regex }, { brand: regex }],
         };
 
         // Filter out products from unserviceable vendors if UH
@@ -366,7 +371,15 @@ export const getDeals = async (req, res) => {
             ...vendorFilter,
             $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: new Date() } }],
         };
+        // Only include in-stock deals
+        filter.inStock = true;
+        filter.stock = { $gt: 0 };
         if (category) { const rx = slugToRegex(category); if (rx) filter.category = rx; }
+        // Support filtering by subcategory (exact or case-insensitive match)
+        if (req.query.subcategory) {
+            const subRaw = req.query.subcategory.trim().replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+            filter.subcategory = { $regex: new RegExp(`^\\s*${subRaw}\\s*$`, "i") };
+        }
 
         const sortMap = {
             newest: { createdAt: -1 },
@@ -449,7 +462,19 @@ export const getUrbexonHourProducts = async (req, res) => {
             Product.countDocuments(filter),
         ]);
 
-        const result = { products, total, page, totalPages: Math.ceil(total / limit) };
+        // Filter out any products whose vendor is not approved/open (safety net)
+        const filteredProducts = products.filter(p => {
+            if (!p.vendorId) return false;
+            if (p.vendorId.isDeleted) return false;
+            if (p.vendorId.status && p.vendorId.status !== "approved") return false;
+            if (p.vendorId.isOpen === false) return false;
+            return true;
+        });
+
+        // adjust total to match filtered array (best-effort)
+        const adjustedTotal = filteredProducts.length < products.length ? Math.max(0, total - (products.length - filteredProducts.length)) : total;
+
+        const result = { products: filteredProducts, total: adjustedTotal, page, totalPages: Math.ceil(adjustedTotal / limit) };
         await safeSetCache(cacheKey, result, 60);
         res.json(result);
     } catch (err) {
@@ -487,7 +512,7 @@ export const getUrbexonHourHomepage = async (req, res) => {
         const base = { isActive: true, productType: "urbexon_hour", ...vendorFilter };
         const selectFields = "name slug price mrp images category subcategory rating numReviews isFeatured brand inStock stock vendorId isDeal dealEndsAt tag prepTimeMinutes colorVariants sizes";
 
-        const [bestSellers, recommended, topDeals, trending, budgetPicks, categories, totalProducts, totalVendors] = await Promise.all([
+        const [bestSellersRaw, recommendedRaw, topDealsRaw, trendingRaw, budgetPicksRaw, categories, totalProducts, totalVendors] = await Promise.all([
             Product.find({ ...base, $or: [{ isFeatured: true }, { rating: { $gte: 4 } }] })
                 .populate("vendorId", "shopName shopLogo")
                 .select(selectFields)
@@ -500,27 +525,14 @@ export const getUrbexonHourHomepage = async (req, res) => {
                 .sort({ createdAt: -1 })
                 .limit(14).lean(),
 
-            Product.find({
-                ...base,
-                isDeal: true,
-                $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: new Date() } }],
-            })
+            Product.find({ ...base, isDeal: true, $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: new Date() } }], })
                 .populate("vendorId", "shopName shopLogo")
                 .select(selectFields)
                 .sort({ createdAt: -1 })
                 .limit(14).lean(),
 
-            Product.find({ ...base, numReviews: { $gte: 1 } })
-                .populate("vendorId", "shopName shopLogo")
-                .select(selectFields)
-                .sort({ numReviews: -1, rating: -1 })
-                .limit(14).lean(),
-
-            Product.find({ ...base, price: { $lte: 500 } })
-                .populate("vendorId", "shopName shopLogo")
-                .select(selectFields)
-                .sort({ price: 1 })
-                .limit(14).lean(),
+            Product.find({ ...base, numReviews: { $gte: 1 } }).populate("vendorId", "shopName shopLogo").select(selectFields).sort({ numReviews: -1, rating: -1 }).limit(14).lean(),
+            Product.find({ ...base, price: { $lte: 500 } }).populate("vendorId", "shopName shopLogo").select(selectFields).sort({ price: 1 }).limit(14).lean(),
 
             Product.aggregate([
                 { $match: base },
@@ -533,6 +545,22 @@ export const getUrbexonHourHomepage = async (req, res) => {
             Product.distinct("vendorId", base).then(ids => ids.length),
         ]);
 
+        // Filter out products from vendors that are not approved/open
+        const filterValidVendor = (arr) => (arr || []).filter(p => {
+            if (!p) return false;
+            if (!p.vendorId) return true; // ecommerce items
+            if (p.vendorId.isDeleted) return false;
+            if (p.vendorId.status && p.vendorId.status !== "approved") return false;
+            if (p.vendorId.isOpen === false) return false;
+            return true;
+        });
+
+        const bestSellers = filterValidVendor(bestSellersRaw);
+        const recommended = filterValidVendor(recommendedRaw);
+        const topDeals = filterValidVendor(topDealsRaw);
+        const trending = filterValidVendor(trendingRaw);
+        const budgetPicks = filterValidVendor(budgetPicksRaw);
+
         const byCategory = {};
         recommended.forEach(p => {
             if (!p.category) return;
@@ -540,13 +568,7 @@ export const getUrbexonHourHomepage = async (req, res) => {
             if (byCategory[p.category].length < 8) byCategory[p.category].push(p);
         });
 
-        const result = {
-            bestSellers, recommended, topDeals, trending, budgetPicks,
-            categorySections: byCategory,
-            categoryStats: categories,
-            stats: { totalProducts, totalVendors },
-            isServiceable: true,
-        };
+        const result = { bestSellers, recommended, topDeals, trending, budgetPicks, categorySections: byCategory, categoryStats: categories, stats: { totalProducts, totalVendors }, isServiceable: true };
 
         await safeSetCache(CACHE_KEY, result, 180);
         res.json(result);
@@ -594,8 +616,6 @@ export const getUrbexonHourDeals = async (req, res) => {
             productType: "urbexon_hour",
             isActive: true,
             isDeal: true,
-            inStock: true,
-            stock: { $gt: 0 },
             ...vendorFilter,
             $and: [
                 { $or: [{ dealEndsAt: null }, { dealEndsAt: { $gt: now } }] },
@@ -718,12 +738,24 @@ export const getRelatedProducts = async (req, res) => {
             orConditions.push({ tags: { $in: product.tags } });
         }
 
-        const related = await Product.find({
+        const queryFilter = {
             _id: { $ne: product._id },
             isActive: true,
             productType: product.productType || "ecommerce",
             $or: orConditions,
-        })
+        };
+
+        // If related product type is UH, restrict to approved/open vendors
+        if ((product.productType || "ecommerce") === "urbexon_hour") {
+            const activeVendors = await Vendor.find({ status: "approved", isDeleted: false, isOpen: true }).select("_id").lean();
+            if (!activeVendors || activeVendors.length === 0) {
+                await safeSetCache(cacheKey, [], 60);
+                return res.json([]);
+            }
+            queryFilter.vendorId = { $in: activeVendors.map(v => v._id) };
+        }
+
+        const related = await Product.find(queryFilter)
             .select("name slug price mrp images category rating numReviews isFeatured inStock stock isDeal colorVariants sizes")
             .populate("vendorId", "shopName shopLogo rating isOpen city")
             .sort({ isFeatured: -1, rating: -1, createdAt: -1 })

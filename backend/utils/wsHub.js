@@ -4,6 +4,7 @@ import { flushQueueForUser } from "./notificationQueue.js";
  * Used for: order updates, vendor notifications, delivery tracking, rider assignment
  * ✅ Production domains configured
  * ✅ Origin validation for WebSocket
+ * ✅ [FIX v3] Admin room + VENDOR_WS_EVENTS + broadcastToAdmins
  */
 
 import { WebSocketServer } from "ws";
@@ -36,6 +37,17 @@ const buildAllowedWsOrigins = () => {
     return [...new Set([...allowedOrigins, ...fromEnv])];
 };
 
+/**
+ * [FIX v3] Standard vendor-related WebSocket event names.
+ * Keeping these centralized here (instead of hardcoded strings scattered
+ * across controllers) avoids typo-mismatches between emitter and listener.
+ */
+export const VENDOR_WS_EVENTS = {
+    STATUS_CHANGED: "vendor:status_changed", // approved / rejected / suspended
+    UPDATED: "vendor:updated",               // commission, subscription, general update
+    DELETED: "vendor:deleted",
+};
+
 export const initWebSocket = (server) => {
     const allowedOrigins = buildAllowedWsOrigins();
 
@@ -57,6 +69,7 @@ export const initWebSocket = (server) => {
 
     wss.on("connection", (ws, req) => {
         let userId = null;
+        let userRole = null;
         const clientOrigin = req.headers.origin || "unknown";
 
         try {
@@ -66,6 +79,7 @@ export const initWebSocket = (server) => {
 
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             userId = String(decoded.id);
+            userRole = decoded.role || null;
         } catch {
             ws.close(1008, "Invalid token");
             return;
@@ -75,7 +89,14 @@ export const initWebSocket = (server) => {
         if (!clients.has(userId)) clients.set(userId, new Set());
         clients.get(userId).add(ws);
 
-        console.log(`✅ [WS] Connected: ${userId} from ${clientOrigin} (total: ${wss.clients.size})`);
+        // [FIX v3] Auto-join the "admins" room for admin-role tokens so
+        // broadcastToAdmins() works out of the box without relying on the
+        // frontend remembering to send a join_room message.
+        if (userRole === "admin") {
+            joinRoom("admins", userId);
+        }
+
+        console.log(`✅ [WS] Connected: ${userId} (${userRole || "unknown role"}) from ${clientOrigin} (total: ${wss.clients.size})`);
 
         // Send welcome ping
         ws.send(JSON.stringify({ type: "connected", message: "Real-time connected", origin: clientOrigin }));
@@ -210,6 +231,21 @@ export const broadcastToRoom = (roomName, type, payload = {}) => {
                 try { ws.send(message); } catch { /* ignore */ }
             }
         }
+    }
+};
+
+/**
+ * [FIX v3] Broadcast to every currently-connected admin.
+ * Relies on admin clients being in the "admins" room — they're auto-joined
+ * on connect if their JWT payload has role === "admin" (see connection
+ * handler above). Fire-and-forget: never throws, safe to call without
+ * awaiting from request handlers.
+ */
+export const broadcastToAdmins = async (type, payload = {}) => {
+    try {
+        broadcastToRoom("admins", type, payload);
+    } catch (err) {
+        console.error(`[broadcastToAdmins:${type}] Failed:`, err.message);
     }
 };
 

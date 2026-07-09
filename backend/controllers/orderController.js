@@ -1313,7 +1313,7 @@ export const assignLocalDelivery = async (req, res) => {
         } else if (provider === "VENDOR_SELF") {
             order.delivery.riderName = String(riderName || "Self").trim().slice(0, 100);
             order.delivery.riderPhone = String(riderPhone || "").trim().slice(0, 20);
-            order.delivery.status = "VENDOR_SELF";
+            order.delivery.status = "ASSIGNED";   // ✅ FIXED: was "VENDOR_SELF" — not a valid enum value in Order.js schema
         } else {
             return res.status(400).json({ success: false, message: "Shiprocket assignment not allowed via local delivery endpoint" });
         }

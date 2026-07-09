@@ -260,8 +260,7 @@ const ProductDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { addItem, cartItems } = useCart();
-    const [productType, setProductType] = useState("ecommerce");
-    const { trackView } = useRecentlyViewed(productType);
+    const { trackView } = useRecentlyViewed("ecommerce");
     const { user } = useAuth();
 
     const [product, setProduct] = useState(null);
@@ -388,7 +387,6 @@ const ProductDetails = () => {
                 setLoading(true); setError(""); setActiveImg(0);
                 setSelectedSize(""); setSelectedColor("");
                 const { data: prod } = await api.get(`/products/${id}`, { signal: ctrl.signal });
-                setProductType(prod?.productType || "ecommerce");
                 setProduct(prod);
                 if (prod?.colorVariants?.length > 0) {
                     const def = prod.colorVariants.find(v => v.isDefault) || prod.colorVariants[0];
@@ -434,16 +432,41 @@ const ProductDetails = () => {
         text: customText.trim(), imageUrl: customImageUrl, note: customNote.trim(),
     }), [customText, customImageUrl, customNote]);
 
+    const isUrbexonHourProduct =
+        product?.productType === "urbexon_hour" ||
+        !!product?.vendorId;
+
+
     const handleAddToCart = useCallback(() => {
+
         if (normalizedSizes.length > 0 && !selectedSize) return alert("Please select a size!");
         if (product?.colorVariants?.length > 0 && !selectedColor) return alert("Please select a color!");
         const cartItemId = `${product._id}-${selectedSize || 'nosize'}-${selectedColor || 'nocolor'}`;
         addItem({
-            ...product, _id: cartItemId, productId: product._id,
-            price: displayPrice, mrp: displayMrp,
-            images: activeVariant?.images?.length ? activeVariant.images : product.images,
-            image: activeVariant?.images?.[0]?.url || product.images?.[0]?.url || "",
-            selectedSize, selectedColor, customization: getCustomization(), cartItemId,
+            ...product,
+            _id: cartItemId,
+            productId: product._id,
+
+            productType: isUrbexonHourProduct
+                ? "urbexon_hour"
+                : "ecommerce",
+
+            price: displayPrice,
+            mrp: displayMrp,
+
+            images: activeVariant?.images?.length
+                ? activeVariant.images
+                : product.images,
+
+            image:
+                activeVariant?.images?.[0]?.url ||
+                product.images?.[0]?.url ||
+                "",
+
+            selectedSize,
+            selectedColor,
+            customization: getCustomization(),
+            cartItemId,
         });
         setAddedFlash(true); setTimeout(() => setAddedFlash(false), 1500);
     }, [product, selectedSize, selectedColor, normalizedSizes, addItem, getCustomization, displayPrice, displayMrp, activeVariant]);
@@ -453,11 +476,31 @@ const ProductDetails = () => {
         if (product?.colorVariants?.length > 0 && !selectedColor) return alert("Please select a color!");
         const cartItemId = `${product._id}-${selectedSize || 'nosize'}-${selectedColor || 'nocolor'}`;
         const buyNowItem = {
-            ...product, _id: cartItemId, productId: product._id,
-            price: displayPrice, mrp: displayMrp,
-            images: activeVariant?.images?.length ? activeVariant.images : product.images,
-            image: activeVariant?.images?.[0]?.url || product.images?.[0]?.url || "",
-            quantity: 1, selectedSize, selectedColor, customization: getCustomization(), cartItemId,
+            ...product,
+            _id: cartItemId,
+            productId: product._id,
+
+            productType: isUrbexonHourProduct
+                ? "urbexon_hour"
+                : "ecommerce",
+
+            price: displayPrice,
+            mrp: displayMrp,
+
+            images: activeVariant?.images?.length
+                ? activeVariant.images
+                : product.images,
+
+            image:
+                activeVariant?.images?.[0]?.url ||
+                product.images?.[0]?.url ||
+                "",
+
+            quantity: 1,
+            selectedSize,
+            selectedColor,
+            customization: getCustomization(),
+            cartItemId,
         };
         try { sessionStorage.setItem("ux_buy_now_item", JSON.stringify(buyNowItem)); } catch { }
         navigate("/checkout", { state: { buyNowItem } });

@@ -1,6 +1,38 @@
 /**
- * Profile.jsx — v3.0 Production
+ * Profile.jsx — v3.3 Production
  * Matches Figma: Profile Picture, Basic Info, Shop Status, Shop Details, Business Address
+ *
+ * FIXES (v3.3) — full backend connectivity audit:
+ * - ✅ Shop-Open toggle now calls the dedicated PATCH /vendor/toggle-shop
+ *   endpoint instead of PUT /vendor/me. `isOpen` wasn't in updateMyProfile's
+ *   whitelist before (now fixed there too, but toggle-shop is the purpose
+ *   built, simpler endpoint for a pure flip and doesn't need a request body).
+ * - ✅ "Website" field now actually persists — it was being sent every save
+ *   but silently dropped (missing from both the Vendor schema and the
+ *   backend whitelist; both fixed in Vendor.js / venderProfile.js).
+ * - ✅ NEW: "WhatsApp Number" field — the field was already sent on every
+ *   save() and already supported end-to-end on the backend, but there was
+ *   no input for it anywhere in the UI, so vendors could never actually
+ *   set it.
+ * - ✅ NEW: "Accepting New Orders" toggle — backend field `acceptingOrders`
+ *   already existed and was already whitelisted, but had zero UI control.
+ *   This is an important operational switch (temporarily pause new orders
+ *   without going fully "closed") that was completely inaccessible.
+ * - ✅ NEW: "Delivery Mode" select (Self / Platform / Both) — backend field
+ *   already existed and was already whitelisted, no UI control existed.
+ * - ✅ NEW: "Delivery Radius (km)" field — backend field existed but was
+ *   previously only reachable via the separate PUT /vendor/settings route;
+ *   now also included in PUT /vendor/me so it saves through this same form.
+ *
+ * FIXES (v3.2):
+ * - ✅ CRITICAL: Field, ReadOnlyInput, Input, Card, and StatusBadge were all
+ *   defined INSIDE the Profile component's function body, so every keystroke
+ *   re-render created new function references and React remounted the
+ *   underlying <input> DOM node — losing focus after every character. Moved
+ *   to module-level (outside Profile) so references stay stable.
+ *
+ * FIX (v3.1): Added a "Delivery Zone" card with a Serviceable Pincodes tag
+ * input, wired into save() via `servicePincodes`.
  */
 import { useState, useEffect, useRef } from "react";
 import api from "../api/axios";
@@ -10,13 +42,228 @@ import {
   FiCheckCircle,
   FiClock,
   FiXCircle,
-  FiGlobe
+  FiGlobe,
+  FiMapPin,
+  FiX,
+  FiMessageCircle,
+  FiTruck,
+  FiPauseCircle,
 } from "react-icons/fi";
 
+/* ═══════════════════════════════════════════════════
+   MODULE-LEVEL SUB-COMPONENTS
+   Defined OUTSIDE Profile so their function references
+   stay stable across re-renders (fixes input focus loss).
+═══════════════════════════════════════════════════ */
+
+const PincodeTagInput = ({ tags, onChange }) => {
+  const [input, setInput] = useState("");
+
+  const addTag = () => {
+    const newTag = input.trim();
+    if (newTag && /^\d{6}$/.test(newTag) && !tags.includes(newTag) && tags.length < 50) {
+      onChange([...tags, newTag]);
+      setInput("");
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag();
+    }
+  };
+
+  const removeTag = (tagToRemove) => {
+    onChange(tags.filter((t) => t !== tagToRemove));
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a 6-digit pincode and press Enter"
+          style={{
+            flex: 1, padding: "10px 12px",
+            border: "1.5px solid #e5e7eb", borderRadius: 10,
+            fontSize: 13, color: "#111827", outline: "none",
+            fontFamily: "inherit", boxSizing: "border-box",
+          }}
+          onFocus={(e) => (e.target.style.borderColor = "#7c3aed")}
+          onBlur={(e) => (e.target.style.borderColor = "#e5e7eb")}
+        />
+        <button
+          type="button"
+          onClick={addTag}
+          style={{
+            padding: "10px 16px", border: "none", borderRadius: 10,
+            background: "#f3f4f6", color: "#374151", fontSize: 13, fontWeight: 700,
+            cursor: "pointer", whiteSpace: "nowrap",
+          }}
+        >
+          Add
+        </button>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+        {tags.length === 0 && (
+          <span style={{ fontSize: 12, color: "#9ca3af" }}>
+            No serviceable pincodes added yet. Urbexon Hour products won't be shown to any customer until you add at least one.
+          </span>
+        )}
+        {tags.map((tag) => (
+          <span
+            key={tag}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              background: "#ede9fe", color: "#5b21b6",
+              fontSize: 12, fontWeight: 700,
+              padding: "5px 10px", borderRadius: 20,
+            }}
+          >
+            {tag}
+            <button
+              type="button"
+              onClick={() => removeTag(tag)}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "#7c3aed", display: "flex" }}
+            >
+              <FiX size={12} />
+            </button>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const STATUS_CFG = {
+  approved: { label: "Verified", bg: "#d1fae5", c: "#065f46", icon: FiCheckCircle },
+  pending: { label: "Pending", bg: "#fef3c7", c: "#92400e", icon: FiClock },
+  rejected: { label: "Rejected", bg: "#fee2e2", c: "#b91c1c", icon: FiXCircle },
+};
+
+const StatusBadge = ({ status }) => {
+  const cfg = STATUS_CFG[status] || { label: status, bg: "#f3f4f6", c: "#374151", icon: FiClock };
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 5,
+      background: cfg.bg, color: cfg.c,
+      fontSize: 12, fontWeight: 700,
+      padding: "4px 10px", borderRadius: 20,
+    }}>
+      <cfg.icon size={12} />
+      {cfg.label}
+    </span>
+  );
+};
+
+const Field = ({ label, children }) => (
+  <div>
+    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+      {label}
+    </label>
+    {children}
+  </div>
+);
+
+const ReadOnlyInput = ({ value }) => (
+  <div style={{ position: "relative" }}>
+    <input
+      type="text"
+      value={value || ""}
+      readOnly
+      style={{
+        width: "100%", padding: "10px 12px",
+        border: "1.5px solid #f3f4f6", borderRadius: 10,
+        fontSize: 13, color: "#6b7280", outline: "none",
+        fontFamily: "inherit", boxSizing: "border-box",
+        background: "#f9fafb", cursor: "not-allowed",
+      }}
+    />
+  </div>
+);
+
+const Input = ({ value, onChange, placeholder, type = "text", icon: Icon, min, max }) => (
+  <div style={{ position: "relative" }}>
+    {Icon && <Icon size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />}
+    <input
+      type={type}
+      value={value ?? ""}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      min={min}
+      max={max}
+      style={{
+        width: "100%", padding: Icon ? "10px 12px 10px 34px" : "10px 12px",
+        border: "1.5px solid #e5e7eb", borderRadius: 10,
+        fontSize: 13, color: "#111827", outline: "none",
+        fontFamily: "inherit", boxSizing: "border-box",
+        transition: "border-color 0.2s",
+      }}
+      onFocus={e => e.target.style.borderColor = "#7c3aed"}
+      onBlur={e => e.target.style.borderColor = "#e5e7eb"}
+    />
+  </div>
+);
+
+const Card = ({ title, children }) => (
+  <div style={{
+    background: "#fff", borderRadius: 16,
+    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+    padding: 24, marginBottom: 16,
+  }}>
+    <h3 style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 20, paddingBottom: 12, borderBottom: "1px solid #f3f4f6" }}>
+      {title}
+    </h3>
+    {children}
+  </div>
+);
+
+// Small reusable on/off switch used for both "Shop Open" and "Accepting Orders"
+const Toggle = ({ checked, onChange, disabled }) => (
+  <div
+    role="switch"
+    aria-checked={!!checked}
+    tabIndex={0}
+    onClick={disabled ? undefined : onChange}
+    onKeyDown={(e) => { if (!disabled && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onChange(); } }}
+    style={{
+      width: 44, height: 24, borderRadius: 12,
+      background: checked ? "#7c3aed" : "#e5e7eb",
+      position: "relative", cursor: disabled ? "not-allowed" : "pointer",
+      opacity: disabled ? 0.6 : 1,
+      transition: "background 0.2s",
+      flexShrink: 0,
+    }}
+  >
+    <div style={{
+      width: 18, height: 18, borderRadius: "50%", background: "#fff",
+      position: "absolute", top: 3,
+      left: checked ? 23 : 3,
+      transition: "left 0.2s",
+      boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
+    }} />
+  </div>
+);
+
+const DELIVERY_MODES = [
+  { value: "self", label: "Self Delivery (I deliver my own orders)" },
+  { value: "platform", label: "Platform Riders (Urbexon riders deliver)" },
+  { value: "both", label: "Both — I choose per order" },
+];
+
+/* ═══════════════════════════════════════════════════
+   MAIN COMPONENT
+═══════════════════════════════════════════════════ */
 const Profile = () => {
   const [vendor, setVendor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [togglingStatus, setTogglingStatus] = useState(false);
+  const [togglingOrders, setTogglingOrders] = useState(false);
   const [msg, setMsg] = useState({ text: "", type: "" });
   const [categoryList, setCategoryList] = useState([]);
   const fileRef = useRef();
@@ -32,7 +279,7 @@ const Profile = () => {
 
   useEffect(() => {
     api.get("/vendor/me")
-      .then(r => setVendor(r.data.vendor))
+      .then(r => setVendor({ ...r.data.vendor, servicePincodes: r.data.vendor.servicePincodes || [] }))
       .catch(() => { })
       .finally(() => setLoading(false));
   }, []);
@@ -41,15 +288,65 @@ const Profile = () => {
     try {
       setSaving(true);
       const fd = new FormData();
-      const fields = ["shopDescription", "shopCategory", "whatsapp", "website"];
-      fields.forEach(f => { if (vendor[f] !== undefined) fd.append(f, vendor[f]); });
+      // ✅ FIX: "website" and "whatsapp" now actually persist (schema +
+      // whitelist fixed on the backend). "deliveryMode" and "deliveryRadius"
+      // added since the UI now exposes controls for them.
+      const fields = ["shopDescription", "shopCategory", "whatsapp", "website", "deliveryMode", "deliveryRadius"];
+      fields.forEach(f => { if (vendor[f] !== undefined && vendor[f] !== null) fd.append(f, vendor[f]); });
       fd.append("address", JSON.stringify(vendor.address || {}));
+      fd.append("servicePincodes", JSON.stringify(vendor.servicePincodes || []));
       await api.put("/vendor/me", fd, { headers: { "Content-Type": "multipart/form-data" } });
       setMsg({ text: "Changes saved successfully!", type: "success" });
     } catch (err) {
       setMsg({ text: err.response?.data?.message || "Failed to save", type: "error" });
     } finally {
       setSaving(false);
+      setTimeout(() => setMsg({ text: "", type: "" }), 3000);
+    }
+  };
+
+  // ✅ FIX: uses the dedicated PATCH /vendor/toggle-shop endpoint (a pure
+  // flip, no body needed) instead of PUT /vendor/me — isOpen wasn't
+  // reliably persisted through the generic profile-save endpoint.
+  const toggleShopStatus = async () => {
+    if (togglingStatus || !vendor) return;
+    const nextIsOpen = !vendor.isOpen;
+    setTogglingStatus(true);
+    setVendor(prev => ({ ...prev, isOpen: nextIsOpen })); // optimistic
+    try {
+      const { data } = await api.patch("/vendor/toggle-shop");
+      setVendor(prev => ({ ...prev, isOpen: data.isOpen }));
+      setMsg({ text: data.message || "Shop status updated", type: "success" });
+    } catch (err) {
+      setVendor(prev => ({ ...prev, isOpen: !nextIsOpen })); // rollback
+      setMsg({ text: err.response?.data?.message || "Failed to update shop status", type: "error" });
+    } finally {
+      setTogglingStatus(false);
+      setTimeout(() => setMsg({ text: "", type: "" }), 3000);
+    }
+  };
+
+  // ✅ NEW: "Accepting New Orders" — a separate, more granular switch from
+  // isOpen (e.g. shop is physically open but temporarily overloaded and
+  // wants to pause new incoming orders without going fully "closed").
+  // Persists via PUT /vendor/me since `acceptingOrders` is a normal
+  // whitelisted field there (no dedicated toggle route exists for it).
+  const toggleAcceptingOrders = async () => {
+    if (togglingOrders || !vendor) return;
+    const next = !vendor.acceptingOrders;
+    setTogglingOrders(true);
+    setVendor(prev => ({ ...prev, acceptingOrders: next })); // optimistic
+    try {
+      const fd = new FormData();
+      fd.append("acceptingOrders", String(next));
+      const { data } = await api.put("/vendor/me", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      if (data?.vendor) setVendor(prev => ({ ...prev, acceptingOrders: data.vendor.acceptingOrders }));
+      setMsg({ text: next ? "Now accepting new orders" : "Paused new orders", type: "success" });
+    } catch (err) {
+      setVendor(prev => ({ ...prev, acceptingOrders: !next })); // rollback
+      setMsg({ text: err.response?.data?.message || "Failed to update order acceptance", type: "error" });
+    } finally {
+      setTogglingOrders(false);
       setTimeout(() => setMsg({ text: "", type: "" }), 3000);
     }
   };
@@ -61,7 +358,7 @@ const Profile = () => {
     fd.append("ownerPhoto", file);
     try {
       const { data } = await api.put("/vendor/me", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      setVendor(data.vendor);
+      setVendor({ ...data.vendor, servicePincodes: data.vendor.servicePincodes || [] });
     } catch (err) {
       setMsg({ text: err.response?.data?.message || "Failed to upload photo", type: "error" });
       setTimeout(() => setMsg({ text: "", type: "" }), 3000);
@@ -83,86 +380,6 @@ const Profile = () => {
   );
 
   const initials = (vendor.ownerName || vendor.shopName || "V").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-
-  const StatusBadge = () => {
-    const cfg = {
-      approved: { label: "Verified", bg: "#d1fae5", c: "#065f46", icon: FiCheckCircle },
-      pending: { label: "Pending", bg: "#fef3c7", c: "#92400e", icon: FiClock },
-      rejected: { label: "Rejected", bg: "#fee2e2", c: "#b91c1c", icon: FiXCircle },
-    }[vendor.status] || { label: vendor.status, bg: "#f3f4f6", c: "#374151", icon: FiClock };
-
-    return (
-      <span style={{
-        display: "inline-flex", alignItems: "center", gap: 5,
-        background: cfg.bg, color: cfg.c,
-        fontSize: 12, fontWeight: 700,
-        padding: "4px 10px", borderRadius: 20,
-      }}>
-        <cfg.icon size={12} />
-        {cfg.label}
-      </span>
-    );
-  };
-
-  const Field = ({ label, children }) => (
-    <div>
-      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-
-  const ReadOnlyInput = ({ value, label }) => (
-    <div style={{ position: "relative" }}>
-      <input
-        type="text"
-        value={value || ""}
-        readOnly
-        style={{
-          width: "100%", padding: "10px 12px",
-          border: "1.5px solid #f3f4f6", borderRadius: 10,
-          fontSize: 13, color: "#6b7280", outline: "none",
-          fontFamily: "inherit", boxSizing: "border-box",
-          background: "#f9fafb", cursor: "not-allowed",
-        }}
-      />
-    </div>
-  );
-
-  const Input = ({ value, onChange, placeholder, type = "text", icon: Icon }) => (
-    <div style={{ position: "relative" }}>
-      {Icon && <Icon size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />}
-      <input
-        type={type}
-        value={value || ""}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        style={{
-          width: "100%", padding: Icon ? "10px 12px 10px 34px" : "10px 12px",
-          border: "1.5px solid #e5e7eb", borderRadius: 10,
-          fontSize: 13, color: "#111827", outline: "none",
-          fontFamily: "inherit", boxSizing: "border-box",
-          transition: "border-color 0.2s",
-        }}
-        onFocus={e => e.target.style.borderColor = "#7c3aed"}
-        onBlur={e => e.target.style.borderColor = "#e5e7eb"}
-      />
-    </div>
-  );
-
-  const Card = ({ title, children }) => (
-    <div style={{
-      background: "#fff", borderRadius: 16,
-      boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-      padding: 24, marginBottom: 16,
-    }}>
-      <h3 style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 20, paddingBottom: 12, borderBottom: "1px solid #f3f4f6" }}>
-        {title}
-      </h3>
-      {children}
-    </div>
-  );
 
   return (
     <div style={{ maxWidth: 900 }}>
@@ -237,7 +454,15 @@ const Profile = () => {
             <Field label="Phone">
               <ReadOnlyInput value={vendor.phone} />
             </Field>
-            <div style={{ gridColumn: "1 / -1", fontSize: 11, color: "#9ca3af" }}>
+            <Field label="WhatsApp Number">
+              <Input
+                value={vendor.whatsapp || ""}
+                onChange={v => set("whatsapp", v)}
+                placeholder="10-digit WhatsApp number"
+                icon={FiMessageCircle}
+              />
+            </Field>
+            <div style={{ fontSize: 11, color: "#9ca3af", alignSelf: "end" }}>
               Contact support to update name, email, or phone
             </div>
           </div>
@@ -248,25 +473,29 @@ const Profile = () => {
         {/* Shop Status */}
         <Card title="Shop Status">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #f3f4f6" }}>
-            <span style={{ fontSize: 13, color: "#374151" }}>Shop Open</span>
-            <div style={{
-              width: 44, height: 24, borderRadius: 12,
-              background: vendor.isOpen ? "#7c3aed" : "#e5e7eb",
-              position: "relative", cursor: "pointer",
-              transition: "background 0.2s",
-            }}>
-              <div style={{
-                width: 18, height: 18, borderRadius: "50%", background: "#fff",
-                position: "absolute", top: 3,
-                left: vendor.isOpen ? 23 : 3,
-                transition: "left 0.2s",
-                boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
-              }} />
+            <div>
+              <div style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>Shop Open</div>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Customers can see &amp; browse your shop</div>
             </div>
+            <Toggle checked={!!vendor.isOpen} onChange={toggleShopStatus} disabled={togglingStatus} />
           </div>
+
+          {/* ✅ NEW: Accepting New Orders — distinct from isOpen. Shop can be
+              visible/open but temporarily paused for new incoming orders. */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #f3f4f6" }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <FiPauseCircle size={13} color="#7c3aed" />
+                <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>Accepting New Orders</span>
+              </div>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Turn off to pause new orders without closing your shop</div>
+            </div>
+            <Toggle checked={!!vendor.acceptingOrders} onChange={toggleAcceptingOrders} disabled={togglingOrders} />
+          </div>
+
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 13, color: "#374151" }}>Verified Vendor</span>
-            <StatusBadge />
+            <StatusBadge status={vendor.status} />
           </div>
         </Card>
 
@@ -318,26 +547,49 @@ const Profile = () => {
         </Card>
       </div>
 
+      {/* ✅ NEW: Delivery Settings — deliveryMode + deliveryRadius both
+          already existed on the backend model and were already whitelisted
+          (deliveryMode) or route-supported (deliveryRadius), but had no UI
+          anywhere in the app. */}
+      <Card title="Delivery Settings">
+        <div className="info-grid">
+          <Field label="Delivery Mode">
+            <select
+              value={vendor.deliveryMode || "both"}
+              onChange={e => set("deliveryMode", e.target.value)}
+              style={{
+                width: "100%", padding: "10px 12px",
+                border: "1.5px solid #e5e7eb", borderRadius: 10,
+                fontSize: 13, color: "#111827", outline: "none",
+                fontFamily: "inherit", background: "#fff", cursor: "pointer",
+              }}
+            >
+              {DELIVERY_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Delivery Radius (km)">
+            <Input
+              type="number"
+              min={1}
+              max={50}
+              value={vendor.deliveryRadius ?? 5}
+              onChange={v => set("deliveryRadius", v)}
+              placeholder="5"
+              icon={FiTruck}
+            />
+          </Field>
+        </div>
+      </Card>
+
       {/* Business Address */}
       <Card title="Business Address">
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginBottom: 16 }}>
           <Field label="Street Address">
-            <div style={{ position: "relative" }}>
-              {/* <FiStore size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} /> */}
-              <input
-                value={vendor.address?.line1 || ""}
-                onChange={e => setAddr("line1", e.target.value)}
-                placeholder="123 Business Street"
-                style={{
-                  width: "100%", padding: "10px 12px 10px 34px",
-                  border: "1.5px solid #e5e7eb", borderRadius: 10,
-                  fontSize: 13, color: "#111827", outline: "none",
-                  fontFamily: "inherit", boxSizing: "border-box",
-                }}
-                onFocus={e => e.target.style.borderColor = "#7c3aed"}
-                onBlur={e => e.target.style.borderColor = "#e5e7eb"}
-              />
-            </div>
+            <Input
+              value={vendor.address?.line1 || ""}
+              onChange={v => setAddr("line1", v)}
+              placeholder="123 Business Street"
+            />
           </Field>
         </div>
         <div className="address-grid">
@@ -351,6 +603,23 @@ const Profile = () => {
             <Input value={vendor.address?.pincode} onChange={v => setAddr("pincode", v)} placeholder="400001" />
           </Field>
         </div>
+      </Card>
+
+      {/* Delivery Zone / Serviceable Pincodes — this is what actually
+          controls which pincodes see this vendor's Urbexon Hour products. */}
+      <Card title="Delivery Zone">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <FiMapPin size={14} color="#7c3aed" />
+          <span style={{ fontSize: 12, color: "#6b7280" }}>
+            Only customers checking these exact pincodes on Urbexon Hour will see your products. Business Address PIN Code above is just for your shop's address — it is NOT used for delivery matching.
+          </span>
+        </div>
+        <Field label="Serviceable Pincodes">
+          <PincodeTagInput
+            tags={vendor.servicePincodes || []}
+            onChange={(tags) => set("servicePincodes", tags)}
+          />
+        </Field>
       </Card>
 
       {/* Save Button */}

@@ -1,7 +1,16 @@
 /**
- * Delivery Profile — Production v5.0
+ * Delivery Profile — Production v5.1
  * Urbexon design + real API integration
  * ✅ Dynamic document section with re-upload, status badges, fullscreen viewer
+ *
+ * FIX (v5.1): Document keys now match the backend's multer field names
+ * exactly (aadhaarPhoto, licensePhoto, vehicleRc, selfie — see
+ * deliveryRoutes.js docUpload.fields(...) and DeliveryBoy.js schema's
+ * `documents` object). Previously "Driving License", "Vehicle RC", and
+ * "Profile Photo" used keys ("drivingLicensePhoto", "vehicleRCPhoto",
+ * "profilePhoto") that don't exist in multer's allowed field list, so
+ * re-uploading any of them threw `MulterError: Unexpected field` → 500.
+ * Only "Aadhaar Card" worked before, since its key happened to match.
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../contexts/AuthContext";
@@ -212,10 +221,14 @@ const Profile = () => {
       <div style={{ margin: "16px var(--px) 0" }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: G.text, marginBottom: 10 }}>Documents</div>
         <div style={{ background: G.white, border: `1px solid ${G.border}`, borderRadius: 12, overflow: "hidden" }}>
-          {[{ key: "aadhaarPhoto", label: "Aadhaar Card", icon: "🪪", serverKey: "aadhaarPhoto" },
-          { key: "drivingLicensePhoto", label: "Driving License", icon: "📄", serverKey: "drivingLicensePhoto" },
-          { key: "vehicleRCPhoto", label: "Vehicle RC", icon: "🚗", serverKey: "vehicleRCPhoto" },
-          { key: "profilePhoto", label: "Profile Photo", icon: "🤳", serverKey: "profilePhoto" },
+          {/* ✅ FIX: keys now match backend multer field names exactly
+              (aadhaarPhoto, licensePhoto, vehicleRc, selfie). See
+              deliveryRoutes.js's docUpload.fields([...]) and the
+              DeliveryBoy schema's `documents` sub-object. */}
+          {[{ key: "aadhaarPhoto", label: "Aadhaar Card", icon: "🪪" },
+          { key: "licensePhoto", label: "Driving License", icon: "📄" },
+          { key: "vehicleRc", label: "Vehicle RC", icon: "🚗" },
+          { key: "selfie", label: "Profile Photo", icon: "🤳" },
           ].map((doc, i, arr) => {
             const url = docs[doc.key];
             const status = r?.documentStatus?.[doc.key] || "pending";

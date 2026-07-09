@@ -146,6 +146,21 @@ export const handleRiderAccept = async (orderId, riderId, riderUserId) => {
     }
     if (!rider) return { success: false, message: "Rider not found" };
 
+    // ✅ NEW: distanceKm calculate karo taaki OrderDetails.jsx me "Distance" dikhe
+    let distanceKm = null;
+    try {
+        const orderForDistance = await Order.findById(orderId).select("latitude longitude").lean();
+        const orderLat = orderForDistance?.latitude || DELIVERY_CONFIG.SHOP_LAT;
+        const orderLng = orderForDistance?.longitude || DELIVERY_CONFIG.SHOP_LNG;
+        const riderLat = rider.location?.lat ?? rider.geoLocation?.coordinates?.[1];
+        const riderLng = rider.location?.lng ?? rider.geoLocation?.coordinates?.[0];
+        if (riderLat != null && riderLng != null) {
+            distanceKm = Math.round(_haversineKm(orderLat, orderLng, riderLat, riderLng) * 10) / 10;
+        }
+    } catch (err) {
+        console.warn(`[Assignment] Failed to compute distanceKm for order ${key}: ${err.message}`);
+    }
+
     // ✅ FIXED: Atomic claim — removed delivery.provider check so any UH order can be accepted
     let order;
     try {
@@ -153,7 +168,7 @@ export const handleRiderAccept = async (orderId, riderId, riderUserId) => {
             {
                 _id: orderId,
                 "delivery.assignedTo": null,
-                orderMode: "URBEXON_HOUR",       // ✅ Check orderMode not provider
+                orderMode: "URBEXON_HOUR",
                 orderStatus: { $in: ["PLACED", "CONFIRMED", "PACKED", "READY_FOR_PICKUP"] },
             },
             {
@@ -162,13 +177,15 @@ export const handleRiderAccept = async (orderId, riderId, riderUserId) => {
                     "delivery.riderName": rider.name,
                     "delivery.riderPhone": rider.phone,
                     "delivery.assignedAt": new Date(),
-                    "delivery.status": "RIDER_ASSIGNED",
-                    "delivery.provider": "LOCAL_RIDER",  // ensure set
+                    "delivery.status": "ASSIGNED",   // ✅ FIXED: was "RIDER_ASSIGNED" — not in schema enum, broke frontend progress widget
+                    "delivery.provider": "LOCAL_RIDER",
+                    ...(distanceKm != null && { "delivery.distanceKm": distanceKm }), // ✅ NEW
                 },
             },
-            { new: true }
+            { new: true, runValidators: true }   // ✅ FIXED: runValidators added — catches future enum mismatches immediately instead of silently saving bad data
         );
     } catch (err) {
+        console.error(`[Assignment] Order update failed: ${err.message}`);
         return { success: false, message: "DB error during assignment" };
     }
 
@@ -201,14 +218,14 @@ export const handleRiderAccept = async (orderId, riderId, riderUserId) => {
         sendToUser(String(order.user), "order_status", {
             orderId: key,
             status: order.orderStatus,
-            deliveryStatus: "RIDER_ASSIGNED",
+            deliveryStatus: "ASSIGNED",   // ✅ FIXED: matches enum + frontend widget key
             riderName: rider.name,
             message: `${rider.name} has been assigned to pick up your order.`,
         });
     }
     broadcastToUsers([], "order:status:update", {
         orderId: key,
-        deliveryStatus: "RIDER_ASSIGNED",
+        deliveryStatus: "ASSIGNED",       // ✅ FIXED
         riderName: rider.name,
         riderId: String(rider._id),
     });
@@ -328,15 +345,28 @@ export const adminForceAssign = async (orderId, riderId) => {
 
     let currentOrder;
     try {
-        currentOrder = await Order.findById(orderId).select("delivery orderStatus orderMode").lean();
+        currentOrder = await Order.findById(orderId).select("delivery orderStatus orderMode latitude longitude").lean();
     } catch (err) {
         return { success: false, message: "DB error fetching order" };
     }
     if (!currentOrder) return { success: false, message: "Order not found" };
 
-    // ✅ FIXED: Check orderMode for ecommerce admin force-assign
     if (currentOrder.orderStatus !== "READY_FOR_PICKUP" && currentOrder.orderStatus !== "CONFIRMED") {
         return { success: false, message: "Order must be READY_FOR_PICKUP or CONFIRMED before assigning a rider" };
+    }
+
+    // ✅ NEW: distanceKm calculate karo (same as handleRiderAccept)
+    let distanceKm = null;
+    try {
+        const orderLat = currentOrder.latitude || DELIVERY_CONFIG.SHOP_LAT;
+        const orderLng = currentOrder.longitude || DELIVERY_CONFIG.SHOP_LNG;
+        const riderLat = rider.location?.lat ?? rider.geoLocation?.coordinates?.[1];
+        const riderLng = rider.location?.lng ?? rider.geoLocation?.coordinates?.[0];
+        if (riderLat != null && riderLng != null) {
+            distanceKm = Math.round(_haversineKm(orderLat, orderLng, riderLat, riderLng) * 10) / 10;
+        }
+    } catch (err) {
+        console.warn(`[Assignment] Failed to compute distanceKm for force-assign ${key}: ${err.message}`);
     }
 
     let order;
@@ -353,11 +383,12 @@ export const adminForceAssign = async (orderId, riderId) => {
                     "delivery.riderName": rider.name,
                     "delivery.riderPhone": rider.phone,
                     "delivery.assignedAt": new Date(),
-                    "delivery.status": "RIDER_ASSIGNED",
+                    "delivery.status": "ASSIGNED",   // ✅ already correct here, kept as-is
                     "delivery.provider": "LOCAL_RIDER",
+                    ...(distanceKm != null && { "delivery.distanceKm": distanceKm }), // ✅ NEW
                 },
             },
-            { new: true }
+            { new: true, runValidators: true }
         );
     } catch (err) {
         return { success: false, message: "DB error during force assign" };
@@ -397,7 +428,7 @@ export const adminForceAssign = async (orderId, riderId) => {
 
     broadcastToUsers([], "order:status:update", {
         orderId: key,
-        deliveryStatus: "RIDER_ASSIGNED",
+        deliveryStatus: "ASSIGNED",
         riderName: rider.name,
         riderId: String(rider._id),
         forcedByAdmin: true,
