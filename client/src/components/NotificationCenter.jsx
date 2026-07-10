@@ -40,6 +40,65 @@ const TYPE_STYLES = {
     },
 };
 
+/**
+ * MODULE-LEVEL (shared) unread-count cache.
+ *
+ * Why this exists: NotificationCenter is mounted twice at once in the app
+ * (variant="desktop" + variant="mobile", one hidden via CSS depending on
+ * screen size). Each mounted instance used to keep its own `useRef` throttle,
+ * so both instances independently called `/user-notifications/unread-count`
+ * on mount — causing the duplicate network call you saw in devtools.
+ *
+ * By moving the throttle timestamp, in-flight flag, and a tiny subscriber
+ * list to module scope (outside the component), ALL instances share the
+ * same throttle window and the same in-flight request — only one network
+ * call happens no matter how many <NotificationCenter> instances are mounted,
+ * and every instance's badge stays in sync.
+ */
+let sharedUnreadCount = 0;
+let sharedInFlight = false;
+let sharedLastFetch = 0;
+let sharedInFlightPromise = null;
+const unreadSubscribers = new Set();
+
+const notifySubscribers = (count) => {
+    sharedUnreadCount = count;
+    unreadSubscribers.forEach((fn) => fn(count));
+};
+
+const fetchUnreadShared = async (force = false) => {
+    const now = Date.now();
+
+    // Someone else already fetching — piggyback on that request instead of
+    // firing a second one.
+    if (sharedInFlight && sharedInFlightPromise) {
+        return sharedInFlightPromise;
+    }
+
+    if (!force && now - sharedLastFetch < 3000) {
+        return sharedUnreadCount;
+    }
+
+    sharedInFlight = true;
+    sharedLastFetch = now;
+
+    sharedInFlightPromise = (async () => {
+        try {
+            const { data } = await api.get("/user-notifications/unread-count");
+            const count = typeof data?.count === "number" ? data.count : 0;
+            notifySubscribers(count);
+            return count;
+        } catch {
+            return sharedUnreadCount;
+        } finally {
+            sharedInFlight = false;
+            sharedInFlightPromise = null;
+        }
+    })();
+
+    return sharedInFlightPromise;
+};
+
 const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -48,38 +107,29 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
 
     const [open, setOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
-    const [unread, setUnread] = useState(0);
+    const [unread, setUnread] = useState(sharedUnreadCount);
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(false);
 
     const rootRef = useRef(null);
-    const unreadRefreshRef = useRef(false);
-    const lastUnreadRefresh = useRef(0);
     const notificationFetchRef = useRef(false);
 
-    const refreshUnread = useCallback(async () => {
+    // Subscribe to the shared unread-count cache so every mounted instance
+    // (desktop + mobile) stays in sync without each one polling separately.
+    useEffect(() => {
+        if (!isEnabled) return undefined;
+        const handler = (count) => setUnread(count);
+        unreadSubscribers.add(handler);
+        return () => unreadSubscribers.delete(handler);
+    }, [isEnabled]);
+
+    const refreshUnread = useCallback(async (force = false) => {
         if (!isEnabled) {
             setUnread(0);
             return;
         }
-
-        const now = Date.now();
-        if (unreadRefreshRef.current || now - lastUnreadRefresh.current < 3000) {
-            return;
-        }
-
-        unreadRefreshRef.current = true;
-        lastUnreadRefresh.current = now;
-
-        try {
-            const { data } = await api.get("/user-notifications/unread-count");
-            setUnread(typeof data?.count === "number" ? data.count : 0);
-        } catch {
-            // Keep the last known badge state on transient failures.
-        } finally {
-            unreadRefreshRef.current = false;
-        }
+        await fetchUnreadShared(force);
     }, [isEnabled]);
 
     const fetchNotifications = useCallback(async (pg = 1) => {
@@ -97,7 +147,7 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
             setPage(pg);
 
             if (typeof data?.unreadCount === "number") {
-                setUnread(data.unreadCount);
+                notifySubscribers(data.unreadCount);
             }
         } catch {
             if (pg === 1) {
@@ -117,17 +167,17 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
             setUnread(0);
             setPage(1);
             setHasMore(false);
-            return;
+            return undefined;
         }
 
         refreshUnread();
 
-        const interval = setInterval(refreshUnread, 300000);
+        const interval = setInterval(() => refreshUnread(), 300000);
 
         let focusTimeout;
         const handleFocus = () => {
             clearTimeout(focusTimeout);
-            focusTimeout = setTimeout(refreshUnread, 2000);
+            focusTimeout = setTimeout(() => refreshUnread(), 2000);
         };
         window.addEventListener("focus", handleFocus);
         document.addEventListener("visibilitychange", handleFocus);
@@ -141,10 +191,10 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
     }, [isEnabled, refreshUnread]);
 
     useEffect(() => {
-        if (!isEnabled) return;
+        if (!isEnabled) return undefined;
 
         const handleRealtimeNotification = () => {
-            refreshUnread();
+            refreshUnread(true);
             if (open) {
                 fetchNotifications(1);
             }
@@ -155,7 +205,7 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
     }, [fetchNotifications, isEnabled, open, refreshUnread]);
 
     useEffect(() => {
-        if (!open) return;
+        if (!open) return undefined;
 
         const handleOutsideClick = (event) => {
             if (rootRef.current && !rootRef.current.contains(event.target)) {
@@ -199,7 +249,7 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
             setNotifications((prev) =>
                 prev.map((item) => (item._id === id ? { ...item, isRead: true } : item))
             );
-            setUnread((prev) => Math.max(0, prev - 1));
+            notifySubscribers(Math.max(0, sharedUnreadCount - 1));
         } catch {
             // Silent retry candidate
         }
@@ -209,7 +259,7 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
         try {
             await api.put("/user-notifications/read-all");
             setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
-            setUnread(0);
+            notifySubscribers(0);
         } catch {
             // Silent retry candidate
         }
@@ -233,7 +283,7 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
             await api.delete(`/user-notifications/${notification._id}`);
             setNotifications((prev) => prev.filter((item) => item._id !== notification._id));
             if (!notification.isRead) {
-                setUnread((prev) => Math.max(0, prev - 1));
+                notifySubscribers(Math.max(0, sharedUnreadCount - 1));
             }
         } catch {
             // Silent retry candidate

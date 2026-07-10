@@ -31,6 +31,7 @@
  *     one considered system rather than accreted pieces.
  */
 import { useNavigate, useLocation } from "react-router-dom";
+import { useCategories } from "../hooks/useCategories";
 import { useState, useEffect, useRef, useCallback, memo } from "react";
 import {
     FaSearch, FaShoppingCart, FaTimes, FaUser, FaBox,
@@ -244,8 +245,8 @@ const Navbar = () => {
     const ecoCount = useSelector(selectEcommerceTotalItems);
     const uhCount = useSelector(selectUHTotalItems);
 
-    const [ecoCategories, setEcoCategories] = useState([]);
-    const [uhCategories, setUhCategories] = useState([]);
+    // const [ecoCategories, setEcoCategories] = useState([]);
+    // const [uhCategories, setUhCategories] = useState([]);
     const [navHidden, setNavHidden] = useState(false);
     const [scrolled, setScrolled] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -266,38 +267,24 @@ const Navbar = () => {
     const rafPending = useRef(false);
 
     const uhCatPath = (slug) => `/urbexon-hour/${slug}`;
+    const { categories: ecoCategories } = useCategories("ecommerce");
+    const { categories: uhCategories } = useCategories("urbexon_hour");
 
     /* ── Fetch categories ── */
-    useEffect(() => {
-        fetchActiveCategories()
-            .then((res) => {
-                if (res?.data?.length) setEcoCategories(res.data.filter((c) => !isUHCat(c)));
-            }).catch(() => { });
+    // useEffect(() => {
+    //     const parse = (res) =>
+    //         Array.isArray(res?.data?.data) ? res.data.data
+    //             : Array.isArray(res?.data?.categories) ? res.data.categories
+    //                 : Array.isArray(res?.data) ? res.data : [];
 
-        const parse = (res) =>
-            Array.isArray(res?.data?.data) ? res.data.data
-                : Array.isArray(res?.data?.categories) ? res.data.categories
-                    : Array.isArray(res?.data) ? res.data : [];
+    //     fetchActiveCategories({ params: { type: "ecommerce" } })
+    //         .then((res) => setEcoCategories(parse(res)))
+    //         .catch(() => { });
 
-        (async () => {
-            try {
-                const endpoints = [
-                    "/categories?type=urbexon-hour&isActive=true",
-                    "/categories?productType=urbexon_hour&isActive=true",
-                    "/categories?productType=urbexon-hour&isActive=true",
-                ];
-                for (const ep of endpoints) {
-                    const res = await api.get(ep).catch(() => null);
-                    const cats = parse(res).filter(isUHCat);
-                    if (cats.length > 0) { setUhCategories(cats); return; }
-                }
-                const allRes = await fetchActiveCategories().catch(() => null);
-                const all = Array.isArray(allRes?.data) ? allRes.data : [];
-                const uhOnly = all.filter(isUHCat);
-                if (uhOnly.length > 0) setUhCategories(uhOnly);
-            } catch { }
-        })();
-    }, []);
+    //     fetchActiveCategories({ params: { type: "urbexon_hour" } })
+    //         .then((res) => setUhCategories(parse(res)))
+    //         .catch(() => { });
+    // }, []);   // ← ye closing sahi se hai ya nahi confirm karo
 
     /* ── Scroll hide — throttled via rAF, and only sets state when the
          derived boolean actually changes, instead of on every pixel. ── */

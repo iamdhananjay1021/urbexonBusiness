@@ -1,11 +1,26 @@
 /**
- * ProductDetails.jsx — v3 Premium Tailwind Rewrite
+ * ProductDetails.jsx — v4 Optimized
  * ─ Zero inline styles (except dynamic values like hex colors)
  * ─ Inter / system font · clean card layout · sticky sidebar
  * ─ All business logic 100% preserved
+ *
+ * OPTIMIZATIONS vs v3:
+ *  1. ShareModal / ZoomModal are now React.lazy() code-split — they're only
+ *     downloaded when the user actually opens them, shrinking initial bundle.
+ *  2. `related` and `reviews` fetches run in parallel (Promise.all) instead
+ *     of sequentially after the product fetch — one fewer network round-trip.
+ *  3. Submitting a review no longer refetches the *entire* product; the
+ *     average rating / review count are already derived locally from the
+ *     `reviews` state via useMemo, so that extra GET /products/:id call is gone.
+ *  4. Static/presentational subcomponents (StarRow, RatingBar, Accordion,
+ *     RelatedCard) are wrapped in React.memo so a parent re-render (e.g.
+ *     activeImg changing) doesn't cascade into re-rendering all of them.
+ *  5. Minor bug fix: removed invalid/duplicate Tailwind class `w-13 h-13`
+ *     in the share icon buttons (moved into ShareModal.jsx).
+ *  6. Added aria-labels to icon-only buttons for accessibility.
  */
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, Suspense, lazy, memo } from "react";
 import api from "../api/axios";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../contexts/AuthContext";
@@ -17,12 +32,14 @@ import {
     FaStar, FaRegStar, FaShoppingCart, FaBolt,
     FaTrash, FaCheckCircle, FaArrowLeft,
     FaUpload, FaTimes, FaPencilAlt, FaStickyNote,
-    FaBell, FaTag, FaShare, FaWhatsapp,
-    FaFacebook, FaInstagram, FaLink, FaTwitter,
+    FaBell, FaTag, FaShare,
     FaSearchPlus, FaChevronDown, FaChevronUp,
-    FaShieldAlt, FaTruck, FaUndo, FaTimesCircle,
-    FaFire, FaRegBookmark, FaBookmark, FaHeart,
+    FaShieldAlt, FaTruck, FaUndo,
 } from "react-icons/fa";
+
+/* ─── Code-split modals (only fetched when actually opened) ─── */
+const ShareModal = lazy(() => import("./ShareModal"));
+const ZoomModal = lazy(() => import("./ZoomModal"));
 
 /* ─── Helpers ─── */
 const getMrp = (p) => {
@@ -33,16 +50,16 @@ const getMrp = (p) => {
 };
 
 /* ─── Star Row ─── */
-const StarRow = ({ value, size = 12 }) => (
+const StarRow = memo(({ value, size = 12 }) => (
     <span className="inline-flex gap-0.5">
         {[1, 2, 3, 4, 5].map(s => s <= value
             ? <FaStar key={s} size={size} className="text-amber-400" />
             : <FaRegStar key={s} size={size} className="text-neutral-300" />)}
     </span>
-);
+));
 
 /* ─── Rating Bar ─── */
-const RatingBar = ({ star, count, pct }) => (
+const RatingBar = memo(({ star, count, pct }) => (
     <div className="flex items-center gap-2">
         <span className="text-xs text-neutral-500 w-2 shrink-0">{star}</span>
         <FaStar size={9} className="text-amber-400 shrink-0" />
@@ -52,15 +69,16 @@ const RatingBar = ({ star, count, pct }) => (
         </div>
         <span className="text-xs text-neutral-400 w-4 text-right shrink-0">{count}</span>
     </div>
-);
+));
 
 /* ─── Accordion ─── */
-const Accordion = ({ title, icon, children, defaultOpen = false }) => {
+const Accordion = memo(({ title, icon, children, defaultOpen = false }) => {
     const [open, setOpen] = useState(defaultOpen);
     return (
         <div className="border border-neutral-100 rounded-xl mb-2 overflow-hidden">
             <button
                 onClick={() => setOpen(o => !o)}
+                aria-expanded={open}
                 className="w-full flex items-center justify-between px-4 py-3.5
                            bg-neutral-50 hover:bg-neutral-100 transition-colors text-left"
             >
@@ -78,105 +96,10 @@ const Accordion = ({ title, icon, children, defaultOpen = false }) => {
             )}
         </div>
     );
-};
-
-/* ─── Share Modal ─── */
-const ShareModal = ({ product, onClose }) => {
-    const [copied, setCopied] = useState(false);
-    const url = window.location.href;
-    const text = encodeURIComponent(`${product.name} — ₹${Number(product.price).toLocaleString("en-IN")}`);
-    const enc = encodeURIComponent(url);
-    const links = [
-        { icon: <FaWhatsapp size={22} />, label: "WhatsApp", color: "#25D366", bg: "bg-green-50", href: `https://wa.me/?text=${text}%20${enc}` },
-        { icon: <FaFacebook size={22} />, label: "Facebook", color: "#1877F2", bg: "bg-blue-50", href: `https://www.facebook.com/sharer/sharer.php?u=${enc}` },
-        { icon: <FaTwitter size={22} />, label: "Twitter", color: "#000", bg: "bg-neutral-100", href: `https://twitter.com/intent/tweet?text=${text}&url=${enc}` },
-        { icon: <FaInstagram size={22} />, label: "Instagram", color: "#E1306C", bg: "bg-pink-50", href: `https://www.instagram.com/` },
-    ];
-    return (
-        <div onClick={onClose}
-            className="fixed inset-0 z-[99999] bg-black/55 backdrop-blur-sm
-                       flex items-start justify-center pt-[8vh] px-4">
-            <div onClick={e => e.stopPropagation()}
-                className="bg-white w-full max-w-sm rounded-2xl shadow-2xl max-h-[82vh] overflow-y-auto
-                           animate-[slideDown_.22s_ease]">
-                {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
-                    <span className="font-bold text-[15px] text-neutral-900">Share Product</span>
-                    <button onClick={onClose}
-                        className="w-7 h-7 rounded-full bg-neutral-100 flex items-center justify-center
-                                   hover:bg-neutral-200 transition-colors">
-                        <FaTimes size={11} className="text-neutral-500" />
-                    </button>
-                </div>
-                {/* Product preview */}
-                <div className="mx-5 my-3 bg-neutral-50 rounded-xl p-3 flex items-center gap-3 border border-neutral-100">
-                    <div className="w-12 h-12 rounded-lg bg-white border border-neutral-100 overflow-hidden shrink-0 flex items-center justify-center">
-                        {product.images?.[0]?.url
-                            ? <img src={imgUrl.detail(product.images[0].url)} alt={product.name}
-                                className="w-full h-full object-contain p-1" loading="lazy" />
-                            : <span className="text-xl">🎁</span>}
-                    </div>
-                    <div className="min-w-0">
-                        <p className="font-semibold text-[13px] text-neutral-900 truncate">{product.name}</p>
-                        <p className="font-bold text-[13px] text-green-600 mt-0.5">
-                            ₹{Number(product.price).toLocaleString("en-IN")}
-                        </p>
-                    </div>
-                </div>
-                {/* Social links */}
-                <div className="grid grid-cols-4 gap-2 px-5 pb-4">
-                    {links.map(({ icon, label, color, bg, href }) => (
-                        <a key={label} href={href} target="_blank" rel="noopener noreferrer"
-                            className="flex flex-col items-center gap-1.5 no-underline">
-                            <div className={`w-13 h-13 w-[52px] h-[52px] rounded-[14px] ${bg} flex items-center justify-center`}
-                                style={{ color }}>
-                                {icon}
-                            </div>
-                            <span className="text-[10px] font-semibold text-neutral-500 text-center">{label}</span>
-                        </a>
-                    ))}
-                </div>
-                {/* Copy link */}
-                <div className="mx-5 mb-5 flex items-center gap-2 bg-neutral-50 rounded-xl px-3 py-2.5 border border-neutral-100">
-                    <span className="text-xs text-neutral-400 flex-1 truncate">{url}</span>
-                    <button
-                        onClick={async () => {
-                            try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { }
-                        }}
-                        className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all
-                                    ${copied ? "bg-green-100 text-green-700" : "bg-orange-500 text-white hover:bg-orange-600"}`}>
-                        {copied ? <><FaCheckCircle size={9} /> Copied!</> : <><FaLink size={9} /> Copy</>}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-/* ─── Zoom Modal ─── */
-const ZoomModal = ({ src, alt, onClose }) => {
-    useEffect(() => {
-        const h = e => { if (e.key === "Escape") onClose(); };
-        window.addEventListener("keydown", h);
-        return () => window.removeEventListener("keydown", h);
-    }, [onClose]);
-    return (
-        <div onClick={onClose}
-            className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center">
-            <button onClick={onClose}
-                className="fixed top-4 right-4 w-10 h-10 bg-white/15 border border-white/25
-                           rounded-lg flex items-center justify-center hover:bg-white/25 transition-colors">
-                <FaTimes size={16} className="text-white" />
-            </button>
-            <div onClick={e => e.stopPropagation()} className="w-[90vw] h-[85vh] flex items-center justify-center">
-                <img src={src} alt={alt} className="max-w-full max-h-full object-contain" />
-            </div>
-        </div>
-    );
-};
+});
 
 /* ─── Related Card — v3 ─── */
-const RelatedCard = ({ rp }) => {
+const RelatedCard = memo(({ rp }) => {
     const mrp = getMrp(rp);
     const price = Number(rp.price || 0);
     const hasDisc = mrp && mrp > price;
@@ -251,7 +174,7 @@ const RelatedCard = ({ rp }) => {
             </div>
         </Link>
     );
-};
+});
 
 /* ═══════════════════════════════════════════════════════════
    MAIN COMPONENT
@@ -296,6 +219,13 @@ const ProductDetails = () => {
     const [showNotifyInput, setShowNotifyInput] = useState(false);
 
     const abortRef = useRef(null);
+    // Hard, synchronous guard against double-submitting a review. `submitting`
+    // (state) is what disables the button visually, but state updates are
+    // async/batched — two very fast clicks (or click + Enter) can both read
+    // `submitting === false` before the re-render lands, firing two POSTs.
+    // A ref flips synchronously on the same tick, so the second call bails
+    // out immediately regardless of render timing.
+    const reviewSubmitLockRef = useRef(false);
 
     /* ── Active Variant ── */
     const activeVariant = useMemo(() => {
@@ -336,6 +266,8 @@ const ProductDetails = () => {
     const savedAmount = useMemo(() => hasDiscount ? displayMrp - displayPrice : 0, [hasDiscount, displayMrp, displayPrice]);
     const discountPct = useMemo(() => hasDiscount ? Math.round(((displayMrp - displayPrice) / displayMrp) * 100) : null, [hasDiscount, displayMrp, displayPrice]);
 
+    // Derived from local `reviews` state — no need to ever refetch the
+    // product just to get an up-to-date average rating / count.
     const avgRating = useMemo(() => {
         if (reviews?.length > 0) return reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length;
         return product?.rating || 0;
@@ -373,8 +305,11 @@ const ProductDetails = () => {
     }, [product?.sizes]);
 
     /* ── Fetch ── */
-    const fetchReviews = useCallback(async (pid) => {
-        try { const { data } = await api.get(`/reviews/${pid}`); setReviews(data); } catch { }
+    const fetchReviews = useCallback(async (pid, signal) => {
+        try {
+            const { data } = await api.get(`/reviews/${pid}`, signal ? { signal } : undefined);
+            setReviews(data);
+        } catch { }
     }, []);
 
     useEffect(() => {
@@ -393,15 +328,21 @@ const ProductDetails = () => {
                     if (def?.name) setSelectedColor(def.name);
                 }
                 trackView(prod);
-                const { data: related } = await api.get(`/products/${prod._id}/related`, { signal: ctrl.signal });
-                setRelatedProducts(related);
-                await fetchReviews(prod._id);
+
+                // Related products and reviews don't depend on each other —
+                // fetch them concurrently instead of one-after-another.
+                const [relatedRes, reviewsRes] = await Promise.all([
+                    api.get(`/products/${prod._id}/related`, { signal: ctrl.signal }),
+                    api.get(`/reviews/${prod._id}`, { signal: ctrl.signal }),
+                ]);
+                setRelatedProducts(relatedRes.data);
+                setReviews(reviewsRes.data);
             } catch (err) {
                 if (err.name !== "AbortError") setError("Failed to load product.");
             } finally { setLoading(false); }
         })();
         return () => ctrl.abort();
-    }, [id, fetchReviews]);
+    }, [id, trackView]);
 
     useEffect(() => {
         if (!user || !reviews.length) return;
@@ -436,9 +377,7 @@ const ProductDetails = () => {
         product?.productType === "urbexon_hour" ||
         !!product?.vendorId;
 
-
     const handleAddToCart = useCallback(() => {
-
         if (normalizedSizes.length > 0 && !selectedSize) return alert("Please select a size!");
         if (product?.colorVariants?.length > 0 && !selectedColor) return alert("Please select a color!");
         const cartItemId = `${product._id}-${selectedSize || 'nosize'}-${selectedColor || 'nocolor'}`;
@@ -469,7 +408,7 @@ const ProductDetails = () => {
             cartItemId,
         });
         setAddedFlash(true); setTimeout(() => setAddedFlash(false), 1500);
-    }, [product, selectedSize, selectedColor, normalizedSizes, addItem, getCustomization, displayPrice, displayMrp, activeVariant]);
+    }, [product, selectedSize, selectedColor, normalizedSizes, addItem, getCustomization, displayPrice, displayMrp, activeVariant, isUrbexonHourProduct]);
 
     const handleBuyNow = useCallback(() => {
         if (normalizedSizes.length > 0 && !selectedSize) return alert("Please select a size!");
@@ -504,7 +443,7 @@ const ProductDetails = () => {
         };
         try { sessionStorage.setItem("ux_buy_now_item", JSON.stringify(buyNowItem)); } catch { }
         navigate("/checkout", { state: { buyNowItem } });
-    }, [product, selectedSize, selectedColor, normalizedSizes, navigate, getCustomization, displayPrice, displayMrp, activeVariant]);
+    }, [product, selectedSize, selectedColor, normalizedSizes, navigate, getCustomization, displayPrice, displayMrp, activeVariant, isUrbexonHourProduct]);
 
     const handleNotifyMe = useCallback(async () => {
         if (!notifyEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notifyEmail)) {
@@ -522,17 +461,20 @@ const ProductDetails = () => {
     const handleSubmitReview = useCallback(async (e) => {
         e.preventDefault();
         if (!myRating) return setReviewError("Select a rating first");
+        // Synchronous guard — see comment on reviewSubmitLockRef above.
+        if (reviewSubmitLockRef.current) return;
+        reviewSubmitLockRef.current = true;
         try {
             setSubmitting(true); setReviewError("");
             await api.post(`/reviews/${product._id}`, { rating: myRating, comment: myComment });
             setReviewSuccess(true);
+            // Only refresh reviews — avgRating/ratingBars are derived from
+            // this state via useMemo, so a full product refetch isn't needed.
             await fetchReviews(product._id);
-            const { data } = await api.get(`/products/${id}`);
-            setProduct(data);
             setTimeout(() => setReviewSuccess(false), 2500);
         } catch (err) { setReviewError(err.response?.data?.message || "Failed to submit"); }
-        finally { setSubmitting(false); }
-    }, [myRating, myComment, product?._id, fetchReviews, id]);
+        finally { setSubmitting(false); reviewSubmitLockRef.current = false; }
+    }, [myRating, myComment, product?._id, fetchReviews]);
 
     const handleDeleteReview = useCallback(async (rid) => {
         try {
@@ -603,7 +545,7 @@ const ProductDetails = () => {
                 {/* ── Breadcrumb bar ── */}
                 <div className="bg-white border-b border-neutral-100 px-4 py-2.5 sticky top-0 z-30">
                     <div className="max-w-6xl mx-auto flex items-center gap-2">
-                        <button onClick={() => navigate(-1)}
+                        <button onClick={() => navigate(-1)} aria-label="Go back"
                             className="flex items-center gap-1.5 text-orange-500 hover:text-orange-600
                                        text-sm font-semibold transition-colors bg-orange-50
                                        hover:bg-orange-100 px-3 py-1.5 rounded-lg">
@@ -658,6 +600,7 @@ const ProductDetails = () => {
                                     {/* Share button */}
                                     <button
                                         onClick={e => { e.stopPropagation(); setShareOpen(true); }}
+                                        aria-label="Share this product"
                                         className="absolute top-3 right-3 z-10 flex items-center gap-1.5
                                                    bg-white/90 backdrop-blur-sm border border-neutral-100
                                                    rounded-xl px-3 py-1.5 text-[11px] font-semibold text-neutral-600
@@ -687,13 +630,14 @@ const ProductDetails = () => {
                                     <div className="flex gap-2 mt-3 overflow-x-auto pb-1 thumb-scroll">
                                         {allImages.map((img, i) => (
                                             <button key={i} onClick={() => setActiveImg(i)}
+                                                aria-label={`View image ${i + 1} of ${allImages.length}`}
                                                 className={`shrink-0 w-14 h-14 rounded-xl overflow-hidden
                                                             border-2 transition-all duration-150
                                                             ${activeImg === i
                                                         ? "border-orange-400 shadow-[0_0_0_2px_rgba(249,115,22,0.2)]"
                                                         : "border-neutral-100 hover:border-neutral-300"}`}>
                                                 <img src={imgUrl.card(img.url)} alt={`${product.name} ${i + 1}`}
-                                                    className="w-full h-full object-cover" />
+                                                    className="w-full h-full object-cover" loading="lazy" />
                                             </button>
                                         ))}
                                     </div>
@@ -820,6 +764,7 @@ const ProductDetails = () => {
                                                 return (
                                                     <button key={size} disabled={isOos}
                                                         onClick={() => !isOos && setSelectedSize(size)}
+                                                        aria-pressed={selectedSize === size}
                                                         className={`min-w-[46px] h-10 px-3 rounded-xl text-[12px] font-semibold
                                                                     border-2 transition-all duration-150
                                                                     ${isOos
@@ -874,6 +819,7 @@ const ProductDetails = () => {
                                                     <button key={idx}
                                                         onClick={() => !isVarOos && setSelectedColor(cName)}
                                                         disabled={isVarOos}
+                                                        aria-pressed={isSelected}
                                                         title={`${cName}${isVarOos ? " — Out of Stock" : ` (${vStock} left)`}`}
                                                         className={`relative flex items-center gap-2 px-3 py-2 rounded-xl
                                                                     border-2 transition-all duration-150 text-left min-h-[46px]
@@ -883,7 +829,7 @@ const ProductDetails = () => {
                                                                     : "border-neutral-200 bg-white hover:border-neutral-300 hover:-translate-y-0.5"}`}>
                                                         {thumb ? (
                                                             <img src={thumb} alt={cName}
-                                                                className="w-8 h-8 object-cover rounded-lg border border-neutral-100 shrink-0" />
+                                                                className="w-8 h-8 object-cover rounded-lg border border-neutral-100 shrink-0" loading="lazy" />
                                                         ) : variant.hex ? (
                                                             <span className="w-6 h-6 rounded-full border-2 border-neutral-200 shrink-0 inline-block"
                                                                 style={{ background: variant.hex }} />
@@ -980,7 +926,7 @@ const ProductDetails = () => {
                                                         <div className="relative inline-block">
                                                             <img src={customImagePreview} alt="custom"
                                                                 className="w-16 h-16 object-cover rounded-xl border border-amber-200" />
-                                                            <button onClick={removeCustomImage}
+                                                            <button onClick={removeCustomImage} aria-label="Remove uploaded image"
                                                                 className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white
                                                                            rounded-full flex items-center justify-center">
                                                                 <FaTimes size={8} />
@@ -1147,6 +1093,7 @@ const ProductDetails = () => {
                                 { key: "reviews", label: `Reviews (${reviews.length})` },
                             ].map(tab => (
                                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                                    aria-selected={activeTab === tab.key}
                                     className={`px-5 py-3.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-all duration-150
                                                 ${activeTab === tab.key
                                             ? "border-orange-500 text-orange-500 bg-orange-50/50"
@@ -1205,6 +1152,7 @@ const ProductDetails = () => {
                                             <div className="flex gap-1 mb-3">
                                                 {[1, 2, 3, 4, 5].map(s => (
                                                     <button key={s} type="button" onClick={() => setMyRating(s)}
+                                                        aria-label={`Rate ${s} star${s > 1 ? "s" : ""}`}
                                                         className="text-[26px] bg-none border-none cursor-pointer p-0.5 transition-transform hover:scale-110">
                                                         {s <= myRating
                                                             ? <FaStar className="text-amber-400" />
@@ -1264,6 +1212,7 @@ const ProductDetails = () => {
                                                             </div>
                                                             {isOwn && (
                                                                 <button onClick={() => handleDeleteReview(r._id)}
+                                                                    aria-label="Delete your review"
                                                                     className="text-neutral-300 hover:text-red-400 transition-colors p-1">
                                                                     <FaTrash size={11} />
                                                                 </button>
@@ -1305,8 +1254,13 @@ const ProductDetails = () => {
                 </div>
             </div>
 
-            {imgZoomed && <ZoomModal src={heroUrl} alt={product.name} onClose={() => setImgZoomed(false)} />}
-            {shareOpen && <ShareModal product={product} onClose={() => setShareOpen(false)} />}
+            {/* Lazy-loaded modals — code is only downloaded when opened */}
+            <Suspense fallback={null}>
+                {imgZoomed && <ZoomModal src={heroUrl} alt={product.name} onClose={() => setImgZoomed(false)} />}
+            </Suspense>
+            <Suspense fallback={null}>
+                {shareOpen && <ShareModal product={product} onClose={() => setShareOpen(false)} />}
+            </Suspense>
         </>
     );
 };

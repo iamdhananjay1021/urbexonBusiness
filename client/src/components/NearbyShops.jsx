@@ -1,7 +1,7 @@
 /**
- * NearbyShops.jsx — Production v3
+ * NearbyShops.jsx — Production v3.1
  * ────────────────────────────────
- * ✅ Works WITHOUT geolocation — uses pincode fallback → all-vendor fallback
+ * ✅ Waits for a resolved pincode before fetching (no wasted no-pincode call)
  * ✅ Accepts `pincode` prop from UrbexonHour (already knows user's pincode)
  * ✅ Optional geolocation for distance display
  * ✅ Dynamic categories extracted from vendor response
@@ -11,6 +11,15 @@
  * Props:
  *   pincode     = string      (6-digit, passed from UH page)
  *   maxResults  = number      (default 20)
+ *
+ * CHANGE LOG (v3.1):
+ *   - fetchNearby now bails out early when `pincode` hasn't arrived yet
+ *     instead of firing a "fallback" call with no pincode and then
+ *     immediately re-fetching once the pincode prop lands. In practice
+ *     UrbexonHour only mounts this component after the pincode is
+ *     already resolved, so the old no-pincode fallback call was pure
+ *     network waste (Network tab showed `nearby?limit=12` followed
+ *     immediately by `nearby?limit=12&pincode=224122`).
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
@@ -76,16 +85,20 @@ const NearbyShops = ({ pincode, pincodeLabel = '', maxResults = 20, linkBase = "
         } catch { /* ignore */ }
     }, []);
 
-    /* ── Fetch vendors ── */
+    /* ── Fetch vendors ──
+       Bails out until a pincode is actually known — avoids a wasted
+       no-pincode "fallback" request immediately followed by a second
+       request once the real pincode prop arrives. */
     const fetchNearby = useCallback(async () => {
-        const key = `${pincode || ""},${userLoc?.latitude || ""},${activeCategory || ""}`;
+        if (!pincode) return;
+
+        const key = `${pincode},${userLoc?.latitude || ""},${activeCategory || ""}`;
         if (prevFetchRef.current === key) return;
         prevFetchRef.current = key;
 
         try {
             setLoading(true);
-            const params = { limit: maxResults };
-            if (pincode) params.pincode = pincode;
+            const params = { limit: maxResults, pincode };
             if (userLoc?.latitude && userLoc?.longitude) {
                 params.lat = userLoc.latitude;
                 params.lng = userLoc.longitude;

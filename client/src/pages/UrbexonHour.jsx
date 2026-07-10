@@ -1,7 +1,27 @@
 /**
- * UrbexonHour.jsx — Production v5.0
+ * UrbexonHour.jsx — Production v5.1
  *
- * WHAT CHANGED IN THIS PASS
+ * WHAT CHANGED IN THIS PASS (on top of v5.0)
+ * ──────────────────────────────────────────────────────────────────────
+ * Network dedup fixes:
+ *   - Categories: the old 3-attempt retry loop against /categories
+ *     (type=urbexon-hour, then productType=urbexon_hour, then
+ *     productType=urbexon-hour) is gone. It duplicated work the Navbar
+ *     was already doing. Both now read from the same shared, cached
+ *     useCategories("urbexon_hour") hook — one network call, shared
+ *     across every component that needs UH categories.
+ *   - Banners: hero/mid banners never depend on pincode, but they were
+ *     living in an effect keyed on `savedPincode?.code`, so they refired
+ *     every time the pincode changed even though the response never
+ *     changes. Moved to their own effect with an empty dependency array.
+ *   - Homepage data: was being fetched from THREE places — an effect on
+ *     mount, the same effect again on pincode change, and a third time
+ *     inside checkPincodeInner's Promise.allSettled. Now it's fetched
+ *     only where it actually needs to be: once with no pincode (so the
+ *     page has something to show before a pincode is known), and once
+ *     per confirmed pincode inside checkPincodeInner.
+ *
+ * (v5.0 notes retained below)
  * ──────────────────────────────────────────────────────────────────────
  * Brand consistency fix:
  *   Page previously used a violet/purple palette while claiming to
@@ -33,6 +53,7 @@ import { useNavigate, useSearchParams, useParams } from "react-router-dom";
 import api from "../api/axios";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../hooks/useCart";
+import { useCategories } from "../hooks/useCategories";
 import {
     FaBolt, FaMapMarkerAlt, FaStore, FaShoppingCart,
     FaClock, FaStar, FaChevronRight, FaSearch, FaBell,
@@ -512,10 +533,17 @@ const UrbexonHour = () => {
     const { uhTotalQty, uhTotal, uhItems } = useCart();
     const { recentlyViewed: uhRecentlyViewed } = useRecentlyViewed("urbexon_hour");
 
+    /* Categories — shared/cached hook, no more page-local retry loop
+       against /categories. Same cache Navbar reads from. */
+    const { categories: rawApiCategories } = useCategories("urbexon_hour");
+    const apiCategories = useMemo(
+        () => rawApiCategories.filter(c => c.isActive !== false),
+        [rawApiCategories]
+    );
+
     const [pincode, setPincode] = useState(""); // last CONFIRMED pincode only
     const [pinData, setPinData] = useState(null);
     const [products, setProducts] = useState([]);
-    const [apiCategories, setApiCategories] = useState([]);
     const [loading, setLoading] = useState(false);
     const [locationLoading, setLocationLoading] = useState(false);
     const [error, setError] = useState("");
@@ -559,29 +587,6 @@ const UrbexonHour = () => {
     }, [apiCategories, navigate]);
 
     useEffect(() => {
-        const parseCategories = (res) =>
-            Array.isArray(res?.data?.data) ? res.data.data
-                : Array.isArray(res?.data?.categories) ? res.data.categories
-                    : Array.isArray(res?.data) ? res.data : [];
-
-        (async () => {
-            const attempts = [
-                { type: "urbexon_hour", productType: "urbexon_hour" },
-                { type: "urbexon-hour", productType: "urbexon-hour" },
-                { productType: "urbexon_hour" },
-            ];
-            for (const params of attempts) {
-                const res = await api.get("/categories", { params }).catch(() => null);
-                const cats = parseCategories(res);
-                if (cats.length > 0) {
-                    setApiCategories(cats.filter(c => c.isActive !== false));
-                    return;
-                }
-            }
-        })();
-    }, []);
-
-    useEffect(() => {
         if (!slug) { setActiveCategory(null); return; }
         const decoded = decodeURIComponent(slug).toLowerCase().replace(/-/g, " ");
         const matched = apiCategories.find(c => c.slug?.toLowerCase() === slug.toLowerCase() ||
@@ -590,14 +595,26 @@ const UrbexonHour = () => {
         setActiveCategory(matched ? matched.name : null);
     }, [slug, apiCategories]);
 
+    /* Banners — never depend on pincode, so they live in their own
+       mount-only effect instead of refiring on every pincode change. */
     useEffect(() => {
         api.get("/banners", { params: { type: "urbexon_hour", placement: "hero" } })
             .then(({ data }) => setHeroBanners(Array.isArray(data) ? data : [])).catch(() => { });
         api.get("/banners", { params: { type: "urbexon_hour", placement: "mid" } })
             .then(({ data }) => setMidBanners(Array.isArray(data) ? data : [])).catch(() => { });
-        api.get("/products/urbexon-hour/homepage", { params: { pincode: savedPincode?.code || undefined } })
+    }, []);
+
+    /* Homepage data with no pincode yet — gives the page something to
+       show before a pincode is resolved. Once a pincode is confirmed,
+       checkPincodeInner below fetches the pincode-scoped version and
+       that becomes the source of truth; this effect only needs to run
+       once, before any pincode is known. */
+    useEffect(() => {
+        if (savedPincode?.code) return; // pincode-scoped fetch will happen in checkPincodeInner
+        api.get("/products/urbexon-hour/homepage")
             .then(({ data }) => setHomepageData(data)).catch(() => { });
-    }, [savedPincode?.code]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         if (uhTotalQty > 0) { setCartAnimating(true); const t = setTimeout(() => setCartAnimating(false), 600); return () => clearTimeout(t); }
