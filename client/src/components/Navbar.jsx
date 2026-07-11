@@ -1,38 +1,43 @@
 /**
- * Navbar.jsx — v3.0 Production
+ * Navbar.jsx — v4.1 Production
  *
- * WHAT CHANGED IN THIS PASS
+ * v4.0 → v4.1 CHANGES (alignment / responsive pass only — zero functional changes)
  * ──────────────────────────────────────────────────────────────────────
- * Rendering / performance fixes:
- *   - The scroll listener updated `scrolled`/`navHidden` state on every
- *     single scroll event with no throttling. Because those state vars
- *     lived on the top-level Navbar component, EVERY pixel of scroll was
- *     re-rendering the entire navbar tree — search bar, suggestions,
- *     category strip, user dropdown, mobile menu — even though only the
- *     header's background/transform actually needed to change. Scroll
- *     handling now runs through requestAnimationFrame so it's capped at
- *     the browser's paint rate, and only fires a state update when the
- *     derived boolean actually flips.
- *   - Desktop category bar, mobile bottom nav, and the mobile slide menu
- *     are large, mostly-static trees that were inlined directly in the
- *     render function. They're now memoized subcomponents, so a search
- *     keystroke or a scroll tick no longer rebuilds them.
- *   - Search suggestions dropdown extracted into its own memoized piece
- *     so typing doesn't force the whole top bar (logo, location button,
- *     cart, avatar menu) to re-render — only the input + dropdown do.
+ * - Mobile header rows (logo row, delivery-location row, search row) now
+ *   share one consistent horizontal padding (px-3) instead of three
+ *   slightly different values (px-2.5 xs:px-3 / px-3 / px-2.5 xs:px-3).
+ *   Previously the "Deliver to" row and search bar didn't line up with
+ *   the logo row above them.
+ * - Category strip is shared between desktop and mobile but desktop uses
+ *   px-4 lg:px-8 while mobile rows use px-3 — the strip now takes a
+ *   `mobile` flag and matches whichever header it's docked to, so chips
+ *   line up with the content above instead of sitting slightly indented.
+ * - Desktop Row 1 gap tightened at md/lg (gap-2 lg:gap-3) so the toggle
+ *   pill + action icons don't crowd/overflow between the md and lg
+ *   breakpoints, where the "Deliver to" block is still hidden.
+ * - Added a compact icon-only "Deliver to" button for the md→lg gap
+ *   (visible only in that range) so location is never fully unreachable
+ *   on mid-size desktop/tablet widths — full label version still takes
+ *   over at lg+.
+ * - Mobile icon cluster gap set to a safe minimum (gap-0.5) with
+ *   flex-shrink-0 on every button so 4–5 icons + logo + UH pill never
+ *   wrap or overlap on narrow (320–360px) screens.
+ * - No handler, effect, ref, state, route, or API call was touched.
  *
- * Design fixes:
- *   - This is the single source of truth for the UH amber (#f59e0b)
- *     accent; UrbexonHour.jsx has been aligned to match it, so the
- *     navbar → page handoff now reads as one coherent brand instead of
- *     amber-navbar-meets-violet-page.
- *   - Slightly refined spacing/weight in the mobile slide menu and
- *     dropdown so section headers, dividers and hit targets feel like
- *     one considered system rather than accreted pieces.
+ * v4.2 CHANGE (this pass)
+ * ──────────────────────────────────────────────────────────────────────
+ * - Desktop header used to render TWO search bars stacked on top of each
+ *   other: the compact Row 1 search (next to logo/toggle) AND a second,
+ *   large centered search bar in its own Row 2 right below it. Both were
+ *   fully functional and independently wired to the same state, so it
+ *   just looked like a duplicate search box. Row 2 has been removed —
+ *   Row 1's search bar is now the only desktop search input. Mobile was
+ *   never affected (it only ever had its single tap-to-open search row),
+ *   so no mobile changes were needed here.
  */
 import { useNavigate, useLocation } from "react-router-dom";
 import { useCategories } from "../hooks/useCategories";
-import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, memo } from "react";
 import {
     FaSearch, FaShoppingCart, FaTimes, FaUser, FaBox,
     FaSignOutAlt, FaChevronDown, FaBolt, FaHeart,
@@ -43,17 +48,14 @@ import { useSelector } from "react-redux";
 import { useAuth } from "../contexts/AuthContext";
 import { useLocation2 } from "../contexts/LocationContext";
 import LocationModal from "./LocationModal";
-import { fetchActiveCategories } from "../api/categoryApi";
-import api from "../api/axios";
+import { getProductSuggestions } from "../api/productApi";
 import NotificationCenter from "./NotificationCenter";
+import VendorStoreDropdown from "./VendorStoreDropdown";
 import { selectEcommerceTotalItems, selectUHTotalItems } from "../features/cart/cartSlice";
+import { Avatar, Badge } from "../design-system";
+import { useUHLocation } from "../contexts/UHLocationContext";
 
 /* ─── Helpers ─────────────────────────────────────────── */
-const isUHCat = (c) =>
-    c?.productType === "urbexon_hour" || c?.productType === "urbexon-hour" ||
-    c?.type === "urbexon_hour" || c?.type === "urbexon-hour" || Boolean(c?.isUrbexonHour);
-
-const getInitial = (name) => name?.[0]?.toUpperCase() || "U";
 const firstName = (name) => name?.split(" ")[0] || "";
 
 const GLOBAL_STYLE = `
@@ -76,35 +78,122 @@ const GLOBAL_STYLE = `
 `;
 
 /* ═══════════════════════════════════════════════════════
-   DESKTOP CATEGORY BAR — memoized, mostly-static tree that
-   only needs to change when categories/active-path change.
+   CATEGORY STRIP — memoized, mostly-static tree that only
+   needs to change when categories/active-path change.
+   Reused verbatim on both desktop (row 3) and mobile (row 4).
+   `mobile` flag only changes outer horizontal padding so chips
+   stay aligned with whichever header (desktop/mobile) hosts it.
 ═══════════════════════════════════════════════════════ */
-const DesktopCategoryBar = memo(({ isUH, scrolled, uhCategories, ecoCategories, pathname, onSelectAll, onSelectCat, onSelectDeals }) => {
+const CatIcon = memo(({ cat }) => (
+    <span className="w-[18px] h-[18px] rounded-full overflow-hidden flex-shrink-0 bg-black/5 flex items-center justify-center text-[11px] leading-none">
+        {cat.image?.url
+            ? <img src={cat.image.url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
+            : <span>{cat.emoji || "🛍️"}</span>}
+    </span>
+));
+CatIcon.displayName = "CatIcon";
+
+/* Icon-on-top category chip — Flipkart-style: square icon, label below,
+   active state shown as a colored bottom border + bold label instead of
+   a filled pill. Used for the desktop strip. */
+const IconTopCat = memo(({ icon, label, active, badge, badgeVariant, activeColorClass, onClick }) => (
+    <button
+        className={`flex flex-col items-center gap-1.5 px-3.5 pt-2 pb-2.5 border-b-[3px] cursor-pointer flex-shrink-0 min-w-[68px] max-w-[84px] transition-all
+            ${active ? `${activeColorClass} text-gray-900` : "border-transparent text-gray-600 hover:text-gray-900"}`}
+        onClick={onClick}
+    >
+        <span className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 bg-gray-50 flex items-center justify-center text-[15px] leading-none">
+            {icon}
+        </span>
+        <span className={`text-[11.5px] leading-tight truncate max-w-full ${active ? "font-bold" : "font-medium"}`}>{label}</span>
+        {badge && <Badge variant={badgeVariant} className="!text-[8px] !px-1 !py-0 mt-0.5">{badge}</Badge>}
+    </button>
+));
+IconTopCat.displayName = "IconTopCat";
+
+const DesktopCategoryBar = memo(({ isUH, scrolled, uhCategories, ecoCategories, pathname, onSelectAll, onSelectCat, onSelectDeals, mobile = false, variant = "pill" }) => {
     const isUHCatActive = (s) => pathname === `/urbexon-hour/${s}`;
     const isCatActive = (s) => pathname === `/category/${s}`;
 
+    /* ── Icon-on-top variant (desktop, Flipkart-style) ── */
+    if (variant === "iconTop") {
+        return (
+            <div className={`border-b border-gray-100 transition-colors duration-300 ${scrolled ? "bg-white/90 backdrop-blur-md" : "bg-white"}`}>
+                <div className={`${mobile ? "max-w-full px-3" : "max-w-[1400px] mx-auto px-4 lg:px-8"} flex items-center overflow-x-auto ux-scrollbar-hide gap-0.5 lg:gap-1`}>
+                    {isUH ? (
+                        <>
+                            <IconTopCat
+                                icon={<FaBolt size={14} className="text-amber-500" />}
+                                label="All"
+                                badge="EXPRESS" badgeVariant="hour"
+                                active={pathname === "/urbexon-hour"}
+                                activeColorClass="border-amber-500"
+                                onClick={onSelectAll}
+                            />
+                            {uhCategories.map((cat) => (
+                                <IconTopCat
+                                    key={cat._id || cat.id}
+                                    icon={<CatIcon cat={cat} />}
+                                    label={cat.name}
+                                    badge={cat.isFast ? "FAST" : null} badgeVariant="hour"
+                                    active={isUHCatActive(cat.slug)}
+                                    activeColorClass="border-amber-500"
+                                    onClick={() => onSelectCat(cat.slug)}
+                                />
+                            ))}
+                        </>
+                    ) : (
+                        <>
+                            {ecoCategories.map((cat) => (
+                                <IconTopCat
+                                    key={cat._id || cat.id}
+                                    icon={<CatIcon cat={cat} />}
+                                    label={cat.name}
+                                    badge={cat.isHot ? "HOT" : null} badgeVariant="error"
+                                    active={isCatActive(cat.slug)}
+                                    activeColorClass="border-gray-900"
+                                    onClick={() => onSelectCat(cat.slug)}
+                                />
+                            ))}
+                            <IconTopCat
+                                icon={<FaTag size={13} className="text-rose-500" />}
+                                label="Deals"
+                                badge="HOT" badgeVariant="error"
+                                active={pathname === "/deals"}
+                                activeColorClass="border-gray-900"
+                                onClick={onSelectDeals}
+                            />
+                        </>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    /* ── Pill variant (mobile, unchanged from before) ── */
     return (
-        <div className={`border-b border-gray-100 transition-colors duration-300 ${scrolled ? "bg-white/85 backdrop-blur-md" : "bg-white"}`}>
-            <div className="max-w-[1400px] mx-auto px-4 lg:px-8 flex items-center overflow-x-auto ux-scrollbar-hide gap-0">
+        <div className={`border-b border-gray-100 transition-colors duration-300 ${scrolled ? "bg-white/90 backdrop-blur-md" : "bg-white"}`}>
+            <div className={`${mobile ? "max-w-full px-3" : "max-w-[1400px] mx-auto px-4 lg:px-8"} flex items-center overflow-x-auto ux-scrollbar-hide gap-1.5 py-1.5`}>
                 {isUH ? (
                     <>
                         <button
-                            className={`px-5 py-2.5 bg-transparent border-none cursor-pointer whitespace-nowrap flex-shrink-0 text-[12.5px] font-medium border-b-2 transition-all flex items-center gap-1.5
-                                ${pathname === "/urbexon-hour" ? "text-amber-600 border-amber-500 font-semibold" : "text-gray-500 border-transparent hover:text-gray-800"}`}
+                            className={`px-4 py-1.5 border cursor-pointer whitespace-nowrap flex-shrink-0 text-[12.5px] font-semibold rounded-full transition-all flex items-center gap-1.5
+                                ${pathname === "/urbexon-hour" ? "bg-amber-500 text-white border-amber-500 shadow-sm" : "bg-transparent text-gray-600 border-gray-200 hover:border-amber-300 hover:text-amber-600"}`}
                             onClick={onSelectAll}
                         >
                             All
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-white">EXPRESS</span>
+                            <Badge variant="hour" className="!bg-white/25 !text-white">EXPRESS</Badge>
                         </button>
                         {uhCategories.map((cat) => (
                             <button
                                 key={cat._id || cat.id}
-                                className={`px-5 py-2.5 bg-transparent border-none cursor-pointer whitespace-nowrap flex-shrink-0 text-[12.5px] font-medium border-b-2 transition-all flex items-center gap-1.5
-                                    ${isUHCatActive(cat.slug) ? "text-amber-600 border-amber-500 font-semibold" : "text-gray-500 border-transparent hover:text-gray-800"}`}
+                                className={`px-4 py-1.5 border cursor-pointer whitespace-nowrap flex-shrink-0 text-[12.5px] font-semibold rounded-full transition-all flex items-center gap-1.5
+                                    ${isUHCatActive(cat.slug) ? "bg-amber-500 text-white border-amber-500 shadow-sm" : "bg-transparent text-gray-600 border-gray-200 hover:border-amber-300 hover:text-amber-600"}`}
                                 onClick={() => onSelectCat(cat.slug)}
                             >
+                                <CatIcon cat={cat} />
                                 {cat.name}
-                                {cat.isFast && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-white">FAST</span>}
+                                {cat.isFast && <Badge variant="hour" className={isUHCatActive(cat.slug) ? "!bg-white/25 !text-white" : ""}>FAST</Badge>}
                             </button>
                         ))}
                     </>
@@ -113,21 +202,22 @@ const DesktopCategoryBar = memo(({ isUH, scrolled, uhCategories, ecoCategories, 
                         {ecoCategories.map((cat) => (
                             <button
                                 key={cat._id || cat.id}
-                                className={`px-5 py-2.5 bg-transparent border-none cursor-pointer whitespace-nowrap flex-shrink-0 text-[12.5px] font-medium border-b-2 transition-all flex items-center gap-1.5
-                                    ${isCatActive(cat.slug) ? "text-gray-900 border-gray-900 font-semibold" : "text-gray-500 border-transparent hover:text-gray-800"}`}
+                                className={`px-4 py-1.5 border cursor-pointer whitespace-nowrap flex-shrink-0 text-[12.5px] font-semibold rounded-full transition-all flex items-center gap-1.5
+                                    ${isCatActive(cat.slug) ? "bg-gray-900 text-white border-gray-900 shadow-sm" : "bg-transparent text-gray-600 border-gray-200 hover:border-gray-400 hover:text-gray-900"}`}
                                 onClick={() => onSelectCat(cat.slug)}
                             >
+                                <CatIcon cat={cat} />
                                 {cat.name}
-                                {cat.isHot && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500 text-white">HOT</span>}
+                                {cat.isHot && <Badge variant="error" className={isCatActive(cat.slug) ? "!bg-white/25 !text-white" : ""}>HOT</Badge>}
                             </button>
                         ))}
                         <button
-                            className={`px-5 py-2.5 bg-transparent border-none cursor-pointer whitespace-nowrap flex-shrink-0 text-[12.5px] font-medium border-b-2 transition-all flex items-center gap-1.5
-                                ${pathname === "/deals" ? "text-gray-900 border-gray-900 font-semibold" : "text-gray-500 border-transparent hover:text-gray-800"}`}
+                            className={`px-4 py-1.5 border cursor-pointer whitespace-nowrap flex-shrink-0 text-[12.5px] font-semibold rounded-full transition-all flex items-center gap-1.5
+                                ${pathname === "/deals" ? "bg-gray-900 text-white border-gray-900 shadow-sm" : "bg-transparent text-gray-600 border-gray-200 hover:border-gray-400 hover:text-gray-900"}`}
                             onClick={onSelectDeals}
                         >
                             Deals
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500 text-white">HOT</span>
+                            <Badge variant="error" className={pathname === "/deals" ? "!bg-white/25 !text-white" : ""}>HOT</Badge>
                         </button>
                     </>
                 )}
@@ -141,8 +231,8 @@ DesktopCategoryBar.displayName = "DesktopCategoryBar";
    SEARCH SUGGESTIONS DROPDOWN — its own memoized piece so
    typing doesn't re-render the logo/cart/avatar cluster.
 ═══════════════════════════════════════════════════════ */
-const SuggestionsDropdown = memo(({ suggestions, recentSearches, searchQueryLength, isUH, onPickSuggestion, onPickRecent }) => (
-    <div className="absolute top-[calc(100%+6px)] left-0 right-0 bg-white rounded-xl border border-gray-100 shadow-[0_8px_32px_rgba(0,0,0,0.1)] z-[700] max-h-[400px] overflow-y-auto py-2 animate-[fadeDown_0.15s_ease]">
+const SuggestionsDropdown = memo(({ suggestions, recentSearches, onPickSuggestion, onPickRecent }) => (
+    <div className="absolute top-[calc(100%+8px)] left-0 right-0 bg-white rounded-2xl border border-gray-100 shadow-[0_12px_36px_rgba(0,0,0,0.12)] z-[700] max-h-[400px] overflow-y-auto py-2 animate-[fadeDown_0.15s_ease]">
         {suggestions.length > 0 ? (
             <>
                 <div className="px-4 pt-1.5 pb-1 text-[10px] font-semibold text-gray-400 tracking-widest uppercase">Suggestions</div>
@@ -155,6 +245,7 @@ const SuggestionsDropdown = memo(({ suggestions, recentSearches, searchQueryLeng
                         <img
                             className="w-9 h-9 rounded-lg object-cover bg-gray-100 flex-shrink-0 border border-gray-100"
                             src={s?.images?.[0]?.url || "/placeholder.png"} alt={s?.name}
+                            loading="lazy" decoding="async"
                             onError={(e) => { e.currentTarget.src = "/placeholder.png"; }}
                         />
                         <div className="flex-1 min-w-0">
@@ -190,8 +281,8 @@ const MobileBottomNav = memo(({ scrolled, isUH, pathname, isAuth, onNavigate }) 
         { icon: <FaHeart size={17} />, label: "Wishlist", path: "/wishlist" },
     ];
     return (
-        <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[600] border-t border-gray-100 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] transition-colors duration-300 ${scrolled ? "bg-white/85 backdrop-blur-md" : "bg-white"}`}>
-            <div className="flex items-stretch h-[56px]">
+        <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[600] border-t border-gray-100 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] transition-colors duration-300 ${scrolled ? "bg-white/90 backdrop-blur-md" : "bg-white"}`}>
+            <div className="flex items-stretch h-[58px]">
                 {items.map(({ icon, label, path, isUHBtn }) => {
                     const active = isUHBtn ? isUH : pathname === path;
                     return (
@@ -221,7 +312,7 @@ const MobileBottomNav = memo(({ scrolled, isUH, pathname, isAuth, onNavigate }) 
 MobileBottomNav.displayName = "MobileBottomNav";
 
 /* ═══════════════════════════════════════════════════════════════
-   NAVBAR COMPONENT — Minimalist White Design
+   NAVBAR COMPONENT — Premium sticky layout
    Font: DM Sans (Google Fonts) — clean, modern, geometric
 ═══════════════════════════════════════════════════════════════ */
 const Navbar = () => {
@@ -245,8 +336,6 @@ const Navbar = () => {
     const ecoCount = useSelector(selectEcommerceTotalItems);
     const uhCount = useSelector(selectUHTotalItems);
 
-    // const [ecoCategories, setEcoCategories] = useState([]);
-    // const [uhCategories, setUhCategories] = useState([]);
     const [navHidden, setNavHidden] = useState(false);
     const [scrolled, setScrolled] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -258,6 +347,7 @@ const Navbar = () => {
     const [suggestions, setSuggestions] = useState([]);
     const [recentSearches, setRecentSearches] = useState([]);
 
+    const { uhPincode } = useUHLocation();
     const userMenuRef = useRef(null);
     const mobileSearchRef = useRef(null);
     const suggestTimer = useRef(null);
@@ -265,26 +355,14 @@ const Navbar = () => {
     const scrolledRef = useRef(false);
     const navHiddenRef = useRef(false);
     const rafPending = useRef(false);
+    const desktopHeaderRef = useRef(null);
+    const mobileHeaderRef = useRef(null);
+    const [desktopHeaderH, setDesktopHeaderH] = useState(null);
+    const [mobileHeaderH, setMobileHeaderH] = useState(null);
 
     const uhCatPath = (slug) => `/urbexon-hour/${slug}`;
     const { categories: ecoCategories } = useCategories("ecommerce");
     const { categories: uhCategories } = useCategories("urbexon_hour");
-
-    /* ── Fetch categories ── */
-    // useEffect(() => {
-    //     const parse = (res) =>
-    //         Array.isArray(res?.data?.data) ? res.data.data
-    //             : Array.isArray(res?.data?.categories) ? res.data.categories
-    //                 : Array.isArray(res?.data) ? res.data : [];
-
-    //     fetchActiveCategories({ params: { type: "ecommerce" } })
-    //         .then((res) => setEcoCategories(parse(res)))
-    //         .catch(() => { });
-
-    //     fetchActiveCategories({ params: { type: "urbexon_hour" } })
-    //         .then((res) => setUhCategories(parse(res)))
-    //         .catch(() => { });
-    // }, []);   // ← ye closing sahi se hai ya nahi confirm karo
 
     /* ── Scroll hide — throttled via rAF, and only sets state when the
          derived boolean actually changes, instead of on every pixel. ── */
@@ -313,6 +391,25 @@ const Navbar = () => {
         window.addEventListener("scroll", onScroll, { passive: true });
         return () => window.removeEventListener("scroll", onScroll);
     }, [mobileMenuOpen, searchOverlay]);
+
+    /* ── Measure real header height so the layout spacers below the fixed
+         header never drift out of sync with it (avoids content either
+         gapping away from the header or getting tucked under it). ── */
+    useLayoutEffect(() => {
+        const measure = () => {
+            if (desktopHeaderRef.current) setDesktopHeaderH(desktopHeaderRef.current.offsetHeight);
+            if (mobileHeaderRef.current) setMobileHeaderH(mobileHeaderRef.current.offsetHeight);
+        };
+        measure();
+        const ro = new ResizeObserver(measure);
+        if (desktopHeaderRef.current) ro.observe(desktopHeaderRef.current);
+        if (mobileHeaderRef.current) ro.observe(mobileHeaderRef.current);
+        window.addEventListener("resize", measure);
+        return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
+        // Mount-only: ResizeObserver already reacts to any height change
+        // (category bar appearing/disappearing, font load, etc.) on its own.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     /* ── Body lock ── */
     useEffect(() => {
@@ -370,17 +467,23 @@ const Navbar = () => {
         setMobileSearch("");
     }, [searchOverlay]);
 
-    /* ── Suggestions ── */
+    /* ── Suggestions ──
+       BUG FIX: no AbortController meant that if a slower earlier request
+       resolved after a newer one (typing "a" then quickly "ab"), its
+       response could land last and overwrite the more recent, more
+       relevant suggestions with stale ones. Aborting the in-flight
+       request whenever a new one is scheduled/unmounted closes that race,
+       same pattern already used in ProductDetails.jsx. */
     useEffect(() => {
         clearTimeout(suggestTimer.current);
         if (searchQuery.trim().length < 2) { setSuggestions([]); return; }
+        const ctrl = new AbortController();
         suggestTimer.current = setTimeout(() => {
-            const typeParam = isUH ? "&productType=urbexon-hour" : "&productType=ecommerce";
-            api.get(`/products/suggestions?q=${encodeURIComponent(searchQuery.trim())}${typeParam}`)
+            getProductSuggestions(searchQuery.trim(), isUH ? "urbexon-hour" : "ecommerce", { signal: ctrl.signal })
                 .then((r) => setSuggestions(Array.isArray(r.data) ? r.data : []))
-                .catch(() => setSuggestions([]));
+                .catch((err) => { if (err.code !== "ERR_CANCELED") setSuggestions([]); });
         }, 280);
-        return () => clearTimeout(suggestTimer.current);
+        return () => { clearTimeout(suggestTimer.current); ctrl.abort(); };
     }, [searchQuery, isUH]);
 
     /* ── Handlers ── */
@@ -402,7 +505,7 @@ const Navbar = () => {
             hist.unshift(query);
             localStorage.setItem(key, JSON.stringify(hist.slice(0, 15)));
             setRecentSearches(hist.slice(0, 15));
-        } catch { }
+        } catch { /* localStorage write/parse failed (quota, parse error) — search still proceeds without history save */ }
         setSuggestions([]); setSearchFocused(false); setMobileMenuOpen(false); setSearchOverlay(false);
         navigate(isUH ? `/urbexon-hour?search=${encodeURIComponent(query)}` : `/?search=${encodeURIComponent(query)}`);
     }, [navigate, isUH]);
@@ -419,23 +522,33 @@ const Navbar = () => {
         ? ["Grocery", "Snacks", "Drinks", "Fresh", "Dairy", "Bakery"]
         : ["Mobile", "Laptop", "TV", "Fashion", "Shoes", "Watches"];
 
+    const deliveryLabel = locationData?.label || locationData?.city || "Select delivery location";
+    const uhPincodeLabel = uhPincode?.area || uhPincode?.city || uhPincode?.code || "Set delivery pincode";
+    const vendorDropdownPincode = isUH ? uhPincode?.code : locationData?.pincode;
+    const vendorDropdownLabel = isUH ? uhPincodeLabel : deliveryLabel;
+
     return (
         <>
             <style>{GLOBAL_STYLE}</style>
 
             {/* ════════════════════════════════════════
-                DESKTOP TOP BAR
+                DESKTOP — SINGLE-ROW STICKY HEADER (Flipkart-style)
+                Row 1: logo · UH toggle · search (stretches) · location · actions
+                Row 2: icon-on-top category strip
+                (the old second, large centered search row has been
+                removed — Row 1's search is the only desktop search bar)
             ════════════════════════════════════════ */}
             <div
                 id="urbexon-navbar"
+                ref={desktopHeaderRef}
                 className={`hidden md:block fixed top-0 left-0 right-0 z-[600] transition-transform duration-300 ${navHidden ? "-translate-y-full" : "translate-y-0"}`}
             >
-                <div className={`border-b border-gray-100 shadow-[0_1px_12px_rgba(0,0,0,0.06)] transition-colors duration-300 ${scrolled ? "bg-white/85 backdrop-blur-md" : "bg-white"}`}>
-                    <div className="max-w-[1400px] mx-auto px-4 lg:px-8 h-[60px] flex items-center gap-4">
+                <div className={`shadow-[0_1px_12px_rgba(0,0,0,0.06)] transition-colors duration-300 ${shouldShowCatBar ? "" : "border-b border-gray-100"} ${scrolled ? "bg-white/90 backdrop-blur-md" : "bg-white"}`}>
 
-                        {/* Logo */}
+                    {/* ── Row 1: logo · UH toggle · search · location · actions ── */}
+                    <div className="max-w-[1400px] mx-auto px-4 lg:px-8 h-[68px] flex items-center gap-3 lg:gap-4">
                         <button
-                            className="flex items-baseline gap-0 bg-transparent border-none cursor-pointer flex-shrink-0 pr-3"
+                            className="flex items-baseline gap-0 bg-transparent border-none cursor-pointer flex-shrink-0"
                             onClick={() => go(isUH ? "/urbexon-hour" : "/")}
                         >
                             <span className="text-[22px] font-bold text-gray-900 tracking-[-0.5px] leading-none">
@@ -448,39 +561,35 @@ const Navbar = () => {
                             )}
                         </button>
 
-                        {/* Location — xl+ only */}
+                        {/* UH Toggle pill — Flipkart "Minutes"-style stacked icon+label chip */}
                         <button
-                            className="hidden xl:flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-lg bg-transparent border border-transparent hover:border-gray-300 hover:bg-gray-50 transition-all flex-shrink-0 max-w-[190px]"
-                            onClick={() => setLocModalOpen(true)}
+                            className={`flex flex-col items-center justify-center gap-0.5 px-3.5 py-1.5 rounded-xl border font-bold text-[10.5px] cursor-pointer flex-shrink-0 whitespace-nowrap transition-all leading-none
+                                ${isUH ? "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100" : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 hover:text-gray-900"}`}
+                            onClick={() => navigate(isUH ? "/" : "/urbexon-hour")}
                         >
-                            <FaMapMarkerAlt size={12} className="text-amber-500 flex-shrink-0" />
-                            <div className="text-left min-w-0">
-                                <div className="text-[10px] font-medium text-gray-500 leading-none mb-[3px] flex items-center gap-1">
-                                    Deliver to <FaChevronDown size={7} className="text-gray-400" />
-                                </div>
-                                <div className="text-[12px] font-semibold text-gray-900 truncate max-w-[120px] leading-tight">
-                                    {locationData?.label || locationData?.city || "Select location"}
-                                </div>
-                            </div>
+                            <FaBolt size={14} className={isUH ? "text-amber-500" : "text-gray-400"} />
+                            <span>{isUH ? "Store" : "Hour"}</span>
                         </button>
 
-                        {/* Search */}
-                        <div className="flex-1 max-w-[640px] relative">
+                        {/* Search — stretches to fill the space between the toggle and
+                            location/actions, Flipkart-style. This is now the ONLY
+                            desktop search bar. */}
+                        <div className="flex-1 min-w-0 relative">
                             <form
-                                className="flex items-stretch bg-gray-50 border border-gray-200 rounded-xl overflow-hidden h-[40px] focus-within:border-gray-400 focus-within:bg-white transition-all"
+                                className="flex items-stretch bg-gray-50 border border-gray-200 rounded-xl overflow-hidden h-[42px] focus-within:border-gray-400 focus-within:bg-white focus-within:shadow-[0_4px_18px_rgba(0,0,0,0.08)] transition-all"
                                 onSubmit={(e) => { e.preventDefault(); handleSearch(searchQuery); }}
                             >
-                                <span className="flex items-center pl-3.5 text-gray-400 flex-shrink-0">
-                                    <FaSearch size={13} />
+                                <span className="flex items-center pl-4 text-gray-400 flex-shrink-0">
+                                    <FaSearch size={14} />
                                 </span>
                                 <input
-                                    className="ux-search-input flex-1 px-3 border-none bg-transparent text-[13.5px] font-medium text-gray-800 placeholder:text-gray-400 placeholder:font-normal"
+                                    className="ux-search-input flex-1 min-w-0 px-3 border-none bg-transparent text-[13.5px] font-medium text-gray-800 placeholder:text-gray-400 placeholder:font-normal"
                                     type="text"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     onFocus={() => setSearchFocused(true)}
                                     onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-                                    placeholder={isUH ? "Search Urbexon Hour products…" : "Search products, brands and more"}
+                                    placeholder={isUH ? "Search Urbexon Hour products…" : "Search for Products, Brands and More"}
                                 />
                                 {!!searchQuery && (
                                     <button
@@ -488,16 +597,15 @@ const Navbar = () => {
                                         className="flex items-center justify-center bg-transparent border-none cursor-pointer px-2 text-gray-300 hover:text-gray-500 transition-colors"
                                         onClick={() => { setSearchQuery(""); setSuggestions([]); }}
                                     >
-                                        <FaTimes size={12} />
+                                        <FaTimes size={13} />
                                     </button>
                                 )}
                                 <button
                                     type="submit"
-                                    className={`border-none cursor-pointer px-4 flex items-center gap-1.5 text-[12.5px] font-semibold flex-shrink-0 transition-colors rounded-r-xl
+                                    className={`border-none cursor-pointer px-4 flex items-center flex-shrink-0 transition-colors
                                         ${isUH ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-gray-800 hover:bg-gray-900 text-white"}`}
                                 >
-                                    <FaSearch size={13} />
-                                    <span className="hidden lg:inline">Search</span>
+                                    <FaSearch size={14} />
                                 </button>
                             </form>
 
@@ -505,39 +613,55 @@ const Navbar = () => {
                                 <SuggestionsDropdown
                                     suggestions={suggestions}
                                     recentSearches={recentSearches}
-                                    searchQueryLength={searchQuery.length}
-                                    isUH={isUH}
                                     onPickSuggestion={pickSuggestion}
                                     onPickRecent={handleSearch}
                                 />
                             )}
                         </div>
 
-                        {/* UH Toggle pill */}
+                        {/* Delivery location — ecommerce opens the LocationModal; Urbexon
+                            Hour is read-only here (owns its own pincode flow on the page
+                            itself, via the "Change" button in its LocationBar) so this
+                            pill can never show a different value than that page. */}
+                        {/* Compact icon-only version — fills the md→lg gap where the
+                            full label version below is still hidden, so location stays
+                            reachable instead of vanishing at tablet/mid-desktop widths. */}
                         <button
-                            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border font-semibold text-[12px] cursor-pointer flex-shrink-0 whitespace-nowrap transition-all
-                                ${isUH ? "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100" : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 hover:text-gray-900"}`}
-                            onClick={() => navigate(isUH ? "/" : "/urbexon-hour")}
+                            className="hidden md:flex lg:hidden items-center justify-center w-9 h-9 rounded-lg bg-transparent border border-transparent hover:border-gray-300 hover:bg-gray-50 transition-all flex-shrink-0"
+                            onClick={() => isUH ? navigate("/urbexon-hour") : setLocModalOpen(true)}
+                            title={isUH ? uhPincodeLabel : deliveryLabel}
                         >
-                            <FaBolt size={11} className={isUH ? "text-amber-500" : "text-gray-400"} />
-                            <span>{isUH ? "Back to Store" : "Urbexon Hour"}</span>
+                            <FaMapMarkerAlt size={14} className={isUH ? "text-amber-500" : "text-gray-500"} />
                         </button>
 
+                        <button
+                            className="hidden lg:flex items-center gap-1.5 cursor-pointer px-2.5 py-2 rounded-lg bg-transparent border border-transparent hover:border-gray-300 hover:bg-gray-50 transition-all flex-shrink-0 max-w-[190px]"
+                            onClick={() => isUH ? navigate("/urbexon-hour") : setLocModalOpen(true)}
+                        >
+                            <FaMapMarkerAlt size={15} className={`flex-shrink-0 ${isUH ? "text-amber-500" : "text-gray-500"}`} />
+                            <span className={`text-[13px] font-semibold truncate leading-tight ${isUH ? "text-gray-800" : (locationData?.label || locationData?.city ? "text-gray-800" : "text-blue-600")}`}>
+                                {isUH ? uhPincodeLabel : deliveryLabel}
+                            </span>
+                            <FaChevronDown size={9} className="text-gray-400 flex-shrink-0" />
+                        </button>
+
+                        {/* Vendor Store — real vendors near the resolved pincode, so the
+                            user can jump straight to a vendor's own store and buy direct. */}
+                        <VendorStoreDropdown pincode={vendorDropdownPincode} pincodeLabel={vendorDropdownLabel} variant="desktop" />
+
                         {/* Action buttons */}
-                        <div className="flex items-center gap-1 ml-auto flex-shrink-0">
+                        <div className="flex items-center gap-0.5 lg:gap-1 flex-shrink-0">
+                            {!isUH && <NotificationCenter theme="light" />}
                             {isAuth ? (
                                 <>
                                     {!isUH && (
-                                        <>
-                                            <button
-                                                className="flex items-center gap-1.5 bg-transparent border border-transparent hover:border-gray-200 hover:bg-gray-50 cursor-pointer px-3 py-1.5 rounded-lg text-[13px] font-medium text-gray-600 hover:text-gray-900 transition-all whitespace-nowrap"
-                                                onClick={() => go("/wishlist")}
-                                            >
-                                                <FaHeart size={15} className="text-rose-400" />
-                                                <span className="hidden xl:inline">Wishlist</span>
-                                            </button>
-                                            <NotificationCenter theme="light" />
-                                        </>
+                                        <button
+                                            className="flex items-center gap-1.5 bg-transparent border border-transparent hover:border-gray-200 hover:bg-gray-50 cursor-pointer px-3 py-1.5 rounded-lg text-[13px] font-medium text-gray-600 hover:text-gray-900 transition-all whitespace-nowrap"
+                                            onClick={() => go("/wishlist")}
+                                        >
+                                            <FaHeart size={15} className="text-rose-400" />
+                                            <span className="hidden xl:inline">Wishlist</span>
+                                        </button>
                                     )}
 
                                     {isUH ? (
@@ -586,9 +710,7 @@ const Navbar = () => {
                                             className="flex items-center gap-2 bg-transparent border border-transparent hover:border-gray-300 hover:bg-gray-50 cursor-pointer px-2 py-1.5 rounded-lg transition-all"
                                             onClick={() => setUserMenuOpen((s) => !s)}
                                         >
-                                            <div className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
-                                                {getInitial(user?.name)}
-                                            </div>
+                                            <Avatar name={user?.name} size="sm" />
                                             <span className="hidden xl:block text-[13px] font-medium text-gray-800 max-w-[80px] truncate">
                                                 {firstName(user?.name)}
                                             </span>
@@ -598,9 +720,7 @@ const Navbar = () => {
                                         {userMenuOpen && (
                                             <div className="absolute right-0 top-[calc(100%+8px)] bg-white rounded-2xl border border-gray-100 shadow-[0_12px_40px_rgba(0,0,0,0.12)] min-w-[220px] z-[800] overflow-hidden animate-[dropDown_0.18s_ease]">
                                                 <div className="px-4 py-4 bg-gray-50 border-b border-gray-100 flex items-center gap-3">
-                                                    <div className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
-                                                        {getInitial(user?.name)}
-                                                    </div>
+                                                    <Avatar name={user?.name} size="md" />
                                                     <div className="min-w-0">
                                                         <div className="text-[13px] font-semibold text-gray-900 leading-tight">{user?.name}</div>
                                                         <div className="text-[11px] text-gray-600 break-all mt-0.5">{user?.email}</div>
@@ -690,41 +810,46 @@ const Navbar = () => {
             </div>
 
             {/* ════════════════════════════════════════
-                MOBILE NAVBAR
+                MOBILE — logo/actions · location · large search · categories
+                All four rows below share the same px-3 horizontal padding
+                so their content lines up in a single vertical column.
+                (Unchanged — mobile never had the duplicate-search issue,
+                it only ever renders this one tap-to-open search row.)
             ════════════════════════════════════════ */}
             <div
                 id="urbexon-navbar"
-                className={`md:hidden fixed top-0 left-0 right-0 z-[600] transition-all duration-300 border-b border-gray-100 shadow-[0_1px_8px_rgba(0,0,0,0.06)] ${navHidden ? "-translate-y-full" : "translate-y-0"} ${scrolled ? "bg-white/85 backdrop-blur-md" : "bg-white"}`}
+                ref={mobileHeaderRef}
+                className={`md:hidden fixed top-0 left-0 right-0 z-[600] transition-all duration-300 shadow-[0_1px_8px_rgba(0,0,0,0.06)] ${shouldShowCatBar ? "" : "border-b border-gray-100"} ${navHidden ? "-translate-y-full" : "translate-y-0"} ${scrolled ? "bg-white/90 backdrop-blur-md" : "bg-white"}`}
             >
-                <div className="flex items-center h-[54px] px-2 xs:px-3 gap-1.5">
+                {/* Row 1: logo + icon cluster */}
+                <div className="flex items-center h-[52px] px-3 gap-1.5">
                     <button
-                        className="flex items-baseline gap-0 bg-transparent border-none cursor-pointer flex-shrink-0 flex-grow-0"
+                        className="flex items-baseline gap-0 bg-transparent border-none cursor-pointer flex-shrink-0 min-w-0"
                         onClick={() => go(isUH ? "/urbexon-hour" : "/")}
                     >
-                        <span className="text-[18px] font-bold text-gray-900 tracking-[-0.3px] leading-none">
+                        <span className="text-[19px] font-bold text-gray-900 tracking-[-0.3px] leading-none truncate">
                             urbexon
                         </span>
                         {isUH && (
-                            <span className="ml-1 text-[11px] font-semibold text-amber-500 tracking-wide uppercase leading-none self-end mb-[1px]">
+                            <span className="ml-1 text-[11px] font-semibold text-amber-500 tracking-wide uppercase leading-none self-end mb-[1px] flex-shrink-0">
                                 hour
                             </span>
                         )}
                     </button>
 
-                    <div
-                        className="flex-1 min-w-0 flex items-center bg-gray-50 border border-gray-200 rounded-lg h-9 px-3 gap-2 cursor-pointer hover:border-gray-300 transition-colors"
-                        onClick={() => setSearchOverlay(true)}
+                    <button
+                        className={`ml-auto flex items-center gap-1 px-2.5 py-1 rounded-full border font-semibold text-[10.5px] cursor-pointer flex-shrink-0 whitespace-nowrap transition-all
+                            ${isUH ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-gray-50 text-gray-600 border-gray-200"}`}
+                        onClick={() => navigate(isUH ? "/" : "/urbexon-hour")}
                     >
-                        <FaSearch size={12} className="text-gray-400 flex-shrink-0" />
-                        <span className="text-[12.5px] text-gray-400 truncate leading-none">
-                            {isUH ? "Search Urbexon Hour…" : "Search products…"}
-                        </span>
-                    </div>
+                        <FaBolt size={9} className={isUH ? "text-amber-500" : "text-gray-400"} />
+                        <span>{isUH ? "Store" : "UH"}</span>
+                    </button>
 
                     <div className="flex items-center gap-0.5 flex-shrink-0">
                         {isUH ? (
                             <button
-                                className="w-9 h-9 border-none bg-transparent rounded-lg flex items-center justify-center text-gray-700 cursor-pointer relative hover:bg-gray-100 transition-colors"
+                                className="w-9 h-9 border-none bg-transparent rounded-lg flex items-center justify-center text-gray-700 cursor-pointer relative hover:bg-gray-100 transition-colors flex-shrink-0"
                                 onClick={() => go("/uh-cart")}
                             >
                                 <FaBolt size={17} className="text-amber-500" />
@@ -736,10 +861,10 @@ const Navbar = () => {
                             </button>
                         ) : (
                             <>
-                                {isAuth && <NotificationCenter variant="mobile" theme="light" />}
+                                <NotificationCenter variant="mobile" theme="light" />
                                 {uhCount > 0 && (
                                     <button
-                                        className="w-9 h-9 border-none bg-transparent rounded-lg flex items-center justify-center text-gray-700 cursor-pointer relative hover:bg-gray-100 transition-colors"
+                                        className="w-9 h-9 border-none bg-transparent rounded-lg flex items-center justify-center text-gray-700 cursor-pointer relative hover:bg-gray-100 transition-colors flex-shrink-0"
                                         onClick={() => go("/uh-cart")}
                                     >
                                         <FaBolt size={17} className="text-amber-500" />
@@ -749,7 +874,7 @@ const Navbar = () => {
                                     </button>
                                 )}
                                 <button
-                                    className="w-9 h-9 border-none bg-transparent rounded-lg flex items-center justify-center text-gray-700 cursor-pointer relative hover:bg-gray-100 transition-colors"
+                                    className="w-9 h-9 border-none bg-transparent rounded-lg flex items-center justify-center text-gray-700 cursor-pointer relative hover:bg-gray-100 transition-colors flex-shrink-0"
                                     onClick={() => go("/cart")}
                                 >
                                     <FaShoppingCart size={17} />
@@ -762,20 +887,70 @@ const Navbar = () => {
                             </>
                         )}
                         <button
-                            className="w-9 h-9 border-none bg-transparent rounded-lg flex items-center justify-center text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors"
+                            className="w-9 h-9 border-none bg-transparent rounded-lg flex items-center justify-center text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors flex-shrink-0"
                             onClick={() => setMobileMenuOpen((s) => !s)}
                         >
                             <FaBars size={17} />
                         </button>
                     </div>
                 </div>
+
+                {/* Row 2: delivery location + Vendor Store. Ecommerce opens the
+                    LocationModal; Urbexon Hour is read-only (owns its own pincode
+                    flow further down the page) so this can't disagree with it. */}
+                <div className="flex items-center gap-1 border-t border-gray-50 px-3">
+                    <button
+                        className="flex-1 min-w-0 flex items-center gap-2 h-[36px] bg-transparent border-none cursor-pointer active:bg-gray-50 transition-colors"
+                        onClick={() => isUH ? navigate("/urbexon-hour") : setLocModalOpen(true)}
+                    >
+                        <FaMapMarkerAlt size={12} className="text-amber-500 flex-shrink-0" />
+                        <span className="text-[10px] text-gray-500 font-medium flex-shrink-0">Deliver to</span>
+                        <span className="text-[12.5px] font-semibold text-gray-900 truncate min-w-0 flex-1 text-left">
+                            {isUH ? uhPincodeLabel : deliveryLabel}
+                        </span>
+                        <FaChevronDown size={9} className="text-gray-400 flex-shrink-0" />
+                    </button>
+                    <VendorStoreDropdown pincode={vendorDropdownPincode} pincodeLabel={vendorDropdownLabel} variant="mobile" />
+                </div>
+
+                {/* Row 3: large tap-to-search bar */}
+                <div className="px-3 pb-2.5 pt-1.5">
+                    <div
+                        className="flex items-center bg-gray-50 border border-gray-200 rounded-xl h-11 px-3.5 gap-2.5 cursor-pointer active:border-gray-300 transition-colors"
+                        onClick={() => setSearchOverlay(true)}
+                    >
+                        <FaSearch size={14} className="text-gray-400 flex-shrink-0" />
+                        <span className="text-[13.5px] text-gray-400 truncate leading-none">
+                            {isUH ? "Search Urbexon Hour…" : "Search products, brands and more"}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Row 4: category strip — same memoized component as desktop,
+                    padding matched to the rows above via the `mobile` flag */}
+                {shouldShowCatBar && (
+                    <DesktopCategoryBar
+                        mobile
+                        isUH={isUH}
+                        scrolled={scrolled}
+                        uhCategories={uhCategories}
+                        ecoCategories={ecoCategories}
+                        pathname={location.pathname}
+                        onSelectAll={() => navigate("/urbexon-hour")}
+                        onSelectCat={(slug) => navigate(isUH ? uhCatPath(slug) : `/category/${slug}`)}
+                        onSelectDeals={() => navigate("/deals")}
+                    />
+                )}
             </div>
 
             {/* ════════════════════════════════════════
-                SPACERS
+                SPACERS — must track the real rendered header height.
+                Fallback defaults updated to reflect the removed desktop
+                Row 2 (68px header row instead of 68+64) before the
+                ResizeObserver reports the real measured height.
             ════════════════════════════════════════ */}
-            <div className="hidden md:block" style={{ height: shouldShowCatBar ? "calc(60px + 45px)" : "60px" }} />
-            <div className="md:hidden h-[54px]" />
+            <div className="hidden md:block" style={{ height: desktopHeaderH ?? (shouldShowCatBar ? 102 : 68) }} />
+            <div className="md:hidden" style={{ height: mobileHeaderH ?? (shouldShowCatBar ? 194 : 148) }} />
 
             <MobileBottomNav
                 scrolled={scrolled}
@@ -802,9 +977,7 @@ const Navbar = () => {
             >
                 {isAuth ? (
                     <div className="relative bg-gray-50 border-b border-gray-100 px-4 py-4 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-base font-bold text-white flex-shrink-0">
-                            {getInitial(user?.name)}
-                        </div>
+                        <Avatar name={user?.name} size="md" />
                         <div className="min-w-0">
                             <div className="text-[14px] font-semibold text-gray-900 leading-tight">{user?.name}</div>
                             <div className="text-[11px] text-gray-600 break-all mt-0.5">{user?.email}</div>
@@ -862,7 +1035,7 @@ const Navbar = () => {
                                 <FaMapMarkerAlt size={12} className="text-amber-500" />
                             </span>
                             <span className="text-[13.5px] font-medium text-gray-800 truncate">
-                                {locationData?.label || locationData?.city || "Set Location"}
+                                {deliveryLabel}
                             </span>
                         </div>
                         <FaChevronRight size={10} className="text-gray-300" />

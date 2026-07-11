@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import api from "../api/axios";
+import { getProfile } from "../api/authApi";
 
 const getApiBase = () => {
     const apiUrl = import.meta.env.VITE_API_URL;
@@ -50,7 +50,7 @@ export const useOrderRealtime = ({ enabled = true, onStatusUpdate }) => {
             // 2. Pre-flight Expiry Guard (Prevents 401s from reaching network)
             if (isTokenExpired(tokenDep)) {
                 console.warn("[OrderRealtime] Token expired locally. Aborting SSE.");
-                api.get("/auth/profile").catch(() => { }); // Trigger Axios refresh/logout
+                getProfile().catch(() => { }); // Trigger Axios refresh/logout
                 return;
             }
 
@@ -66,7 +66,7 @@ export const useOrderRealtime = ({ enabled = true, onStatusUpdate }) => {
                 try {
                     const payload = JSON.parse(event.data);
                     if (isMounted) onStatusUpdate?.(payload);
-                } catch { }
+                } catch { /* malformed SSE payload — event silently ignored */ }
             });
 
             source.onerror = () => {
@@ -81,7 +81,18 @@ export const useOrderRealtime = ({ enabled = true, onStatusUpdate }) => {
                 }
 
                 if (isMounted) {
-                    api.get("/auth/profile").catch(() => { });
+                    getProfile().catch(() => { });
+
+                    // BUG FIX: a reconnect was never actually scheduled here —
+                    // once the SSE connection errored (a reverse-proxy idle
+                    // timeout after ~60s is the common case, but any transient
+                    // network blip does it too), order-status updates silently
+                    // stopped forever, with no visible sign to the user, until
+                    // some unrelated code path happened to change tokenDep
+                    // (forcing the effect to re-run). Retry with the same
+                    // backoff spirit as the circuit breaker above.
+                    clearTimeout(timer);
+                    timer = setTimeout(connect, globalSseFailures >= 3 ? 30000 : 3000 * globalSseFailures);
                 }
             };
         };

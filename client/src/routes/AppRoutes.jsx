@@ -8,7 +8,13 @@ import { Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import PageTransition from "../components/PageTransition";
 import MainLayout from "../layouts/MainLayout";
-import Login from "../pages/Login";
+
+// BUG FIX: was a static import — Login (and everything it pulls in, incl.
+// the Firebase SDK for Google sign-in) was being bundled into the main
+// entry chunk and downloaded by every visitor on every page, even ones who
+// never open /login. Every sibling route below is already lazy; this just
+// brings Login in line with that existing pattern.
+const Login = lazy(() => import("../pages/Login"));
 
 const Home = lazy(() => import("../pages/Home"));
 

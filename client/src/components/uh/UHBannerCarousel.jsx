@@ -70,6 +70,8 @@ const UHBannerCarousel = memo(({ banners = [] }) => {
                             alt={b.title || "Banner"}
                             className="uhb-img"
                             loading={i === 0 ? "eager" : "lazy"}
+                            decoding={i === 0 ? "sync" : "async"}
+                            fetchPriority={i === 0 ? "high" : "auto"}
                             draggable={false}
                         />
                         {(b.title || b.subtitle) && (

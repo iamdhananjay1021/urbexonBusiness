@@ -23,7 +23,6 @@ export default function SEO({
     image = DEFAULT_IMG,
     noindex = false,
     type = "website",
-    schema,
 }) {
     const fullTitle = title ? `${title} | ${SITE}` : `${SITE} | Premium Online Shopping`;
     const canonical = `${BASE}${path}`;

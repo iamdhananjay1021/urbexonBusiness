@@ -16,18 +16,21 @@ const useLocationTracking = (activeOrderId) => {
   const [pos, setPos] = useState(null);
   useEffect(() => {
     if (!activeOrderId || !navigator.geolocation) { setPos(null); return; }
-    const sendLocation = (lat, lng) => {
+    // BUG FIX: same fix as ActiveOrders.jsx's identical duplicated hook —
+    // send the GPS fix's own timestamp so the backend can reject an older
+    // fix even if its HTTP request arrives last.
+    const sendLocation = (lat, lng, timestamp) => {
       setPos({ lat, lng });
-      api.patch("/delivery/location", { orderId: activeOrderId, lat, lng }).catch(() => { });
+      api.patch("/delivery/location", { orderId: activeOrderId, lat, lng, timestamp }).catch(() => { });
     };
     const watchId = navigator.geolocation.watchPosition(
-      ({ coords }) => sendLocation(coords.latitude, coords.longitude),
+      (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude, pos.timestamp),
       () => { },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
     );
     const fallbackTimer = setInterval(() => {
       navigator.geolocation.getCurrentPosition(
-        ({ coords }) => sendLocation(coords.latitude, coords.longitude),
+        (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude, pos.timestamp),
         () => { },
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
       );

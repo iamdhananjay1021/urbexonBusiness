@@ -33,3 +33,17 @@ export const imgUrl = {
     detail: (url) => optimizeImage(url, 800),
     zoom: (url) => optimizeImage(url, 1200),
 };
+
+/**
+ * Builds a 1x/2x `srcSet` from the RAW (untransformed) source url so
+ * high-DPI screens (most phones) get a sharper image instead of the
+ * browser upscaling the 1x version — same visual size, no extra request
+ * beyond whichever candidate the browser already decides it needs.
+ * Pass the same raw url used for the corresponding imgUrl.* preset, not
+ * the already-transformed one (optimizeImage no-ops on already-transformed
+ * urls, which would make the 2x candidate identical to the 1x one).
+ */
+export const imgSrcSet = (rawUrl, baseWidth) => {
+    if (!rawUrl || !rawUrl.includes("cloudinary.com")) return undefined;
+    return `${optimizeImage(rawUrl, baseWidth)} 1x, ${optimizeImage(rawUrl, baseWidth * 2)} 2x`;
+};

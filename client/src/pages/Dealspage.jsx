@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import SEO from "../components/SEO";
-import api from "../api/axios";
+import { getDeals } from "../api/productApi";
 import ProductCard from "../components/ProductCard";
-import { FaFire } from "react-icons/fa";
+import { FiZap } from "react-icons/fi";
+import Button from "../design-system/Button";
+import { EmptyState, ErrorState } from "../design-system/EmptyState";
+import { SkeletonCard as DSSkeletonCard } from "../design-system/Skeleton";
 
 /* ════════════════════════════════════
    COUNTDOWN HOOK
@@ -28,63 +31,57 @@ const useCountdown = (dealEndsAt) => {
 };
 
 /* ════════════════════════════════════
-   DEAL PRODUCT CARD WRAPPER
+   DEAL COUNTDOWN BADGE
+   NOTE: uses the app's real ProductCard (../components/ProductCard) —
+   left untouched, it owns real cart/wishlist business logic. Only the
+   countdown badge styling below is migrated to Signal tokens.
+
+   Ticks its OWN interval internally instead of the parent grid re-rendering
+   every second — the previous DealProductCard wrapper ran useCountdown at
+   the wrapper level and handed ProductCard a brand-new `footer` element
+   every tick, which defeated ProductCard's React.memo for every deal card,
+   every second, for as long as the page was open.
 ════════════════════════════════════ */
-const DealCountdownDisplay = ({ countdown }) => (
-    <div style={{ display: "flex", gap: 6, justifyContent: "center", marginTop: 6 }}>
-        {[[countdown.d, "D"], [countdown.h, "H"], [countdown.m, "M"], [countdown.s, "S"]].map(([v, l]) => (
-            <span key={l} style={{ background: "#fef3c7", color: "#92400e", fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 4, minWidth: 28, textAlign: "center" }}>
-                {String(v).padStart(2, "0")}{l}
-            </span>
-        ))}
-    </div>
-);
-
-const DealProductCard = ({ product }) => {
-    const countdown = useCountdown(product.dealEndsAt);
-    const countdownJSX = countdown ? <DealCountdownDisplay countdown={countdown} /> : null;
-
+const DealCountdownDisplay = ({ dealEndsAt }) => {
+    const countdown = useCountdown(dealEndsAt);
+    if (!countdown) return null;
     return (
-        <ProductCard
-            product={product}
-            footer={countdownJSX}
-        />
+        <div className="flex gap-1.5 justify-center mt-1.5">
+            {[[countdown.d, "D"], [countdown.h, "H"], [countdown.m, "M"], [countdown.s, "S"]].map(([v, l]) => (
+                <span key={l} className="bg-warning-tint text-warning text-[11px] font-bold px-1.5 py-0.5 rounded min-w-[28px] text-center">
+                    {String(v).padStart(2, "0")}{l}
+                </span>
+            ))}
+        </div>
     );
 };
 
 /* ════════════════════════════════════
-   SKELETON
-════════════════════════════════════ */
-const SkeletonCard = () => (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden flex flex-col h-full w-full shadow-sm">
-        <div className="w-full aspect-[4/5] bg-gray-100 animate-pulse shrink-0" />
-        <div className="p-3 sm:p-4 flex flex-col gap-2 flex-1">
-            <div className="h-2 w-1/3 bg-gray-200 rounded animate-pulse" />
-            <div className="h-3 w-4/5 bg-gray-200 rounded animate-pulse" />
-            <div className="h-3 w-1/2 bg-gray-200 rounded animate-pulse" />
-            <div className="mt-auto pt-2 space-y-2">
-                <div className="h-4 w-2/5 bg-gray-200 rounded animate-pulse" />
-                <div className="h-8 bg-gray-200 rounded animate-pulse" />
-            </div>
-        </div>
-    </div>
-);
-
-/* ════════════════════════════════════
    MAIN DEALS PAGE
 ════════════════════════════════════ */
+// Session-lifetime cache — same pattern as Home.jsx's _homeCache. Without
+// it, navigating away and back (e.g. opening a deal then hitting Back)
+// unmounted the whole grid and re-showed the skeleton for a full refetch,
+// even though nothing about the deals list had actually changed in the
+// last few seconds — which read as every product card/image "reloading".
+const CACHE_TTL = 60 * 1000;
+let _dealsCache = null;
+
 const Deals = () => {
     const navigate = useNavigate();
-    const [deals, setDeals] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [deals, setDeals] = useState(() => _dealsCache?.deals || []);
+    const [loading, setLoading] = useState(() => !_dealsCache || Date.now() - (_dealsCache?._ts || 0) > CACHE_TTL);
     const [error, setError] = useState("");
 
     useEffect(() => {
+        if (_dealsCache && Date.now() - _dealsCache._ts < CACHE_TTL) { setLoading(false); return; }
         (async () => {
             try {
                 setLoading(true);
-                const { data } = await api.get("/products/deals");
-                setDeals(data.products || (Array.isArray(data) ? data : []));
+                const { data } = await getDeals();
+                const list = data.products || (Array.isArray(data) ? data : []);
+                setDeals(list);
+                _dealsCache = { deals: list, _ts: Date.now() };
             } catch {
                 setError("Failed to load deals. Please try again.");
             } finally {
@@ -94,73 +91,66 @@ const Deals = () => {
     }, []);
 
     return (
-        <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif", minHeight: "100vh", background: "#faf9f7" }}>
+        <div className="min-h-screen bg-canvas">
             <SEO title="Deals & Offers" description="Grab the hottest deals and limited-time offers on Urbexon. Save big on fashion, electronics, and more." path="/deals" />
 
             {/* Header Banner */}
-            <div style={{ background: "linear-gradient(135deg, #1c1917 0%, #1a1740 60%, #c9a84c22 100%)", padding: "48px clamp(16px,5vw,80px)" }}>
-                <div style={{ maxWidth: 1440, margin: "0 auto" }}>
-                    <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".2em", textTransform: "uppercase", color: "#c9a84c", marginBottom: 10 }}>
+            <div className="bg-[var(--color-graphite-900)] px-[clamp(16px,5vw,80px)] py-12">
+                <div className="max-w-[1440px] mx-auto">
+                    <p className="text-[10px] font-extrabold tracking-[.2em] uppercase text-accent mb-2.5">
                         ✦ Limited Time
                     </p>
-                    <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "clamp(2rem,5vw,3.2rem)", fontWeight: 700, color: "#fff", lineHeight: 1.15, margin: 0 }}>
-                        Hot <span style={{ color: "#c9a84c" }}>Deals</span>
+                    <h1 className="font-display text-[clamp(2rem,5vw,3.2rem)] font-bold text-white leading-tight">
+                        Hot <span className="text-accent">Deals</span>
                     </h1>
-                    <p style={{ fontSize: 14, color: "rgba(255,255,255,.55)", marginTop: 10, maxWidth: 480 }}>
+                    <p className="text-sm text-white/55 mt-2.5 max-w-[480px]">
                         Best discounts on top products — grab them before they expire!
                     </p>
                 </div>
             </div>
 
             {/* Content */}
-            <div style={{ maxWidth: 1440, margin: "0 auto", padding: "48px clamp(16px,5vw,80px) 80px" }}>
+            <div className="max-w-[1440px] mx-auto px-[clamp(16px,5vw,80px)] pt-12 pb-20">
 
                 {/* Loading */}
                 {loading && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-                        {Array(10).fill(0).map((_, i) => <SkeletonCard key={i} />)}
+                        {Array(10).fill(0).map((_, i) => <DSSkeletonCard key={i} />)}
                     </div>
                 )}
 
                 {/* Error */}
                 {!loading && error && (
-                    <div style={{ textAlign: "center", padding: "80px 20px" }}>
-                        <p style={{ fontSize: 14, color: "#dc2626", marginBottom: 16 }}>{error}</p>
-                        <button onClick={() => window.location.reload()}
-                            style={{ padding: "10px 24px", background: "#1c1917", color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit" }}>
-                            Try Again
-                        </button>
-                    </div>
+                    <ErrorState
+                        title="Couldn't load deals"
+                        description={error}
+                        action={<Button variant="primary" onClick={() => window.location.reload()}>Try Again</Button>}
+                    />
                 )}
 
                 {/* Empty */}
                 {!loading && !error && deals.length === 0 && (
-                    <div style={{ textAlign: "center", padding: "100px 20px" }}>
-                        <p style={{ fontSize: 52, marginBottom: 16 }}>🔥</p>
-                        <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "1.8rem", color: "#1a1740", marginBottom: 8 }}>
-                            No Active Deals
-                        </h3>
-                        <p style={{ fontSize: 14, color: "#a8a29e", marginBottom: 28 }}>
-                            Check back soon — new deals drop regularly!
-                        </p>
-                        <button onClick={() => navigate("/")}
-                            style={{ padding: "12px 28px", background: "#1c1917", color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", fontFamily: "inherit" }}>
-                            Browse All Products
-                        </button>
-                    </div>
+                    <EmptyState
+                        icon={FiZap}
+                        title="No Active Deals"
+                        description="Check back soon — new deals drop regularly!"
+                        action={<Button variant="primary" onClick={() => navigate("/")}>Browse All Products</Button>}
+                    />
                 )}
 
                 {/* Deals Grid */}
                 {!loading && !error && deals.length > 0 && (
                     <>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
-                            <FaFire style={{ color: "#f59e0b" }} />
-                            <p style={{ fontSize: 14, color: "#78716c", fontWeight: 500 }}>
-                                <b style={{ color: "#1c1917" }}>{deals.length}</b> active deal{deals.length !== 1 ? "s" : ""} — hurry, limited time!
+                        <div className="flex items-center gap-2.5 mb-7">
+                            <FiZap className="text-[var(--color-warning-500)]" aria-hidden="true" />
+                            <p className="text-sm text-secondary font-medium">
+                                <b className="text-primary">{deals.length}</b> active deal{deals.length !== 1 ? "s" : ""} — hurry, limited time!
                             </p>
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-                            {deals.map(p => <DealProductCard key={p._id || p.id} product={p} />)}
+                            {deals.map(p => (
+                                <ProductCard key={p._id || p.id} product={p} footer={<DealCountdownDisplay dealEndsAt={p.dealEndsAt} />} />
+                            ))}
                         </div>
                     </>
                 )}

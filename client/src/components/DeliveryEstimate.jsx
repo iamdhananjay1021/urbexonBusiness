@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { FaTruck, FaMapMarkerAlt, FaCheckCircle, FaClock, FaShieldAlt, FaUndo } from "react-icons/fa";
-import api from "../api/axios";
+import { estimateDelivery } from "../api/deliveryApi";
+import { useUHLocation } from "../contexts/UHLocationContext";
 
 /* ─────────────────────────────────────────────────────
    DeliveryEstimate — Flipkart-style pincode checker
@@ -36,7 +37,7 @@ export default function DeliveryEstimate({ productPrice = 0, productWeight = 500
                 setPincode(saved);
                 checkDelivery(saved);
             }
-        } catch { }
+        } catch { /* malformed/missing localStorage pincode — silently ignored */ }
     }, []); // eslint-disable-line
 
     const checkDelivery = useCallback(async (code) => {
@@ -44,7 +45,7 @@ export default function DeliveryEstimate({ productPrice = 0, productWeight = 500
         if (!/^\d{6}$/.test(pc)) { setError("Enter valid 6-digit pincode"); return; }
         setLoading(true); setError(""); setResult(null);
         try {
-            const { data } = await api.post("/delivery/estimate", {
+            const { data } = await estimateDelivery({
                 pincode: pc,
                 weight: productWeight,
                 paymentMethod: "ONLINE",
@@ -59,7 +60,7 @@ export default function DeliveryEstimate({ productPrice = 0, productWeight = 500
             // Parse ETD
             let minDays = 3, maxDays = 5;
             const etdStr = data.etdText || "3–5 days";
-            const match = etdStr.match(/(\d+)\s*[–\-]\s*(\d+)/);
+            const match = etdStr.match(/(\d+)\s*[–-]\s*(\d+)/);
             if (match) { minDays = parseInt(match[1]); maxDays = parseInt(match[2]); }
             else {
                 const single = etdStr.match(/(\d+)/);
@@ -188,7 +189,8 @@ export default function DeliveryEstimate({ productPrice = 0, productWeight = 500
    UHDeliveryEstimate — Zepto-style quick delivery
    Shows: delivery time based on UH pincode, vendor distance
 ───────────────────────────────────────────────────── */
-export function UHDeliveryEstimate({ vendorName }) {
+export function UHDeliveryEstimate({ vendorName, onResult }) {
+    const { uhPincode, setUhPincode } = useUHLocation();
     const [pincode, setPincode] = useState("");
     const [result, setResult] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -197,16 +199,11 @@ export function UHDeliveryEstimate({ vendorName }) {
 
     // Load saved UH pincode on mount
     useEffect(() => {
-        try {
-            const stored = localStorage.getItem("uh_pincode");
-            if (stored) {
-                const p = JSON.parse(stored);
-                if (p?.code && /^\d{6}$/.test(p.code)) {
-                    setPincode(p.code);
-                    checkUH(p.code);
-                }
-            }
-        } catch { }
+        const p = uhPincode;
+        if (p?.code && /^\d{6}$/.test(p.code)) {
+            setPincode(p.code);
+            checkUH(p.code);
+        }
     }, []); // eslint-disable-line
 
     const checkUH = useCallback(async (code) => {
@@ -214,13 +211,14 @@ export function UHDeliveryEstimate({ vendorName }) {
         if (!/^\d{6}$/.test(pc)) { setError("Enter valid 6-digit pincode"); return; }
         setLoading(true); setError(""); setResult(null);
         try {
-            const { data } = await api.post("/delivery/estimate", {
+            const { data } = await estimateDelivery({
                 pincode: pc,
                 productType: "urbexon_hour",
             });
 
+            let next;
             if (data.success && data.available) {
-                setResult({
+                next = {
                     available: true,
                     area: data.area || data.city || "",
                     city: data.city || "",
@@ -230,19 +228,27 @@ export function UHDeliveryEstimate({ vendorName }) {
                     etaText: data.etaText || "45–120 mins",
                     cod: data.codAvailable !== false,
                     returnDays: data.returnDays || 7,
-                });
+                };
             } else {
-                setResult({
+                next = {
                     available: false,
                     message: data.message || "Urbexon Hour not available in this area yet.",
                     status: data.status,
-                });
+                };
             }
+            setResult(next);
             setChecked(true);
+            onResult?.({ ...next, code: pc });
+
+            // Report whatever pincode was just checked to the shared
+            // UHLocationContext so every other UH surface (Navbar included)
+            // reflects it immediately, and UHProductDetail can gate its own
+            // Add to Cart via the onResult callback above.
+            setUhPincode({ code: pc, area: next.area || null, city: next.city || null });
         } catch (err) {
             setError(err?.response?.data?.message || "Could not check availability");
         } finally { setLoading(false); }
-    }, [pincode]);
+    }, [pincode, onResult, setUhPincode]);
 
     const handleCheck = () => checkUH(pincode);
 

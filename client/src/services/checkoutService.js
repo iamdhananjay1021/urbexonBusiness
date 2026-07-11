@@ -5,14 +5,15 @@
  * ✅ FIX: orderMode now passed in placeCODOrder & serializeItems
  */
 
-import api from "../api/axios";
+import * as orderApi from "../api/orderApi";
+import * as addressApi from "../api/addressApi";
 
 /**
  * Fetch server-calculated pricing for given cart items
  */
 export const fetchCheckoutPricing = async (items, paymentMethod = "RAZORPAY", options = {}) => {
     if (!items || items.length === 0) return null;
-    const { data } = await api.post("/orders/pricing", {
+    const { data } = await orderApi.getCheckoutPricing({
         items: serializeItems(items),
         paymentMethod,
         deliveryType: options.deliveryType,
@@ -28,7 +29,7 @@ export const fetchCheckoutPricing = async (items, paymentMethod = "RAZORPAY", op
  * Fetch saved addresses for logged-in user
  */
 export const fetchAddresses = async () => {
-    const { data } = await api.get("/addresses");
+    const { data } = await addressApi.getAddresses();
     return Array.isArray(data) ? data : [];
 };
 
@@ -36,7 +37,7 @@ export const fetchAddresses = async () => {
  * Verify pincode — returns COD availability from backend
  */
 export const verifyPincode = async (pincode) => {
-    const { data } = await api.get(`/addresses/pincode/${pincode}`);
+    const { data } = await addressApi.verifyPincode(pincode);
     return data;
 };
 
@@ -44,7 +45,7 @@ export const verifyPincode = async (pincode) => {
  * Fetch Shiprocket shipping rate for a pincode
  */
 export const fetchShippingRate = async (pincode, paymentMethod = "online", weight = 500) => {
-    const { data } = await api.post("/shiprocket/rate", {
+    const { data } = await orderApi.getShiprocketRate({
         pincode,
         weight,
         paymentMethod: paymentMethod === "cod" ? "COD" : "PREPAID",
@@ -56,7 +57,7 @@ export const fetchShippingRate = async (pincode, paymentMethod = "online", weigh
  * Add new address
  */
 export const addAddress = async (form) => {
-    const { data } = await api.post("/addresses", form);
+    const { data } = await addressApi.addAddress(form);
     return data;
 };
 
@@ -64,7 +65,7 @@ export const addAddress = async (form) => {
  * Update existing address
  */
 export const updateAddress = async (addressId, form) => {
-    const { data } = await api.put(`/addresses/${addressId}`, form);
+    const { data } = await addressApi.updateAddress(addressId, form);
     return data;
 };
 
@@ -72,7 +73,7 @@ export const updateAddress = async (addressId, form) => {
  * Delete address
  */
 export const deleteAddress = async (addressId) => {
-    const { data } = await api.delete(`/addresses/${addressId}`);
+    const { data } = await addressApi.deleteAddress(addressId);
     return data;
 };
 
@@ -80,7 +81,7 @@ export const deleteAddress = async (addressId) => {
  * Set default address
  */
 export const setDefaultAddress = async (addressId) => {
-    const { data } = await api.put(`/addresses/${addressId}/default`);
+    const { data } = await addressApi.setDefaultAddress(addressId);
     return data;
 };
 
@@ -93,13 +94,12 @@ export const placeCODOrder = async ({
     items,
     contact,
     address,
-    pincode,
     deliveryType = "ECOMMERCE_STANDARD",
     orderMode = "ECOMMERCE",          // ✅ FIX: was missing entirely
     distanceKm = 0,
     coupon = null,
 }) => {
-    const { data } = await api.post("/orders", {
+    const { data } = await orderApi.createOrder({
         items: serializeItems(items),
         customerName: contact.name,
         phone: address.phone || contact.phone,

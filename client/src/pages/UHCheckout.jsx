@@ -2,43 +2,89 @@
  * UHCheckout.jsx — Urbexon Hour Express Checkout
  * ─────────────────────────────────────────────────
  * • Standalone checkout (no MainLayout)
- * • 3-step: Contact → Address → Payment
- * • Pricing from backend only
+ * • 4-step accordion: Contact → Address → Order Summary → Payment
+ * • Pricing from backend only (via useUHCheckout hook)
  * • deliveryType = URBEXON_HOUR
  * • COD + Razorpay
+ * All state/handlers below come from useUHCheckout() — untouched business logic.
  */
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
-    FaArrowLeft, FaBolt, FaUser, FaMapMarkerAlt, FaCreditCard,
-    FaCheckCircle, FaLock, FaMoneyBillWave, FaSpinner,
-    FaPlus, FaEdit, FaTrash, FaHome, FaBriefcase, FaClock,
-    FaChevronDown, FaChevronUp, FaShieldAlt,
-} from "react-icons/fa";
+    FiArrowLeft, FiZap, FiMapPin, FiCheckCircle,
+    FiHome, FiBriefcase, FiChevronDown, FiChevronUp, FiShield,
+} from "react-icons/fi";
 import { useUHCheckout } from "../hooks/useUHCheckout";
 import SEO from "../components/SEO";
+import Card from "../design-system/Card";
+import Input from "../design-system/Input";
+import Button from "../design-system/Button";
+import Alert from "../design-system/Alert";
+import Loader from "../design-system/Loader";
+import { EmptyState } from "../design-system/EmptyState";
+import { cn } from "../design-system/utils/cn";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
-const LABEL_ICONS = { Home: <FaHome size={10} />, Work: <FaBriefcase size={10} />, Other: <FaMapMarkerAlt size={10} /> };
+const LABEL_ICONS = { Home: FiHome, Work: FiBriefcase, Other: FiMapPin };
+
+/* ── Accordion step shell ── */
+const StepCard = ({ num, title, active, done, summary, onChange, children }) => (
+    <Card padding="none" className="overflow-hidden">
+        <div className={cn("flex items-center justify-between px-5 py-3.5", active && "bg-[var(--color-graphite-900)]")}>
+            <div className={cn("flex items-center gap-3 text-sm font-bold uppercase tracking-wide", active ? "text-white" : "text-secondary")}>
+                <span className={cn(
+                    "w-6 h-6 rounded-[var(--radius-sm)] flex items-center justify-center text-xs font-bold",
+                    active ? "bg-white text-[var(--color-graphite-900)]" : "bg-[var(--color-graphite-100)] text-accent"
+                )}>{num}</span>
+                {title}
+                {done && <FiCheckCircle size={16} className="text-accent" aria-hidden="true" />}
+            </div>
+            {done && onChange && (
+                <button onClick={onChange} className={cn("border rounded-[var(--radius-sm)] px-3 py-1.5 text-xs font-semibold", active ? "border-white/30 text-white" : "border-default text-secondary")}>
+                    CHANGE
+                </button>
+            )}
+        </div>
+        {done && summary && !active && (
+            <div className="px-5 pb-3.5 text-sm text-primary">{summary}</div>
+        )}
+        {active && <div className="px-5 pb-5">{children}</div>}
+    </Card>
+);
 
 const UHCheckout = () => {
     const navigate = useNavigate();
-    const ck = useUHCheckout();
+    const location = useLocation();
+
+    // BUG FIX: mirrors Checkout.jsx's exact buyNowItem read (nav state,
+    // falling back to sessionStorage so a hard refresh doesn't lose it) —
+    // this page never read either, so a UH "Buy Now" landed here with the
+    // item silently dropped.
+    const buyNowItem = (() => {
+        if (location.state?.buyNowItem) return location.state.buyNowItem;
+        try {
+            const stored = sessionStorage.getItem("ux_buy_now_item");
+            if (stored) { const p = JSON.parse(stored); sessionStorage.removeItem("ux_buy_now_item"); return p; }
+        } catch { /* malformed/missing sessionStorage buy-now item — falls through to null below */ }
+        return null;
+    })();
+
+    const ck = useUHCheckout(buyNowItem);
     const {
-        step, setStep, error, setError,
+        step, setStep, error,
         contact, setContact,
         addresses, addrLoading, selectedAddrId, setSelectedAddrId, selectedAddress,
         showAddForm, setShowAddForm, editingAddr, setEditingAddr,
-        savingAddr, deleteConfirmId, setDeleteConfirmId,
+        savingAddr,
         paymentMethod, selectPaymentMethod, payState, loading,
-        codStatus, codChecking, codAvailable,
+        codChecking, codAvailable,
         pricing, pricingLoading,
         mobileSummaryOpen, setMobileSummaryOpen,
         checkoutItems,
         handleContactContinue, handleAddressContinue,
-        handleAddAddress, handleEditAddress, handleDeleteAddress, handleSetDefault,
+        handleAddAddress, handleEditAddress,
         handleCOD, handlePayOnline,
     } = ck;
 
@@ -46,312 +92,274 @@ const UHCheckout = () => {
 
     if (!checkoutItems || checkoutItems.length === 0) {
         return (
-            <div className="uhck-root">
-                <style>{CSS}</style>
-                <div className="uhck-empty">
-                    <FaBolt size={40} style={{ color: "#f59e0b" }} />
-                    <h2>No items for checkout</h2>
-                    <p>Add items from Urbexon Hour first</p>
-                    <button className="uhck-btn-primary" onClick={() => navigate("/urbexon-hour")}>
-                        Browse Urbexon Hour
-                    </button>
-                </div>
+            <div className="min-h-screen bg-canvas">
+                <SEO title="Urbexon Hour Checkout" noindex />
+                <EmptyState
+                    icon={FiZap}
+                    title="No items for checkout"
+                    description="Add items from Urbexon Hour first"
+                    action={<Button variant="primary" onClick={() => navigate("/urbexon-hour")}>Browse Urbexon Hour</Button>}
+                />
             </div>
         );
     }
 
     return (
-        <div className="uhck-root">
+        <div className="min-h-screen bg-canvas pb-16">
             <SEO title="Urbexon Hour Checkout" noindex />
-            <style>{CSS}</style>
 
             {/* Header */}
-            <header className="uhck-header">
-                <div className="uhck-header-inner">
-                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                        <button className="uhck-back" onClick={() => navigate("/uh-cart")}>
-                            <FaArrowLeft size={16} />
+            <header className="bg-[var(--color-graphite-900)] text-white h-[60px] flex items-center">
+                <div className="max-w-[1100px] mx-auto w-full px-4 flex justify-between items-center">
+                    <div className="flex items-center gap-4">
+                        <button onClick={() => navigate("/uh-cart")} aria-label="Back to cart" className="text-white">
+                            <FiArrowLeft size={16} aria-hidden="true" />
                         </button>
-                        <div className="uhck-header-brand">
-                            <i>Urbexon</i><span style={{ color: "#ffe500", marginLeft: 4 }}>Hour</span>
+                        <div className="text-xl tracking-wide font-display">
+                            <i>Urbexon</i><span className="text-accent ml-1">Hour</span>
                         </div>
                     </div>
-                    <div className="uhck-secure">
-                        <FaShieldAlt size={14} /> 100% SECURE
+                    <div className="text-xs font-semibold flex items-center gap-1.5 tracking-wide">
+                        <FiShield size={14} aria-hidden="true" /> 100% SECURE
                     </div>
                 </div>
             </header>
 
-            <div className="uhck-layout">
+            <div className="max-w-[1000px] mx-auto mt-6 grid grid-cols-1 md:grid-cols-[1fr_300px] gap-4 px-4 items-start">
                 {/* Main content */}
-                <div className="uhck-main">
-                    {error && <div className="uhck-error">{error}</div>}
+                <div className="flex flex-col gap-4">
+                    {error && <Alert variant="error">{error}</Alert>}
 
                     {/* STEP 1: CONTACT DETAILS */}
-                    <div className={`uhck-acc-card ${step === 1 ? "active" : ""}`}>
-                        <div className="uhck-acc-head">
-                            <div className="uhck-acc-title">
-                                <span className="uhck-acc-num">1</span>
-                                CONTACT DETAILS
-                                {step > 1 && <FaCheckCircle size={16} className="uhck-acc-check" />}
-                            </div>
-                            {step > 1 && (
-                                <button className="uhck-acc-change" onClick={() => setStep(1)}>CHANGE</button>
-                            )}
+                    <StepCard
+                        num={1} title="Contact Details" active={step === 1} done={step > 1}
+                        summary={<><span className="font-semibold mr-2">{contact.name}</span>+91 {contact.phone}</>}
+                        onChange={() => setStep(1)}
+                    >
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <Input value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} placeholder="Full Name" />
+                            <Input
+                                type="tel" value={contact.phone}
+                                onChange={(e) => setContact({ ...contact, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
+                                placeholder="10-digit mobile number" maxLength={10} inputMode="numeric"
+                            />
                         </div>
-                        {step > 1 && (
-                            <div className="uhck-acc-summary">
-                                <span style={{ fontWeight: 600, marginRight: 8 }}>{contact.name}</span>
-                                +91 {contact.phone}
-                            </div>
-                        )}
-                        {step === 1 && (
-                            <div className="uhck-acc-body">
-                                <div className="uhck-field-row">
-                                    <div className="uhck-field">
-                                        <input type="text" value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} placeholder="Full Name" />
-                                    </div>
-                                    <div className="uhck-field">
-                                        <input type="tel" value={contact.phone} onChange={(e) => setContact({ ...contact, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })} placeholder="10-digit mobile number" maxLength={10} inputMode="numeric" />
-                                    </div>
-                                </div>
-                                <div className="uhck-field" style={{ maxWidth: 300, marginTop: 16 }}>
-                                    <input type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="Email (Optional)" />
-                                </div>
-                                <button className="uhck-btn-primary" style={{ marginTop: 24 }} onClick={handleContactContinue}>CONTINUE</button>
-                            </div>
-                        )}
-                    </div>
+                        <div className="max-w-[300px] mt-4">
+                            <Input type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="Email (Optional)" />
+                        </div>
+                        <Button variant="primary" className="mt-5" onClick={handleContactContinue}>Continue</Button>
+                    </StepCard>
 
                     {/* STEP 2: DELIVERY ADDRESS */}
-                    <div className={`uhck-acc-card ${step === 2 ? "active" : ""}`}>
-                        <div className="uhck-acc-head">
-                            <div className="uhck-acc-title">
-                                <span className="uhck-acc-num">2</span>
-                                DELIVERY ADDRESS
-                                {step > 2 && <FaCheckCircle size={16} className="uhck-acc-check" />}
-                            </div>
-                            {step > 2 && (
-                                <button className="uhck-acc-change" onClick={() => setStep(2)}>CHANGE</button>
-                            )}
-                        </div>
-                        {step > 2 && selectedAddress && (
-                            <div className="uhck-acc-summary">
-                                <span style={{ fontWeight: 600, marginRight: 8 }}>{selectedAddress.name}</span>
-                                {selectedAddress.house}, {selectedAddress.area}, {selectedAddress.city} - <span style={{ fontWeight: 600 }}>{selectedAddress.pincode}</span>
-                            </div>
+                    <StepCard
+                        num={2} title="Delivery Address" active={step === 2} done={step > 2}
+                        summary={selectedAddress && (
+                            <><span className="font-semibold mr-2">{selectedAddress.name}</span>{selectedAddress.house}, {selectedAddress.area}, {selectedAddress.city} - <span className="font-semibold">{selectedAddress.pincode}</span></>
                         )}
-                        {step === 2 && (
-                            <div className="uhck-acc-body" style={{ background: "#f5faff" }}>
-                                {addrLoading ? (
-                                    <div className="uhck-loading"><FaSpinner className="uhck-spin" /> Loading addresses…</div>
-                                ) : (
-                                    <>
-                                        {addresses.length > 0 && (
-                                            <div className="uhck-addr-list">
-                                                {addresses.map((addr) => (
-                                                    <div key={addr._id} className={`uhck-addr ${selectedAddrId === addr._id ? "selected" : ""}`} onClick={() => setSelectedAddrId(addr._id)}>
-                                                        <div className={`uhck-radio ${selectedAddrId === addr._id ? "on" : ""}`} />
-                                                        <div className="uhck-addr-body">
-                                                            <div className="uhck-addr-top">
-                                                                <span className="uhck-addr-label">{addr.label}</span>
-                                                                <span className="uhck-addr-name" style={{ fontWeight: 600, marginLeft: 8 }}>{addr.name}</span>
-                                                                <span className="uhck-addr-phone" style={{ fontWeight: 600, marginLeft: 8 }}>{addr.phone}</span>
-                                                            </div>
-                                                            <div className="uhck-addr-line">{addr.house}, {addr.area}{addr.landmark ? `, ${addr.landmark}` : ""}, {addr.city}, {addr.state} - <span style={{ fontWeight: 600 }}>{addr.pincode}</span></div>
-
-                                                            {selectedAddrId === addr._id && (
-                                                                <button className="uhck-btn-primary" style={{ marginTop: 16 }} onClick={handleAddressContinue}>DELIVER HERE</button>
-                                                            )}
-
-                                                            <div className="uhck-addr-actions" style={{ marginTop: selectedAddrId === addr._id ? 16 : 8 }}>
-                                                                <button onClick={(e) => { e.stopPropagation(); setEditingAddr(addr); setShowAddForm(true); }}>EDIT</button>
-                                                            </div>
-                                                        </div>
+                        onChange={() => setStep(2)}
+                    >
+                        {addrLoading ? (
+                            <div className="flex items-center gap-2.5 text-sm text-secondary py-4"><Loader size="sm" /> Loading addresses…</div>
+                        ) : (
+                            <>
+                                {addresses.length > 0 && (
+                                    <div className="flex flex-col gap-3 mb-4">
+                                        {addresses.map((addr) => (
+                                            <div
+                                                key={addr._id}
+                                                onClick={() => setSelectedAddrId(addr._id)}
+                                                className={cn(
+                                                    "flex gap-4 p-4 border rounded-[var(--radius-md)] cursor-pointer transition-colors",
+                                                    selectedAddrId === addr._id ? "bg-accent-tint border-[var(--accent-primary)]" : "border-default hover:bg-canvas"
+                                                )}
+                                            >
+                                                <div className={cn(
+                                                    "w-[18px] h-[18px] rounded-full flex-shrink-0 mt-0.5",
+                                                    selectedAddrId === addr._id ? "border-[5px] border-[var(--accent-primary)]" : "border-2 border-[var(--color-graphite-300)]"
+                                                )} />
+                                                <div className="flex-1">
+                                                    <div className="mb-1.5 text-sm">
+                                                        <span className="bg-[var(--color-graphite-100)] text-secondary text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase">{addr.label}</span>
+                                                        <span className="font-semibold ml-2">{addr.name}</span>
+                                                        <span className="font-semibold ml-2">{addr.phone}</span>
                                                     </div>
-                                                ))}
+                                                    <div className="text-sm text-primary leading-relaxed">
+                                                        {addr.house}, {addr.area}{addr.landmark ? `, ${addr.landmark}` : ""}, {addr.city}, {addr.state} - <span className="font-semibold">{addr.pincode}</span>
+                                                    </div>
+                                                    {selectedAddrId === addr._id && (
+                                                        <Button variant="primary" size="sm" className="mt-3" onClick={handleAddressContinue}>Deliver Here</Button>
+                                                    )}
+                                                    <div className={cn("mt-2", selectedAddrId === addr._id && "mt-3")}>
+                                                        <button onClick={(e) => { e.stopPropagation(); setEditingAddr(addr); setShowAddForm(true); }} className="text-accent text-xs font-semibold uppercase">
+                                                            Edit
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        )}
-
-                                        {!showAddForm ? (
-                                            <button className="uhck-add-addr" onClick={() => { setEditingAddr(null); setShowAddForm(true); }}>
-                                                <FaPlus size={11} style={{ marginRight: 6 }} /> Add a new address
-                                            </button>
-                                        ) : (
-                                            <div style={{ background: "#fff", padding: 16, border: "1px solid #e0e0e0", marginTop: 16 }}>
-                                                <AddressFormInline
-                                                    initial={editingAddr}
-                                                    saving={savingAddr}
-                                                    onSave={(form) => editingAddr ? handleEditAddress(form) : handleAddAddress(form)}
-                                                    onCancel={() => { setShowAddForm(false); setEditingAddr(null); }}
-                                                />
-                                            </div>
-                                        )}
-                                    </>
+                                        ))}
+                                    </div>
                                 )}
-                            </div>
+
+                                {!showAddForm ? (
+                                    <button
+                                        onClick={() => { setEditingAddr(null); setShowAddForm(true); }}
+                                        className="flex items-center justify-center gap-2 p-4 bg-surface border border-default rounded-[var(--radius-md)] text-accent text-sm font-semibold w-full"
+                                    >
+                                        + Add a new address
+                                    </button>
+                                ) : (
+                                    <div className="bg-surface p-4 border border-default rounded-[var(--radius-md)] mt-4">
+                                        <AddressFormInline
+                                            initial={editingAddr}
+                                            saving={savingAddr}
+                                            onSave={(form) => editingAddr ? handleEditAddress(form) : handleAddAddress(form)}
+                                            onCancel={() => { setShowAddForm(false); setEditingAddr(null); }}
+                                        />
+                                    </div>
+                                )}
+                            </>
                         )}
-                    </div>
+                    </StepCard>
 
                     {/* STEP 3: ORDER SUMMARY */}
-                    <div className={`uhck-acc-card ${step === 3 ? "active" : ""}`}>
-                        <div className="uhck-acc-head">
-                            <div className="uhck-acc-title">
-                                <span className="uhck-acc-num">3</span>
-                                ORDER SUMMARY
-                                {step > 3 && <FaCheckCircle size={16} className="uhck-acc-check" />}
-                            </div>
-                            {step > 3 && (
-                                <button className="uhck-acc-change" onClick={() => setStep(3)}>CHANGE</button>
-                            )}
-                        </div>
-                        {step > 3 && (
-                            <div className="uhck-acc-summary">
-                                <b>{checkoutItems.length} Item{checkoutItems.length > 1 ? "s" : ""}</b>
-                            </div>
-                        )}
-                        {step === 3 && (
-                            <div className="uhck-acc-body" style={{ padding: 0 }}>
-                                {checkoutItems.map((item, idx) => {
-                                    const uniqueId = item.cartItemId || `${item._id}-${idx}`;
-                                    return (
-                                        <div key={uniqueId} className="uhck-sum-item" style={{ display: "flex", gap: "16px", padding: "24px", borderBottom: "1px solid #f0f0f0" }}>
-                                            <div className="uhck-sum-img-wrap" style={{ width: "80px", height: "80px", flexShrink: 0, textAlign: "center" }}>
-                                                <img src={item.images?.[0]?.url || item.image?.url || item.image || "/placeholder.png"} alt={item.name} loading="lazy" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
-                                            </div>
-                                            <div className="uhck-sum-details" style={{ flex: 1 }}>
-                                                <div className="uhck-sum-name" style={{ fontSize: "14px", color: "#212121", marginBottom: "8px", lineHeight: "1.4" }}>{item.name}</div>
-                                                {item.selectedSize && <div style={{ fontSize: 11, color: "#878787", marginBottom: 2 }}>Size: {item.selectedSize}</div>}
-                                                {item.selectedColor && <div style={{ fontSize: 11, color: "#878787", marginBottom: 2 }}>Color: {item.selectedColor}</div>}
-                                                <div className="uhck-sum-qty" style={{ fontSize: "12px", color: "#878787", marginBottom: "12px" }}>Qty: {item.quantity}</div>
-                                                <div className="uhck-sum-price-row" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                                    <span className="uhck-sum-price" style={{ fontSize: "16px", fontWeight: 500, color: "#212121" }}>{fmt(item.price * item.quantity)}</span>
-                                                    {item.mrp > item.price && <span className="uhck-sum-mrp" style={{ fontSize: "14px", color: "#878787", textDecoration: "line-through" }}>{fmt(item.mrp * item.quantity)}</span>}
-                                                </div>
+                    <StepCard
+                        num={3} title="Order Summary" active={step === 3} done={step > 3}
+                        summary={<b>{checkoutItems.length} Item{checkoutItems.length > 1 ? "s" : ""}</b>}
+                        onChange={() => setStep(3)}
+                    >
+                        <div className="-mx-5">
+                            {checkoutItems.map((item, idx) => {
+                                const uniqueId = item.cartItemId || `${item._id}-${idx}`;
+                                return (
+                                    <div key={uniqueId} className="flex gap-4 px-5 py-4 border-b border-default">
+                                        <div className="w-20 h-20 flex-shrink-0 flex items-center justify-center">
+                                            <img src={item.images?.[0]?.url || item.image?.url || item.image || "/placeholder.png"} alt={item.name} loading="lazy" className="max-w-full max-h-full object-contain" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="text-sm text-primary mb-2 leading-snug">{item.name}</div>
+                                            {item.selectedSize && <div className="text-[11px] text-secondary mb-0.5">Size: {item.selectedSize}</div>}
+                                            {item.selectedColor && <div className="text-[11px] text-secondary mb-0.5">Color: {item.selectedColor}</div>}
+                                            <div className="text-xs text-secondary mb-3">Qty: {item.quantity}</div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-base font-semibold text-primary">{fmt(item.price * item.quantity)}</span>
+                                                {item.mrp > item.price && <span className="text-sm text-muted line-through">{fmt(item.mrp * item.quantity)}</span>}
                                             </div>
                                         </div>
-                                    );
-                                })}
-                                <div style={{ padding: "16px 24px", background: "#f5faff", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-                                    <span style={{ fontSize: 13, color: "#212121" }}>Order confirmation email will be sent to <b>{contact.email || "your email"}</b></span>
-                                    <button className="uhck-btn-primary" onClick={() => setStep(4)}>CONTINUE</button>
-                                </div>
+                                    </div>
+                                );
+                            })}
+                            <div className="px-5 py-4 bg-canvas flex justify-between items-center flex-wrap gap-3">
+                                <span className="text-[13px] text-primary">Order confirmation email will be sent to <b>{contact.email || "your email"}</b></span>
+                                <Button variant="primary" onClick={() => setStep(4)}>Continue</Button>
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    </StepCard>
 
                     {/* STEP 4: PAYMENT OPTIONS */}
-                    <div className={`uhck-acc-card ${step === 4 ? "active" : ""}`}>
-                        <div className="uhck-acc-head">
-                            <div className="uhck-acc-title">
-                                <span className="uhck-acc-num">4</span>
-                                PAYMENT OPTIONS
-                            </div>
-                        </div>
-                        {step === 4 && (
-                            <div className="uhck-acc-body" style={{ padding: 0 }}>
-                                <div className="uhck-pay-options" style={{ display: "flex", flexDirection: "column" }}>
-                                    {/* Online */}
-                                    <div className={`uhck-pay-row ${paymentMethod === "online" ? "active" : ""}`} style={{ display: "flex", alignItems: "flex-start", gap: "16px", padding: "16px 24px", borderBottom: "1px solid #f0f0f0", cursor: "pointer" }} onClick={() => selectPaymentMethod("online")}>
-                                        <div className={`uhck-radio ${paymentMethod === "online" ? "on" : ""}`} style={{ width: "18px", height: "18px", borderRadius: "50%", border: paymentMethod === "online" ? "5px solid #2874f0" : "2px solid #ccc", marginTop: "2px", flexShrink: 0 }} />
-                                        <div className="uhck-pay-info" style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
-                                            <span className="uhck-pay-title" style={{ fontSize: "15px", color: "#212121" }}>UPI, Wallets, Credit / Debit Card</span>
-                                            <span className="uhck-pay-sub" style={{ fontSize: "12px", color: "#878787" }}>Fast & Secure Payments</span>
-                                            {paymentMethod === "online" && (
-                                                <div className="uhck-pay-action" style={{ width: "100%", marginTop: "16px" }}>
-                                                    <button className="uhck-btn-primary" onClick={handlePayOnline} disabled={loading || payState === "processing"}>
-                                                        {loading || payState === "processing" ? "Processing..." : `PAY ${fmt(finalTotal)}`}
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* COD */}
-                                    <div className={`uhck-pay-row ${paymentMethod === "cod" ? "active" : ""} ${!codAvailable && !codChecking ? "disabled" : ""}`} style={{ display: "flex", alignItems: "flex-start", gap: "16px", padding: "16px 24px", borderBottom: "1px solid #f0f0f0", cursor: "pointer", opacity: (!codAvailable && !codChecking) ? 0.5 : 1 }} onClick={() => codAvailable && selectPaymentMethod("cod")}>
-                                        <div className={`uhck-radio ${paymentMethod === "cod" ? "on" : ""}`} style={{ width: "18px", height: "18px", borderRadius: "50%", border: paymentMethod === "cod" ? "5px solid #2874f0" : "2px solid #ccc", marginTop: "2px", flexShrink: 0 }} />
-                                        <div className="uhck-pay-info" style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
-                                            <span className="uhck-pay-title" style={{ fontSize: "15px", color: "#212121" }}>Cash on Delivery</span>
-                                            {codChecking ? (
-                                                <span className="uhck-pay-sub" style={{ fontSize: "12px", color: "#878787" }}>Checking availability...</span>
-                                            ) : codAvailable ? (
-                                                <span className="uhck-pay-sub" style={{ fontSize: "12px", color: "#878787" }}>Pay at your doorstep</span>
-                                            ) : (
-                                                <span className="uhck-pay-sub" style={{ color: "#ff6161", fontSize: "12px" }}>Not available for this location</span>
-                                            )}
-                                            {paymentMethod === "cod" && codAvailable && (
-                                                <div className="uhck-pay-action" style={{ width: "100%", marginTop: "16px" }}>
-                                                    <button className="uhck-btn-primary" onClick={handleCOD} disabled={loading || payState === "processing"}>
-                                                        {loading || payState === "processing" ? "Processing..." : `PLACE ORDER`}
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
+                    <StepCard num={4} title="Payment Options" active={step === 4} done={false}>
+                        <div className="-mx-5 flex flex-col">
+                            {/* Online */}
+                            <div
+                                onClick={() => selectPaymentMethod("online")}
+                                className="flex items-start gap-4 px-5 py-4 border-b border-default cursor-pointer"
+                            >
+                                <div className={cn("w-[18px] h-[18px] rounded-full flex-shrink-0 mt-0.5", paymentMethod === "online" ? "border-[5px] border-[var(--accent-primary)]" : "border-2 border-[var(--color-graphite-300)]")} />
+                                <div className="flex-1 flex flex-col gap-1">
+                                    <span className="text-[15px] text-primary">UPI, Wallets, Credit / Debit Card</span>
+                                    <span className="text-xs text-secondary">Fast & Secure Payments</span>
+                                    {paymentMethod === "online" && (
+                                        <Button variant="primary" className="mt-4" onClick={handlePayOnline} loading={loading || payState === "processing"}>
+                                            {loading || payState === "processing" ? "Processing..." : `Pay ${fmt(finalTotal)}`}
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
-                        )}
-                    </div>
+
+                            {/* COD */}
+                            <div
+                                onClick={() => codAvailable && selectPaymentMethod("cod")}
+                                className={cn("flex items-start gap-4 px-5 py-4 cursor-pointer", (!codAvailable && !codChecking) && "opacity-50 pointer-events-none")}
+                            >
+                                <div className={cn("w-[18px] h-[18px] rounded-full flex-shrink-0 mt-0.5", paymentMethod === "cod" ? "border-[5px] border-[var(--accent-primary)]" : "border-2 border-[var(--color-graphite-300)]")} />
+                                <div className="flex-1 flex flex-col gap-1">
+                                    <span className="text-[15px] text-primary">Cash on Delivery</span>
+                                    {codChecking ? (
+                                        <span className="text-xs text-secondary">Checking availability...</span>
+                                    ) : codAvailable ? (
+                                        <span className="text-xs text-secondary">Pay at your doorstep</span>
+                                    ) : (
+                                        <span className="text-xs text-error">Not available for this location</span>
+                                    )}
+                                    {paymentMethod === "cod" && codAvailable && (
+                                        <Button variant="primary" className="mt-4" onClick={handleCOD} loading={loading || payState === "processing"}>
+                                            {loading || payState === "processing" ? "Processing..." : "Place Order"}
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </StepCard>
                 </div>
 
                 {/* Sidebar: Order Summary */}
-                <div className="uhck-sidebar" style={{ background: "#fff", borderRadius: "2px", boxShadow: "0 1px 2px 0 rgba(0,0,0,0.2)", position: "sticky", top: "16px" }}>
-                    <div className="uhck-price-card">
-                        <div className="uhck-price-title" style={{ padding: "14px 24px", borderBottom: "1px solid #f0f0f0", fontSize: "16px", fontWeight: 500, color: "#878787", textTransform: "uppercase" }}>PRICE DETAILS</div>
-                        {pricingLoading ? (
-                            <div className="uhck-loading" style={{ padding: 24, display: "flex", alignItems: "center", gap: "10px", fontSize: "14px", color: "#878787" }}><FaSpinner className="uhck-spin" style={{ animation: "uhck-sp .8s linear infinite" }} /> Calculating…</div>
-                        ) : pricing ? (
-                            <div className="uhck-price-body" style={{ padding: "24px" }}>
-                                <div className="uhck-price-row" style={{ display: "flex", justifyContent: "space-between", fontSize: "15px", color: "#212121", marginBottom: "16px" }}>
-                                    <span>Price ({checkoutItems.length} item{checkoutItems.length > 1 ? "s" : ""})</span>
-                                    <span>{fmt(pricing.itemsTotal)}</span>
-                                </div>
-                                <div className="uhck-price-row" style={{ display: "flex", justifyContent: "space-between", fontSize: "15px", color: "#212121", marginBottom: "16px" }}>
-                                    <span>Delivery Charges</span>
-                                    <span style={{ color: pricing.deliveryCharge === 0 ? "#388e3c" : "#212121" }}>
-                                        {pricing.deliveryCharge === 0 ? "FREE" : fmt(pricing.deliveryCharge)}
-                                    </span>
-                                </div>
-                                <div className="uhck-price-row" style={{ display: "flex", justifyContent: "space-between", fontSize: "15px", color: "#212121", marginBottom: "16px" }}>
-                                    <span>Platform Fee</span>
-                                    <span>{fmt(pricing.platformFee)}</span>
-                                </div>
-                                {pricing.couponDiscount > 0 && (
-                                    <div className="uhck-price-row" style={{ display: "flex", justifyContent: "space-between", fontSize: "15px", color: "#388e3c", marginBottom: "16px" }}>
-                                        <span>Coupon Discount</span>
-                                        <span>−{fmt(pricing.couponDiscount)}</span>
-                                    </div>
-                                )}
-                                <div className="uhck-price-total" style={{ display: "flex", justifyContent: "space-between", fontSize: "18px", fontWeight: 500, color: "#212121", paddingTop: "16px", borderTop: "1px dashed #e0e0e0", marginTop: "8px" }}>
-                                    <span>Amount Payable</span>
-                                    <span>{fmt(pricing.finalTotal)}</span>
-                                </div>
-                                {pricing.couponDiscount > 0 && (
-                                    <div style={{ color: "#388e3c", fontSize: 13, fontWeight: 600, marginTop: 12 }}>
-                                        Your Total Savings on this order {fmt(pricing.couponDiscount)}
-                                    </div>
-                                )}
+                <Card padding="none" className="sticky top-4 hidden md:block">
+                    <div className="px-5 py-3.5 border-b border-default text-sm font-semibold text-secondary uppercase">Price Details</div>
+                    {pricingLoading ? (
+                        <div className="p-5 flex items-center gap-2.5 text-sm text-secondary"><Loader size="sm" /> Calculating…</div>
+                    ) : pricing ? (
+                        <div className="p-5">
+                            <div className="flex justify-between text-sm text-primary mb-4">
+                                <span>Price ({checkoutItems.length} item{checkoutItems.length > 1 ? "s" : ""})</span>
+                                <span>{fmt(pricing.itemsTotal)}</span>
                             </div>
-                        ) : null}
+                            <div className="flex justify-between text-sm text-primary mb-4">
+                                <span>Delivery Charges</span>
+                                <span className={pricing.deliveryCharge === 0 ? "text-success" : ""}>
+                                    {pricing.deliveryCharge === 0 ? "FREE" : fmt(pricing.deliveryCharge)}
+                                </span>
+                            </div>
+                            <div className="flex justify-between text-sm text-primary mb-4">
+                                <span>Platform Fee</span>
+                                <span>{fmt(pricing.platformFee)}</span>
+                            </div>
+                            {pricing.couponDiscount > 0 && (
+                                <div className="flex justify-between text-sm text-success mb-4">
+                                    <span>Coupon Discount</span>
+                                    <span>−{fmt(pricing.couponDiscount)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between text-lg font-semibold text-primary pt-4 border-t border-dashed border-default mt-1">
+                                <span>Amount Payable</span>
+                                <span>{fmt(pricing.finalTotal)}</span>
+                            </div>
+                            {pricing.couponDiscount > 0 && (
+                                <div className="text-success text-[13px] font-semibold mt-3">
+                                    Your Total Savings on this order {fmt(pricing.couponDiscount)}
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
+                    <div className="flex items-center gap-2 mt-4 justify-center text-secondary text-xs font-semibold pb-6">
+                        <FiShield size={16} aria-hidden="true" /> Safe and Secure Payments
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, justifyContent: "center", color: "#878787", fontSize: 12, fontWeight: 600, paddingBottom: "24px" }}>
-                        <FaShieldAlt size={16} /> Safe and Secure Payments
-                    </div>
-                </div>
+                </Card>
 
                 {/* Mobile order summary toggle */}
-                <div className="uhck-mobile-sum-toggle" style={{ display: "none", position: "fixed", bottom: 0, left: 0, right: 0, background: "#1a1740", color: "#fff", padding: "12px 16px", zIndex: 50, justifyContent: "space-between", alignItems: "center", fontSize: "13px", fontWeight: 700, cursor: "pointer" }} onClick={() => setMobileSummaryOpen(!mobileSummaryOpen)}>
+                <button
+                    onClick={() => setMobileSummaryOpen(!mobileSummaryOpen)}
+                    className="md:hidden fixed bottom-0 left-0 right-0 bg-[var(--color-graphite-900)] text-white px-4 py-3 z-50 flex justify-between items-center text-[13px] font-bold"
+                >
                     <span>{checkoutItems.length} item{checkoutItems.length > 1 ? "s" : ""} · {fmt(finalTotal)}</span>
-                    {mobileSummaryOpen ? <FaChevronDown size={12} /> : <FaChevronUp size={12} />}
-                </div>
+                    {mobileSummaryOpen ? <FiChevronDown size={12} aria-hidden="true" /> : <FiChevronUp size={12} aria-hidden="true" />}
+                </button>
                 {mobileSummaryOpen && (
-                    <div className="uhck-mobile-summary" style={{ position: "fixed", bottom: "44px", left: 0, right: 0, background: "#fff", borderTop: "1px solid #e8e4d9", padding: "12px 16px", zIndex: 49, maxHeight: "40vh", overflowY: "auto", boxShadow: "0 -4px 16px rgba(0,0,0,.1)" }}>
+                    <div className="md:hidden fixed bottom-11 left-0 right-0 bg-surface border-t border-default px-4 py-3 z-40 max-h-[40vh] overflow-y-auto shadow-lg">
                         {checkoutItems.map((item, idx) => (
-                            <div key={item.cartItemId || `${item._id}-${idx}`} className="uhck-side-item" style={{ display: "flex", gap: "12px", marginBottom: "12px" }}>
-                                <img src={item.images?.[0]?.url || item.image || "/placeholder.png"} alt={item.name} className="uhck-side-img" loading="lazy" style={{ width: "40px", height: "40px", objectFit: "contain" }} onError={(e) => { e.target.src = "/placeholder.png"; }} />
-                                <div className="uhck-side-item-info" style={{ flex: 1 }}>
-                                    <div className="uhck-side-item-name" style={{ fontSize: "12px", fontWeight: 500, color: "#212121", marginBottom: "4px" }}>{item.name}</div>
-                                    <div className="uhck-side-item-qty" style={{ fontSize: "11px", color: "#878787" }}>Qty: {item.quantity} · {fmt(item.price * item.quantity)}</div>
+                            <div key={item.cartItemId || `${item._id}-${idx}`} className="flex gap-3 mb-3">
+                                <img src={item.images?.[0]?.url || item.image || "/placeholder.png"} alt={item.name} loading="lazy" className="w-10 h-10 object-contain" onError={(e) => { e.target.src = "/placeholder.png"; }} />
+                                <div className="flex-1">
+                                    <div className="text-xs font-medium text-primary mb-1">{item.name}</div>
+                                    <div className="text-[11px] text-secondary">Qty: {item.quantity} · {fmt(item.price * item.quantity)}</div>
                                 </div>
                             </div>
                         ))}
@@ -362,7 +370,7 @@ const UHCheckout = () => {
     );
 };
 
-/* ── In Form ──────────────────────────────── */
+/* ── Inline Address Form ──────────────────────────────── */
 const AddressFormInline = ({ initial, saving, onSave, onCancel }) => {
     const [form, setForm] = useState({
         label: initial?.label || "Home",
@@ -392,87 +400,48 @@ const AddressFormInline = ({ initial, saving, onSave, onCancel }) => {
     };
 
     return (
-        <div className="uhck-addr-form" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <h3 style={{ fontSize: "16px", fontWeight: 500, margin: 0 }}>{initial ? "Edit Address" : "Add New Address"}</h3>
-            {formError && <div className="uhck-error" style={{ background: "#ffebe8", color: "#ff6161", padding: "12px 24px", fontSize: "14px", borderRadius: "2px" }}>{formError}</div>}
-            <div className="uhck-addr-labels" style={{ display: "flex", gap: "12px", marginBottom: "8px" }}>
-                {["Home", "Work", "Other"].map((l) => (
-                    <button key={l} className={`uhck-label-chip${form.label === l ? " active" : ""}`} onClick={() => update("label", l)} style={{ background: form.label === l ? "#fff" : "#fff", color: form.label === l ? "#2874f0" : "#212121", border: form.label === l ? "1px solid #2874f0" : "1px solid #e0e0e0", padding: "6px 16px", borderRadius: "2px", fontSize: "13px", fontWeight: 500, cursor: "pointer", textTransform: "uppercase" }}>
-                        {LABEL_ICONS[l]} {l}
-                    </button>
-                ))}
+        <div className="flex flex-col gap-4">
+            <h3 className="text-base font-medium text-primary">{initial ? "Edit Address" : "Add New Address"}</h3>
+            {formError && <Alert variant="error">{formError}</Alert>}
+            <div className="flex gap-3 mb-2">
+                {["Home", "Work", "Other"].map((l) => {
+                    const Icon = LABEL_ICONS[l];
+                    return (
+                        <button
+                            key={l}
+                            onClick={() => update("label", l)}
+                            className={cn(
+                                "flex items-center gap-1.5 px-4 py-1.5 rounded-[var(--radius-sm)] text-[13px] font-medium uppercase border",
+                                form.label === l ? "border-[var(--accent-primary)] text-accent" : "border-default text-primary"
+                            )}
+                        >
+                            <Icon size={10} aria-hidden="true" /> {l}
+                        </button>
+                    );
+                })}
             </div>
-            <div className="uhck-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                <div className="uhck-field" style={{ display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>Name</label><input value={form.name} onChange={(e) => update("name", e.target.value)} maxLength={100} style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
-                <div className="uhck-field" style={{ display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>Phone</label><input value={form.phone} onChange={(e) => update("phone", e.target.value.replace(/\D/g, "").slice(0, 10))} maxLength={10} inputMode="numeric" style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
-                <div className="uhck-field full" style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>House / Flat / Building</label><input value={form.house} onChange={(e) => update("house", e.target.value)} maxLength={200} style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
-                <div className="uhck-field full" style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>Area / Street / Colony</label><input value={form.area} onChange={(e) => update("area", e.target.value)} maxLength={200} style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
-                <div className="uhck-field" style={{ display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>Landmark</label><input value={form.landmark} onChange={(e) => update("landmark", e.target.value)} maxLength={100} placeholder="Optional" style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
-                <div className="uhck-field" style={{ display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>City</label><input value={form.city} onChange={(e) => update("city", e.target.value)} maxLength={100} style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
-                <div className="uhck-field" style={{ display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>State</label><input value={form.state} onChange={(e) => update("state", e.target.value)} maxLength={100} style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
-                <div className="uhck-field" style={{ display: "flex", flexDirection: "column", gap: "4px" }}><label style={{ fontSize: "12px", color: "#878787", fontWeight: 500 }}>Pincode</label><input value={form.pincode} onChange={(e) => update("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} inputMode="numeric" style={{ padding: "12px 16px", border: "1px solid #e0e0e0", borderRadius: "2px", fontSize: "14px", outline: "none" }} /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input label="Name" value={form.name} onChange={(e) => update("name", e.target.value)} maxLength={100} />
+                <Input label="Phone" value={form.phone} onChange={(e) => update("phone", e.target.value.replace(/\D/g, "").slice(0, 10))} maxLength={10} inputMode="numeric" />
+                <div className="sm:col-span-2">
+                    <Input label="House / Flat / Building" value={form.house} onChange={(e) => update("house", e.target.value)} maxLength={200} />
+                </div>
+                <div className="sm:col-span-2">
+                    <Input label="Area / Street / Colony" value={form.area} onChange={(e) => update("area", e.target.value)} maxLength={200} />
+                </div>
+                <Input label="Landmark" value={form.landmark} onChange={(e) => update("landmark", e.target.value)} maxLength={100} placeholder="Optional" />
+                <Input label="City" value={form.city} onChange={(e) => update("city", e.target.value)} maxLength={100} />
+                <Input label="State" value={form.state} onChange={(e) => update("state", e.target.value)} maxLength={100} />
+                <Input label="Pincode" value={form.pincode} onChange={(e) => update("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} inputMode="numeric" />
             </div>
-            <div className="uhck-form-btns" style={{ display: "flex", gap: "16px", marginTop: "16px" }}>
-                <button className="uhck-btn-secondary" style={{ flex: 1, padding: "14px", background: "#fff", border: "1px solid #e0e0e0", color: "#212121", fontWeight: 500, cursor: "pointer" }} onClick={onCancel}>Cancel</button>
-                <button className="uhck-btn-primary" style={{ flex: 1, padding: "14px", background: "#fb641b", color: "#fff", border: "none", fontWeight: 500, cursor: "pointer" }} onClick={handleSubmit} disabled={saving}>
-                    {saving ? <><FaSpinner className="uhck-spin" style={{ animation: "uhck-sp .8s linear infinite" }} /> Saving…</> : (initial ? "Update" : "Save Address")}
-                </button>
+            <div className="flex gap-4 mt-2">
+                <Button variant="secondary" className="flex-1" onClick={onCancel}>Cancel</Button>
+                <Button variant="primary" className="flex-1" onClick={handleSubmit} loading={saving}>
+                    {initial ? "Update" : "Save Address"}
+                </Button>
             </div>
         </div>
     );
 };
-
-/* ── CSS ───────────────────────────────────────── */
-const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
-* { box-sizing: border-box; margin: 0; padding: 0; }
-.uhck-root { min-height: 100vh; background: #f1f3f6; font-family: 'Roboto', sans-serif; padding-bottom: 60px; }
-.uhck-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; text-align: center; gap: 10px; }
-.uhck-empty h2 { font-size: 20px; font-weight: 500; color: #212121; }
-.uhck-empty p { font-size: 14px; color: #878787; }
-.uhck-btn-primary { background: #fb641b; color: #fff; border: none; padding: 14px 32px; font-size: 14px; font-weight: 500; border-radius: 2px; cursor: pointer; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2); text-transform: uppercase; font-family: inherit; }
-.uhck-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.uhck-header { background: #2874f0; color: #fff; height: 60px; display: flex; align-items: center; }
-.uhck-header-inner { max-width: 1100px; margin: 0 auto; width: 100%; padding: 0 16px; display: flex; justify-content: space-between; align-items: center; }
-.uhck-back { background: none; border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-.uhck-header-brand { font-size: 20px; letter-spacing: 0.5px; font-weight: 500; }
-.uhck-secure { font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 6px; letter-spacing: 0.5px; }
-.uhck-layout { max-width: 1000px; margin: 24px auto; display: grid; grid-template-columns: 1fr 300px; gap: 16px; padding: 0 16px; align-items: start; }
-@media(max-width: 860px) { .uhck-layout { grid-template-columns: 1fr; gap: 12px; } }
-.uhck-main { display: flex; flex-direction: column; gap: 16px; }
-.uhck-acc-card { background: #fff; border-radius: 2px; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2); }
-.uhck-acc-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; background: #fff; }
-.uhck-acc-card.active .uhck-acc-head { background: #2874f0; color: #fff; }
-.uhck-acc-title { display: flex; align-items: center; gap: 16px; font-size: 16px; font-weight: 500; color: #878787; text-transform: uppercase; }
-.uhck-acc-card.active .uhck-acc-title { color: #fff; }
-.uhck-acc-num { width: 24px; height: 24px; background: #f0f0f0; color: #2874f0; display: flex; align-items: center; justify-content: center; border-radius: 2px; font-size: 13px; font-weight: 500; }
-.uhck-acc-card.active .uhck-acc-num { background: #fff; color: #2874f0; }
-.uhck-acc-check { color: #2874f0; margin-left: 8px; }
-.uhck-acc-change { background: #fff; color: #2874f0; border: 1px solid #e0e0e0; padding: 6px 16px; border-radius: 2px; font-size: 13px; font-weight: 500; cursor: pointer; text-transform: uppercase; }
-.uhck-acc-summary { padding: 0 24px 16px 64px; font-size: 14px; color: #212121; }
-.uhck-acc-body { padding: 16px 24px 24px 64px; }
-@media(max-width: 600px) { .uhck-acc-head { padding: 14px 16px; } .uhck-acc-summary { padding: 0 16px 16px 56px; } .uhck-acc-body { padding: 16px 16px 24px 16px; } }
-.uhck-field-row { display: flex; gap: 16px; flex-wrap: wrap; }
-.uhck-field { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 4px; }
-.uhck-field input { width: 100%; padding: 12px 16px; border: 1px solid #e0e0e0; border-radius: 2px; font-size: 14px; outline: none; font-family: inherit; transition: border-color .2s; }
-.uhck-field input:focus { border-color: #2874f0; }
-.uhck-addr-list { display: flex; flex-direction: column; gap: 12px; }
-.uhck-addr { display: flex; gap: 16px; padding: 16px; border: 1px solid #e0e0e0; border-radius: 2px; background: #fff; cursor: pointer; transition: background .2s; }
-.uhck-addr:hover { background: #f5faff; }
-.uhck-addr.selected { background: #f5faff; }
-.uhck-radio { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #ccc; margin-top: 2px; flex-shrink: 0; }
-.uhck-radio.on { border: 5px solid #2874f0; }
-.uhck-addr-body { flex: 1; }
-.uhck-addr-top { margin-bottom: 6px; font-size: 14px; color: #212121; }
-.uhck-addr-label { background: #f0f0f0; color: #878787; font-size: 10px; font-weight: 500; padding: 2px 6px; border-radius: 2px; text-transform: uppercase; }
-.uhck-addr-line { font-size: 14px; color: #212121; line-height: 1.5; }
-.uhck-addr-actions button { background: none; border: none; color: #2874f0; font-size: 13px; font-weight: 500; cursor: pointer; text-transform: uppercase; font-family: inherit; }
-.uhck-add-addr { display: flex; align-items: center; gap: 12px; padding: 16px; background: #fff; border: 1px solid #e0e0e0; color: #2874f0; font-size: 14px; font-weight: 500; cursor: pointer; border-radius: 2px; width: 100%; font-family: inherit; margin-top: 16px; }
-.uhck-error { background: #ffebe8; color: #ff6161; padding: 12px 24px; font-size: 14px; border-radius: 2px; margin-bottom: 16px; }
-.uhck-loading { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #878787; }
-@keyframes uhck-sp { to { transform: rotate(360deg); } }
-.uhck-spin { animation: uhck-sp .8s linear infinite; }
-@media(max-width: 768px) { .uhck-mobile-sum-toggle { display: flex !important; } }
-`;
 
 export default UHCheckout;

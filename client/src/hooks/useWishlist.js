@@ -2,7 +2,7 @@
  * useWishlist.js — Wishlist hook for components
  */
 import { useState, useEffect, useCallback } from "react";
-import api from "../api/axios";
+import * as wishlistApi from "../api/wishlistApi";
 import { useAuth } from "../contexts/AuthContext";
 
 const wishlistCache = new Map();
@@ -22,7 +22,13 @@ export const useWishlist = (productId) => {
 
     const cachedValue = wishlistCache.get(cacheKey);
     if (typeof cachedValue === "boolean") {
+      // Already known for this session (from a previous check or the user's
+      // own toggle()) — skip the network call entirely instead of using the
+      // cache as a placeholder while ALSO refetching in the background. This
+      // is what caused /wishlist/check/:id to fire again every time the same
+      // product's card remounted (a different carousel, a revisited page…).
       setInWishlist(cachedValue);
+      return;
     }
 
     const fetchWishlistStatus = async () => {
@@ -34,7 +40,7 @@ export const useWishlist = (productId) => {
         return;
       }
 
-      const promise = api.get(`/wishlist/check/${productId}`)
+      const promise = wishlistApi.checkWishlist(productId)
         .then(({ data }) => {
           const value = Boolean(data?.inWishlist);
           wishlistCache.set(cacheKey, value);
@@ -61,11 +67,11 @@ export const useWishlist = (productId) => {
 
     try {
       if (inWishlist) {
-        await api.delete(`/wishlist/${productId}`);
+        await wishlistApi.removeFromWishlist(productId);
         wishlistCache.set(cacheKey, false);
         setInWishlist(false);
       } else {
-        await api.post(`/wishlist/${productId}`);
+        await wishlistApi.addToWishlist(productId);
         wishlistCache.set(cacheKey, true);
         setInWishlist(true);
       }

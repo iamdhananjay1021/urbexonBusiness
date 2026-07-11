@@ -1,12 +1,12 @@
 // src/features/orders/orderSlice.js
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import api from "../../api/axios";
+import * as orderApi from "../../api/orderApi";
 
 export const getMyOrders = createAsyncThunk(
     "orders/getMyOrders",
     async (_, { rejectWithValue }) => {
         try {
-            const { data } = await api.get("/orders/my");
+            const { data } = await orderApi.getMyOrders();
             return data;
         } catch (error) {
             return rejectWithValue(

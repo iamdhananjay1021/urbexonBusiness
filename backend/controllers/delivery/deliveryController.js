@@ -22,7 +22,7 @@ import { sendEmailBackground } from "../../utils/emailService.js";
 import { deliveryAssignedEmail } from "../../utils/emailTemplates.js";
 import { DELIVERY_CONFIG } from "../../config/deliveryConfig.js";
 import { getRedis, isRedisUp } from "../../config/redis.js";
-import { handleRiderAccept, handleRiderReject, handleRiderCancel } from "../../services/assignmentEngine.js";
+import { handleRiderAccept, handleRiderReject, handleRiderCancel, MAX_ACTIVE_ORDERS } from "../../services/assignmentEngine.js";
 import { sendOrderStatusPush } from "../../services/fcmService.js";
 
 const genOtp = () => String(Math.floor(1000 + Math.random() * 9000));
@@ -143,30 +143,44 @@ export const getDeliveryOrders = async (req, res) => {
             pincodeFilter["deliveryAddress.pincode"] = { $in: db.servicePincodes };
         }
 
-        const availableRaw = await Order.find({
-            orderMode: "URBEXON_HOUR",
-            orderStatus: "READY_FOR_PICKUP",
-            "delivery.assignedTo": null,
-            ...pincodeFilter,
-        })
-            .limit(30)
-            .lean();
+        // BUG FIX: an offline rider, or one already at MAX_ACTIVE_ORDERS,
+        // could still see (and, via the accept endpoint, claim) new orders —
+        // neither condition was checked here, only cosmetically in sorting.
+        const canTakeNewOrders = db.isOnline && (db.activeOrders || 0) < MAX_ACTIVE_ORDERS;
 
         const riderLat = db.location?.lat;
         const riderLng = db.location?.lng;
+        const maxKm = DELIVERY_CONFIG.URBEXON_HOUR?.MAX_RADIUS_KM || 10;
 
-        const available = availableRaw.map(o => {
-            let distanceFromRider = null;
+        let available = [];
+        if (canTakeNewOrders) {
+            const availableRaw = await Order.find({
+                orderMode: "URBEXON_HOUR",
+                orderStatus: "READY_FOR_PICKUP",
+                "delivery.assignedTo": null,
+                ...pincodeFilter,
+            })
+                .limit(30)
+                .lean();
+
+            available = availableRaw.map(o => {
+                let distanceFromRider = null;
+                if (riderLat && riderLng) {
+                    const orderLat = o.latitude || DELIVERY_CONFIG.SHOP_LAT;
+                    const orderLng = o.longitude || DELIVERY_CONFIG.SHOP_LNG;
+                    distanceFromRider = Math.round(haversineKm(riderLat, riderLng, orderLat, orderLng) * 10) / 10;
+                }
+                return { ...o, distanceFromRider };
+            });
+
+            // Once we actually know where the rider is, don't show (or let
+            // them attempt to accept) orders outside the real delivery
+            // radius — this used to be sort-only, not a filter, so a rider
+            // could see and accept an order hundreds of km away.
             if (riderLat && riderLng) {
-                const orderLat = o.latitude || DELIVERY_CONFIG.SHOP_LAT;
-                const orderLng = o.longitude || DELIVERY_CONFIG.SHOP_LNG;
-                distanceFromRider = Math.round(haversineKm(riderLat, riderLng, orderLat, orderLng) * 10) / 10;
+                available = available.filter(o => o.distanceFromRider == null || o.distanceFromRider <= maxKm);
+                available.sort((a, b) => (a.distanceFromRider || 999) - (b.distanceFromRider || 999));
             }
-            return { ...o, distanceFromRider };
-        });
-
-        if (riderLat && riderLng) {
-            available.sort((a, b) => (a.distanceFromRider || 999) - (b.distanceFromRider || 999));
         }
 
         // ✅ FIXED: My active orders — removed LOCAL_RIDER filter
@@ -399,16 +413,35 @@ export const markDelivered = async (req, res) => {
 // ── PATCH /api/delivery/location ────────────────────────
 export const updateRiderLocation = async (req, res) => {
     try {
-        const { lat, lng, orderId } = req.body;
+        const { lat, lng, orderId, timestamp } = req.body;
         if (!lat || !lng) return res.status(400).json({ success: false, message: "lat and lng required" });
 
         const numLat = Number(lat);
         const numLng = Number(lng);
+        const gpsTimestamp = Number.isFinite(Number(timestamp)) ? Number(timestamp) : null;
+
+        // BUG FIX: the delivery-panel runs a real-time `watchPosition` AND a
+        // 15s-interval `getCurrentPosition` fallback simultaneously, each
+        // independently PATCHing this endpoint — since this used to write
+        // unconditionally, whichever HTTP request happened to arrive LAST
+        // won, even if its underlying GPS fix was actually OLDER (the
+        // fallback's own `maximumAge` lets it reuse a reading up to 10s
+        // stale). That's what made the rider marker visibly jump backward
+        // on the customer's map every ~15s. Only accept this update if its
+        // own GPS timestamp is at least as new as whatever's already
+        // stored — a client not sending `timestamp` at all keeps the old
+        // always-accept behavior (backward compatible).
+        if (gpsTimestamp !== null) {
+            const existing = await DeliveryBoy.findOne({ userId: req.user._id }).select("location.gpsTimestamp").lean();
+            if (existing?.location?.gpsTimestamp && gpsTimestamp < existing.location.gpsTimestamp) {
+                return res.json({ success: true, ignored: true, reason: "stale_fix" });
+            }
+        }
 
         const db = await DeliveryBoy.findOneAndUpdate(
             { userId: req.user._id },
             {
-                location: { lat: numLat, lng: numLng, updatedAt: new Date() },
+                location: { lat: numLat, lng: numLng, updatedAt: new Date(), gpsTimestamp },
                 geoLocation: { type: "Point", coordinates: [numLng, numLat] },
             },
             { new: true }
@@ -554,6 +587,20 @@ export const updateDeliveryDocuments = async (req, res) => {
     }
 };
 
+// BUG FIX: neither response branch below ever checked how OLD the location
+// fix actually was — once Redis's 2-min cache entry expires, the MongoDB
+// fallback happily returns whatever GPS point was last written, even if
+// that was hours ago (rider's phone died, app was killed, etc.), with
+// `available: true` and no signal that tracking has actually stopped. Every
+// consumer (LiveTrackingMap, AdminTrackingMap, the admin orders "LIVE"
+// badge) trusted that blindly. `stale: true` lets them show "last seen
+// Xm ago" instead of a misleading live marker.
+const RIDER_LOCATION_STALE_MS = 3 * 60 * 1000; // a little past Redis's own 2-min TTL
+const isLocationStale = (updatedAt) => {
+    if (!updatedAt) return true;
+    return Date.now() - new Date(updatedAt).getTime() > RIDER_LOCATION_STALE_MS;
+};
+
 // ── GET /api/delivery/orders/:id/rider-location ─────────
 export const getRiderLocationForOrder = async (req, res) => {
     try {
@@ -576,7 +623,7 @@ export const getRiderLocationForOrder = async (req, res) => {
                     const loc = JSON.parse(cached);
                     const rider = await DeliveryBoy.findById(order.delivery.assignedTo).select("name phone isOnline").lean();
                     return res.json({
-                        success: true, available: true, source: "redis",
+                        success: true, available: true, stale: isLocationStale(loc.updatedAt), source: "redis",
                         rider: {
                             name: rider?.name || loc.riderName || "",
                             phone: rider?.phone || "",
@@ -592,9 +639,11 @@ export const getRiderLocationForOrder = async (req, res) => {
             .select("name phone location isOnline").lean();
         if (!rider) return res.json({ success: true, available: false });
 
+        const hasCoords = !!(rider.location?.lat && rider.location?.lng);
         res.json({
             success: true,
-            available: !!(rider.location?.lat && rider.location?.lng),
+            available: hasCoords,
+            stale: hasCoords ? isLocationStale(rider.location?.updatedAt) : true,
             source: "mongodb",
             rider: {
                 name: rider.name, phone: rider.phone, isOnline: rider.isOnline,

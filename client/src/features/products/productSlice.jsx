@@ -2,7 +2,7 @@
 
 // productSlice.js — improved version:
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import api from "../../api/axios";
+import { getProducts } from "../../api/productApi";
 export const fetchProducts = createAsyncThunk(
     "products/fetchProducts",
     async ({ search = "", category = "", deals = "" } = {}, { rejectWithValue }) => {
@@ -12,7 +12,7 @@ export const fetchProducts = createAsyncThunk(
             if (category) params.append("category", category);
             if (deals) params.append("deals", deals);
 
-            const { data } = await api.get(`/products?${params}`);
+            const { data } = await getProducts(`?${params}`);
             return data;
         } catch (error) {
             return rejectWithValue(

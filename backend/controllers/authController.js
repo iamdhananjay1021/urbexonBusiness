@@ -18,7 +18,12 @@ const RESET_EXPIRY_MS = 15 * 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 const BCRYPT_ROUNDS = 10;
 const JWT_EXPIRY = "15m";
-const REFRESH_TOKEN_EXPIRY_DAYS = 7;
+// BUG FIX: was 7 days — any user (customer, vendor, delivery, or admin;
+// this refresh mechanism is shared via authenticateByRole/issueTokens for
+// all roles) whose refresh-token cookie outlived 7 days without a fresh
+// login got hard logged out, regardless of how recently they'd actually
+// been using the app. Session should persist at least 30 days while active.
+const REFRESH_TOKEN_EXPIRY_DAYS = 30;
 
 const BRAND = {
     name: process.env.SHOP_NAME || "Urbexon",

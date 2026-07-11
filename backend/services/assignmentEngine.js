@@ -25,7 +25,7 @@ const ASSIGNMENT_TIMEOUT_MS = 30_000;
 const RIDERS_PER_BATCH = 3;
 const MAX_ROUNDS = 3;
 const ROUND_DELAY_MS = 60_000;
-const MAX_ACTIVE_ORDERS = 1;
+export const MAX_ACTIVE_ORDERS = 1;
 const REDIS_LOCK_TTL = 900;
 const REDIS_PENDING_TTL = Math.ceil(ASSIGNMENT_TIMEOUT_MS / 1000) + 10;
 
@@ -146,6 +146,18 @@ export const handleRiderAccept = async (orderId, riderId, riderUserId) => {
     }
     if (!rider) return { success: false, message: "Rider not found" };
 
+    // BUG FIX: manual accept (this function) never enforced the same
+    // online/capacity/radius gates that the auto-assignment candidate query
+    // (_findNearestRiders) already enforces — an offline rider, or one
+    // already at MAX_ACTIVE_ORDERS, could still claim an order via the
+    // "Available" list, and a rider hundreds of km away could accept an
+    // order with no distance check at all (radius is otherwise only
+    // enforced at checkout, never at delivery-claim time).
+    if (!rider.isOnline) return { success: false, message: "Go online to accept orders" };
+    if ((rider.activeOrders || 0) >= MAX_ACTIVE_ORDERS) {
+        return { success: false, message: "Finish your current delivery before accepting another" };
+    }
+
     // ✅ NEW: distanceKm calculate karo taaki OrderDetails.jsx me "Distance" dikhe
     let distanceKm = null;
     try {
@@ -159,6 +171,11 @@ export const handleRiderAccept = async (orderId, riderId, riderUserId) => {
         }
     } catch (err) {
         console.warn(`[Assignment] Failed to compute distanceKm for order ${key}: ${err.message}`);
+    }
+
+    const maxKm = DELIVERY_CONFIG.URBEXON_HOUR?.MAX_RADIUS_KM || 10;
+    if (distanceKm != null && distanceKm > maxKm) {
+        return { success: false, message: `Order is ${distanceKm}km away — outside the ${maxKm}km delivery radius` };
     }
 
     // ✅ FIXED: Atomic claim — removed delivery.provider check so any UH order can be accepted

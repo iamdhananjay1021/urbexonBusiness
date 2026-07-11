@@ -14,6 +14,7 @@
  */
 import Product from "../models/Product.js";
 import Coupon from "../models/Coupon.js";
+import Vendor from "../models/vendorModels/Vendor.js";
 import {
     calcDeliveryCharge,
     calcFinalAmount,
@@ -232,6 +233,14 @@ export const calculateOrderPricing = async (frontendItems, paymentMethod, option
 
     const deliveryCharge = calcDeliveryCharge(itemsTotal, paymentMethod, { deliveryType, distanceKm: distanceKmForCalc });
 
+    // Fetch fresh on every order (not cached) so a vendor flipping their
+    // delivery-mode toggle takes effect immediately on their next order.
+    let vendorDeliveryMode;
+    if (deliveryType === DELIVERY_TYPES.URBEXON_HOUR && options.vendorId) {
+        const vendor = await Vendor.findById(options.vendorId).select("deliveryMode").lean();
+        vendorDeliveryMode = vendor?.deliveryMode;
+    }
+
     // Coupon
     const orderType = deliveryType === DELIVERY_TYPES.URBEXON_HOUR ? "urbexon_hour" : "ecommerce";
     const couponResult = await applyCoupon({
@@ -259,6 +268,6 @@ export const calculateOrderPricing = async (frontendItems, paymentMethod, option
         // null distinctly from 0 for correct "—" vs "0.0 km" rendering.
         distanceKm,
         deliveryETA: getDeliveryETA({ pincode: options.pincode, paymentMethod, deliveryType }),
-        deliveryProvider: getDeliveryProvider({ deliveryType, distanceKm: distanceKmForCalc }),
+        deliveryProvider: getDeliveryProvider({ deliveryType, distanceKm: distanceKmForCalc, vendorDeliveryMode }),
     };
 };

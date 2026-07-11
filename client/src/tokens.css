@@ -1,0 +1,192 @@
+/**
+ * Urbexon "Signal" Design System — Design Tokens
+ * Canonical source of truth. Copied into client/admin/vendor-panel/delivery-panel.
+ * Do not hardcode hex values in components — use these tokens only.
+ */
+
+@theme {
+  /* Graphite neutrals */
+  --color-graphite-950: #14151A;
+  --color-graphite-900: #191B22;
+  --color-graphite-800: #22242E;
+  --color-graphite-700: #2C2F3B;
+  --color-graphite-600: #3A3E4D;
+  --color-graphite-500: #565B6E;
+  --color-graphite-400: #7A7F93;
+  --color-graphite-300: #A8ACBB;
+  --color-graphite-200: #D3D5DD;
+  --color-graphite-100: #EDEEF2;
+  --color-graphite-50:  #F7F7F9;
+
+  /* Indigo — brand accent (Ecommerce) */
+  --color-indigo-600: #4A4DD1;
+  --color-indigo-500: #5457E5;
+  --color-indigo-400: #7678EC;
+  --color-indigo-100: #E6E6FB;
+
+  /* Amber — Urbexon Hour accent ONLY */
+  --color-amber-600: #D98A1F;
+  --color-amber-500: #F2A93B;
+  --color-amber-100: #FDF0DA;
+
+  /* Semantic — -500 for icons/large UI, -700 for text (AA-verified) */
+  --color-success-700: #188660;
+  --color-success-500: #1FA97A;
+  --color-success-100: #E1F5EC;
+  --color-error-700: #D34247;
+  --color-error-500: #E5484D;
+  --color-error-100: #FCE8E8;
+  --color-warning-700: #937105;
+  --color-warning-500: #EAB308;
+  --color-warning-100: #FBF3D3;
+  --color-info-700: #277DAB;
+  --color-info-500: #2F98D1;
+  --color-info-100: #E4F3FA;
+
+  /* Typography */
+  --font-display: "Manrope", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(20,21,26,.04);
+  --shadow-sm: 0 2px 6px rgba(20,21,26,.06);
+  --shadow-md: 0 6px 16px rgba(20,21,26,.08);
+  --shadow-lg: 0 16px 32px rgba(20,21,26,.12);
+}
+
+/* ── Semantic tokens: theme-swappable, never reference these hex values directly ── */
+:root {
+  --bg-canvas: var(--color-graphite-50);
+  --bg-surface: #ffffff;
+  --bg-surface-raised: #ffffff;
+  --bg-overlay: rgba(20,21,26,.5);
+
+  --text-primary: var(--color-graphite-900);
+  --text-secondary: var(--color-graphite-500);
+  --text-muted: var(--color-graphite-400);
+  --text-inverse: #ffffff;
+
+  --border-default: var(--color-graphite-200);
+  --border-strong: var(--color-graphite-300);
+
+  --accent-primary: var(--color-indigo-500);
+  --accent-primary-hover: var(--color-indigo-600);
+  --accent-primary-tint: var(--color-indigo-100);
+  --accent-hour: var(--color-amber-500);
+  --accent-hour-hover: var(--color-amber-600);
+  --accent-hour-tint: var(--color-amber-100);
+  --accent-hour-text-on: var(--color-graphite-900); /* amber bg always pairs with dark text */
+
+  --text-success: var(--color-success-700);
+  --icon-success: var(--color-success-500);
+  --bg-success-tint: var(--color-success-100);
+  --text-error: var(--color-error-700);
+  --icon-error: var(--color-error-500);
+  --bg-error-tint: var(--color-error-100);
+  --text-warning: var(--color-warning-700);
+  --icon-warning: var(--color-warning-500);
+  --bg-warning-tint: var(--color-warning-100);
+  --text-info: var(--color-info-700);
+  --icon-info: var(--color-info-500);
+  --bg-info-tint: var(--color-info-100);
+
+  --focus-ring: rgba(84,87,229,.35);
+}
+
+.dark {
+  --bg-canvas: var(--color-graphite-950);
+  --bg-surface: var(--color-graphite-900);
+  --bg-surface-raised: var(--color-graphite-800);
+  --bg-overlay: rgba(0,0,0,.7);
+
+  --text-primary: var(--color-graphite-50);
+  --text-secondary: var(--color-graphite-300);
+  --text-muted: var(--color-graphite-500);
+  --text-inverse: var(--color-graphite-900);
+
+  --border-default: var(--color-graphite-700);
+  --border-strong: var(--color-graphite-600);
+
+  --accent-primary: var(--color-indigo-400);
+  --accent-primary-hover: var(--color-indigo-500);
+  --accent-primary-tint: rgba(118,120,236,.16);
+  /* amber stays identical in dark mode — already high contrast both ways */
+
+  --text-success: var(--color-success-500);
+  --text-error: var(--color-error-500);
+  --text-warning: var(--color-warning-500);
+  --text-info: var(--color-info-500);
+  --bg-success-tint: rgba(31,169,122,.14);
+  --bg-error-tint: rgba(229,72,77,.14);
+  --bg-warning-tint: rgba(234,179,8,.14);
+  --bg-info-tint: rgba(47,152,209,.14);
+}
+
+/* ── Semantic utility classes (Tailwind v4 @utility) — theme-aware, use these instead of raw color utilities ── */
+@utility bg-canvas { background-color: var(--bg-canvas); }
+@utility bg-surface { background-color: var(--bg-surface); }
+@utility bg-surface-raised { background-color: var(--bg-surface-raised); }
+@utility text-primary { color: var(--text-primary); }
+@utility text-secondary { color: var(--text-secondary); }
+@utility text-muted { color: var(--text-muted); }
+@utility text-inverse { color: var(--text-inverse); }
+@utility border-default { border-color: var(--border-default); }
+@utility border-strong { border-color: var(--border-strong); }
+@utility bg-accent { background-color: var(--accent-primary); }
+@utility bg-accent-hover { background-color: var(--accent-primary-hover); }
+@utility text-accent { color: var(--accent-primary); }
+@utility bg-accent-tint { background-color: var(--accent-primary-tint); }
+@utility bg-hour { background-color: var(--accent-hour); }
+@utility bg-hour-hover { background-color: var(--accent-hour-hover); }
+@utility bg-hour-tint { background-color: var(--accent-hour-tint); }
+@utility text-on-hour { color: var(--accent-hour-text-on); }
+@utility text-success { color: var(--text-success); }
+@utility text-error { color: var(--text-error); }
+@utility text-warning { color: var(--text-warning); }
+@utility text-info { color: var(--text-info); }
+@utility bg-success-tint { background-color: var(--bg-success-tint); }
+@utility bg-error-tint { background-color: var(--bg-error-tint); }
+@utility bg-warning-tint { background-color: var(--bg-warning-tint); }
+@utility bg-info-tint { background-color: var(--bg-info-tint); }
+@utility focus-ring-accent {
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--focus-ring);
+  }
+}
+
+/* ── Shared component animations ── */
+@keyframes drawerInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes drawerInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes drawerInBottom {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes skeletonShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

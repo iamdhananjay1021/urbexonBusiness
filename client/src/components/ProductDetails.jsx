@@ -21,11 +21,13 @@
  */
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense, lazy, memo } from "react";
-import api from "../api/axios";
+import * as productApi from "../api/productApi";
+import * as reviewApi from "../api/reviewApi";
+import { uploadCustomImage } from "../api/uploadApi";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../contexts/AuthContext";
 import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
-import { imgUrl } from "../utils/imageUrl";
+import { imgUrl, imgSrcSet } from "../utils/imageUrl";
 import SEO, { JsonLd } from "../components/SEO";
 import DeliveryEstimate from "../components/DeliveryEstimate";
 import {
@@ -79,18 +81,18 @@ const Accordion = memo(({ title, icon, children, defaultOpen = false }) => {
             <button
                 onClick={() => setOpen(o => !o)}
                 aria-expanded={open}
-                className="w-full flex items-center justify-between px-4 py-3.5
+                className="w-full flex items-center justify-between px-3 sm:px-4 py-3 sm:py-3.5
                            bg-neutral-50 hover:bg-neutral-100 transition-colors text-left"
             >
-                <span className="flex items-center gap-2.5 text-sm font-semibold text-neutral-800">
+                <span className="flex items-center gap-2.5 text-[13px] sm:text-sm font-semibold text-neutral-800">
                     {icon}{title}
                 </span>
                 {open
-                    ? <FaChevronUp size={11} className="text-neutral-400" />
-                    : <FaChevronDown size={11} className="text-neutral-400" />}
+                    ? <FaChevronUp size={11} className="text-neutral-400 shrink-0" />
+                    : <FaChevronDown size={11} className="text-neutral-400 shrink-0" />}
             </button>
             {open && (
-                <div className="px-4 pb-4 pt-3 text-sm text-neutral-600 leading-relaxed">
+                <div className="px-3 sm:px-4 pb-4 pt-3 text-[13px] sm:text-sm text-neutral-600 leading-relaxed">
                     {children}
                 </div>
             )}
@@ -117,7 +119,7 @@ const RelatedCard = memo(({ rp }) => {
             className="no-underline shrink-0 flex flex-col bg-white rounded-2xl border border-neutral-100
                        overflow-hidden transition-all duration-250 shadow-sm
                        hover:shadow-[0_8px_24px_rgba(0,0,0,0.1)] hover:-translate-y-1
-                       w-[160px] sm:w-[180px]">
+                       w-[42vw] xs:w-[150px] sm:w-[180px] max-w-[180px] min-w-[132px]">
             {/* Image */}
             <div className="relative w-full aspect-square bg-neutral-50 overflow-hidden">
                 {rp.images?.[0]?.url
@@ -137,7 +139,7 @@ const RelatedCard = memo(({ rp }) => {
                 )}
             </div>
             {/* Body */}
-            <div className="p-3 flex flex-col gap-1.5 flex-1">
+            <div className="p-2.5 sm:p-3 flex flex-col gap-1.5 flex-1">
                 <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider truncate">
                     {rp.category?.name || "Product"}
                 </p>
@@ -157,7 +159,7 @@ const RelatedCard = memo(({ rp }) => {
                 )}
                 <div className="mt-auto pt-1">
                     <div className="flex items-baseline gap-1.5 flex-wrap">
-                        <span className="text-[14px] font-bold text-neutral-900">
+                        <span className="text-[13px] sm:text-[14px] font-bold text-neutral-900">
                             ₹{price.toLocaleString("en-IN")}
                         </span>
                         {hasDisc && (
@@ -307,9 +309,9 @@ const ProductDetails = () => {
     /* ── Fetch ── */
     const fetchReviews = useCallback(async (pid, signal) => {
         try {
-            const { data } = await api.get(`/reviews/${pid}`, signal ? { signal } : undefined);
+            const { data } = await reviewApi.getReviews(pid, signal ? { signal } : undefined);
             setReviews(data);
-        } catch { }
+        } catch { /* review fetch failed/aborted — reviews list simply stays empty */ }
     }, []);
 
     useEffect(() => {
@@ -321,7 +323,7 @@ const ProductDetails = () => {
             try {
                 setLoading(true); setError(""); setActiveImg(0);
                 setSelectedSize(""); setSelectedColor("");
-                const { data: prod } = await api.get(`/products/${id}`, { signal: ctrl.signal });
+                const { data: prod } = await productApi.getProductById(id, { signal: ctrl.signal });
                 setProduct(prod);
                 if (prod?.colorVariants?.length > 0) {
                     const def = prod.colorVariants.find(v => v.isDefault) || prod.colorVariants[0];
@@ -332,8 +334,8 @@ const ProductDetails = () => {
                 // Related products and reviews don't depend on each other —
                 // fetch them concurrently instead of one-after-another.
                 const [relatedRes, reviewsRes] = await Promise.all([
-                    api.get(`/products/${prod._id}/related`, { signal: ctrl.signal }),
-                    api.get(`/reviews/${prod._id}`, { signal: ctrl.signal }),
+                    productApi.getRelatedProducts(prod._id, { signal: ctrl.signal }),
+                    reviewApi.getReviews(prod._id, { signal: ctrl.signal }),
                 ]);
                 setRelatedProducts(relatedRes.data);
                 setReviews(reviewsRes.data);
@@ -361,7 +363,7 @@ const ProductDetails = () => {
         try {
             setUploadingImage(true);
             const fd = new FormData(); fd.append("image", file);
-            const { data } = await api.post("/uploads/custom-image", fd);
+            const { data } = await uploadCustomImage(fd);
             setCustomImageUrl(data.url);
         } catch { alert("Upload failed."); setCustomImagePreview(""); }
         finally { setUploadingImage(false); }
@@ -441,8 +443,15 @@ const ProductDetails = () => {
             customization: getCustomization(),
             cartItemId,
         };
-        try { sessionStorage.setItem("ux_buy_now_item", JSON.stringify(buyNowItem)); } catch { }
-        navigate("/checkout", { state: { buyNowItem } });
+        try { sessionStorage.setItem("ux_buy_now_item", JSON.stringify(buyNowItem)); } catch { /* storage unavailable — buy-now still proceeds via navigation state */ }
+        // BUG FIX: this route (/products/:id) can render an Urbexon Hour
+        // product (e.g. via ?flow=uh from a vendor store) — buyNowItem was
+        // already correctly tagged productType: "urbexon_hour" above, but
+        // navigation always went to the ecommerce /checkout regardless,
+        // running a UH order through the wrong checkout page entirely.
+        // Same isUrbexonHourItem → checkoutUrl branch already used by
+        // ProductCard.jsx's Buy Now button.
+        navigate(isUrbexonHourProduct ? "/uh-checkout" : "/checkout", { state: { buyNowItem } });
     }, [product, selectedSize, selectedColor, normalizedSizes, navigate, getCustomization, displayPrice, displayMrp, activeVariant, isUrbexonHourProduct]);
 
     const handleNotifyMe = useCallback(async () => {
@@ -451,9 +460,9 @@ const ProductDetails = () => {
         }
         try {
             setNotifySubmitting(true); setNotifyError("");
-            await api.post("/stock-notify/subscribe", { productId: product._id, email: notifyEmail.trim() });
+            await productApi.subscribeStockNotify({ productId: product._id, email: notifyEmail.trim() });
             setNotifySuccess(true); setShowNotifyInput(false);
-            try { localStorage.setItem(`notify_${product._id}`, "1"); } catch { }
+            try { localStorage.setItem(`notify_${product._id}`, "1"); } catch { /* storage unavailable — notify state still shown via React state above */ }
         } catch (err) { setNotifyError(err.response?.data?.message || "Something went wrong."); }
         finally { setNotifySubmitting(false); }
     }, [notifyEmail, product?._id]);
@@ -466,7 +475,7 @@ const ProductDetails = () => {
         reviewSubmitLockRef.current = true;
         try {
             setSubmitting(true); setReviewError("");
-            await api.post(`/reviews/${product._id}`, { rating: myRating, comment: myComment });
+            await reviewApi.submitReview(product._id, { rating: myRating, comment: myComment });
             setReviewSuccess(true);
             // Only refresh reviews — avgRating/ratingBars are derived from
             // this state via useMemo, so a full product refetch isn't needed.
@@ -478,15 +487,15 @@ const ProductDetails = () => {
 
     const handleDeleteReview = useCallback(async (rid) => {
         try {
-            await api.delete(`/reviews/${rid}`);
+            await reviewApi.deleteReview(rid);
             await fetchReviews(product._id);
             setMyRating(0); setMyComment("");
-        } catch { }
+        } catch { /* review resubmit-fetch failed — form still resets, list just stays stale until next successful fetch */ }
     }, [product?._id, fetchReviews]);
 
     /* ── Loading ── */
     if (loading) return (
-        <div className="min-h-screen flex items-center justify-center bg-neutral-50">
+        <div className="min-h-screen flex items-center justify-center bg-neutral-50 px-4">
             <div className="flex flex-col items-center gap-3">
                 <div className="w-9 h-9 rounded-full border-[3px] border-orange-500 border-t-transparent animate-spin" />
                 <p className="text-neutral-400 text-sm">Loading product…</p>
@@ -495,7 +504,7 @@ const ProductDetails = () => {
     );
 
     if (!product || error) return (
-        <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-neutral-50">
+        <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-neutral-50 px-4 text-center">
             <p className="text-neutral-500 text-sm">{error || "Product not found"}</p>
             <button onClick={() => navigate("/")}
                 className="px-6 py-2.5 bg-orange-500 text-white rounded-xl font-bold text-sm hover:bg-orange-600 transition-colors">
@@ -504,7 +513,9 @@ const ProductDetails = () => {
         </div>
     );
 
-    const heroUrl = imgUrl.detail(allImages[activeImg]?.url || "");
+    const rawHeroUrl = allImages[activeImg]?.url || "";
+    const heroUrl = imgUrl.detail(rawHeroUrl);
+    const heroSrcSet = imgSrcSet(rawHeroUrl, 800);
 
     return (
         <>
@@ -537,22 +548,25 @@ const ProductDetails = () => {
                 .thumb-scroll::-webkit-scrollbar-thumb { background:#e5e5e5; border-radius:4px }
                 .related-scroll::-webkit-scrollbar { height:4px }
                 .related-scroll::-webkit-scrollbar-thumb { background:#e5e5e5; border-radius:4px }
+                @media (min-width: 375px) {
+                    .xs\\:w-\\[150px\\] { width:150px }
+                }
             `}</style>
 
             <div className="bg-neutral-50 min-h-screen overflow-x-hidden"
                 style={{ fontFamily: "'Inter','-apple-system','BlinkMacSystemFont','Segoe UI',sans-serif" }}>
 
                 {/* ── Breadcrumb bar ── */}
-                <div className="bg-white border-b border-neutral-100 px-4 py-2.5 sticky top-0 z-30">
+                <div className="bg-white border-b border-neutral-100 px-3 sm:px-4 py-2.5 sticky top-0 z-30">
                     <div className="max-w-6xl mx-auto flex items-center gap-2">
                         <button onClick={() => navigate(-1)} aria-label="Go back"
                             className="flex items-center gap-1.5 text-orange-500 hover:text-orange-600
-                                       text-sm font-semibold transition-colors bg-orange-50
-                                       hover:bg-orange-100 px-3 py-1.5 rounded-lg">
-                            <FaArrowLeft size={11} /> Back
+                                       text-[13px] sm:text-sm font-semibold transition-colors bg-orange-50
+                                       hover:bg-orange-100 px-2.5 sm:px-3 py-1.5 rounded-lg shrink-0">
+                            <FaArrowLeft size={11} /> <span className="hidden xs:inline">Back</span>
                         </button>
                         {product.category && (
-                            <span className="text-xs text-neutral-400 capitalize hidden sm:block">
+                            <span className="text-xs text-neutral-400 capitalize hidden sm:block truncate">
                                 / {product.category.replace(/-/g, " ")}
                             </span>
                         )}
@@ -567,19 +581,20 @@ const ProductDetails = () => {
 
                     {/* ══ Top Card: Image + Info ══ */}
                     <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden mb-4">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:items-start">
 
                             {/* ══ LEFT — Image Gallery ══ */}
-                            <div className="border-b lg:border-b-0 lg:border-r border-neutral-100 p-4 sm:p-6">
+                            <div className="border-b lg:border-b-0 lg:border-r border-neutral-100 p-3 sm:p-6
+                                            lg:sticky lg:top-[57px] lg:self-start">
 
                                 {/* Hero image */}
-                                <div className="relative aspect-square w-full max-w-[420px] mx-auto
+                                <div className="relative aspect-square w-full max-w-[320px] xs:max-w-[360px] sm:max-w-[420px] mx-auto
                                                 rounded-2xl overflow-hidden bg-neutral-50 cursor-zoom-in
                                                 group border border-neutral-100"
                                     onClick={() => !shareOpen && setImgZoomed(true)}>
 
                                     {/* Badges */}
-                                    <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5">
+                                    <div className="absolute top-2 sm:top-3 left-2 sm:left-3 z-10 flex flex-col gap-1.5">
                                         {product.isCustomizable && (
                                             <span className="bg-green-600 text-white text-[9px] font-black
                                                              px-2 py-0.5 rounded-md tracking-wide">✏ CUSTOM</span>
@@ -601,37 +616,40 @@ const ProductDetails = () => {
                                     <button
                                         onClick={e => { e.stopPropagation(); setShareOpen(true); }}
                                         aria-label="Share this product"
-                                        className="absolute top-3 right-3 z-10 flex items-center gap-1.5
+                                        className="absolute top-2 sm:top-3 right-2 sm:right-3 z-10 flex items-center gap-1.5
                                                    bg-white/90 backdrop-blur-sm border border-neutral-100
-                                                   rounded-xl px-3 py-1.5 text-[11px] font-semibold text-neutral-600
+                                                   rounded-xl px-2.5 sm:px-3 py-1.5 text-[11px] font-semibold text-neutral-600
                                                    shadow-sm hover:bg-white hover:shadow-md transition-all">
-                                        <FaShare size={10} /> Share
+                                        <FaShare size={10} /> <span className="hidden xs:inline">Share</span>
                                     </button>
 
                                     {/* Main image */}
                                     {heroUrl
-                                        ? <img src={heroUrl} alt={product.name} loading="eager"
-                                            className="w-full h-full object-contain p-4
+                                        ? <img src={heroUrl} srcSet={heroSrcSet} alt={product.name}
+                                            loading="eager" decoding="sync" fetchPriority="high"
+                                            className="w-full h-full object-contain p-3 sm:p-4
                                                        transition-transform duration-500
                                                        group-hover:scale-105" />
                                         : <div className="w-full h-full flex items-center justify-center text-6xl">🎁</div>}
 
                                     {/* Zoom hint */}
-                                    <div className="absolute bottom-3 right-3 flex items-center gap-1.5
+                                    <div className="absolute bottom-2 sm:bottom-3 right-2 sm:right-3 flex items-center gap-1.5
                                                     bg-white/90 backdrop-blur-sm rounded-xl px-2.5 py-1.5
                                                     text-[10px] font-bold text-neutral-600 border border-neutral-100
-                                                    opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                                    opacity-0 group-hover:opacity-100 sm:transition-opacity duration-200
+                                                    max-sm:opacity-100">
                                         <FaSearchPlus size={10} /> ZOOM
                                     </div>
                                 </div>
 
                                 {/* Thumbnails */}
                                 {allImages.length > 1 && (
-                                    <div className="flex gap-2 mt-3 overflow-x-auto pb-1 thumb-scroll">
+                                    <div className="flex gap-2 mt-3 overflow-x-auto pb-1 thumb-scroll
+                                                    max-w-[320px] xs:max-w-[360px] sm:max-w-[420px] mx-auto">
                                         {allImages.map((img, i) => (
                                             <button key={i} onClick={() => setActiveImg(i)}
                                                 aria-label={`View image ${i + 1} of ${allImages.length}`}
-                                                className={`shrink-0 w-14 h-14 rounded-xl overflow-hidden
+                                                className={`shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-xl overflow-hidden
                                                             border-2 transition-all duration-150
                                                             ${activeImg === i
                                                         ? "border-orange-400 shadow-[0_0_0_2px_rgba(249,115,22,0.2)]"
@@ -645,7 +663,7 @@ const ProductDetails = () => {
                             </div>
 
                             {/* ══ RIGHT — Product Info ══ */}
-                            <div className="p-4 sm:p-6 flex flex-col gap-0 overflow-y-auto lg:max-h-[90vh]">
+                            <div className="p-3 sm:p-6 flex flex-col gap-0 overflow-y-auto lg:max-h-[calc(100vh-73px)]">
 
                                 {/* Category */}
                                 {product.category && (
@@ -655,8 +673,8 @@ const ProductDetails = () => {
                                 )}
 
                                 {/* Product name */}
-                                <h1 className="text-[1.2rem] sm:text-[1.35rem] font-semibold text-neutral-900
-                                               leading-snug mb-3 tracking-tight">
+                                <h1 className="text-[1.05rem] xs:text-[1.2rem] sm:text-[1.35rem] font-semibold text-neutral-900
+                                               leading-snug mb-3 tracking-tight break-words">
                                     {product.name}
                                 </h1>
 
@@ -667,7 +685,7 @@ const ProductDetails = () => {
                                         <span className="text-[13px] font-bold">{avgRating.toFixed(1)}</span>
                                         <FaStar size={10} />
                                     </div>
-                                    <span className="text-sm text-neutral-500">
+                                    <span className="text-[13px] sm:text-sm text-neutral-500">
                                         {reviews.length} Ratings & Reviews
                                     </span>
                                     {product.brand && (
@@ -681,16 +699,16 @@ const ProductDetails = () => {
 
                                 {/* Price block */}
                                 <div className="mb-4">
-                                    <div className="flex flex-wrap items-baseline gap-2.5 mb-1">
-                                        <span className="text-[2rem] font-bold text-neutral-900 leading-none tracking-tight transition-all duration-200">
+                                    <div className="flex flex-wrap items-baseline gap-2 sm:gap-2.5 mb-1">
+                                        <span className="text-[1.6rem] xs:text-[1.8rem] sm:text-[2rem] font-bold text-neutral-900 leading-none tracking-tight transition-all duration-200">
                                             ₹{displayPrice.toLocaleString("en-IN")}
                                         </span>
                                         {hasDiscount && (
                                             <>
-                                                <span className="text-base text-neutral-400 line-through">
+                                                <span className="text-sm sm:text-base text-neutral-400 line-through">
                                                     ₹{Number(displayMrp).toLocaleString("en-IN")}
                                                 </span>
-                                                <span className="text-base font-bold text-green-600">
+                                                <span className="text-sm sm:text-base font-bold text-green-600">
                                                     {discountPct}% off
                                                 </span>
                                             </>
@@ -708,7 +726,7 @@ const ProductDetails = () => {
                                     {hasDiscount && savedAmount > 0 && (
                                         <div className="mt-2 inline-flex items-center gap-1.5
                                                         bg-green-50 border border-green-100
-                                                        text-green-700 text-[12px] font-semibold
+                                                        text-green-700 text-[11px] sm:text-[12px] font-semibold
                                                         px-3 py-1.5 rounded-xl">
                                             🎉 You save ₹{savedAmount.toLocaleString("en-IN")}
                                         </div>
@@ -750,11 +768,11 @@ const ProductDetails = () => {
                                 {/* ── Sizes ── */}
                                 {normalizedSizes.length > 0 && (
                                     <div className="mb-5">
-                                        <div className="flex items-center justify-between mb-2.5">
+                                        <div className="flex items-center justify-between mb-2.5 gap-2">
                                             <p className="text-sm font-semibold text-neutral-800">
                                                 Size{selectedSize ? `: ${selectedSize}` : ""}
                                             </p>
-                                            <button className="text-xs font-semibold text-orange-500 hover:text-orange-600">
+                                            <button className="text-xs font-semibold text-orange-500 hover:text-orange-600 shrink-0">
                                                 Size Guide
                                             </button>
                                         </div>
@@ -765,7 +783,7 @@ const ProductDetails = () => {
                                                     <button key={size} disabled={isOos}
                                                         onClick={() => !isOos && setSelectedSize(size)}
                                                         aria-pressed={selectedSize === size}
-                                                        className={`min-w-[46px] h-10 px-3 rounded-xl text-[12px] font-semibold
+                                                        className={`min-w-[44px] h-10 px-3 rounded-xl text-[12px] font-semibold
                                                                     border-2 transition-all duration-150
                                                                     ${isOos
                                                                 ? "border-neutral-100 text-neutral-300 cursor-not-allowed line-through"
@@ -788,10 +806,10 @@ const ProductDetails = () => {
                                 {/* ── Color Variants ── */}
                                 {product.colorVariants?.length > 0 && (
                                     <div className="mb-5">
-                                        <div className="flex items-center gap-2 mb-3">
+                                        <div className="flex items-center gap-2 mb-3 flex-wrap">
                                             <p className="text-sm font-semibold text-neutral-800">Color</p>
                                             {selectedColor && (
-                                                <div className="flex items-center gap-1.5">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
                                                     {activeVariant?.hex && (
                                                         <span className="w-3.5 h-3.5 rounded-full border border-neutral-200 inline-block shrink-0"
                                                             style={{ background: activeVariant.hex }} />
@@ -808,7 +826,7 @@ const ProductDetails = () => {
                                                 </div>
                                             )}
                                         </div>
-                                        <div className="flex flex-wrap gap-2.5">
+                                        <div className="flex flex-wrap gap-2 sm:gap-2.5">
                                             {product.colorVariants.map((variant, idx) => {
                                                 const cName = variant.name || variant.color || `Color ${idx + 1}`;
                                                 const thumb = variant.images?.[0]?.url;
@@ -821,7 +839,7 @@ const ProductDetails = () => {
                                                         disabled={isVarOos}
                                                         aria-pressed={isSelected}
                                                         title={`${cName}${isVarOos ? " — Out of Stock" : ` (${vStock} left)`}`}
-                                                        className={`relative flex items-center gap-2 px-3 py-2 rounded-xl
+                                                        className={`relative flex items-center gap-2 px-2.5 sm:px-3 py-2 rounded-xl
                                                                     border-2 transition-all duration-150 text-left min-h-[46px]
                                                                     ${isVarOos ? "opacity-40 cursor-not-allowed border-neutral-100 bg-white"
                                                                 : isSelected
@@ -880,7 +898,7 @@ const ProductDetails = () => {
                                     const notePlaceholder = cfg.notePlaceholder || "e.g. White background, bold font...";
                                     const extraPrice = cfg.extraPrice || 0;
                                     return (
-                                        <div className="border border-amber-200 bg-amber-50 rounded-2xl p-4 mb-5">
+                                        <div className="border border-amber-200 bg-amber-50 rounded-2xl p-3 sm:p-4 mb-5">
                                             <p className="text-[11px] font-black text-amber-700 uppercase tracking-wider mb-3">
                                                 ✏ Personalise Your Order
                                             </p>
@@ -956,41 +974,41 @@ const ProductDetails = () => {
 
                                 {/* ── CTA Buttons ── */}
                                 {variantInStock ? (
-                                    <div className="flex gap-3 mb-5">
+                                    <div className="flex gap-2.5 sm:gap-3 mb-5">
                                         <button onClick={handleAddToCart}
-                                            className={`flex-1 flex items-center justify-center gap-2 h-12 rounded-2xl
-                                                        text-sm font-bold transition-all duration-200
-                                                        shadow-sm hover:shadow-md active:scale-[0.98]
+                                            className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 h-11 sm:h-12 rounded-2xl
+                                                        text-[13px] sm:text-sm font-bold transition-all duration-200
+                                                        shadow-sm hover:shadow-md active:scale-[0.98] px-2
                                                         ${addedFlash
                                                     ? "bg-green-500 text-white"
                                                     : inCart
                                                         ? "bg-green-50 border-2 border-green-400 text-green-700"
                                                         : "bg-amber-400 hover:bg-amber-500 text-neutral-900"}`}>
-                                            <FaShoppingCart size={15} />
-                                            {inCart ? "In Cart ✔" : addedFlash ? "Added! ✓" : "Add to Cart"}
+                                            <FaShoppingCart size={14} className="shrink-0" />
+                                            <span className="truncate">{inCart ? "In Cart ✔" : addedFlash ? "Added! ✓" : "Add to Cart"}</span>
                                         </button>
                                         <button onClick={handleBuyNow}
-                                            className="flex-1 flex items-center justify-center gap-2 h-12 rounded-2xl
+                                            className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 h-11 sm:h-12 rounded-2xl
                                                        bg-gradient-to-r from-orange-500 to-rose-500
-                                                       text-white text-sm font-bold
+                                                       text-white text-[13px] sm:text-sm font-bold px-2
                                                        shadow-[0_4px_16px_rgba(249,115,22,0.35)]
                                                        hover:shadow-[0_6px_22px_rgba(249,115,22,0.45)]
                                                        hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200">
-                                            <FaBolt size={14} /> Buy Now
+                                            <FaBolt size={13} className="shrink-0" /> <span className="truncate">Buy Now</span>
                                         </button>
                                     </div>
                                 ) : (
                                     <div className="mb-5">
-                                        <div className="flex gap-3 mb-3">
+                                        <div className="flex gap-2.5 sm:gap-3 mb-3">
                                             <button disabled
-                                                className="flex-1 flex items-center justify-center gap-2 h-12 rounded-2xl
-                                                           bg-neutral-100 text-neutral-400 text-sm font-bold cursor-not-allowed">
-                                                <FaShoppingCart size={15} /> Add to Cart
+                                                className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 h-11 sm:h-12 rounded-2xl
+                                                           bg-neutral-100 text-neutral-400 text-[13px] sm:text-sm font-bold cursor-not-allowed px-2">
+                                                <FaShoppingCart size={14} /> <span className="truncate">Add to Cart</span>
                                             </button>
                                             <button disabled
-                                                className="flex-1 flex items-center justify-center gap-2 h-12 rounded-2xl
-                                                           bg-neutral-100 text-neutral-400 text-sm font-bold cursor-not-allowed">
-                                                <FaBolt size={14} /> Buy Now
+                                                className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 h-11 sm:h-12 rounded-2xl
+                                                           bg-neutral-100 text-neutral-400 text-[13px] sm:text-sm font-bold cursor-not-allowed px-2">
+                                                <FaBolt size={13} /> <span className="truncate">Buy Now</span>
                                             </button>
                                         </div>
 
@@ -1000,13 +1018,13 @@ const ProductDetails = () => {
                                                 <FaCheckCircle className="text-green-600 shrink-0" size={16} />
                                                 <div>
                                                     <p className="font-bold text-green-700 text-sm">You're on the list!</p>
-                                                    <p className="text-xs text-green-600 mt-0.5">
+                                                    <p className="text-xs text-green-600 mt-0.5 break-words">
                                                         We'll notify {notifyEmail} when back in stock.
                                                     </p>
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div className="border border-neutral-200 rounded-2xl p-4 bg-neutral-50">
+                                            <div className="border border-neutral-200 rounded-2xl p-3.5 sm:p-4 bg-neutral-50">
                                                 <div className="flex items-center gap-3 mb-3">
                                                     <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
                                                         <FaBell size={13} className="text-orange-500" />
@@ -1017,14 +1035,14 @@ const ProductDetails = () => {
                                                     </div>
                                                 </div>
                                                 {showNotifyInput ? (
-                                                    <div className="flex gap-2">
+                                                    <div className="flex flex-col xs:flex-row gap-2">
                                                         <input type="email" value={notifyEmail}
                                                             onChange={e => { setNotifyEmail(e.target.value); setNotifyError(""); }}
                                                             placeholder="your@email.com"
-                                                            className="flex-1 px-3 py-2.5 border border-neutral-200 rounded-xl
+                                                            className="flex-1 min-w-0 px-3 py-2.5 border border-neutral-200 rounded-xl
                                                                        text-sm outline-none focus:border-orange-400 bg-white" />
                                                         <button onClick={handleNotifyMe} disabled={notifySubmitting}
-                                                            className="px-4 bg-orange-500 hover:bg-orange-600 text-white
+                                                            className="px-4 py-2.5 xs:py-0 bg-orange-500 hover:bg-orange-600 text-white
                                                                        rounded-xl font-bold text-sm disabled:opacity-60 transition-colors whitespace-nowrap">
                                                             {notifySubmitting ? "…" : "Notify Me"}
                                                         </button>
@@ -1053,11 +1071,11 @@ const ProductDetails = () => {
                                         { icon: <FaUndo size={13} className="text-amber-600" />, label: `${product.returnWindow || 7}-Day Returns`, sub: product.isReplaceable ? "Replacement available" : "Easy returns", bg: "bg-amber-50 border-amber-100" },
                                         { icon: <FaTag size={13} className="text-violet-600" />, label: "Best Price", sub: "Verified & authentic", bg: "bg-violet-50 border-violet-100" },
                                     ].map(({ icon, label, sub, bg }) => (
-                                        <div key={label} className={`flex items-center gap-2.5 p-3 rounded-xl border ${bg}`}>
+                                        <div key={label} className={`flex items-center gap-2 sm:gap-2.5 p-2.5 sm:p-3 rounded-xl border ${bg}`}>
                                             <div className="shrink-0">{icon}</div>
-                                            <div>
-                                                <p className="text-[11px] font-bold text-neutral-800">{label}</p>
-                                                <p className="text-[10px] text-neutral-500">{sub}</p>
+                                            <div className="min-w-0">
+                                                <p className="text-[10.5px] sm:text-[11px] font-bold text-neutral-800 truncate">{label}</p>
+                                                <p className="text-[9.5px] sm:text-[10px] text-neutral-500 truncate">{sub}</p>
                                             </div>
                                         </div>
                                     ))}
@@ -1094,7 +1112,7 @@ const ProductDetails = () => {
                             ].map(tab => (
                                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                                     aria-selected={activeTab === tab.key}
-                                    className={`px-5 py-3.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-all duration-150
+                                    className={`px-4 sm:px-5 py-3 sm:py-3.5 text-[13px] sm:text-sm font-semibold whitespace-nowrap border-b-2 transition-all duration-150 shrink-0
                                                 ${activeTab === tab.key
                                             ? "border-orange-500 text-orange-500 bg-orange-50/50"
                                             : "border-transparent text-neutral-500 hover:text-neutral-700"}`}>
@@ -1103,12 +1121,12 @@ const ProductDetails = () => {
                             ))}
                         </div>
 
-                        <div className="p-5 sm:p-7">
+                        <div className="p-4 sm:p-7">
                             {/* Description */}
                             {activeTab === "description" && (
                                 <div className="max-w-2xl">
                                     {product.description
-                                        ? <p className="text-sm text-neutral-600 leading-relaxed">{product.description}</p>
+                                        ? <p className="text-[13px] sm:text-sm text-neutral-600 leading-relaxed break-words">{product.description}</p>
                                         : <p className="text-sm text-neutral-400 italic">No description available.</p>}
                                 </div>
                             )}
@@ -1117,11 +1135,11 @@ const ProductDetails = () => {
                             {activeTab === "highlights" && highlightEntries.length > 0 && (
                                 <div className="max-w-xl overflow-hidden rounded-xl border border-neutral-100">
                                     {highlightEntries.map(([k, v], i) => (
-                                        <div key={k} className={`flex text-sm ${i % 2 === 0 ? "bg-neutral-50" : "bg-white"}`}>
-                                            <div className="w-2/5 px-4 py-3 font-semibold text-neutral-500 border-r border-neutral-100 break-words">
+                                        <div key={k} className={`flex text-[13px] sm:text-sm ${i % 2 === 0 ? "bg-neutral-50" : "bg-white"}`}>
+                                            <div className="w-2/5 px-3 sm:px-4 py-2.5 sm:py-3 font-semibold text-neutral-500 border-r border-neutral-100 break-words">
                                                 {k}
                                             </div>
-                                            <div className="flex-1 px-4 py-3 text-neutral-800 break-words">{v}</div>
+                                            <div className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 text-neutral-800 break-words">{v}</div>
                                         </div>
                                     ))}
                                 </div>
@@ -1131,9 +1149,9 @@ const ProductDetails = () => {
                             {activeTab === "reviews" && (
                                 <div className="max-w-2xl">
                                     {reviews.length > 0 && (
-                                        <div className="flex gap-8 mb-7 pb-7 border-b border-neutral-100 flex-wrap">
+                                        <div className="flex gap-6 sm:gap-8 mb-7 pb-7 border-b border-neutral-100 flex-wrap">
                                             <div className="text-center shrink-0">
-                                                <p className="text-[3rem] font-bold text-neutral-900 leading-none">{avgRating.toFixed(1)}</p>
+                                                <p className="text-[2.5rem] sm:text-[3rem] font-bold text-neutral-900 leading-none">{avgRating.toFixed(1)}</p>
                                                 <StarRow value={Math.round(avgRating)} size={14} />
                                                 <p className="text-xs text-neutral-400 mt-1.5">{reviews.length} ratings</p>
                                             </div>
@@ -1153,7 +1171,7 @@ const ProductDetails = () => {
                                                 {[1, 2, 3, 4, 5].map(s => (
                                                     <button key={s} type="button" onClick={() => setMyRating(s)}
                                                         aria-label={`Rate ${s} star${s > 1 ? "s" : ""}`}
-                                                        className="text-[26px] bg-none border-none cursor-pointer p-0.5 transition-transform hover:scale-110">
+                                                        className="text-[24px] sm:text-[26px] bg-none border-none cursor-pointer p-0.5 transition-transform hover:scale-110">
                                                         {s <= myRating
                                                             ? <FaStar className="text-amber-400" />
                                                             : <FaRegStar className="text-neutral-300" />}
@@ -1162,7 +1180,7 @@ const ProductDetails = () => {
                                             </div>
                                             <textarea value={myComment} onChange={e => setMyComment(e.target.value)}
                                                 rows={3} placeholder="Share your experience…"
-                                                className="w-full border border-neutral-200 rounded-xl px-4 py-3 text-sm
+                                                className="w-full border border-neutral-200 rounded-xl px-3 sm:px-4 py-3 text-sm
                                                            outline-none resize-none focus:border-orange-400 transition-colors mb-3" />
                                             {reviewError && (
                                                 <p className="text-red-500 text-xs mb-2">{reviewError}</p>
@@ -1173,14 +1191,14 @@ const ProductDetails = () => {
                                                 </p>
                                             )}
                                             <button type="submit" disabled={submitting}
-                                                className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white
+                                                className="w-full xs:w-auto px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white
                                                            rounded-xl font-bold text-sm disabled:opacity-60 transition-colors">
                                                 {submitting ? "Submitting…" : "Submit Review"}
                                             </button>
                                         </form>
                                     ) : (
                                         <button onClick={() => navigate("/login")}
-                                            className="mb-6 px-6 py-2.5 border border-orange-300 text-orange-500 bg-orange-50
+                                            className="mb-6 w-full xs:w-auto px-6 py-2.5 border border-orange-300 text-orange-500 bg-orange-50
                                                        rounded-xl font-bold text-sm hover:bg-orange-100 transition-colors">
                                             Login to Write a Review
                                         </button>
@@ -1197,29 +1215,29 @@ const ProductDetails = () => {
                                                 const isOwn = user && (r.user === user._id || r.user?._id === user._id);
                                                 return (
                                                     <div key={r._id}
-                                                        className="border border-neutral-100 rounded-2xl p-4 bg-neutral-50/50">
-                                                        <div className="flex justify-between items-start mb-2">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-400 to-rose-400
+                                                        className="border border-neutral-100 rounded-2xl p-3.5 sm:p-4 bg-neutral-50/50">
+                                                        <div className="flex justify-between items-start gap-2 mb-2">
+                                                            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                                                                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-orange-400 to-rose-400
                                                                                 text-white flex items-center justify-center
                                                                                 text-sm font-bold shrink-0">
                                                                     {r.name?.[0]?.toUpperCase() || "U"}
                                                                 </div>
-                                                                <div>
-                                                                    <p className="font-semibold text-sm text-neutral-900">{r.name}</p>
+                                                                <div className="min-w-0">
+                                                                    <p className="font-semibold text-sm text-neutral-900 truncate">{r.name}</p>
                                                                     <StarRow value={r.rating} size={10} />
                                                                 </div>
                                                             </div>
                                                             {isOwn && (
                                                                 <button onClick={() => handleDeleteReview(r._id)}
                                                                     aria-label="Delete your review"
-                                                                    className="text-neutral-300 hover:text-red-400 transition-colors p-1">
+                                                                    className="text-neutral-300 hover:text-red-400 transition-colors p-1 shrink-0">
                                                                     <FaTrash size={11} />
                                                                 </button>
                                                             )}
                                                         </div>
                                                         {r.comment && (
-                                                            <p className="text-sm text-neutral-600 leading-relaxed mt-2">{r.comment}</p>
+                                                            <p className="text-[13px] sm:text-sm text-neutral-600 leading-relaxed mt-2 break-words">{r.comment}</p>
                                                         )}
                                                     </div>
                                                 );
@@ -1233,17 +1251,17 @@ const ProductDetails = () => {
 
                     {/* ══ Related Products ══ */}
                     {relatedProducts.length > 0 && (
-                        <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-5 sm:p-6">
+                        <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 p-4 sm:p-6">
                             <div className="mb-4">
                                 <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-1">
                                     ✨ Recommended For You
                                 </p>
-                                <h2 className="text-lg font-bold text-neutral-900 tracking-tight">
+                                <h2 className="text-base sm:text-lg font-bold text-neutral-900 tracking-tight">
                                     Similar Products
                                 </h2>
                                 <p className="text-xs text-neutral-400 mt-0.5">Customers also viewed these products</p>
                             </div>
-                            <div className="flex gap-3 overflow-x-auto pb-2 related-scroll">
+                            <div className="flex gap-2.5 sm:gap-3 overflow-x-auto pb-2 related-scroll -mx-4 px-4 sm:mx-0 sm:px-0">
                                 {relatedProducts.map(rp => <RelatedCard key={rp._id} rp={rp} />)}
                             </div>
                         </div>

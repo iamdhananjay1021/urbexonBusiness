@@ -6,7 +6,7 @@
  * - Exposes a simple `isServiceable` boolean for UI to react to.
  */
 import { useState, useEffect, useCallback } from 'react';
-import api from '../api/axios';
+import { checkPincode } from '../api/pincodeApi';
 
 const STORAGE_KEY = 'uh_pincode_v2';
 
@@ -43,7 +43,7 @@ export const usePincode = () => {
         setLoading(true);
         setError('');
         try {
-            const { data } = await api.get(`/pincode/check/${code}`);
+            const { data } = await checkPincode(code);
             if (data.available) {
                 const newData = { code, area: data.area, city: data.city, vendorCount: data.vendorCount };
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));

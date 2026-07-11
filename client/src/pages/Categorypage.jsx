@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import api from "../api/axios";
+import { getProducts } from "../api/productApi";
 import { fetchCategoryBySlug, fetchCategorySubcategories } from "../api/categoryApi";
 import ProductCard from "../components/ProductCard";
-import {
-    FaTimes, FaChevronDown, FaChevronUp,
-    FaSortAmountDown, FaSearch,
-} from "react-icons/fa";
+import { FiSearch, FiChevronDown, FiChevronUp } from "react-icons/fi";
+import { FaSortAmountDown } from "react-icons/fa";
 import SEO from "../components/SEO";
 import { normalizeCategory } from "../utils/normalizeCategory";
+import Chip from "../design-system/Chip";
+import Button from "../design-system/Button";
+import { EmptyState } from "../design-system/EmptyState";
+import { SkeletonCard } from "../design-system/Skeleton";
 
 const SORT_OPTIONS = [
     { val: "newest", label: "Newest First" },
@@ -18,20 +20,37 @@ const SORT_OPTIONS = [
     { val: "discount", label: "Best Discount" },
 ];
 
+// Session-lifetime cache for a category's first page, keyed by filters —
+// same pattern as Home.jsx's _homeCache. Without it, the page cleared
+// `products` to `[]` and re-showed the skeleton on every mount (including
+// revisits via Back), even when the exact same filtered list had just been
+// fetched moments ago.
+const CACHE_TTL = 60 * 1000;
+const categoryProductsCache = new Map(); // key -> { products, total, hasMore, ts }
+
 /* ════════════════════════════════════════
    CATEGORY PAGE
+   NOTE: uses the app's real ProductCard (../components/ProductCard) —
+   left untouched, owns real cart/wishlist business logic. Only page chrome
+   (hero, toolbar, filters, skeleton, empty state) is migrated below.
 ════════════════════════════════════════ */
 const CategoryPage = () => {
     const { slug } = useParams();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
 
-    const [products, setProducts] = useState([]);
-    const [total, setTotal] = useState(0);
-    const [loading, setLoading] = useState(true);
-    const [inView, setInView] = useState(false);
+    const initialCacheKey = `${slug}|${searchParams.get("sort") || "newest"}|${searchParams.get("search") || ""}|${searchParams.get("subcategory") || ""}`;
+    const getInitialCache = () => {
+        const c = categoryProductsCache.get(initialCacheKey);
+        return c && Date.now() - c.ts < CACHE_TTL ? c : null;
+    };
+
+    const [products, setProducts] = useState(() => getInitialCache()?.products || []);
+    const [total, setTotal] = useState(() => getInitialCache()?.total || 0);
+    const [loading, setLoading] = useState(() => !getInitialCache());
+    const [, setInView] = useState(() => !!getInitialCache());
     const [page, setPage] = useState(1);
-    const [hasMore, setHasMore] = useState(false);
+    const [hasMore, setHasMore] = useState(() => getInitialCache()?.hasMore || false);
     const [sort, setSort] = useState(searchParams.get("sort") || "newest");
     const [search, setSearch] = useState(searchParams.get("search") || "");
     const [searchInput, setSearchInput] = useState(searchParams.get("search") || "");
@@ -81,13 +100,19 @@ const CategoryPage = () => {
             if (activeSubcategory) params.set("subcategory", activeSubcategory.toLowerCase());
             if (srch.trim()) params.set("search", srch.trim());
 
-            const { data } = await api.get(`/products?${params}`);
+            const { data } = await getProducts(`?${params}`);
             const prods = Array.isArray(data) ? data : (data?.products || []);
             const totalCount = data?.total || prods.length;
+            const more = prods.length === LIMIT;
 
             setProducts(pg === 1 ? prods : prev => [...prev, ...prods]);
             setTotal(pg === 1 ? totalCount : prev => prev);
-            setHasMore(prods.length === LIMIT);
+            setHasMore(more);
+
+            if (pg === 1) {
+                const key = `${slug}|${srt}|${srch}|${activeSubcategory}`;
+                categoryProductsCache.set(key, { products: prods, total: totalCount, hasMore: more, ts: Date.now() });
+            }
         } catch (e) {
             console.error("Category fetch error:", e);
         } finally {
@@ -96,8 +121,21 @@ const CategoryPage = () => {
         }
     }, [slug, sort, search, activeSubcategory]);
 
-    // Re-fetch when slug/sort/search/subcategory changes
+    // Re-fetch when slug/sort/search/subcategory changes — but if this exact
+    // combo was already fetched recently, restore it instantly instead of
+    // clearing the grid and refetching.
     useEffect(() => {
+        const key = `${slug}|${sort}|${search}|${activeSubcategory}`;
+        const cached = categoryProductsCache.get(key);
+        if (cached && Date.now() - cached.ts < CACHE_TTL) {
+            setPage(1);
+            setProducts(cached.products);
+            setTotal(cached.total);
+            setHasMore(cached.hasMore);
+            setLoading(false);
+            setInView(true);
+            return;
+        }
         setPage(1);
         setProducts([]);
         setInView(false);
@@ -137,83 +175,63 @@ const CategoryPage = () => {
                 description={`Shop ${categoryLabel || slug?.replace(/-/g, " ")} on Urbexon. Browse ${total || ""} products with best prices and fast delivery.`}
                 path={`/category/${slug}`}
             />
-            <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
-        .cp { font-family:'DM Sans',sans-serif; min-height:100vh; background:#f7f4ee; }
-        .cp-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-        @media (max-width:520px) {
-          .cp-toolbar { gap:8px; }
-          .cp-toolbar-search { min-width:0!important; max-width:none!important; order:1; flex-basis:100%; }
-          .cp-toolbar-count { order:3; font-size:11px!important; }
-          .cp-toolbar-sort { order:2; margin-left:auto; }
-          .cp-sort-label { display:none; }
-        }
-        .cp-sort-dd { position:absolute; top:calc(100% + 6px); right:0; background:#fff; border:1px solid #e8e4d9; min-width:200px; z-index:50; box-shadow:0 12px 32px rgba(0,0,0,.1); }
-        @media (max-width:520px) { .cp-sort-dd { right:-8px; min-width:180px; } }
-        .cp-sort-item { padding:10px 16px; font-size:13px; font-weight:500; color:#1c1917; cursor:pointer; transition:background .15s; }
-        .cp-sort-item:hover { background:#f7f4ee; }
-        .cp-sort-item.active { color:#c9a84c; font-weight:700; background:#fdf8ee; }
-      `}</style>
-
-            <div className="cp">
+            <div className="min-h-screen bg-canvas">
 
                 {/* ── Hero banner ── */}
-                <div style={{ background: "#1a1740", padding: "48px clamp(16px,5vw,80px) 40px" }}>
-                    <div style={{ maxWidth: 1440, margin: "0 auto" }}>
-                        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(201,168,76,.7)", marginBottom: 10 }}>
+                <div className="bg-[var(--color-graphite-900)] px-[clamp(16px,5vw,80px)] pt-12 pb-10">
+                    <div className="max-w-[1440px] mx-auto">
+                        <p className="text-[10px] font-bold tracking-[.18em] uppercase text-accent/70 mb-2.5">
                             Urbexon · {categoryLabel}
                         </p>
-                        <h1 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 700, color: "#fff", margin: "0 0 10px" }}>
+                        <h1 className="font-display text-[clamp(2rem,4vw,3rem)] font-bold text-white mb-2.5">
                             {categoryLabel}{activeSubcategory ? ` › ${activeSubcategory}` : ""}
                         </h1>
-                        <p style={{ fontSize: 13, color: "rgba(255,255,255,.5)", margin: 0 }}>
+                        <p className="text-[13px] text-white/50">
                             {loading ? "Loading products…" : `${total || products.length} products`}
                         </p>
                     </div>
                 </div>
 
                 {/* ── Toolbar ── */}
-                <div style={{ background: "#fff", borderBottom: "1px solid #e8e4d9", position: "sticky", top: 64, zIndex: 40 }}>
-                    <div className="cp-toolbar" style={{ maxWidth: 1440, margin: "0 auto", padding: "12px clamp(16px,5vw,80px)" }}>
+                <div className="bg-surface border-b border-default sticky top-16 z-40">
+                    <div className="max-w-[1440px] mx-auto px-[clamp(16px,5vw,80px)] py-3 flex items-center gap-3 flex-wrap">
 
                         {/* Search */}
-                        <form className="cp-toolbar-search" onSubmit={handleSearch} style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 180, maxWidth: 340, background: "#f7f4ee", border: "1px solid #e8e4d9", padding: "0 12px", height: 38 }}>
-                            <FaSearch size={12} color="#a8a29e" />
+                        <form onSubmit={handleSearch} className="flex items-center gap-2 flex-1 min-w-[180px] max-w-[340px] bg-canvas border border-default px-3 h-[38px] rounded-[var(--radius-sm)] order-1 sm:order-none">
+                            <FiSearch size={13} className="text-muted flex-shrink-0" aria-hidden="true" />
                             <input
                                 value={searchInput}
                                 onChange={e => setSearchInput(e.target.value)}
                                 placeholder={`Search in ${categoryLabel}…`}
-                                style={{ background: "none", border: "none", outline: "none", fontSize: 13, color: "#1c1917", width: "100%", fontFamily: "inherit" }}
+                                className="bg-transparent border-none outline-none text-[13px] text-primary w-full"
                             />
-                            {searchInput && (
-                                <button type="button" onClick={() => { setSearchInput(""); setSearch(""); }}
-                                    style={{ background: "none", border: "none", cursor: "pointer", color: "#a8a29e", padding: 0 }}>
-                                    <FaTimes size={11} />
-                                </button>
-                            )}
                         </form>
 
                         {/* Results count */}
-                        <span className="cp-toolbar-count" style={{ fontSize: 12, color: "#a8a29e", whiteSpace: "nowrap" }}>
+                        <span className="text-xs text-muted whitespace-nowrap order-3 sm:order-none">
                             {!loading && `${products.length} products`}
                         </span>
 
                         {/* Sort */}
-                        <div className="cp-toolbar-sort" style={{ position: "relative", marginLeft: "auto" }}>
+                        <div className="relative ml-auto order-2 sm:order-none">
                             <button
                                 onClick={() => setSortOpen(o => !o)}
-                                style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", border: "1px solid #e8e4d9", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#1c1917", fontFamily: "inherit", height: 38 }}
+                                className="flex items-center gap-2 px-4 h-[38px] border border-default bg-surface text-[12px] font-semibold text-primary rounded-[var(--radius-sm)]"
                             >
-                                <FaSortAmountDown size={12} />
-                                <span className="cp-sort-label">{SORT_OPTIONS.find(s => s.val === sort)?.label || "Sort"}</span>
-                                {sortOpen ? <FaChevronUp size={10} /> : <FaChevronDown size={10} />}
+                                <FaSortAmountDown size={12} aria-hidden="true" />
+                                <span className="hidden sm:inline">{SORT_OPTIONS.find(s => s.val === sort)?.label || "Sort"}</span>
+                                {sortOpen ? <FiChevronUp size={11} aria-hidden="true" /> : <FiChevronDown size={11} aria-hidden="true" />}
                             </button>
                             {sortOpen && (
                                 <>
-                                    <div onClick={() => setSortOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 49 }} />
-                                    <div className="cp-sort-dd">
+                                    <div onClick={() => setSortOpen(false)} className="fixed inset-0 z-[49]" aria-hidden="true" />
+                                    <div className="absolute top-[calc(100%+6px)] right-[-8px] sm:right-0 bg-surface border border-default min-w-[190px] z-50 shadow-md rounded-[var(--radius-md)] py-1.5">
                                         {SORT_OPTIONS.map(opt => (
-                                            <div key={opt.val} className={`cp-sort-item${sort === opt.val ? " active" : ""}`} onClick={() => handleSort(opt.val)}>
+                                            <div
+                                                key={opt.val}
+                                                onClick={() => handleSort(opt.val)}
+                                                className={`px-4 py-2.5 text-[13px] font-medium cursor-pointer transition-colors duration-100 ${sort === opt.val ? "text-accent font-bold bg-accent-tint" : "text-primary hover:bg-canvas"}`}
+                                            >
                                                 {sort === opt.val && "✓ "}{opt.label}
                                             </div>
                                         ))}
@@ -226,75 +244,36 @@ const CategoryPage = () => {
 
                 {/* ── Subcategory Filter Chips ── */}
                 {subcategories.length > 0 && (
-                    <div style={{ background: "#fafaf8", borderBottom: "1px solid #e8e4d9" }}>
-                        <div style={{ maxWidth: 1440, margin: "0 auto", padding: "10px clamp(16px,5vw,80px)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                            <button
-                                onClick={() => handleSubcategory("")}
-                                style={{
-                                    padding: "6px 16px", borderRadius: 20, border: "1px solid", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all .2s",
-                                    background: !activeSubcategory ? "#1a1740" : "#fff",
-                                    color: !activeSubcategory ? "#fff" : "#374151",
-                                    borderColor: !activeSubcategory ? "#1a1740" : "#d1d5db",
-                                }}
-                            >
-                                All
-                            </button>
+                    <div className="bg-canvas border-b border-default">
+                        <div className="max-w-[1440px] mx-auto px-[clamp(16px,5vw,80px)] py-2.5 flex gap-2 flex-wrap items-center">
+                            <Chip selected={!activeSubcategory} onClick={() => handleSubcategory("")}>All</Chip>
                             {subcategories.map(sub => (
-                                <button
-                                    key={sub.name}
-                                    onClick={() => handleSubcategory(sub.name)}
-                                    style={{
-                                        padding: "6px 16px", borderRadius: 20, border: "1px solid", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all .2s",
-                                        background: activeSubcategory === sub.name ? "#1a1740" : "#fff",
-                                        color: activeSubcategory === sub.name ? "#fff" : "#374151",
-                                        borderColor: activeSubcategory === sub.name ? "#1a1740" : "#d1d5db",
-                                    }}
-                                >
-                                    {sub.name} {sub.count > 0 && <span style={{ fontSize: 10, opacity: .6 }}>({sub.count})</span>}
-                                </button>
+                                <Chip key={sub.name} selected={activeSubcategory === sub.name} onClick={() => handleSubcategory(sub.name)}>
+                                    {sub.name} {sub.count > 0 && <span className="opacity-60 text-[10px]">({sub.count})</span>}
+                                </Chip>
                             ))}
                         </div>
                     </div>
                 )}
 
                 {/* ── Products ── */}
-                <div style={{ maxWidth: 1440, margin: "0 auto", padding: "32px clamp(16px,5vw,80px) 64px" }}>
+                <div className="max-w-[1440px] mx-auto px-[clamp(16px,5vw,80px)] pt-8 pb-16">
 
                     {/* Skeleton */}
                     {loading && products.length === 0 && (
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
-                            {Array(12).fill(0).map((_, i) => (
-                                <div key={i} className="bg-white border border-stone-200 rounded-xl overflow-hidden flex flex-col w-full h-full">
-                                    <div className="w-full aspect-[3/4] bg-stone-100 animate-pulse shrink-0" />
-                                    <div className="p-3 flex flex-col gap-2 flex-1">
-                                        <div className="h-2.5 w-1/3 bg-stone-200 rounded animate-pulse" />
-                                        <div className="h-3 w-4/5 bg-stone-200 rounded animate-pulse" />
-                                        <div className="h-3 w-1/2 bg-stone-200 rounded animate-pulse" />
-                                        <div className="mt-auto pt-2 space-y-2">
-                                            <div className="h-4 w-2/5 bg-stone-200 rounded animate-pulse" />
-                                            <div className="h-8 bg-stone-200 rounded animate-pulse" />
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
+                            {Array(12).fill(0).map((_, i) => <SkeletonCard key={i} />)}
                         </div>
                     )}
 
                     {/* Empty */}
                     {!loading && products.length === 0 && (
-                        <div style={{ textAlign: "center", padding: "80px 20px" }}>
-                            <p style={{ fontSize: 48, marginBottom: 16 }}>🔍</p>
-                            <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "1.6rem", color: "#1a1740", marginBottom: 8 }}>
-                                No products found
-                            </h3>
-                            <p style={{ fontSize: 13, color: "#a8a29e", marginBottom: 24 }}>
-                                Try different search terms or browse other categories
-                            </p>
-                            <button onClick={() => navigate("/")}
-                                style={{ padding: "12px 28px", background: "#1a1740", color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 700, letterSpacing: ".08em" }}>
-                                Back to Home
-                            </button>
-                        </div>
+                        <EmptyState
+                            icon={FiSearch}
+                            title="No products found"
+                            description="Try different search terms or browse other categories"
+                            action={<Button variant="primary" onClick={() => navigate("/")}>Back to Home</Button>}
+                        />
                     )}
 
                     {/* Grid */}
@@ -308,16 +287,10 @@ const CategoryPage = () => {
 
                             {/* Load more */}
                             {hasMore && (
-                                <div style={{ textAlign: "center", marginTop: 48 }}>
-                                    <button
-                                        onClick={loadMore}
-                                        disabled={loading}
-                                        style={{ padding: "14px 40px", border: "1.5px solid #1a1740", background: "transparent", color: "#1a1740", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", transition: "all .2s", opacity: loading ? .6 : 1 }}
-                                        onMouseEnter={e => { e.currentTarget.style.background = "#1a1740"; e.currentTarget.style.color = "#fff"; }}
-                                        onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#1a1740"; }}
-                                    >
+                                <div className="text-center mt-12">
+                                    <Button variant="outline" onClick={loadMore} loading={loading}>
                                         {loading ? "Loading…" : "Load More"}
-                                    </button>
+                                    </Button>
                                 </div>
                             )}
                         </>

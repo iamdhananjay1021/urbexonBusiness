@@ -6,7 +6,7 @@
  * UI: Preserved original styling - no visual changes
  */
 import { useState, useCallback, memo } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useCart } from "../hooks/useCart";
 import { FaStar, FaRegStar, FaShoppingCart, FaBolt, FaCheckCircle } from "react-icons/fa";
 

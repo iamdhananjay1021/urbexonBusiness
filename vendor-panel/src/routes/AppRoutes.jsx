@@ -43,7 +43,19 @@ const Loader = () => (
 const PrivateRoute = ({ children }) => {
   const { vendor, loading } = useAuth();
   if (loading) return <Loader />;
-  return vendor ? children : <Navigate to="/login" replace />;
+  if (!vendor) return <Navigate to="/login" replace />;
+  // BUG FIX: a user can select "vendor" as their role at signup without
+  // ever submitting the actual vendor application — AuthContext already
+  // tolerates the resulting 404 on /vendor/me and keeps them "logged in"
+  // with a bare profile (no `status` field, since no Vendor document
+  // exists yet), but nothing here used to check that before letting them
+  // into the Dashboard shell. Every widget on Dashboard/Earnings/etc. then
+  // independently hit /vendor/subscription, /vendor/earnings, and friends
+  // — all 404ing the same way, with no indication to the vendor of what
+  // was actually wrong. A real (even pending/rejected) application always
+  // has a `status`; only the never-applied case lacks it entirely.
+  if (!vendor.status) return <Navigate to="/apply" replace />;
+  return children;
 };
 
 const ApprovedRoute = ({ children }) => {
@@ -81,12 +93,25 @@ const PublicRoute = ({ children }) => {
   return vendor ? <Navigate to="/dashboard" replace /> : children;
 };
 
+// BUG FIX: /apply needs different rules than PublicRoute — an
+// authenticated-but-never-applied vendor (no `status`; see PrivateRoute)
+// must be able to reach this page, otherwise PrivateRoute's redirect here
+// would immediately bounce right back to /dashboard (infinite loop).
+// Only someone who already has a real application (any status) — or isn't
+// logged in at all — follows the normal rules.
+const ApplyRoute = ({ children }) => {
+  const { vendor, loading } = useAuth();
+  if (loading) return <Loader />;
+  if (vendor?.status) return <Navigate to="/dashboard" replace />;
+  return children;
+};
+
 const AppRoutes = () => (
   <Suspense fallback={<Loader />}>
     <Routes>
       {/* Public Routes */}
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-      <Route path="/apply" element={<PublicRoute><VendorApply /></PublicRoute>} />
+      <Route path="/apply" element={<ApplyRoute><VendorApply /></ApplyRoute>} />
       <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
 
       {/* Routes accessible to anyone */}

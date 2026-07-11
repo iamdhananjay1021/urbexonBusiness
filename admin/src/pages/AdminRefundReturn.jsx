@@ -9,7 +9,7 @@ import {
     FaSync, FaUser, FaPhone, FaMapMarkerAlt,
     FaCheckCircle, FaBan, FaMoneyBillWave, FaUndo,
     FaExclamationTriangle, FaSpinner, FaChevronDown,
-    FaChevronUp, FaFlag, FaBoxOpen, FaExchangeAlt,
+    FaChevronUp, FaFlag, FaBoxOpen, FaExchangeAlt, FaTruck,
 } from "react-icons/fa";
 
 /* ─── Status config ─── */
@@ -29,6 +29,21 @@ const RETURN_CFG = {
     PICKED_UP: { cls: "badge-blue", label: "Picked Up" },
     REFUNDED: { cls: "badge-violet", label: "Refunded" },
 };
+const REPL_CFG = {
+    REQUESTED: { cls: "badge-amber", label: "Requested" },
+    APPROVED: { cls: "badge-green", label: "Approved" },
+    REJECTED: { cls: "badge-red", label: "Rejected" },
+    SHIPPED: { cls: "badge-blue", label: "Shipped" },
+    DELIVERED: { cls: "badge-green", label: "Delivered" },
+};
+
+/* icon-wrap color per underlying status, so the icon reflects state at a glance */
+const iconClsForStatus = (status) => {
+    if (["FAILED", "REJECTED"].includes(status)) return "rr-icon-rose";
+    if (["PROCESSED", "APPROVED", "REFUNDED", "DELIVERED"].includes(status)) return "rr-icon-green";
+    if (["PROCESSING", "PICKED_UP", "SHIPPED"].includes(status)) return "rr-icon-blue";
+    return "rr-icon-amber";
+};
 
 const STYLES = `
     .rr-root {
@@ -41,9 +56,9 @@ const STYLES = `
 
     /* Sticky page header */
     .rr-header {
-        background: #fff;
+        background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
         border-bottom: 1px solid #e2e8f0;
-        padding: 16px 24px 0;
+        padding: 18px 24px 0;
         flex-shrink: 0;
         position: sticky;
         top: 0;
@@ -54,42 +69,73 @@ const STYLES = `
         align-items: center;
         justify-content: space-between;
         gap: 16px;
-        margin-bottom: 14px;
+        margin-bottom: 16px;
     }
-    .rr-title { font-size: 18px; font-weight: 700; color: #1e293b; margin: 0; }
-    .rr-sub   { font-size: 12px; color: #94a3b8; margin: 3px 0 0; }
+    .rr-header-titlewrap { display: flex; align-items: center; gap: 12px; }
+    .rr-header-icon {
+        width: 42px; height: 42px; border-radius: 12px;
+        background: linear-gradient(135deg, #2563eb, #7c3aed);
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; flex-shrink: 0;
+        box-shadow: 0 4px 12px rgba(37,99,235,0.25);
+    }
+    .rr-title { font-size: 19px; font-weight: 800; color: #1e293b; margin: 0; letter-spacing: -0.01em; }
+    .rr-sub   { font-size: 12.5px; color: #94a3b8; margin: 3px 0 0; }
 
     .rr-refresh {
         display: flex; align-items: center; gap: 6px;
-        padding: 7px 14px;
-        font-size: 12px; font-weight: 600; color: #475569;
-        background: #f1f5f9; border: 1px solid #e2e8f0;
-        border-radius: 8px; cursor: pointer; white-space: nowrap;
-        transition: background 0.15s;
+        padding: 8px 16px;
+        font-size: 12.5px; font-weight: 700; color: #fff;
+        background: #2563eb; border: 1px solid #2563eb;
+        border-radius: 9px; cursor: pointer; white-space: nowrap;
+        transition: background 0.15s, transform 0.1s;
+        font-family: inherit;
+        box-shadow: 0 2px 8px rgba(37,99,235,0.22);
+    }
+    .rr-refresh:hover:not(:disabled) { background: #1d4ed8; }
+    .rr-refresh:active:not(:disabled) { transform: translateY(1px); }
+    .rr-refresh:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+
+    /* Error banner */
+    .rr-error-banner {
+        display: flex; align-items: center; gap: 8px;
+        background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+        padding: 10px 14px; border-radius: 8px; font-size: 12px; font-weight: 600;
+        margin-bottom: 12px;
+    }
+    .rr-error-retry {
+        margin-left: auto; background: none; border: none; color: #b91c1c;
+        font-size: 12px; font-weight: 700; text-decoration: underline; cursor: pointer;
         font-family: inherit;
     }
-    .rr-refresh:hover:not(:disabled) { background: #e2e8f0; }
-    .rr-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    /* Tabs */
-    .rr-tabs { display: flex; gap: 4px; }
+    /* Tabs — segmented pill control */
+    .rr-tabs {
+        display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none;
+        background: #f1f5f9; border: 1px solid #e2e8f0;
+        border-radius: 11px; padding: 4px;
+        margin-bottom: 16px;
+        width: fit-content;
+        max-width: 100%;
+    }
     .rr-tab {
         display: flex; align-items: center; gap: 7px;
-        padding: 9px 16px;
-        font-size: 13px; font-weight: 600;
-        border: none; border-bottom: 2px solid transparent;
-        background: none; cursor: pointer; color: #64748b;
+        padding: 8px 15px;
+        font-size: 12.5px; font-weight: 600;
+        border: none;
+        background: transparent; cursor: pointer; color: #64748b;
         transition: all 0.15s; font-family: inherit;
-        border-radius: 8px 8px 0 0;
+        border-radius: 8px;
+        white-space: nowrap; flex-shrink: 0;
     }
-    .rr-tab:hover { color: #1e293b; background: #f8fafc; }
-    .rr-tab.active { color: #2563eb; border-bottom-color: #2563eb; background: #eff6ff; }
+    .rr-tab:hover { color: #1e293b; }
+    .rr-tab.active { color: #1e293b; background: #fff; box-shadow: 0 1px 4px rgba(15,23,42,0.1); }
     .rr-tab-count {
         font-size: 11px; font-weight: 700;
         padding: 1px 7px; border-radius: 20px;
         background: #e2e8f0; color: #64748b;
     }
-    .rr-tab.active .rr-tab-count { background: #dbeafe; color: #2563eb; }
+    .rr-tab.active .rr-tab-count { background: #dbeafe; color: #1d4ed8; }
 
     /* Scrollable content */
     .rr-body {
@@ -128,6 +174,8 @@ const STYLES = `
     .rr-icon-amber  { background: #fffbeb; border: 1px solid #fde68a; color: #d97706; }
     .rr-icon-violet { background: #f5f3ff; border: 1px solid #ddd6fe; color: #7c3aed; }
     .rr-icon-rose   { background: #fff1f2; border: 1px solid #fecdd3; color: #e11d48; }
+    .rr-icon-green  { background: #f0fdf4; border: 1px solid #bbf7d0; color: #059669; }
+    .rr-icon-blue   { background: #eff6ff; border: 1px solid #bfdbfe; color: #2563eb; }
 
     .rr-card-info { flex: 1; min-width: 0; }
     .rr-card-name { font-weight: 600; font-size: 14px; color: #1e293b; }
@@ -185,11 +233,13 @@ const STYLES = `
         transition: border-color 0.15s, box-shadow 0.15s;
         background: #fff;
         resize: none;
+        box-sizing: border-box;
     }
     .rr-textarea:focus, .rr-input:focus {
         border-color: #93c5fd;
         box-shadow: 0 0 0 3px rgba(147,197,253,0.25);
     }
+    .rr-textarea:disabled, .rr-input:disabled { background: #f8fafc; cursor: not-allowed; opacity: 0.7; }
     .rr-label { font-size: 12px; font-weight: 600; color: #64748b; display: block; margin-bottom: 5px; }
 
     .rr-btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
@@ -204,7 +254,9 @@ const STYLES = `
     .rr-btn:not(:disabled):hover { filter: brightness(0.94); }
     .rr-btn-green  { background: #10b981; color: #fff; }
     .rr-btn-red    { background: #ef4444; color: #fff; }
+    .rr-btn-blue   { background: #2563eb; color: #fff; }
     .rr-btn-orange { background: #f97316; color: #fff; grid-column: 1 / -1; }
+    .rr-btn-single { grid-column: 1 / -1; }
 
     /* Badges */
     .badge {
@@ -231,15 +283,28 @@ const STYLES = `
     /* Empty state */
     .rr-empty {
         display: flex; flex-direction: column; align-items: center;
-        justify-content: center; padding: 80px 24px; text-align: center;
+        justify-content: center; padding: 72px 24px; text-align: center;
     }
     .rr-empty-icon {
-        width: 56px; height: 56px; border-radius: 14px;
+        width: 60px; height: 60px; border-radius: 16px;
         background: #f1f5f9; display: flex; align-items: center;
-        justify-content: center; color: #cbd5e1; margin-bottom: 14px;
+        justify-content: center; color: #cbd5e1; margin-bottom: 16px;
     }
-    .rr-empty-text { font-size: 14px; font-weight: 600; color: #64748b; }
+    .rr-empty-icon.rr-icon-amber  { background: #fffbeb; border: 1px solid #fde68a; color: #d97706; }
+    .rr-empty-icon.rr-icon-violet { background: #f5f3ff; border: 1px solid #ddd6fe; color: #7c3aed; }
+    .rr-empty-icon.rr-icon-blue   { background: #eff6ff; border: 1px solid #bfdbfe; color: #2563eb; }
+    .rr-empty-icon.rr-icon-rose   { background: #fff1f2; border: 1px solid #fecdd3; color: #e11d48; }
+    .rr-empty-text { font-size: 14.5px; font-weight: 700; color: #334155; }
     .rr-empty-sub  { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+    .rr-empty-refresh {
+        display: flex; align-items: center; gap: 6px;
+        margin-top: 16px; padding: 8px 16px;
+        font-size: 12.5px; font-weight: 600; color: #2563eb;
+        background: #eff6ff; border: 1px solid #bfdbfe;
+        border-radius: 8px; cursor: pointer; font-family: inherit;
+        transition: background 0.15s;
+    }
+    .rr-empty-refresh:hover { background: #dbeafe; }
 
     /* Loader */
     .rr-loader {
@@ -304,6 +369,7 @@ const RefundCard = ({ order, onAction }) => {
     const cfg = REFUND_CFG[refund.status] || REFUND_CFG.NONE;
     const isPending = refund.status === "REQUESTED";
     const isFailed = refund.status === "FAILED";
+    const busyAny = busy || retrying;
 
     const doAction = async (action) => {
         if (action === "approve" && !window.confirm(`Approve refund of ₹${Number(refund.amount).toLocaleString("en-IN")}?`)) return;
@@ -321,7 +387,7 @@ const RefundCard = ({ order, onAction }) => {
     return (
         <div className={`rr-card${isFailed ? " failed" : ""}`}>
             <CardHead
-                iconCls="rr-icon-amber"
+                iconCls={iconClsForStatus(refund.status)}
                 icon={<FaMoneyBillWave size={15} />}
                 title={order.customerName}
                 badge={<Badge cfg={cfg} />}
@@ -339,26 +405,27 @@ const RefundCard = ({ order, onAction }) => {
                             <b>Reason:</b> {refund.reason || "—"}<br />
                             <b>Requested:</b> {refund.requestedAt ? new Date(refund.requestedAt).toLocaleString("en-IN") : "—"}
                             {refund.razorpayRefundId && <><br /><span style={{ color: "#10b981", fontWeight: 600 }}>Refund ID: {refund.razorpayRefundId}</span></>}
+                            {isFailed && refund.failureReason && <><br /><span style={{ color: "#e11d48", fontWeight: 600 }}>Failure reason: {refund.failureReason}</span></>}
                         </div>
                     </div>
 
                     {(isPending || isFailed) && (
                         <>
                             <textarea className="rr-textarea" rows={2} placeholder="Admin note (optional)"
-                                value={note} onChange={e => setNote(e.target.value)} />
+                                value={note} onChange={e => setNote(e.target.value)} disabled={busyAny} />
                             <div className="rr-btn-row">
                                 {isFailed ? (
-                                    <button className="rr-btn rr-btn-orange" onClick={doRetry} disabled={retrying}>
-                                        {retrying ? <FaSpinner className="rr-spin-sm" size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : "🔁"}
+                                    <button className="rr-btn rr-btn-orange" onClick={doRetry} disabled={busyAny}>
+                                        {retrying ? <FaSpinner size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : <FaSync size={12} />}
                                         Retry Refund
                                     </button>
                                 ) : (
                                     <>
-                                        <button className="rr-btn rr-btn-green" onClick={() => doAction("approve")} disabled={busy}>
+                                        <button className="rr-btn rr-btn-green" onClick={() => doAction("approve")} disabled={busyAny}>
                                             {busy ? <FaSpinner size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : <FaCheckCircle size={12} />}
                                             Approve
                                         </button>
-                                        <button className="rr-btn rr-btn-red" onClick={() => doAction("reject")} disabled={busy}>
+                                        <button className="rr-btn rr-btn-red" onClick={() => doAction("reject")} disabled={busyAny}>
                                             <FaBan size={12} /> Reject
                                         </button>
                                     </>
@@ -385,6 +452,7 @@ const ReturnCard = ({ order, onAction }) => {
     const isPending = ret.status === "REQUESTED";
 
     const doAction = async (action) => {
+        if (action === "approve" && !window.confirm(`Approve return & refund ₹${refundAmt ? Number(refundAmt).toLocaleString("en-IN") : Number(order.totalAmount).toLocaleString("en-IN")}?`)) return;
         try {
             setBusy(true);
             await api.put(`/orders/${order._id}/return/process`, {
@@ -399,7 +467,7 @@ const ReturnCard = ({ order, onAction }) => {
     return (
         <div className="rr-card">
             <CardHead
-                iconCls="rr-icon-violet"
+                iconCls={iconClsForStatus(ret.status)}
                 icon={<FaUndo size={14} />}
                 title={order.customerName}
                 badge={<Badge cfg={cfg} />}
@@ -449,12 +517,12 @@ const ReturnCard = ({ order, onAction }) => {
                         <>
                             <div style={{ marginBottom: 10 }}>
                                 <label className="rr-label">Refund Amount (₹)</label>
-                                <input type="number" className="rr-input"
+                                <input type="number" className="rr-input" disabled={busy}
                                     placeholder={`Default: ₹${order.totalAmount}`}
                                     value={refundAmt} onChange={e => setRefundAmt(e.target.value)} />
                             </div>
                             <textarea className="rr-textarea" rows={2} placeholder="Admin note (optional)"
-                                value={note} onChange={e => setNote(e.target.value)} />
+                                value={note} onChange={e => setNote(e.target.value)} disabled={busy} />
                             <div className="rr-btn-row">
                                 <button className="rr-btn rr-btn-green" onClick={() => doAction("approve")} disabled={busy}>
                                     {busy ? <FaSpinner size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : <FaCheckCircle size={12} />}
@@ -524,11 +592,16 @@ const FlaggedCard = ({ order }) => {
 /* ══════════════════════════════════════
    EMPTY / LOADER
 ══════════════════════════════════════ */
-const Empty = ({ icon, text }) => (
+const Empty = ({ icon, text, iconCls = "rr-icon-blue", onRefresh }) => (
     <div className="rr-empty">
-        <div className="rr-empty-icon">{icon}</div>
+        <div className={`rr-empty-icon ${iconCls}`}>{icon}</div>
         <div className="rr-empty-text">{text}</div>
-        <div className="rr-empty-sub">Check back later</div>
+        <div className="rr-empty-sub">New requests will show up here automatically</div>
+        {onRefresh && (
+            <button className="rr-empty-refresh" onClick={onRefresh}>
+                <FaSync size={11} /> Check again
+            </button>
+        )}
     </div>
 );
 
@@ -541,80 +614,105 @@ const Loader = () => (
 
 /* ══════════════════════════════════════
    REPLACEMENT CARD
+   (rebuilt to match the Refund/Return card pattern —
+   it previously used CSS classes that didn't exist anywhere
+   in STYLES, so it rendered unstyled and didn't collapse)
 ══════════════════════════════════════ */
-const REPL_CFG = {
-    REQUESTED: { cls: "badge-amber", label: "Requested" },
-    APPROVED: { cls: "badge-green", label: "Approved" },
-    REJECTED: { cls: "badge-red", label: "Rejected" },
-    SHIPPED: { cls: "badge-blue", label: "Shipped" },
-    DELIVERED: { cls: "badge-green", label: "Delivered" },
-};
-
 const ReplacementCard = ({ order, onAction }) => {
-    const [processing, setProcessing] = useState(false);
+    const [open, setOpen] = useState(false);
+    const [busy, setBusy] = useState(false);
     const [adminNote, setAdminNote] = useState("");
     const repl = order.replacement || {};
     const cfg = REPL_CFG[repl.status] || REPL_CFG.REQUESTED;
+    const isRequested = repl.status === "REQUESTED";
+    const isApproved = repl.status === "APPROVED";
+    const isShipped = repl.status === "SHIPPED";
 
-    const handle = async (action) => {
+    const handle = async (action, confirmMsg) => {
+        if (confirmMsg && !window.confirm(confirmMsg)) return;
         try {
-            setProcessing(true);
+            setBusy(true);
             await api.put(`/orders/${order._id}/replacement/process`, { action, adminNote });
             onAction();
-        } catch (err) { alert(err.response?.data?.message || "Failed"); }
-        finally { setProcessing(false); }
+        } catch (err) { alert(err.response?.data?.message || "Action failed"); }
+        finally { setBusy(false); }
     };
 
     return (
         <div className="rr-card">
-            <div className="rr-card-header">
-                <div>
-                    <span className="rr-order-id">#{order._id?.slice(-8).toUpperCase()}</span>
-                    <span className={`rr-badge ${cfg.cls}`}>{cfg.label}</span>
-                </div>
-                <span className="rr-date">{new Date(repl.requestedAt || order.updatedAt).toLocaleDateString()}</span>
-            </div>
-            <div className="rr-card-body">
-                <div className="rr-meta-row">
-                    <span><FaUser size={10} /> {order.customerName}</span>
-                    <span><FaPhone size={10} /> {order.phone}</span>
-                </div>
-                {repl.reason && <div className="rr-reason">Reason: {repl.reason}</div>}
-                {repl.images?.length > 0 && (
-                    <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                        {repl.images.map((img, i) => (
-                            <a key={i} href={img} target="_blank" rel="noreferrer">
-                                <img src={img} alt="proof" style={{ width: 50, height: 50, objectFit: "cover", borderRadius: 6, border: "1px solid #e2e8f0" }} />
-                            </a>
-                        ))}
-                    </div>
-                )}
-                {repl.status === "REQUESTED" && (
-                    <div style={{ marginTop: 10 }}>
-                        <input placeholder="Admin note (optional)" value={adminNote} onChange={e => setAdminNote(e.target.value)}
-                            style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #e2e8f0", fontSize: 12, marginBottom: 8, fontFamily: "inherit" }} />
-                        <div style={{ display: "flex", gap: 8 }}>
-                            <button onClick={() => handle("approve")} disabled={processing}
-                                className="rr-action-btn" style={{ background: "#059669", color: "#fff" }}>
-                                {processing ? <FaSpinner size={10} className="rr-spin-icon" /> : <FaCheckCircle size={10} />} Approve
-                            </button>
-                            <button onClick={() => handle("reject")} disabled={processing}
-                                className="rr-action-btn" style={{ background: "#dc2626", color: "#fff" }}>
-                                {processing ? <FaSpinner size={10} className="rr-spin-icon" /> : <FaBan size={10} />} Reject
-                            </button>
+            <CardHead
+                iconCls={iconClsForStatus(repl.status)}
+                icon={<FaExchangeAlt size={14} />}
+                title={order.customerName}
+                badge={<Badge cfg={cfg} />}
+                sub={`#${order._id?.slice(-8).toUpperCase() || "—"} · ${repl.reason ? repl.reason : "Replacement"}`}
+                amount={`₹${Number(order.totalAmount || 0).toLocaleString("en-IN")}`}
+                open={open}
+                onClick={() => setOpen(o => !o)}
+            />
+            {open && (
+                <div className="rr-card-body">
+                    <div className="rr-info-box">
+                        <div className="rr-info-row"><FaUser size={11} />{order.customerName}</div>
+                        <div className="rr-info-row"><FaPhone size={11} />{order.phone}</div>
+                        {order.address && (
+                            <div className="rr-info-row"><FaMapMarkerAlt size={11} /><span style={{ fontSize: 12 }}>{order.address}</span></div>
+                        )}
+                        <div className="rr-info-meta">
+                            <b>Reason:</b> {repl.reason || "—"}<br />
+                            <b>Requested:</b> {(repl.requestedAt || order.updatedAt) ? new Date(repl.requestedAt || order.updatedAt).toLocaleString("en-IN") : "—"}
+                            {repl.adminNote && <><br /><b>Admin note:</b> {repl.adminNote}</>}
                         </div>
                     </div>
-                )}
-                {repl.status === "APPROVED" && (
-                    <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                        <button onClick={() => handle("ship")} disabled={processing}
-                            className="rr-action-btn" style={{ background: "#2563eb", color: "#fff" }}>
-                            Mark Shipped
-                        </button>
-                    </div>
-                )}
-                {repl.adminNote && <div style={{ marginTop: 6, fontSize: 11, color: "#64748b" }}>Admin: {repl.adminNote}</div>}
-            </div>
+
+                    {repl.images?.length > 0 && (
+                        <div style={{ marginBottom: 14 }}>
+                            <div className="rr-items-label">Proof Images</div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                {repl.images.map((img, i) => (
+                                    <a key={i} href={img} target="_blank" rel="noreferrer">
+                                        <img src={img} alt="proof" style={{ width: 52, height: 52, borderRadius: 8, objectFit: "cover", border: "1px solid #e2e8f0" }} />
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {isRequested && (
+                        <>
+                            <textarea className="rr-textarea" rows={2} placeholder="Admin note (optional)"
+                                value={adminNote} onChange={e => setAdminNote(e.target.value)} disabled={busy} />
+                            <div className="rr-btn-row">
+                                <button className="rr-btn rr-btn-green" onClick={() => handle("approve")} disabled={busy}>
+                                    {busy ? <FaSpinner size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : <FaCheckCircle size={12} />}
+                                    Approve
+                                </button>
+                                <button className="rr-btn rr-btn-red" onClick={() => handle("reject")} disabled={busy}>
+                                    <FaBan size={12} /> Reject
+                                </button>
+                            </div>
+                        </>
+                    )}
+
+                    {isApproved && (
+                        <div className="rr-btn-row">
+                            <button className="rr-btn rr-btn-blue rr-btn-single" onClick={() => handle("ship")} disabled={busy}>
+                                {busy ? <FaSpinner size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : <FaTruck size={12} />}
+                                Mark Shipped
+                            </button>
+                        </div>
+                    )}
+
+                    {isShipped && (
+                        <div className="rr-btn-row">
+                            <button className="rr-btn rr-btn-green rr-btn-single" onClick={() => handle("deliver", "Confirm this replacement has been delivered?")} disabled={busy}>
+                                {busy ? <FaSpinner size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : <FaCheckCircle size={12} />}
+                                Mark Delivered
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
@@ -637,10 +735,12 @@ const AdminRefundReturn = () => {
     const [flagged, setFlagged] = useState([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
+    const [error, setError] = useState(null);
 
     const fetchAll = useCallback(async () => {
         try {
             setLoading(true);
+            setError(null);
             const [r1, r2, r3, r4] = await Promise.all([
                 api.get("/orders/admin/refunds"),
                 api.get("/orders/admin/returns"),
@@ -651,7 +751,10 @@ const AdminRefundReturn = () => {
             setReturns(Array.isArray(r2.data) ? r2.data : []);
             setFlagged(Array.isArray(r3.data) ? r3.data : []);
             setReplacements(Array.isArray(r4.data) ? r4.data : []);
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error(e);
+            setError(e.response?.data?.message || "Couldn't load data. Check your connection and try again.");
+        }
         finally { setLoading(false); setSyncing(false); }
     }, []);
 
@@ -666,9 +769,12 @@ const AdminRefundReturn = () => {
             {/* Sticky header */}
             <div className="rr-header">
                 <div className="rr-header-top">
-                    <div>
-                        <h1 className="rr-title">Refunds, Returns &amp; Replacements</h1>
-                        <p className="rr-sub">Manage refunds, returns, replacements &amp; fraud alerts</p>
+                    <div className="rr-header-titlewrap">
+                        <div className="rr-header-icon"><FaExchangeAlt size={17} /></div>
+                        <div>
+                            <h1 className="rr-title">Refunds, Returns &amp; Replacements</h1>
+                            <p className="rr-sub">Manage refunds, returns, replacements &amp; fraud alerts</p>
+                        </div>
                     </div>
                     <button
                         className="rr-refresh"
@@ -698,26 +804,33 @@ const AdminRefundReturn = () => {
 
             {/* Scrollable content */}
             <div className="rr-body">
+                {error && (
+                    <div className="rr-error-banner">
+                        <FaExclamationTriangle size={12} />
+                        {error}
+                        <button className="rr-error-retry" onClick={fetchAll}>Retry</button>
+                    </div>
+                )}
                 {loading ? <Loader /> : (
                     <>
                         {tab === "refunds" && (
                             refunds.length === 0
-                                ? <Empty icon={<FaMoneyBillWave size={22} />} text="No pending refund requests" />
+                                ? <Empty icon={<FaMoneyBillWave size={22} />} iconCls="rr-icon-amber" text="No pending refund requests" onRefresh={fetchAll} />
                                 : refunds.map(o => <RefundCard key={o._id} order={o} onAction={fetchAll} />)
                         )}
                         {tab === "returns" && (
                             returns.length === 0
-                                ? <Empty icon={<FaBoxOpen size={22} />} text="No pending return requests" />
+                                ? <Empty icon={<FaBoxOpen size={22} />} iconCls="rr-icon-violet" text="No pending return requests" onRefresh={fetchAll} />
                                 : returns.map(o => <ReturnCard key={o._id} order={o} onAction={fetchAll} />)
                         )}
                         {tab === "replacements" && (
                             replacements.length === 0
-                                ? <Empty icon={<FaExchangeAlt size={22} />} text="No pending replacement requests" />
+                                ? <Empty icon={<FaExchangeAlt size={22} />} iconCls="rr-icon-blue" text="No pending replacement requests" onRefresh={fetchAll} />
                                 : replacements.map(o => <ReplacementCard key={o._id} order={o} onAction={fetchAll} />)
                         )}
                         {tab === "flagged" && (
                             flagged.length === 0
-                                ? <Empty icon={<FaFlag size={22} />} text="No flagged orders" />
+                                ? <Empty icon={<FaFlag size={22} />} iconCls="rr-icon-rose" text="No flagged orders" onRefresh={fetchAll} />
                                 : flagged.map(o => <FlaggedCard key={o._id} order={o} />)
                         )}
                     </>

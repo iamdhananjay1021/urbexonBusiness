@@ -1,24 +1,47 @@
 /**
- * UHProductDetail.jsx — Production-Ready | Urbexon Hour
- * ✅ Desktop: 2-column (image left, info right)
- * ✅ Mobile: single column, fully responsive
- * ✅ Clean professional UI
+ * UHProductDetail.jsx — Urbexon Hour Product Detail (Signal migration)
+ * ✅ Desktop: 2-column (image left, info right), scales up to xl screens
+ * ✅ Tablet: balanced single-column with wider gallery
+ * ✅ Mobile: single column, sticky bottom CTA, dot-indicator gallery
+ * All useCart/useRecentlyViewed hook usage and fetch/handler logic preserved verbatim.
  */
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import api from "../api/axios";
+import * as productApi from "../api/productApi";
+import * as reviewApi from "../api/reviewApi";
+import { imgUrl, imgSrcSet } from "../utils/imageUrl";
 import { useCart } from "../hooks/useCart";
+import { useAuth } from "../contexts/AuthContext";
 import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
 import SEO, { JsonLd } from "../components/SEO";
 import { UHDeliveryEstimate } from "../components/DeliveryEstimate";
 import {
-  FaArrowLeft, FaPlus, FaMinus, FaTrash, FaShoppingCart,
-  FaClock, FaStar, FaChevronRight, FaShareAlt, FaStore,
-  FaShieldAlt, FaTruck, FaUndo, FaBolt, FaChevronLeft,
-  FaChevronDown, FaChevronUp, FaLink, FaMapMarkerAlt,
-} from "react-icons/fa";
+  FiArrowLeft, FiPlus, FiMinus, FiTrash2, FiShoppingCart,
+  FiClock, FiStar, FiChevronRight, FiShare2, FiHome,
+  FiShield, FiTruck, FiRotateCcw, FiZap, FiChevronLeft,
+  FiChevronDown, FiChevronUp, FiLink, FiMapPin, FiCheck,
+} from "react-icons/fi";
+import { FaStar, FaRegStar } from "react-icons/fa";
+import Card from "../design-system/Card";
+import Button from "../design-system/Button";
+import Badge from "../design-system/Badge";
+import Loader from "../design-system/Loader";
+import { EmptyState } from "../design-system/EmptyState";
+import { cn } from "../design-system/utils/cn";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
+
+/* Scoped styles: visible thin scrollbars + a quiet entrance fade (motion-safe) */
+const PAGE_CSS = `
+  .uhpd-scroll{scrollbar-width:thin;scrollbar-color:var(--color-graphite-300,#d4d8de) transparent}
+  .uhpd-scroll::-webkit-scrollbar{height:6px}
+  .uhpd-scroll::-webkit-scrollbar-track{background:transparent}
+  .uhpd-scroll::-webkit-scrollbar-thumb{background:var(--color-graphite-300,#d4d8de);border-radius:10px}
+  .uhpd-scroll::-webkit-scrollbar-thumb:hover{background:var(--color-graphite-400,#b4b9c2)}
+  .uhpd-fade{animation:uhpdFade .4s ease both}
+  @keyframes uhpdFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  @media (prefers-reduced-motion: reduce){.uhpd-fade{animation:none}}
+`;
 
 /* ── Suggested Product Card ── */
 const SuggestedCard = ({ product, onNavigate }) => {
@@ -30,41 +53,50 @@ const SuggestedCard = ({ product, onNavigate }) => {
     ? Math.round(((product.mrp - product.price) / product.mrp) * 100) : 0;
 
   return (
-    <div className="uhd-sug-card" onClick={() => onNavigate(product)}>
-      <div className="uhd-sug-img-wrap">
-        {discount > 0 && <span className="uhd-sug-disc">{discount}%</span>}
+    <Card interactive padding="none" onClick={() => onNavigate(product)} className="min-w-[152px] max-w-[168px] flex-shrink-0 overflow-hidden rounded-2xl">
+      <div className="relative aspect-square bg-canvas">
+        {discount > 0 && <Badge variant="error" className="absolute top-2 left-2">{discount}% OFF</Badge>}
         <img
-          src={product.images?.[0]?.url || product.image?.url || "/placeholder.png"}
-          alt={product.name} loading="lazy"
+          src={imgUrl.card(product.images?.[0]?.url || product.image?.url || "") || "/placeholder.png"}
+          srcSet={imgSrcSet(product.images?.[0]?.url || product.image?.url, 400)}
+          alt={product.name} loading="lazy" decoding="async"
+          className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
           onError={(e) => { e.target.src = "/placeholder.png"; }}
         />
       </div>
-      <div className="uhd-sug-body">
-        <div className="uhd-sug-name">{product.name}</div>
+      <div className="p-3">
+        <div className="text-xs font-bold text-primary leading-snug mb-1.5 line-clamp-2 min-h-[2.2em]">{product.name}</div>
         {product.prepTimeMinutes && (
-          <div className="uhd-sug-prep"><FaClock size={8} /> {product.prepTimeMinutes} min</div>
+          <div className="flex items-center gap-1 text-[10px] text-muted mb-1.5"><FiClock size={9} aria-hidden="true" /> {product.prepTimeMinutes} min</div>
         )}
-        <div className="uhd-sug-price-row">
-          <span className="uhd-sug-price">{fmt(product.price)}</span>
-          {product.mrp > product.price && <span className="uhd-sug-mrp">{fmt(product.mrp)}</span>}
+        <div className="flex items-baseline gap-1.5 mb-2.5">
+          <span className="text-sm font-extrabold text-primary">{fmt(product.price)}</span>
+          {product.mrp > product.price && <span className="text-[11px] text-muted line-through">{fmt(product.mrp)}</span>}
         </div>
         {!inCart ? (
-          <button className="uhd-sug-add" onClick={(e) => {
-            e.stopPropagation();
-            addItem({ ...product, productType: "urbexon_hour" });
-            if (navigator.vibrate) navigator.vibrate(10);
-          }}><FaPlus size={9} /> ADD</button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              addItem({ ...product, productType: "urbexon_hour" });
+              if (navigator.vibrate) navigator.vibrate(10);
+            }}
+            className="w-full py-2 border-[1.5px] border-[var(--accent-primary)] text-accent font-extrabold text-xs rounded-[var(--radius-sm)] flex items-center justify-center gap-1.5 hover:bg-accent hover:text-white transition-colors"
+          >
+            <FiPlus size={10} aria-hidden="true" /> ADD
+          </button>
         ) : (
-          <div className="uhd-sug-stepper" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => qty <= 1 ? removeItem(product._id, "urbexon_hour") : decrement(product._id, "urbexon_hour")}>
-              {qty <= 1 ? <FaTrash size={8} /> : <FaMinus size={8} />}
+          <div onClick={(e) => e.stopPropagation()} className="flex items-center justify-between border-[1.5px] border-[var(--accent-primary)] rounded-[var(--radius-sm)] overflow-hidden bg-accent-tint">
+            <button onClick={() => qty <= 1 ? removeItem(product._id, "urbexon_hour") : decrement(product._id, "urbexon_hour")} className="w-8 h-8 flex items-center justify-center text-accent" aria-label="Decrease">
+              {qty <= 1 ? <FiTrash2 size={9} aria-hidden="true" /> : <FiMinus size={9} aria-hidden="true" />}
             </button>
-            <span>{qty}</span>
-            <button onClick={() => increment(product._id, "urbexon_hour")}><FaPlus size={8} /></button>
+            <span className="flex-1 text-center text-[13px] font-extrabold text-accent">{qty}</span>
+            <button onClick={() => increment(product._id, "urbexon_hour")} className="w-8 h-8 flex items-center justify-center text-accent" aria-label="Increase">
+              <FiPlus size={9} aria-hidden="true" />
+            </button>
           </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 };
 
@@ -73,6 +105,7 @@ const UHProductDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { addItem, isInUHCart, uhItems, increment, decrement, removeItem, uhTotalQty, uhTotal } = useCart();
+  const { user } = useAuth();
   const { trackView } = useRecentlyViewed("urbexon_hour");
 
   const [product, setProduct] = useState(null);
@@ -83,6 +116,23 @@ const UHProductDetail = () => {
   const [copied, setCopied] = useState(false);
   const [selectedColor, setSelectedColor] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
+
+  // null = not checked yet (don't block — backend still enforces this at
+  // checkout regardless); false = the saved/checked pincode's area has no
+  // Urbexon Hour service at all, so Add to Cart is disabled right here
+  // instead of letting the user fill a cart that can never check out.
+  const [deliveryAvailable, setDeliveryAvailable] = useState(null);
+  const handleDeliveryResult = useCallback((r) => setDeliveryAvailable(r?.available ?? null), []);
+
+  /* ── Reviews — reuses the SAME /reviews API the ecommerce
+       ProductDetails.jsx page uses (Review docs are keyed by product _id
+       regardless of productType, so this needed no backend changes). ── */
+  const [reviews, setReviews] = useState([]);
+  const [myRating, setMyRating] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [myComment, setMyComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState("");
 
   const inCart = product ? isInUHCart(product._id) : false;
   const cartItem = product ? uhItems.find((i) => i._id === product._id) : null;
@@ -121,10 +171,10 @@ const UHProductDetail = () => {
       setImgIdx(0);
       setShowFullDesc(false);
       try {
-        const { data } = await api.get(`/products/${id}`);
+        const { data } = await productApi.getProductById(id);
         if (!cancelled) { setProduct(data); trackView(data); }
         try {
-          const r = await api.get(`/products/${data._id || id}/related`);
+          const r = await productApi.getRelatedProducts(data._id || id);
           if (!cancelled) setRelated(Array.isArray(r.data) ? r.data : r.data.products || []);
         } catch { if (!cancelled) setRelated([]); }
       } catch { if (!cancelled) setProduct(null); }
@@ -155,31 +205,77 @@ const UHProductDetail = () => {
   const handleShare = useCallback(async () => {
     const url = window.location.href;
     if (navigator.share) {
-      try { await navigator.share({ title: product?.name, url }); } catch { }
+      try { await navigator.share({ title: product?.name, url }); } catch { /* user cancelled native share sheet — expected, no action needed */ }
     } else {
-      try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { }
+      try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* clipboard write denied/unsupported — intentionally silent */ }
     }
   }, [product]);
+
+  const fetchReviews = useCallback(async (pid) => {
+    try {
+      const { data } = await reviewApi.getReviews(pid);
+      const list = Array.isArray(data) ? data : [];
+      setReviews(list);
+      const mine = user && list.find((r) => (r.user?._id || r.user) === user._id);
+      // Always reset (not just when found) — otherwise navigating from a
+      // product you'd rated 4 stars to one you haven't rated yet left the
+      // old "4 stars, ..." pre-filled in this product's form.
+      setMyRating(mine?.rating || 0);
+      setMyComment(mine?.comment || "");
+    } catch { setReviews([]); }
+  }, [user]);
+
+  useEffect(() => {
+    if (product?._id) fetchReviews(product._id);
+  }, [product?._id, fetchReviews]);
+
+  const handleSubmitReview = useCallback(async (e) => {
+    e.preventDefault();
+    if (!myRating) { setReviewError("Please select a star rating"); return; }
+    setSubmittingReview(true); setReviewError("");
+    try {
+      await reviewApi.submitReview(product._id, { rating: myRating, comment: myComment });
+      await fetchReviews(product._id);
+      // Pull the freshly-recalculated rating/numReviews so the badge near
+      // the title updates without a full page reload.
+      try {
+        const { data } = await productApi.getProductById(product._id);
+        setProduct((prev) => (prev ? { ...prev, rating: data.rating, numReviews: data.numReviews } : prev));
+      } catch { /* rating badge just won't refresh until next visit — non-critical */ }
+    } catch (err) {
+      setReviewError(err.response?.data?.message || "Failed to submit review");
+    } finally {
+      setSubmittingReview(false);
+    }
+  }, [myRating, myComment, product?._id, fetchReviews]);
+
+  const handleDeleteReview = useCallback(async (reviewId) => {
+    try {
+      await reviewApi.deleteReview(reviewId);
+      setMyRating(0); setMyComment("");
+      await fetchReviews(product._id);
+    } catch { /* delete failed — review list just stays as-is until retry */ }
+  }, [product?._id, fetchReviews]);
 
   const navigateToProduct = useCallback((p) => {
     navigate(`/uh-product/${p.slug || p._id}`);
   }, [navigate]);
 
+  const outOfStock = product && (product.inStock === false || Number(product.stock ?? 0) === 0);
+
   if (loading) return (
-    <div className="uhd-root"><style>{CSS}</style>
-      <div className="uhd-loading"><div className="uhd-spinner" /><p>Loading product…</p></div>
+    <div className="min-h-screen bg-canvas flex items-center justify-center">
+      <Loader size="lg" />
     </div>
   );
 
   if (!product) return (
-    <div className="uhd-root"><style>{CSS}</style>
-      <div className="uhd-not-found">
-        <div style={{ fontSize: 48 }}>😕</div>
-        <h2>Product not found</h2>
-        <button className="uhd-back-btn" onClick={() => navigate("/urbexon-hour")}>
-          <FaArrowLeft size={12} /> Back to Urbexon Hour
-        </button>
-      </div>
+    <div className="min-h-screen bg-canvas">
+      <EmptyState
+        icon={FiZap}
+        title="Product not found"
+        action={<Button variant="primary" icon={FiArrowLeft} onClick={() => navigate("/urbexon-hour")}>Back to Urbexon Hour</Button>}
+      />
     </div>
   );
 
@@ -190,7 +286,9 @@ const UHProductDetail = () => {
     ) : [];
 
   return (
-    <div className="uhd-root">
+    <div className="min-h-screen bg-[var(--color-graphite-50)]">
+      <style>{PAGE_CSS}</style>
+
       <SEO
         title={product.name}
         description={product.description?.slice(0, 160) || `Order ${product.name} with quick delivery on Urbexon Hour.`}
@@ -212,58 +310,78 @@ const UHProductDetail = () => {
           availability: product.inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
         },
       }} />
-      <style>{CSS}</style>
 
       {/* ── Top Nav ── */}
-      <div className="uhd-topnav">
-        <button className="uhd-nav-btn" onClick={() => navigate(-1)}><FaArrowLeft size={16} /></button>
-        <div className="uhd-nav-title">
-          <FaBolt size={13} className="uhd-bolt" />
+      <div
+        className="sticky top-0 z-40 bg-surface/90 backdrop-blur-md flex items-center justify-between px-4 py-3 border-b border-default"
+        style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}
+      >
+        <button onClick={() => navigate(-1)} aria-label="Go back" className="w-10 h-10 rounded-[var(--radius-md)] bg-canvas flex items-center justify-center text-secondary hover:bg-[var(--color-graphite-100)] active:scale-95 transition-all">
+          <FiArrowLeft size={16} aria-hidden="true" />
+        </button>
+        <div className="flex items-center gap-1.5 text-[15px] font-extrabold text-primary">
+          <FiZap size={13} className="text-accent" aria-hidden="true" />
           <span>Urbexon Hour</span>
         </div>
-        <div className="uhd-nav-right">
-          <button className="uhd-nav-btn" onClick={handleShare} title={copied ? "Link copied!" : "Share"}>
-            {copied ? <FaLink size={14} /> : <FaShareAlt size={14} />}
-          </button>
-        </div>
+        <button onClick={handleShare} title={copied ? "Link copied!" : "Share"} className="w-10 h-10 rounded-[var(--radius-md)] bg-canvas flex items-center justify-center text-secondary hover:bg-[var(--color-graphite-100)] active:scale-95 transition-all">
+          {copied ? <FiLink size={14} className="text-success" aria-hidden="true" /> : <FiShare2 size={14} aria-hidden="true" />}
+        </button>
       </div>
 
-      <div className="uhd-layout">
+      <div className="grid grid-cols-1 md:grid-cols-[420px_1fr] lg:grid-cols-[480px_1fr] md:max-w-[1160px] xl:max-w-[1280px] md:mx-auto md:pt-6 md:px-6 md:gap-6 md:items-start">
+
         {/* ── LEFT: Gallery ── */}
-        <div className="uhd-left">
-          <div className="uhd-gallery-sticky">
-            <div className="uhd-gallery-main">
+        <div className="bg-surface md:rounded-2xl md:overflow-hidden md:shadow-sm md:border md:border-default">
+          <div className="md:sticky md:top-[84px]">
+            <div className="relative aspect-square bg-canvas flex items-center justify-center overflow-hidden group">
               {images.map((img, i) => (
-                <div key={i} className="uhd-gallery-slide" style={{ display: i === imgIdx ? "flex" : "none" }}>
-                  <img src={img.url || img} alt={product.name} loading="lazy" onError={(e) => { e.target.src = "/placeholder.png"; }} />
+                <div key={i} className="w-full h-full flex items-center justify-center p-6" style={{ display: i === imgIdx ? "flex" : "none" }}>
+                  <img
+                    src={imgUrl.detail(img.url || img)}
+                    srcSet={imgSrcSet(img.url || img, 800)}
+                    alt={product.name}
+                    loading={i === 0 ? "eager" : "lazy"}
+                    decoding={i === 0 ? "sync" : "async"}
+                    fetchPriority={i === 0 ? "high" : "auto"}
+                    className="max-w-full max-h-full object-contain transition-transform duration-500 md:group-hover:scale-[1.06]"
+                    onError={(e) => { e.target.src = "/placeholder.png"; }}
+                  />
                 </div>
               ))}
+
               {images.length > 1 && (
                 <>
-                  <button className="uhd-gallery-arr left" onClick={() => setImgIdx(i => i > 0 ? i - 1 : images.length - 1)}>
-                    <FaChevronLeft size={13} />
+                  <button onClick={() => setImgIdx(i => i > 0 ? i - 1 : images.length - 1)} aria-label="Previous image" className="absolute top-1/2 -translate-y-1/2 left-3 w-9 h-9 rounded-full bg-surface/95 shadow-md flex items-center justify-center text-secondary hover:scale-105 active:scale-95 transition-transform z-10">
+                    <FiChevronLeft size={13} aria-hidden="true" />
                   </button>
-                  <button className="uhd-gallery-arr right" onClick={() => setImgIdx(i => i < images.length - 1 ? i + 1 : 0)}>
-                    <FaChevronRight size={13} />
+                  <button onClick={() => setImgIdx(i => i < images.length - 1 ? i + 1 : 0)} aria-label="Next image" className="absolute top-1/2 -translate-y-1/2 right-3 w-9 h-9 rounded-full bg-surface/95 shadow-md flex items-center justify-center text-secondary hover:scale-105 active:scale-95 transition-transform z-10">
+                    <FiChevronRight size={13} aria-hidden="true" />
                   </button>
+                  {/* image counter — mobile-friendly, replaces need for dots on larger screens */}
+                  <span className="absolute bottom-3 right-3 z-10 bg-[#1c1917]/70 text-white text-[10px] font-bold px-2 py-0.5 rounded-full tabular-nums">
+                    {imgIdx + 1}/{images.length}
+                  </span>
                 </>
               )}
-              {discount > 0 && <span className="uhd-disc-badge">{discount}% OFF</span>}
+
+              {discount > 0 && <Badge variant="error" className="absolute top-3.5 left-3.5 z-10">{discount}% OFF</Badge>}
             </div>
 
+            {/* Dot indicators — mobile only (thumbnails take over on desktop) */}
             {images.length > 1 && (
-              <div className="uhd-gallery-dots">
+              <div className="flex md:hidden justify-center gap-1.5 py-3">
                 {images.map((_, i) => (
-                  <button key={i} className={`uhd-dot ${i === imgIdx ? "active" : ""}`} onClick={() => setImgIdx(i)} />
+                  <button key={i} onClick={() => setImgIdx(i)} aria-label={`Image ${i + 1}`} className={cn("h-2 rounded-full transition-all", i === imgIdx ? "w-5 bg-accent" : "w-2 bg-[var(--color-graphite-300)]")} />
                 ))}
               </div>
             )}
 
+            {/* Thumbnail strip — desktop only */}
             {images.length > 1 && (
-              <div className="uhd-thumbs">
+              <div className="hidden md:flex gap-2 px-4 py-4 overflow-x-auto uhpd-scroll">
                 {images.map((img, i) => (
-                  <button key={i} className={`uhd-thumb ${i === imgIdx ? "active" : ""}`} onClick={() => setImgIdx(i)}>
-                    <img src={img.url || img} alt="" loading="lazy" onError={(e) => { e.target.src = "/placeholder.png"; }} />
+                  <button key={i} onClick={() => setImgIdx(i)} className={cn("w-[64px] h-[64px] flex-shrink-0 rounded-[var(--radius-sm)] border-2 overflow-hidden p-1 transition-colors", i === imgIdx ? "border-[var(--accent-primary)]" : "border-default hover:border-[var(--color-graphite-300)]")}>
+                    <img src={imgUrl.thumbnail(img.url || img)} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain" onError={(e) => { e.target.src = "/placeholder.png"; }} />
                   </button>
                 ))}
               </div>
@@ -272,72 +390,85 @@ const UHProductDetail = () => {
         </div>
 
         {/* ── RIGHT: Product Info ── */}
-        <div className="uhd-right">
+        <div className="uhpd-fade bg-surface px-4 py-5 mt-2 md:mt-0 md:rounded-2xl md:p-7 md:shadow-sm md:border md:border-default">
+
           {(product.brand || product.category) && (
-            <div className="uhd-meta-row">
-              {product.brand && <span className="uhd-brand">{product.brand}</span>}
-              {product.category && <span className="uhd-cat">{product.category}</span>}
+            <div className="flex items-center gap-2 mb-2.5 flex-wrap">
+              {product.brand && <span className="text-[11px] font-extrabold text-accent uppercase tracking-wide">{product.brand}</span>}
+              {product.brand && product.category && <span className="text-[var(--color-graphite-300)]">•</span>}
+              {product.category && <span className="text-[11px] font-semibold text-secondary">{product.category}</span>}
             </div>
           )}
 
-          <h1 className="uhd-name">{product.name}</h1>
+          <h1 className="text-[clamp(21px,3vw,29px)] font-extrabold text-primary leading-[1.2] mb-3 font-display tracking-tight">{product.name}</h1>
 
-          <div className="uhd-sub-row">
-            <div className="uhd-rating">
-              <FaStar size={11} className="uhd-star" />
+          <div className="flex items-center gap-x-3 gap-y-1.5 mb-3 flex-wrap text-xs text-secondary font-semibold">
+            <div className="flex items-center gap-1 text-[13px] font-bold text-primary bg-warning-tint px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--color-warning-100)]">
+              <FiStar size={11} className="text-[var(--color-warning-500)]" aria-hidden="true" />
               <span>{product.rating > 0 ? product.rating.toFixed(1) : "0"}</span>
-              <span className="uhd-reviews">({product.numReviews || 0})</span>
+              <span className="text-muted font-medium text-xs">({product.numReviews || 0})</span>
             </div>
             {product.prepTimeMinutes && (
-              <div className="uhd-prep-tag"><FaClock size={11} /> {product.prepTimeMinutes} min prep</div>
+              <span className="flex items-center gap-1"><FiClock size={11} aria-hidden="true" /> {product.prepTimeMinutes} min prep</span>
             )}
             {product.vendorId?.shopName && (
-              <div className="uhd-vendor-tag"><FaStore size={11} /> {product.vendorId.shopName}</div>
+              <span className="flex items-center gap-1"><FiHome size={11} aria-hidden="true" /> {product.vendorId.shopName}</span>
+            )}
+            {product.vendorId?.city && (
+              <span className="flex items-center gap-1 text-muted font-medium"><FiMapPin size={11} aria-hidden="true" /> {product.vendorId.city}</span>
             )}
           </div>
 
-          {product.vendorId?.city && (
-            <div className="uhd-location-tag"><FaMapMarkerAlt size={10} /> Local store in {product.vendorId.city}</div>
-          )}
-
-          <div className="uhd-price-block">
-            <span className="uhd-price">{fmt(displayPrice)}</span>
+          <div className="flex items-baseline gap-2.5 mb-1 flex-wrap">
+            <span className="text-[28px] font-extrabold text-primary tracking-tight">{fmt(displayPrice)}</span>
             {displayMrp > displayPrice && (
               <>
-                <span className="uhd-mrp">{fmt(displayMrp)}</span>
-                <span className="uhd-save">Save {fmt(displayMrp - displayPrice)}</span>
+                <span className="text-sm text-muted line-through">{fmt(displayMrp)}</span>
+                <span className="text-[11px] font-extrabold text-white bg-[var(--color-success-500,#16a34a)] px-2 py-0.5 rounded-full">
+                  Save {fmt(displayMrp - displayPrice)}
+                </span>
               </>
             )}
           </div>
 
-          <p className="uhd-tax-note">Inclusive of all taxes (GST)</p>
+          <p className="text-xs text-muted mb-5">Inclusive of all taxes (GST)</p>
 
           {/* Variants */}
           {product.colorVariants?.length > 0 && (
-            <div className="uhd-section" style={{ marginBottom: 16 }}>
-              <h3 className="uhd-section-title" style={{ fontSize: 13, marginBottom: 8 }}>Color</h3>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="mb-5">
+              <h3 className="text-[13px] font-bold text-primary mb-2.5">
+                Color{selectedColor && <span className="font-medium text-secondary">: {selectedColor}</span>}
+              </h3>
+              <div className="flex gap-2.5 flex-wrap">
                 {product.colorVariants.map((v, i) => {
                   const cName = v.name || v.color;
+                  const active = selectedColor === cName;
+                  if (v.color) {
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => { setSelectedColor(cName); setImgIdx(0); }}
+                        aria-label={cName}
+                        title={cName}
+                        className={cn(
+                          "relative w-9 h-9 rounded-full flex items-center justify-center transition-all",
+                          active ? "ring-2 ring-offset-2 ring-[var(--accent-primary)]" : "ring-1 ring-default hover:ring-[var(--color-graphite-300)]"
+                        )}
+                        style={{ background: v.color }}
+                      >
+                        {active && <FiCheck size={13} className="text-white drop-shadow" style={{ filter: "drop-shadow(0 0 2px rgba(0,0,0,.5))" }} aria-hidden="true" />}
+                      </button>
+                    );
+                  }
                   return (
                     <button
                       key={i}
                       onClick={() => { setSelectedColor(cName); setImgIdx(0); }}
-                      style={{
-                        padding: "6px 12px",
-                        border: selectedColor === cName ? "2px solid #2563eb" : "1px solid #e5e7eb",
-                        borderRadius: "8px",
-                        background: selectedColor === cName ? "#eff6ff" : "#fff",
-                        fontWeight: "600",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        color: selectedColor === cName ? "#2563eb" : "#475569"
-                      }}
+                      className={cn(
+                        "px-3.5 py-1.5 rounded-[var(--radius-sm)] text-xs font-semibold border transition-colors",
+                        active ? "border-2 border-[var(--accent-primary)] bg-accent-tint text-accent" : "border-default text-secondary hover:border-[var(--color-graphite-300)]"
+                      )}
                     >
-                      {v.color && <span style={{ width: 14, height: 14, borderRadius: "50%", background: v.color, border: "1px solid #cbd5e1" }} />}
                       {cName}
                     </button>
                   );
@@ -347,120 +478,210 @@ const UHProductDetail = () => {
           )}
 
           {product.sizes?.length > 0 && (
-            <div className="uhd-section" style={{ marginBottom: 16 }}>
-              <h3 className="uhd-section-title" style={{ fontSize: 13, marginBottom: 8 }}>Size</h3>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {product.sizes.map((s, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setSelectedSize(s.size)}
-                    style={{
-                      padding: "6px 14px",
-                      border: selectedSize === s.size ? "2px solid #2563eb" : "1px solid #e5e7eb",
-                      borderRadius: "8px",
-                      background: selectedSize === s.size ? "#eff6ff" : "#fff",
-                      fontWeight: "700",
-                      fontSize: "12px",
-                      cursor: "pointer",
-                      color: selectedSize === s.size ? "#2563eb" : "#475569"
-                    }}
-                  >
-                    {s.size}
-                  </button>
-                ))}
+            <div className="mb-5">
+              <h3 className="text-[13px] font-bold text-primary mb-2.5">Size</h3>
+              <div className="flex gap-2 flex-wrap">
+                {product.sizes.map((s, i) => {
+                  const active = selectedSize === s.size;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedSize(s.size)}
+                      className={cn(
+                        "min-w-[42px] h-10 px-3 rounded-[var(--radius-sm)] text-xs font-bold border transition-colors",
+                        active ? "border-2 border-[var(--accent-primary)] bg-accent-tint text-accent" : "border-default text-secondary hover:border-[var(--color-graphite-300)]"
+                      )}
+                    >
+                      {s.size}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          <div className="uhd-delivery-badge">
-            <UHDeliveryEstimate vendorName={product.vendorId?.shopName} />
+          <div className="mb-5 rounded-[var(--radius-md)] border border-default bg-canvas p-3.5">
+            <UHDeliveryEstimate vendorName={product.vendorId?.shopName} onResult={handleDeliveryResult} />
           </div>
 
           {/* CTA: Desktop */}
-          <div className="uhd-cta-desktop">
-            {!inCart ? (
-              <button className="uhd-cta-add" onClick={handleAdd} disabled={product.inStock === false || Number(product.stock ?? 0) === 0} style={{ opacity: (product.inStock === false || Number(product.stock ?? 0) === 0) ? 0.5 : 1 }}>
-                <FaShoppingCart size={16} /> {(product.inStock === false || Number(product.stock ?? 0) === 0) ? "Out of Stock" : "Add to Cart"}
-              </button>
+          <div className="hidden md:block mb-6">
+            {deliveryAvailable === false ? (
+              <div className="px-4 py-3 rounded-[var(--radius-md)] bg-error-tint border border-[var(--color-error-100)] text-sm font-semibold text-error text-center">
+                Ordering is disabled — Urbexon Hour isn't available in your area yet.
+              </div>
+            ) : !inCart ? (
+              <Button variant="hour" className="w-full" disabled={outOfStock} icon={FiShoppingCart} size="lg" onClick={handleAdd}>
+                {outOfStock ? "Out of Stock" : "Add to Cart"}
+              </Button>
             ) : (
-              <div className="uhd-cta-row">
-                <div className="uhd-cta-stepper">
-                  <button onClick={() => qty <= 1 ? removeItem(product._id, "urbexon_hour") : decrement(product._id, "urbexon_hour")}>
-                    {qty <= 1 ? <FaTrash size={12} /> : <FaMinus size={12} />}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center border-2 border-[var(--accent-primary)] rounded-[var(--radius-md)] overflow-hidden">
+                  <button onClick={() => qty <= 1 ? removeItem(product._id, "urbexon_hour") : decrement(product._id, "urbexon_hour")} className="w-10 h-11 flex items-center justify-center text-accent hover:bg-accent-tint transition-colors" aria-label="Decrease">
+                    {qty <= 1 ? <FiTrash2 size={12} aria-hidden="true" /> : <FiMinus size={12} aria-hidden="true" />}
                   </button>
-                  <span>{qty}</span>
-                  <button onClick={() => increment(product._id, "urbexon_hour")}><FaPlus size={12} /></button>
+                  <span className="w-10 text-center text-base font-extrabold text-accent">{qty}</span>
+                  <button onClick={() => increment(product._id, "urbexon_hour")} className="w-10 h-11 flex items-center justify-center text-accent hover:bg-accent-tint transition-colors" aria-label="Increase">
+                    <FiPlus size={12} aria-hidden="true" />
+                  </button>
                 </div>
                 {uhTotalQty > 0 && (
-                  <button className="uhd-cta-checkout" onClick={() => navigate("/uh-cart")}>
-                    {uhTotalQty} item{uhTotalQty > 1 ? "s" : ""} · {fmt(uhTotal)} <FaChevronRight size={10} />
-                  </button>
+                  <Button variant="hour" className="flex-1" onClick={() => navigate("/uh-cart")}>
+                    {uhTotalQty} item{uhTotalQty > 1 ? "s" : ""} · {fmt(uhTotal)} <FiChevronRight size={10} className="ml-1" aria-hidden="true" />
+                  </Button>
                 )}
               </div>
             )}
           </div>
 
           {product.description && (
-            <div className="uhd-section">
-              <h3 className="uhd-section-title">About this product</h3>
-              <div className={`uhd-desc-text ${showFullDesc ? "expanded" : ""}`}>
+            <div className="mb-5 pt-1 border-t border-default">
+              <h3 className="text-[15px] font-bold text-primary mt-5 mb-2 font-display">About this product</h3>
+              <div className={cn("text-sm text-secondary leading-relaxed", !showFullDesc && "line-clamp-3")}>
                 {product.description}
               </div>
               {product.description.length > 200 && (
-                <button className="uhd-desc-toggle" onClick={() => setShowFullDesc(v => !v)}>
-                  {showFullDesc ? <><FaChevronUp size={10} /> Show less</> : <><FaChevronDown size={10} /> Read more</>}
+                <button onClick={() => setShowFullDesc(v => !v)} className="flex items-center gap-1 text-xs font-bold text-accent mt-2">
+                  {showFullDesc ? <><FiChevronUp size={10} aria-hidden="true" /> Show less</> : <><FiChevronDown size={10} aria-hidden="true" /> Read more</>}
                 </button>
               )}
             </div>
           )}
 
           {highlights.length > 0 && (
-            <div className="uhd-section">
-              <h3 className="uhd-section-title">Specifications</h3>
-              <div className="uhd-specs-grid">
-                {highlights.map(([k, v]) => (
-                  <div key={k} className="uhd-spec-item">
-                    <span className="uhd-spec-key">{k}</span>
-                    <span className="uhd-spec-val">{v}</span>
+            <div className="mb-5">
+              <h3 className="text-[15px] font-bold text-primary mb-2.5 font-display">Specifications</h3>
+              <div className="border border-default rounded-[var(--radius-md)] overflow-hidden">
+                {highlights.map(([k, v], i) => (
+                  <div key={k} className={cn("flex px-4 py-2.5 gap-4 border-b border-default last:border-b-0", i % 2 === 1 && "bg-canvas/60")}>
+                    <span className="flex-[0_0_130px] text-[13px] font-semibold text-secondary">{k}</span>
+                    <span className="text-[13px] font-bold text-primary flex-1">{v}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          <div className="uhd-details-grid">
-            {product.weight && <div className="uhd-detail-item"><span className="uhd-detail-key">Weight</span><span className="uhd-detail-val">{product.weight}</span></div>}
-            {product.material && <div className="uhd-detail-item"><span className="uhd-detail-key">Material</span><span className="uhd-detail-val">{product.material}</span></div>}
-            {product.origin && <div className="uhd-detail-item"><span className="uhd-detail-key">Origin</span><span className="uhd-detail-val">{product.origin}</span></div>}
-            {product.sku && <div className="uhd-detail-item"><span className="uhd-detail-key">SKU</span><span className="uhd-detail-val">{product.sku}</span></div>}
-            {product.maxOrderQty && <div className="uhd-detail-item"><span className="uhd-detail-key">Max Order</span><span className="uhd-detail-val">{product.maxOrderQty} units</span></div>}
-            {product.returnPolicy && <div className="uhd-detail-item"><span className="uhd-detail-key">Returns</span><span className="uhd-detail-val">{product.returnPolicy}</span></div>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 border border-default rounded-[var(--radius-md)] overflow-hidden mb-5">
+            {product.weight && <div className="flex flex-col gap-0.5 p-3 border-b border-r border-default"><span className="text-[10px] font-bold text-muted uppercase tracking-wide">Weight</span><span className="text-[13px] font-bold text-primary">{product.weight}</span></div>}
+            {product.material && <div className="flex flex-col gap-0.5 p-3 border-b border-default"><span className="text-[10px] font-bold text-muted uppercase tracking-wide">Material</span><span className="text-[13px] font-bold text-primary">{product.material}</span></div>}
+            {product.origin && <div className="flex flex-col gap-0.5 p-3 border-b border-r border-default"><span className="text-[10px] font-bold text-muted uppercase tracking-wide">Origin</span><span className="text-[13px] font-bold text-primary">{product.origin}</span></div>}
+            {product.sku && <div className="flex flex-col gap-0.5 p-3 border-b border-default"><span className="text-[10px] font-bold text-muted uppercase tracking-wide">SKU</span><span className="text-[13px] font-bold text-primary">{product.sku}</span></div>}
+            {product.maxOrderQty && <div className="flex flex-col gap-0.5 p-3 border-r border-default"><span className="text-[10px] font-bold text-muted uppercase tracking-wide">Max Order</span><span className="text-[13px] font-bold text-primary">{product.maxOrderQty} units</span></div>}
+            {product.returnPolicy && <div className="flex flex-col gap-0.5 p-3"><span className="text-[10px] font-bold text-muted uppercase tracking-wide">Returns</span><span className="text-[13px] font-bold text-primary">{product.returnPolicy}</span></div>}
           </div>
 
-          <div className="uhd-trust">
-            <div className="uhd-trust-item">
-              <FaShieldAlt size={20} className="uhd-trust-ic" />
-              <div><strong>Quality Assured</strong><span>Checked before dispatch</span></div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 border border-default rounded-[var(--radius-lg)] overflow-hidden">
+            <div className="flex items-start gap-3 p-3.5 border-b sm:border-b-0 sm:border-r border-default">
+              <span className="w-9 h-9 rounded-full bg-canvas flex items-center justify-center flex-shrink-0"><FiShield size={16} className="text-accent" aria-hidden="true" /></span>
+              <div><strong className="block text-[11px] font-extrabold text-primary">Quality Assured</strong><span className="block text-[10px] text-secondary font-medium mt-0.5">Checked before dispatch</span></div>
             </div>
-            <div className="uhd-trust-item">
-              <FaTruck size={20} className="uhd-trust-ic" />
-              <div><strong>Express Delivery</strong><span>45–120 mins</span></div>
+            <div className="flex items-start gap-3 p-3.5 border-b sm:border-b-0 sm:border-r border-default">
+              <span className="w-9 h-9 rounded-full bg-canvas flex items-center justify-center flex-shrink-0"><FiTruck size={16} className="text-accent" aria-hidden="true" /></span>
+              <div><strong className="block text-[11px] font-extrabold text-primary">Express Delivery</strong><span className="block text-[10px] text-secondary font-medium mt-0.5">45–120 mins</span></div>
             </div>
-            <div className="uhd-trust-item">
-              <FaUndo size={20} className="uhd-trust-ic" />
-              <div><strong>Easy Returns</strong><span>{product.returnPolicy || "7 days return"}</span></div>
+            <div className="flex items-start gap-3 p-3.5">
+              <span className="w-9 h-9 rounded-full bg-canvas flex items-center justify-center flex-shrink-0"><FiRotateCcw size={16} className="text-accent" aria-hidden="true" /></span>
+              <div><strong className="block text-[11px] font-extrabold text-primary">Easy Returns</strong><span className="block text-[10px] text-secondary font-medium mt-0.5">{product.returnPolicy || "7 days return"}</span></div>
             </div>
           </div>
         </div>
       </div>
 
-      {related.length > 0 && (
-        <div className="uhd-suggested">
-          <div className="uhd-sug-header">
-            <h3 className="uhd-section-title">You might also like</h3>
-            <span className="uhd-sug-count">{related.length} items</span>
+      {/* ── Reviews — dynamic, real user reviews via /reviews/:productId ── */}
+      <div className="bg-surface mt-3 py-5 px-4 md:max-w-[1160px] xl:max-w-[1280px] md:mx-auto md:mt-5 md:rounded-2xl md:shadow-sm md:border md:border-default md:py-6 md:px-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-[15px] font-bold text-primary font-display">Ratings & Reviews</h3>
+          <div className="flex items-center gap-1.5 text-[13px] font-bold text-primary bg-warning-tint px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--color-warning-100)]">
+            <FiStar size={11} className="text-[var(--color-warning-500)]" aria-hidden="true" />
+            {product.rating > 0 ? product.rating.toFixed(1) : "0"}
+            <span className="text-muted font-medium">({product.numReviews || 0})</span>
           </div>
-          <div className="uhd-sug-scroll">
+        </div>
+
+        {user ? (
+          <form onSubmit={handleSubmitReview} className="mb-6 pb-6 border-b border-default">
+            <p className="text-[13px] font-bold text-primary mb-2">
+              {reviews.some((r) => (r.user?._id || r.user) === user._id) ? "Update your rating" : "Rate this product"}
+            </p>
+            <div className="flex items-center gap-1 mb-3">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setMyRating(s)}
+                  onMouseEnter={() => setHoverRating(s)}
+                  onMouseLeave={() => setHoverRating(0)}
+                  aria-label={`${s} star${s > 1 ? "s" : ""}`}
+                  className="bg-transparent border-none cursor-pointer p-0.5"
+                >
+                  {(hoverRating || myRating) >= s
+                    ? <FaStar size={20} className="text-amber-400" aria-hidden="true" />
+                    : <FaRegStar size={20} className="text-[var(--color-graphite-300)]" aria-hidden="true" />}
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={myComment}
+              onChange={(e) => setMyComment(e.target.value)}
+              maxLength={500}
+              placeholder="Share your experience with this product (optional)"
+              className="w-full min-h-[64px] px-3 py-2 text-[13px] rounded-[var(--radius-sm)] border border-default bg-canvas text-primary outline-none focus:border-[var(--accent-primary)] mb-2.5 resize-none"
+            />
+            {reviewError && <p className="text-xs text-error mb-2">{reviewError}</p>}
+            <Button type="submit" variant="hour" size="sm" loading={submittingReview}>
+              {submittingReview ? "Submitting…" : "Submit Review"}
+            </Button>
+          </form>
+        ) : (
+          <div className="mb-6 pb-6 border-b border-default">
+            <button onClick={() => navigate("/login", { state: { from: `/uh-product/${id}` } })} className="text-[13px] font-bold text-accent bg-transparent border-none cursor-pointer p-0">
+              Log in to write a review
+            </button>
+          </div>
+        )}
+
+        {reviews.length === 0 ? (
+          <p className="text-sm text-muted">No reviews yet — be the first to review this product!</p>
+        ) : (
+          <div className="space-y-4">
+            {reviews.map((r) => {
+              const isMine = user && (r.user?._id || r.user) === user._id;
+              return (
+                <div key={r._id} className="flex gap-3 pb-4 border-b border-default last:border-b-0 last:pb-0">
+                  <div className="w-8 h-8 rounded-full bg-accent-tint flex items-center justify-center text-accent font-bold text-xs flex-shrink-0">
+                    {(r.name || "U")[0].toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[13px] font-bold text-primary">{r.name || "Anonymous"}</span>
+                        <span className="inline-flex items-center gap-0.5 ml-2 text-amber-400">
+                          {[1, 2, 3, 4, 5].map((s) => s <= r.rating ? <FaStar key={s} size={10} /> : <FaRegStar key={s} size={10} className="text-[var(--color-graphite-300)]" />)}
+                        </span>
+                      </div>
+                      {isMine && (
+                        <button onClick={() => handleDeleteReview(r._id)} aria-label="Delete your review" className="text-muted hover:text-error bg-transparent border-none cursor-pointer p-1">
+                          <FiTrash2 size={12} aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
+                    {r.comment && <p className="text-[13px] text-secondary mt-1 leading-relaxed">{r.comment}</p>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {related.length > 0 && (
+        <div className="bg-surface mt-3 py-5 md:max-w-[1160px] xl:max-w-[1280px] md:mx-auto md:mt-5 md:rounded-2xl md:shadow-sm md:border md:border-default md:py-6">
+          <div className="flex items-center justify-between px-4 md:px-6 mb-3.5">
+            <h3 className="text-[15px] font-bold text-primary font-display">You might also like</h3>
+            <span className="text-xs text-muted font-semibold">{related.length} items</span>
+          </div>
+          <div className="flex gap-3 overflow-x-auto uhpd-scroll px-4 md:px-6 pb-2">
             {related.map((p) => (
               <SuggestedCard key={p._id || p.id} product={p} onNavigate={navigateToProduct} />
             ))}
@@ -468,32 +689,38 @@ const UHProductDetail = () => {
         </div>
       )}
 
-      <div style={{ height: 90 }} />
+      <div className="h-[90px]" />
 
       {/* ── Sticky Bottom Bar (mobile only) ── */}
-      <div className="uhd-bottom-bar">
-        <div className="uhd-bottom-inner">
-          <div className="uhd-bottom-price">
-            <span className="uhd-bottom-amount">{fmt(displayPrice)}</span>
-            {displayMrp > displayPrice && <span className="uhd-bottom-mrp">{fmt(displayMrp)}</span>}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-default shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-50 px-4 py-3" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+        <div className="flex items-center gap-3 max-w-[500px] mx-auto">
+          <div className="flex flex-col flex-shrink-0">
+            <span className="text-xl font-black text-primary leading-tight">{fmt(displayPrice)}</span>
+            {displayMrp > displayPrice && <span className="text-xs text-muted line-through">{fmt(displayMrp)}</span>}
           </div>
-          {!inCart ? (
-            <button className="uhd-bottom-add" onClick={handleAdd} disabled={product.inStock === false || Number(product.stock ?? 0) === 0} style={{ opacity: (product.inStock === false || Number(product.stock ?? 0) === 0) ? 0.5 : 1 }}>
-              <FaShoppingCart size={14} /> {(product.inStock === false || Number(product.stock ?? 0) === 0) ? "Out of Stock" : "Add to Cart"}
-            </button>
+          {deliveryAvailable === false ? (
+            <div className="flex-1 px-3 py-2.5 rounded-[var(--radius-md)] bg-error-tint border border-[var(--color-error-100)] text-xs font-semibold text-error text-center">
+              Not deliverable to your area
+            </div>
+          ) : !inCart ? (
+            <Button variant="hour" className="flex-1" disabled={outOfStock} icon={FiShoppingCart} onClick={handleAdd}>
+              {outOfStock ? "Out of Stock" : "Add to Cart"}
+            </Button>
           ) : (
-            <div className="uhd-bottom-stepper-wrap">
-              <div className="uhd-bottom-stepper">
-                <button onClick={() => qty <= 1 ? removeItem(product._id, "urbexon_hour") : decrement(product._id, "urbexon_hour")}>
-                  {qty <= 1 ? <FaTrash size={11} /> : <FaMinus size={11} />}
+            <div className="flex-1 flex gap-2.5 items-center">
+              <div className="flex items-center border-2 border-[var(--accent-primary)] rounded-[var(--radius-md)] overflow-hidden bg-surface">
+                <button onClick={() => qty <= 1 ? removeItem(product._id, "urbexon_hour") : decrement(product._id, "urbexon_hour")} className="w-10 h-11 flex items-center justify-center text-accent" aria-label="Decrease">
+                  {qty <= 1 ? <FiTrash2 size={11} aria-hidden="true" /> : <FiMinus size={11} aria-hidden="true" />}
                 </button>
-                <span>{qty}</span>
-                <button onClick={() => increment(product._id, "urbexon_hour")}><FaPlus size={11} /></button>
+                <span className="w-10 text-center text-base font-black text-accent">{qty}</span>
+                <button onClick={() => increment(product._id, "urbexon_hour")} className="w-10 h-11 flex items-center justify-center text-accent" aria-label="Increase">
+                  <FiPlus size={11} aria-hidden="true" />
+                </button>
               </div>
               {uhTotalQty > 0 && (
-                <button className="uhd-bottom-checkout" onClick={() => navigate("/uh-cart")}>
-                  {uhTotalQty} item{uhTotalQty > 1 ? "s" : ""} · {fmt(uhTotal)} <FaChevronRight size={10} />
-                </button>
+                <Button variant="hour" className="flex-1" onClick={() => navigate("/uh-cart")}>
+                  {uhTotalQty} item{uhTotalQty > 1 ? "s" : ""} · {fmt(uhTotal)} <FiChevronRight size={10} className="ml-1" aria-hidden="true" />
+                </Button>
               )}
             </div>
           )}
@@ -502,380 +729,5 @@ const UHProductDetail = () => {
     </div>
   );
 };
-
-/* ═════ ═════════════════════════════════════
-   CSS — P roduction Ready
-   ═════════ ═════════════════════════════════ */
-const CSS = `
-  @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap");
-
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  .uhd-root {
-    min-height: 100vh;
-    background: #f1f5f9;
-    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    color: #1a202c;
-  }
-
-  /* ── Loading / Not Found ── */
-  .uhd-loading {
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; min-height: 60vh; gap: 14px;
-    color: #64748b; font-size: 14px;
-  }
-  .uhd-spinner {
-    width: 36px; height: 36px;
-    border: 3px solid #e2e8f0; border-top: 3px solid #2563eb;
-    border-radius: 50%; animation: uhdspin .7s linear infinite;
-  }
-  @keyframes uhdspin { to { transform: rotate(360deg); } }
-  .uhd-not-found {
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; min-height: 60vh; gap: 16px;
-    text-align: center; padding: 24px;
-  }
-  .uhd-not-found h2 { font-size: 20px; font-weight: 800; color: #1f2937; }
-  .uhd-back-btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 12px 24px; background: #2563eb; color: #fff;
-    border: none; border-radius: 10px; font-weight: 700;
-    font-size: 13px; cursor: pointer; font-family: inherit;
-  }
-
-  /* ── Top Nav ── */
-  .uhd-topnav {
-    position: sticky; top: 0; z-index: 40; background: #fff;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 16px; border-bottom: 1px solid #e5e7eb;
-    box-shadow: 0 1px 6px rgba(0,0,0,.06);
-  }
-  .uhd-nav-btn {
-    width: 40px; height: 40px; border-radius: 10px; border: none;
-    background: #f8fafc; cursor: pointer; display: flex;
-    align-items: center; justify-content: center; color: #374151;
-    transition: background .15s;
-  }
-  .uhd-nav-btn:hover { background: #e5e7eb; }
-  .uhd-nav-title {
-    display: flex; align-items: center; gap: 7px;
-    font-size: 15px; font-weight: 800; color: #0f172a; letter-spacing: -.2px;
-  }
-  .uhd-bolt { color: #2563eb; }
-  .uhd-nav-right { display: flex; gap: 8px; }
-
-  /* ── Main 2-column Layout ── */
-  .uhd-layout {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
-
-  @media (min-width: 900px) {
-    .uhd-layout {
-      grid-template-columns: 460px 1fr;
-      gap: 0;
-      align-items: start;
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 24px 24px 0;
-    }
-  }
-
-  /* ── LEFT: Gallery ── */
-  .uhd-left { background: #fff; }
-
-  @media (min-width: 900px) {
-    .uhd-left {
-      border-radius: 16px;
-      overflow: hidden;
-      box-shadow: 0 2px 12px rgba(0,0,0,.06);
-    }
-    .uhd-gallery-sticky { position: sticky; top: 72px; }
-  }
-
-  .uhd-gallery-main {
-    position: relative; aspect-ratio: 1 / 1; background: #f8fafc;
-    overflow: hidden; display: flex; align-items: center; justify-content: center;
-  }
-
-  .uhd-gallery-slide { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px; }
-  .uhd-gallery-slide img { max-width: 100%; max-height: 100%; object-fit: contain; }
-  .uhd-gallery-arr { position: absolute; top: 50%; transform: translateY(-50%); width: 38px; height: 38px; border-radius: 50%; border: none; background: rgba(255,255,255,.95); box-shadow: 0 2px 10px rgba(0,0,0,.12); cursor: pointer; display: flex; align-items: center; justify-content: center; color: #374151; z-index: 5; transition: all .2s; }
-  .uhd-gallery-arr:hover { box-shadow: 0 4px 16px rgba(0,0,0,.18); }
-  .uhd-gallery-arr.left { left: 12px; }
-  .uhd-gallery-arr.right { right: 12px; }
-  .uhd-disc-badge { position: absolute; top: 14px; left: 14px; background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; font-size: 12px; font-weight: 800; padding: 5px 11px; border-radius: 8px; z-index: 5; letter-spacing: .2px; }
-  .uhd-gallery-dots { display: flex; justify-content: center; gap: 6px; padding: 12px 0 8px; }
-  .uhd-dot { width: 8px; height: 8px; border-radius: 50%; border: none; background: #d1d5db; cursor: pointer; transition: all .2s; padding: 0; }
-  .uhd-dot.active { background: #2563eb; width: 22px; border-radius: 4px; }
-  .uhd-thumbs { display: flex; gap: 8px; padding: 0 16px 16px; overflow-x: auto; scrollbar-width: none; }
-  .uhd-thumbs::-webkit-scrollbar { display: none; }
-  .uhd-thumb { width: 60px; height: 60px; flex-shrink: 0; border-radius: 10px; border: 2px solid #e5e7eb; overflow: hidden; cursor: pointer; padding: 0; background: #fff; transition: border-color .2s; }
-  .uhd-thumb.active { border-color: #2563eb; }
-  .uhd-thumb img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
-
-  /* ── RIGHT: Info ── */
-  .uhd-right { background: #fff; padding: 20px 16px 24px; margin-top: 8px; }
-  @media (min-width: 900px) { .uhd-right { margin-top: 0; margin-left: 16px; border-radius: 16px; padding: 28px 28px 32px; box-shadow: 0 2px 12px rgba(0,0,0,.06); } }
-
-  .uhd-meta-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-  .uhd-brand { font-size: 11px; font-weight: 800; color: #4f46e5; text-transform: uppercase; letter-spacing: .7px; }
-  .uhd-cat { font-size: 11px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 3px 10px; border-radius: 5px; }
-  .uhd-name { font-size: clamp(20px, 3vw, 28px); font-weight: 900; color: #0f172a; line-height: 1.25; margin-bottom: 10px; letter-spacing: -.4px; }
-  .uhd-sub-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
-  .uhd-rating { display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; color: #1f2937; background: #fffbeb; padding: 4px 10px; border-radius: 6px; border: 1px solid #fde68a; }
-  .uhd-star { color: #f59e0b; }
-  .uhd-reviews { color: #9ca3af; font-weight: 500; font-size: 12px; }
-  .uhd-prep-tag { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #64748b; font-weight: 600; }
-  .uhd-vendor-tag { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #2563eb; font-weight: 600; }
-  .uhd-location-tag { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #16a34a; font-weight: 600; margin-bottom: 14px; }
-
-  /* Price */
-  .uhd-price-block { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; }
-  .uhd-price { font-size: 32px; font-weight: 900; color: #0f172a; }
-  .uhd-mrp { font-size: 17px; color: #9ca3af; text-decoration: line-through; font-weight: 500; }
-  .uhd-save { font-size: 13px; font-weight: 700; color: #16a34a; background: #dcfce7; padding: 4px 10px; border-radius: 6px; }
-  .uhd-tax-note { font-size: 11px; color: #94a3b8; margin-bottom: 16px; font-weight: 500; }
-
-  /* Delivery */
-  .uhd-delivery-badge { display: flex; align-items: center; gap: 10px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; color: #166534; font-weight: 600; }
-  .uhd-delivery-badge strong { font-weight: 800; }
-
-  /* Desktop CTA */
-  .uhd-cta-desktop { display: none; }
-  @media (min-width: 900px) { .uhd-cta-desktop { display: block; margin-bottom: 24px; } }
-  .uhd-cta-add { width: 100%; padding: 16px 24px; background: linear-gradient(135deg, #2563eb, #1d4ed8); border: none; border-radius: 12px; color: #fff; font-weight: 800; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; font-family: inherit; transition: all .2s; box-shadow: 0 4px 14px rgba(37,99,235,.35); }
-  .uhd-cta-add:hover { box-shadow: 0 6px 20px rgba(37,99,235,.45); transform: translateY(-1px); }
-  .uhd-cta-row { display: flex; align-items: center; gap: 12px; }
-  .uhd-cta-stepper { display: flex; align-items: center; border: 2px solid #2563eb; border-radius: 12px; overflow: hidden; }
-  .uhd-cta-stepper button { width: 44px; height: 48px; border: none; background: transparent; color: #2563eb; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: background .15s; }
-  .uhd-cta-stepper button:hover { background: #eff6ff; }
-  .uhd-cta-stepper span { width: 44px; text-align: center; font-size: 17px; font-weight: 900; color: #2563eb; }
-  .uhd-cta-checkout { flex: 1; padding: 14px 16px; background: linear-gradient(135deg, #2563eb, #1d4ed8); border: none; border-radius: 12px; color: #fff; font-weight: 800; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; font-family: inherit; transition: all .2s; box-shadow: 0 4px 14px rgba(37,99,235,.3); white-space: nowrap; }
-
-  /* Sections */
-  .uhd-section { margin-bottom: 22px; }
-  .uhd-section-title { font-size: 15px; font-weight: 800; color: #0f172a; margin-bottom: 12px; letter-spacing: -.2px; }
-  .uhd-desc-text { font-size: 14px; color: #475569; line-height: 1.75; max-height: 78px; overflow: hidden; transition: max-height .35s ease; }
-.uhd-desc-text.expanded { max-height: 2000px; }
-.uhd-desc-toggle {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 13px; color: #2563eb; font-weight: 700;
-  background: none; border: none; cursor: pointer;
-  padding: 6px 0; font-family: inherit;
-}
-
-/* Specs */
-.uhd-specs-grid {
-  border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden;
-}
-.uhd-spec-item {
-  display: flex; padding: 11px 16px;
-  border-bottom: 1px solid #f3f4f6; gap: 16px;
-}
-.uhd-spec-item:last-child { border-bottom: none; }
-.uhd-spec-key { flex: 0 0 130px; font-size: 13px; font-weight: 600; color: #64748b; }
-.uhd-spec-val { font-size: 13px; font-weight: 700; color: #1f2937; flex: 1; }
-
-/* Details */
-.uhd-details-grid {
-  display: grid; grid-template-columns: 1fr 1fr;
-  border: 1px solid #e5e7eb; border-radius: 10px;
-  overflow: hidden; margin-bottom: 22px;
-}
-.uhd-detail-item {
-  display: flex; flex-direction: column; gap: 3px;
-  padding: 12px 14px; border-bottom: 1px solid #f3f4f6;
-  border-right: 1px solid #f3f4f6;
-}
-.uhd-detail-item:nth-child(even) { border-right: none; }
-.uhd-detail-item:nth-last-child(-n+2) { border-bottom: none; }
-.uhd-detail-key {
-  font-size: 10px; font-weight: 700; color: #94a3b8;
-  text-transform: uppercase; letter-spacing: .5px;
-}
-.uhd-detail-val { font-size: 13px; font-weight: 700; color: #1f2937; }
-
-/* Trust */
-.uhd-trust {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 0; border: 1px solid #e5e7eb; border-radius: 12px;
-  overflow: hidden; margin-bottom: 8px;
-}
-.uhd-trust-item {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 14px 12px; border-right: 1px solid #f3f4f6;
-}
-.uhd-trust-item:last-child { border-right: none; }
-.uhd-trust-ic { color: #2563eb; flex-shrink: 0; margin-top: 1px; }
-.uhd-trust-item strong {
-  display: block; font-size: 11px; font-weight: 800;
-  color: #0f172a; letter-spacing: .1px;
-}
-.uhd-trust-item span {
-  display: block; font-size: 10px; color: #64748b;
-  font-weight: 500; margin-top: 2px;
-}
-
-/* Suggested */
-.uhd-suggested {
-  background: #fff;
-  margin-top: 12px;
-  padding: 20px 0;
-}
-@media (min-width: 900px) {
-  .uhd-suggested {
-    max-width: 1200px;
-    margin: 16px auto 0;
-    border-radius: 16px;
-    box-shadow: 0 2px 12px rgba(0,0,0,.06);
-    padding: 24px 0;
-  }
-  .uhd-sug-header {
-    padding: 0 24px;
-  }
-  .uhd-sug-scroll {
-    padding: 0 24px 12px;
-  }
-}
-.uhd-sug-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 16px; margin-bottom: 14px;
-}
-.uhd-sug-count { font-size: 12px; color: #94a3b8; font-weight: 600; }
-.uhd-sug-scroll {
-  display: flex; gap: 12px; overflow-x: auto;
-  padding: 0 16px 8px; scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch; scrollbar-width: none;
-}
-.uhd-sug-scroll::-webkit-scrollbar { display: none; }
-.uhd-sug-card {
-  min-width: 150px; max-width: 165px; flex-shrink: 0;
-  scroll-snap-align: start; background: #fff;
-  border: 1px solid #e5e7eb; border-radius: 12px;
-  overflow: hidden; cursor: pointer; transition: all .2s;
-}
-.uhd-sug-card:hover {
-  border-color: #2563eb;
-  box-shadow: 0 4px 14px rgba(37,99,235,.1);
-  transform: translateY(-2px);
-}
-.uhd-sug-img-wrap {
-  position: relative; aspect-ratio: 1;
-  background: #f8fafc; overflow: hidden;
-}
-.uhd-sug-img-wrap img { width: 100%; height: 100%; object-fit: cover; }
-.uhd-sug-disc {
-  position: absolute; top: 6px; left: 6px;
-  background: #ef4444; color: #fff;
-  font-size: 9px; font-weight: 800;
-  padding: 2px 6px; border-radius: 4px;
-}
-.uhd-sug-body { padding: 10px; }
-.uhd-sug-name {
-  font-size: 12px; font-weight: 700; color: #1f2937;
-  line-height: 1.3; display: -webkit-box;
-  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden; margin-bottom: 4px;
-}
-.uhd-sug-prep {
-  display: flex; align-items: center; gap: 3px;
-  font-size: 10px; color: #94a3b8; margin-bottom: 4px;
-}
-.uhd-sug-price-row {
-  display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px;
-}
-.uhd-sug-price { font-size: 14px; font-weight: 800; color: #0f172a; }
-.uhd-sug-mrp { font-size: 11px; color: #9ca3af; text-decoration: line-through; }
-.uhd-sug-add {
-  width: 100%; padding: 7px;
-  background: #fff; border: 1.5px solid #2563eb;
-  color: #2563eb; font-weight: 700; font-size: 12px;
-  border-radius: 7px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  gap: 4px; transition: all .2s; font-family: inherit;
-}
-.uhd-sug-add:hover { background: #2563eb; color: #fff; }
-.uhd-sug-stepper {
-  display: flex; align-items: center; justify-content: space-between;
-  border: 1.5px solid #2563eb; border-radius: 7px; overflow: hidden;
-}
-.uhd-sug-stepper button {
-  width: 28px; height: 28px; border: none; background: transparent;
-  color: #2563eb; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-}
-.uhd-sug-stepper span {
-  flex: 1; text-align: center;
-  font-size: 13px; font-weight: 800; color: #2563eb;
-}
-
-/* ── Sticky Bottom Bar (MOBILE only) ── */
-.uhd-bottom-bar {
-  position: fixed; bottom: 0; left: 0; right: 0;
-  background: #fff; border-top: 1px solid #e5e7eb;
-  box-shadow: 0 -4px 20px rgba(0,0,0,.08);
-  z-index: 50; padding: 12px 16px;
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
-}
-@media (min-width: 900px) {
-  .uhd-bottom-bar { display: none; }  /* hide on desktop — CTA is inline */
-}
-.uhd-bottom-inner {
-  display: flex; align-items: center; gap: 12px;
-  max-width: 500px; margin: 0 auto;
-}
-.uhd-bottom-price { display: flex; flex-direction: column; }
-.uhd-bottom-amount { font-size: 20px; font-weight: 900; color: #0f172a; }
-.uhd-bottom-mrp { font-size: 12px; color: #9ca3af; text-decoration: line-through; }
-.uhd-bottom-add {
-  flex: 1; padding: 14px 20px;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  border: none; border-radius: 12px; color: #fff;
-  font-weight: 800; font-size: 15px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  font-family: inherit; transition: all .2s;
-  box-shadow: 0 4px 12px rgba(37,99,235,.3);
-}
-.uhd-bottom-stepper-wrap { flex: 1; display: flex; gap: 10px; align-items: center; }
-.uhd-bottom-stepper {
-  display: flex; align-items: center;
-  border: 2px solid #2563eb; border-radius: 10px; overflow: hidden; background: #fff;
-}
-.uhd-bottom-stepper button {
-  width: 40px; height: 44px; border: none; background: transparent;
-  color: #2563eb; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px; transition: background .15s;
-}
-.uhd-bottom-stepper button:hover { background: #eff6ff; }
-.uhd-bottom-stepper span {
-  width: 40px; text-align: center;
-  font-size: 16px; font-weight: 900; color: #2563eb;
-}
-.uhd-bottom-checkout {
-  flex: 1; padding: 12px 14px;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  border: none; border-radius: 10px; color: #fff;
-  font-weight: 800; font-size: 13px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  font-family: inherit; transition: all .2s;
-  box-shadow: 0 4px 12px rgba(37,99,235,.3); white-space: nowrap;
-}
-
-/* ── Mobile Tweaks ── */
-@media (max-width: 480px) {
-  .uhd-trust { grid-template-columns: 1fr; }
-  .uhd-trust-item { border-right: none; border-bottom: 1px solid #f3f4f6; }
-  .uhd-trust-item:last-child { border-bottom: none; }
-  .uhd-details-grid { grid-template-columns: 1fr; }
-  .uhd-detail-item { border-right: none; }
-  .uhd-detail-item:nth-last-child(-n+2) { border-bottom: 1px solid #f3f4f6; }
-  .uhd-detail-item:last-child { border-bottom: none; }
-  .uhd-name { font-size: 20px; }
-  .uhd-price { font-size: 26px; }
-}
-`;
 
 export default UHProductDetail;

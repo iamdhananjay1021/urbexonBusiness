@@ -2,10 +2,13 @@
  * ActiveOrders — Production v4.1
  * Urbexon design + real-time WebSocket, FCM, GPS, OTP, status flow
  *
- * ✅ FIXED: DELIVERY_STEPS now matches actual backend delivery.status values:
- *    RIDER_ASSIGNED → ARRIVING_VENDOR → OUT_FOR_DELIVERY → DELIVERED
- *    Old code had "ASSIGNED" which never matched "RIDER_ASSIGNED" from backend,
- *    causing "Heading to Store" button to never appear.
+ * ✅ FIXED: DELIVERY_STEPS now matches the actual backend delivery.status
+ *    enum (Order.js: PENDING, SEARCHING_RIDER, ASSIGNED, ARRIVING_VENDOR,
+ *    PICKED_UP, OUT_FOR_DELIVERY, DELIVERED, FAILED, CANCELLED — there is no
+ *    "RIDER_ASSIGNED" value). assignmentEngine.js's handleRiderAccept sets
+ *    "ASSIGNED"; a prior pass here flipped this file to check the opposite
+ *    (wrong) string, which reintroduced the exact "Heading to Store" button
+ *    never appearing bug this comment used to say was fixed.
  *
  * ✅ FIXED: Removed dead "PICKED_UP → Start Delivery" step — after Bug4 fix,
  *    /pickup endpoint directly sets OUT_FOR_DELIVERY, PICKED_UP never occurs.
@@ -23,14 +26,19 @@ const useLocationTracking = (activeOrderId) => {
   useEffect(() => {
     if (!activeOrderId || !navigator.geolocation) { setPos(null); return; }
 
-    const sendLocation = (lat, lng) => {
+    // BUG FIX: watchPosition and the 15s fallback both call this
+    // independently — sending the GPS fix's own timestamp lets the backend
+    // reject whichever one turns out to be older, regardless of which HTTP
+    // request happens to arrive at the server last (previously caused the
+    // rider marker to visibly jump backward on the customer's map).
+    const sendLocation = (lat, lng, timestamp) => {
       setPos({ lat, lng });
-      api.patch("/delivery/location", { orderId: activeOrderId, lat, lng }).catch(() => { });
+      api.patch("/delivery/location", { orderId: activeOrderId, lat, lng, timestamp }).catch(() => { });
     };
 
     // Use watchPosition for real-time updates
     const watchId = navigator.geolocation.watchPosition(
-      ({ coords }) => sendLocation(coords.latitude, coords.longitude),
+      (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude, pos.timestamp),
       () => { },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
     );
@@ -38,7 +46,7 @@ const useLocationTracking = (activeOrderId) => {
     // Fallback: force an update every 15s even if no movement detected
     const fallbackTimer = setInterval(() => {
       navigator.geolocation.getCurrentPosition(
-        ({ coords }) => sendLocation(coords.latitude, coords.longitude),
+        (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude, pos.timestamp),
         () => { },
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
       );
@@ -61,11 +69,11 @@ const STATUS_BADGE = {
   DELIVERED: { bg: G.green100, color: "#065f46", label: "Delivered" },
 };
 
-// ✅ FIXED: Actual backend delivery.status values (assignment engine sets RIDER_ASSIGNED, not ASSIGNED)
-// Flow: RIDER_ASSIGNED → ARRIVING_VENDOR → OUT_FOR_DELIVERY → DELIVERED
-const DELIVERY_STEPS = ["RIDER_ASSIGNED", "ARRIVING_VENDOR", "OUT_FOR_DELIVERY", "DELIVERED"];
+// Actual backend delivery.status enum values (Order.js) — assignment engine sets "ASSIGNED"
+// Flow: ASSIGNED → ARRIVING_VENDOR → OUT_FOR_DELIVERY → DELIVERED
+const DELIVERY_STEPS = ["ASSIGNED", "ARRIVING_VENDOR", "OUT_FOR_DELIVERY", "DELIVERED"];
 const STEP_LABELS = {
-  RIDER_ASSIGNED: "Assigned",
+  ASSIGNED: "Assigned",
   ARRIVING_VENDOR: "Heading to Store",
   OUT_FOR_DELIVERY: "On the Way",
   DELIVERED: "Delivered",
@@ -79,6 +87,7 @@ const ActiveOrders = () => {
   const [working, setWorking] = useState({});
   const [newAlert, setNewAlert] = useState(null);
   const [orderRequest, setOrderRequest] = useState(null);
+  const [isOnline, setIsOnline] = useState(false);
   const countdownRef = useRef(null);
   const wsRef = useRef(null);
 
@@ -100,6 +109,7 @@ const ActiveOrders = () => {
     try {
       const { data } = await api.get("/delivery/orders");
       setOrders(data.orders || []);
+      setIsOnline(!!data.isOnline);
     } catch (err) {
       console.error("[ActiveOrders]", err.message);
       setOrders([]);
@@ -292,7 +302,7 @@ const ActiveOrders = () => {
         <div className="ud-page-title" style={{ fontSize: 20, fontWeight: 800, color: G.text }}>Active Orders</div>
         <div style={{ fontSize: 13, color: G.textSub, marginTop: 2 }}>
           {counts.active + counts.available} orders in queue
-          <span style={{ color: G.brand, fontWeight: 700, marginLeft: 8 }}>● Online</span>
+          <span style={{ color: isOnline ? G.brand : G.textSub, fontWeight: 700, marginLeft: 8 }}>● {isOnline ? "Online" : "Offline"}</span>
         </div>
       </div>
 
@@ -517,9 +527,7 @@ const ActiveOrders = () => {
                       </button>
                     )}
 
-                    {/* ✅ FIXED: Was checking "ASSIGNED" — backend sets "RIDER_ASSIGNED" from assignment engine.
-                         Old condition meant this button NEVER appeared. Rider was stuck. */}
-                    {tab === "active" && order.delivery?.status === "RIDER_ASSIGNED" && (
+                    {tab === "active" && order.delivery?.status === "ASSIGNED" && (
                       <button onClick={() => doAction(order._id, "status", { status: "ARRIVING_VENDOR" })} disabled={isWorking} style={{ flex: 1, padding: "10px 18px", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", background: G.blue600, color: G.white, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: isWorking ? 0.6 : 1 }}>
                         🏪 {isWorking ? "Updating…" : "Heading to Store"}
                       </button>
@@ -536,7 +544,7 @@ const ActiveOrders = () => {
                          OTP section below handles the OUT_FOR_DELIVERY confirmation. */}
 
                     {/* Cancel for early status orders */}
-                    {tab === "active" && order.delivery?.status && ["RIDER_ASSIGNED", "ARRIVING_VENDOR"].includes(order.delivery.status) && (
+                    {tab === "active" && order.delivery?.status && ["ASSIGNED", "ARRIVING_VENDOR"].includes(order.delivery.status) && (
                       <button
                         onClick={() => { if (window.confirm("Cancel this delivery? Order will be reassigned.")) doAction(order._id, "cancel"); }}
                         disabled={isWorking}

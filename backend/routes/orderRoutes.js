@@ -10,6 +10,7 @@ import {
     getCheckoutPricing, streamMyOrderEvents,
     getLocalDeliveryQueue, assignLocalDelivery,
     requestReplacement, processReplacement, getReplacementQueue,
+    submitOrderReview,
 } from "../controllers/orderController.js";
 import { protect, adminOnly } from "../middlewares/authMiddleware.js";
 import { downloadInvoice } from "../controllers/invoiceController.js";
@@ -58,6 +59,9 @@ router.put("/:id/return/process", protect, adminOnly, validateBody({ action: { r
 // Replacement
 router.put("/:id/replacement/request", protect, validateBody({ reason: { required: true, minLength: 5, maxLength: 500 } }), requestReplacement);
 router.put("/:id/replacement/process", protect, adminOnly, validateBody({ action: { required: true, enum: ['approve', 'reject', 'ship', 'deliver'] } }), processReplacement);
+
+// Vendor review (Urbexon Hour, post-delivery)
+router.put("/:id/review", protect, validateBody({ rating: { required: true, type: "number", min: 1, max: 5 } }), submitOrderReview);
 
 // Invoice
 router.get("/:id/invoice", protect, downloadInvoice);

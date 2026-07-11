@@ -384,6 +384,7 @@ export const createOrder = async (req, res) => {
                 couponId: validatedCoupon?._id,
                 couponCode: validatedCoupon?.couponCode,
                 userId: req.user._id,
+                vendorId: finalVendorId,
             });
         } catch (err) {
             return res.status(400).json({ success: false, message: err.message });
@@ -566,13 +567,14 @@ export const getCheckoutPricing = async (req, res) => {
         const method = paymentMethod === "COD" ? "COD" : "RAZORPAY";
 
         let pricingDeliveryType = deliveryType;
+        let pricingVendorId;
         if (items?.length) {
             try {
                 const firstProduct = await Product.findById(items[0]?.productId)
                     .select("productType vendorId")
                     .lean();
                 if (firstProduct && (firstProduct.vendorId || firstProduct.productType === "urbexon_hour")) {
-                    // leave as passed
+                    pricingVendorId = firstProduct.vendorId;
                 } else if (firstProduct?.productType === "ecommerce" && !firstProduct.vendorId) {
                     pricingDeliveryType = "ECOMMERCE_STANDARD";
                 }
@@ -587,6 +589,7 @@ export const getCheckoutPricing = async (req, res) => {
                 couponId,
                 couponCode,
                 userId: req.user._id,
+                vendorId: pricingVendorId,
             });
             res.json({
                 itemsTotal: pricing.itemsTotal,
@@ -789,7 +792,9 @@ export const getMyOrders = async (req, res) => {
 ══════════════════════════════════════════════ */
 export const getOrderById = async (req, res) => {
     try {
-        const doc = await Order.findById(req.params.id).select("+deliveryOtp.code");
+        const doc = await Order.findById(req.params.id)
+            .select("+deliveryOtp.code")
+            .populate("vendorId", "shopName shopLogo shopSlug");
         if (!doc) return res.status(404).json({ success: false, message: "Order not found" });
 
         const order = doc.toObject();
@@ -1605,6 +1610,57 @@ export const requestReturn = async (req, res) => {
     } catch (err) {
         console.error("REQUEST RETURN:", err);
         res.status(500).json({ success: false, message: "Failed to submit return request" });
+    }
+};
+
+/* ── Recalculate one vendor's aggregate rating immediately after a new
+     review — same shape as jobs/sellerJobs.js's updateVendorRatings(),
+     scoped to a single vendor so the UI reflects the new rating right
+     away instead of waiting for the next scheduled run. ── */
+const recalcVendorRating = async (vendorId) => {
+    try {
+        const stats = await Order.aggregate([
+            { $match: { vendorId, orderStatus: "DELIVERED", "review.rating": { $exists: true, $ne: null } } },
+            { $group: { _id: null, avgRating: { $avg: "$review.rating" }, count: { $sum: 1 } } },
+        ]);
+        if (stats.length > 0) {
+            await Vendor.findByIdAndUpdate(vendorId, {
+                rating: Math.round(stats[0].avgRating * 10) / 10,
+                ratingCount: stats[0].count,
+            });
+        }
+    } catch (err) {
+        console.error("[recalcVendorRating]", err);
+    }
+};
+
+/* ══════════════════════════════════════════════
+    SUBMIT VENDOR REVIEW (Urbexon Hour, post-delivery)
+═══════════════════════════════════════════════ */
+export const submitOrderReview = async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+        if (order.user.toString() !== req.user._id.toString())
+            return res.status(403).json({ success: false, message: "Not authorized" });
+        if (order.orderMode !== "URBEXON_HOUR" || !order.vendorId)
+            return res.status(400).json({ success: false, message: "Only Urbexon Hour vendor orders can be rated" });
+        if (order.orderStatus !== "DELIVERED")
+            return res.status(400).json({ success: false, message: "You can rate this vendor once your order is delivered" });
+
+        const rating = Number(req.body.rating);
+        const comment = (req.body.comment || "").trim().slice(0, 500);
+
+        order.review = { rating, comment, createdAt: new Date() };
+        order.markModified("review");
+        await order.save();
+
+        await recalcVendorRating(order.vendorId);
+
+        res.json({ success: true, message: "Thanks for rating your order!", review: order.review });
+    } catch (err) {
+        console.error("SUBMIT ORDER REVIEW:", err);
+        res.status(500).json({ success: false, message: "Failed to submit review" });
     }
 };
 

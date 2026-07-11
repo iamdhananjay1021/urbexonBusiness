@@ -26,7 +26,6 @@ export const LocationIntegrationExample = () => {
         status,
         modalOpen,
         setModalOpen,
-        detectLocation,
     } = useLocation();
 
     const [showMap, setShowMap] = useState(false);

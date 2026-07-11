@@ -8,7 +8,7 @@ import { useState, useRef, useEffect } from "react";
 import { FaMapMarkerAlt, FaTimes, FaCrosshairs, FaSpinner, FaCheck, FaHome, FaBriefcase } from "react-icons/fa";
 import { useLocation2 } from "../contexts/LocationContext";
 import { useAuth } from "../contexts/AuthContext";
-import api from "../api/axios";
+import { getAddresses } from "../api/addressApi";
 
 const CSS = `
 .loc-overlay {
@@ -131,7 +131,7 @@ const LocationModal = ({ onClose }) => {
     // Load saved addresses if logged in
     useEffect(() => {
         if (user) {
-            api.get("/addresses").then(r => setAddresses(r.data || [])).catch(() => { });
+            getAddresses().then(r => setAddresses(r.data || [])).catch(() => { });
         }
     }, [user]);
 

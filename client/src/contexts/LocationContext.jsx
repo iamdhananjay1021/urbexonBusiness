@@ -42,15 +42,6 @@ const isMobileDevice = () => {
 };
 
 /**
- * Get appropriate accuracy threshold based on device type
- */
-const getAccuracyThreshold = () => {
-    return isMobileDevice()
-        ? CONFIG.ACCURACY_THRESHOLD.mobile
-        : CONFIG.ACCURACY_THRESHOLD.desktop;
-};
-
-/**
  * Validate Indian pincode format
  */
 const isValidPincode = (p) => /^[1-9]\d{5}$/.test(String(p).trim());
@@ -281,7 +272,6 @@ export const LocationProvider = ({ children }) => {
 
     // ──────── Refs for guards ────────
     const isDetectingRef = useRef(false);
-    const detectionAbortRef = useRef(null);
 
     /* ═════════════════════════════════════════════════════════════════════
        STORAGE OPERATIONS

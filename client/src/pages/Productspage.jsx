@@ -1,18 +1,21 @@
 /**
  * ProductsPage.jsx — All Products Listing
- * Pure Tailwind CSS · ProductCard (same as Home) · Proper responsive grid
- * Production ready — no inline styles, no style blocks
+ * ProductCard = the app's real business-logic component (../components/ProductCard),
+ * left untouched. Chrome (header, sort, pagination, skeleton, empty/error states)
+ * migrated to the Signal design system.
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import SEO from "../components/SEO";
-import api from "../api/axios";
+import { getProducts } from "../api/productApi";
 import ProductCard from "../components/ProductCard";
 import {
-    FaSortAmountDown, FaChevronDown, FaChevronLeft,
-    FaChevronRight, FaBoxOpen, FaExclamationTriangle,
-    FaFilter, FaTimes,
-} from "react-icons/fa";
+    FiChevronDown, FiPackage, FiAlertTriangle, FiFilter, FiX, FiArrowUp,
+} from "react-icons/fi";
+import Button from "../design-system/Button";
+import Pagination from "../design-system/Pagination";
+import { SkeletonCard } from "../design-system/Skeleton";
+import { EmptyState, ErrorState } from "../design-system/EmptyState";
 
 /* ─────────────────────────────────────────────
    CONSTANTS
@@ -27,26 +30,20 @@ const SORT_OPTIONS = [
 
 const PAGE_SIZE = 24;
 
-/* ─────────────────────────────────────────────
-   SKELETON — exact ProductCard shape
-───────────────────────────────────────────── */
-const SkeletonCard = () => (
-    <div className="bg-white border border-stone-200 rounded-xl overflow-hidden flex flex-col w-full h-full">
-        <div className="w-full aspect-[3/4] bg-stone-100 animate-pulse" />
-        <div className="p-3 flex flex-col gap-2 flex-1">
-            <div className="h-2.5 w-1/3 bg-stone-200 rounded animate-pulse" />
-            <div className="h-3 w-4/5 bg-stone-200 rounded animate-pulse" />
-            <div className="h-3 w-1/2 bg-stone-200 rounded animate-pulse" />
-            <div className="mt-auto pt-2 space-y-2">
-                <div className="h-4 w-2/5 bg-stone-200 rounded animate-pulse" />
-                <div className="h-8 bg-stone-200 rounded animate-pulse" />
-            </div>
-        </div>
-    </div>
-);
+// Session-lifetime cache keyed by page/sort/category — same pattern as
+// Home.jsx's _homeCache and useCategories.js. Without it, every visit to
+// /products (including hitting Back from a product detail page) unmounted
+// the grid and re-showed a full skeleton for a refetch of data that likely
+// hadn't changed, which is what made the product images look like they
+// were "reloading" on every navigation.
+const CACHE_TTL = 60 * 1000;
+const productsCache = new Map(); // `${page}|${sort}|${category}` -> { products, total, ts }
+const cacheKeyFor = (page, sort, category) => `${page}|${sort}|${category}`;
 
 /* ─────────────────────────────────────────────
-   SORT DROPDOWN
+   SORT DROPDOWN — kept custom (token-ified): needs a
+   selected-item highlight that the generic Dropdown
+   component doesn't support.
 ───────────────────────────────────────────── */
 const SortDropdown = ({ sort, onSort }) => {
     const [open, setOpen] = useState(false);
@@ -64,29 +61,24 @@ const SortDropdown = ({ sort, onSort }) => {
         <div ref={ref} className="relative">
             <button
                 onClick={() => setOpen(o => !o)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-[#1c1917] text-white text-[13px] font-bold rounded-lg transition-all hover:bg-[#2d2926] whitespace-nowrap"
+                aria-haspopup="menu"
+                aria-expanded={open}
+                className="flex items-center gap-2 px-4 py-2.5 bg-[var(--color-graphite-900)] text-white text-[13px] font-bold rounded-[var(--radius-md)] transition-colors hover:bg-[var(--color-graphite-800)] whitespace-nowrap"
             >
-                <FaSortAmountDown size={13} />
+                <FiArrowUp size={13} className="rotate-180" aria-hidden="true" />
                 {current}
-                <FaChevronDown
-                    size={10}
-                    className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-                />
+                <FiChevronDown size={12} className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
 
             {open && (
-                <div className="absolute top-full right-0 mt-2 bg-white border border-[#e7e5e1] rounded-xl shadow-xl z-50 min-w-[190px] overflow-hidden">
+                <div role="menu" className="absolute top-full right-0 mt-2 bg-surface border border-default rounded-[var(--radius-md)] shadow-lg z-50 min-w-[190px] overflow-hidden">
                     {SORT_OPTIONS.map((opt, i) => (
                         <button
                             key={opt.val}
+                            role="menuitem"
                             onClick={() => { onSort(opt.val); setOpen(false); }}
-                            className={`w-full px-4 py-3 text-left text-[13px] font-medium transition-colors
-                ${sort === opt.val
-                                    ? "bg-[#f7f4f0] text-[#c8a96e] font-bold"
-                                    : "text-[#1c1917] hover:bg-[#f7f4f0]"
-                                }
-                ${i < SORT_OPTIONS.length - 1 ? "border-b border-[#f0ede8]" : ""}
-              `}
+                            className={`w-full px-4 py-3 text-left text-[13px] font-medium transition-colors ${sort === opt.val ? "bg-accent-tint text-accent font-bold" : "text-primary hover:bg-canvas"
+                                } ${i < SORT_OPTIONS.length - 1 ? "border-b border-default" : ""}`}
                         >
                             {opt.label}
                         </button>
@@ -98,76 +90,20 @@ const SortDropdown = ({ sort, onSort }) => {
 };
 
 /* ─────────────────────────────────────────────
-   PAGINATION
-───────────────────────────────────────────── */
-const Pagination = ({ page, totalPages, onChange }) => {
-    if (totalPages <= 1) return null;
-
-    // Build page number list with ellipsis
-    const pages = [];
-    if (totalPages <= 7) {
-        for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-        pages.push(1);
-        if (page > 3) pages.push("…");
-        for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i);
-        if (page < totalPages - 2) pages.push("…");
-        pages.push(totalPages);
-    }
-
-    const btnBase = "flex items-center justify-center w-9 h-9 rounded-lg text-[13px] font-bold transition-all";
-
-    return (
-        <div className="flex items-center justify-center gap-1.5 py-10 px-4 flex-wrap">
-            {/* Prev */}
-            <button
-                onClick={() => onChange(page - 1)}
-                disabled={page === 1}
-                className={`${btnBase} ${page === 1 ? "bg-[#f0ede8] text-[#a8a29e] cursor-not-allowed" : "bg-[#1c1917] text-white hover:bg-[#2d2926]"}`}
-            >
-                <FaChevronLeft size={11} />
-            </button>
-
-            {pages.map((p, i) =>
-                p === "…" ? (
-                    <span key={`ellipsis-${i}`} className="w-9 h-9 flex items-center justify-center text-[#a8a29e] text-sm">…</span>
-                ) : (
-                    <button
-                        key={p}
-                        onClick={() => onChange(p)}
-                        className={`${btnBase} ${page === p ? "bg-[#1c1917] text-white shadow-md" : "bg-[#f0ede8] text-[#1c1917] hover:bg-[#e7e3db]"}`}
-                    >
-                        {p}
-                    </button>
-                )
-            )}
-
-            {/* Next */}
-            <button
-                onClick={() => onChange(page + 1)}
-                disabled={page === totalPages}
-                className={`${btnBase} ${page === totalPages ? "bg-[#f0ede8] text-[#a8a29e] cursor-not-allowed" : "bg-[#1c1917] text-white hover:bg-[#2d2926]"}`}
-            >
-                <FaChevronRight size={11} />
-            </button>
-        </div>
-    );
-};
-
-/* ─────────────────────────────────────────────
    MAIN PAGE
 ───────────────────────────────────────────── */
 const ProductsPage = () => {
     const [searchParams, setSearchParams] = useSearchParams();
 
-    const [products, setProducts] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [total, setTotal] = useState(0);
-
     const [page, setPage] = useState(Number(searchParams.get("page")) || 1);
     const [sort, setSort] = useState(searchParams.get("sort") || "newest");
     const [category, setCategory] = useState(searchParams.get("category") || "");
+
+    const initialCache = productsCache.get(cacheKeyFor(page, sort, category));
+    const [products, setProducts] = useState(() => initialCache?.products || []);
+    const [error, setError] = useState(null);
+    const [total, setTotal] = useState(() => initialCache?.total || 0);
+    const [loading, setLoading] = useState(() => !initialCache || Date.now() - initialCache.ts > CACHE_TTL);
 
     const totalPages = Math.ceil(total / PAGE_SIZE);
     const categoryDisplay = category
@@ -176,18 +112,31 @@ const ProductsPage = () => {
 
     /* ── Fetch ── */
     useEffect(() => {
+        const key = cacheKeyFor(page, sort, category);
+        const cached = productsCache.get(key);
+        if (cached && Date.now() - cached.ts < CACHE_TTL) {
+            setProducts(cached.products);
+            setTotal(cached.total);
+            setLoading(false);
+            setError(null);
+            return;
+        }
+
         let cancelled = false;
         setLoading(true);
         setError(null);
 
-        let url = `/products?page=${page}&limit=${PAGE_SIZE}&sort=${sort}&productType=ecommerce`;
-        if (category) url += `&category=${encodeURIComponent(category)}`;
+        let query = `?page=${page}&limit=${PAGE_SIZE}&sort=${sort}&productType=ecommerce`;
+        if (category) query += `&category=${encodeURIComponent(category)}`;
 
-        api.get(url)
+        getProducts(query)
             .then(r => {
                 if (cancelled) return;
-                setProducts(r.data?.products || []);
-                setTotal(r.data?.total || 0);
+                const list = r.data?.products || [];
+                const totalCount = r.data?.total || 0;
+                setProducts(list);
+                setTotal(totalCount);
+                productsCache.set(key, { products: list, total: totalCount, ts: Date.now() });
             })
             .catch(err => {
                 if (cancelled) return;
@@ -221,46 +170,35 @@ const ProductsPage = () => {
         setSearchParams({ sort, page: 1 });
     }, [sort, setSearchParams]);
 
-    /* ─────────────────────────────────────────
-       ERROR STATE
-    ───────────────────────────────────────── */
+    /* ── ERROR STATE ── */
     if (!loading && error) return (
-        <div className="min-h-screen bg-[#f7f4f0] flex flex-col items-center justify-center px-4 gap-4">
-            <FaExclamationTriangle size={40} className="text-[#e7e5e1]" />
-            <h3 className="text-lg font-extrabold text-[#1c1917]">{error}</h3>
-            <button
-                onClick={() => window.location.reload()}
-                className="px-6 py-2.5 bg-[#1c1917] text-white text-[13px] font-bold rounded-lg hover:bg-[#2d2926] transition-colors"
-            >
-                Try Again
-            </button>
+        <div className="min-h-screen bg-canvas flex items-center justify-center px-4">
+            <ErrorState
+                icon={FiAlertTriangle}
+                title={error}
+                description=""
+                action={<Button variant="primary" onClick={() => window.location.reload()}>Try Again</Button>}
+            />
         </div>
     );
 
-    /* ─────────────────────────────────────────
-       EMPTY STATE
-    ───────────────────────────────────────── */
+    /* ── EMPTY STATE ── */
     if (!loading && products.length === 0) return (
-        <div className="min-h-screen bg-[#f7f4f0] flex flex-col items-center justify-center px-4 gap-3">
-            <FaBoxOpen size={40} className="text-[#e7e5e1]" />
-            <h3 className="text-lg font-extrabold text-[#1c1917]">No Products Found</h3>
-            <p className="text-[14px] text-[#78716c]">Try adjusting your filters or check back soon!</p>
-            {category && (
-                <button
-                    onClick={clearCategory}
-                    className="flex items-center gap-1.5 mt-2 px-4 py-2 bg-[#1c1917] text-white text-[13px] font-bold rounded-lg hover:bg-[#2d2926] transition-colors"
-                >
-                    <FaTimes size={11} /> Clear Filter
-                </button>
-            )}
+        <div className="min-h-screen bg-canvas flex items-center justify-center px-4">
+            <EmptyState
+                icon={FiPackage}
+                title="No Products Found"
+                description="Try adjusting your filters or check back soon!"
+                action={category && (
+                    <Button variant="primary" icon={FiX} onClick={clearCategory}>Clear Filter</Button>
+                )}
+            />
         </div>
     );
 
-    /* ─────────────────────────────────────────
-       MAIN RENDER
-    ───────────────────────────────────────── */
+    /* ── MAIN RENDER ── */
     return (
-        <div className="bg-[#f7f4f0] min-h-screen">
+        <div className="bg-canvas min-h-screen">
             <SEO
                 title={`All Products${categoryDisplay}`}
                 description={`Browse ${total || ""} products on Urbexon. Find the best deals on fashion, electronics, and more.`}
@@ -268,30 +206,26 @@ const ProductsPage = () => {
             />
 
             {/* ── Sticky Header ── */}
-            <div className="sticky top-0 z-20 bg-white border-b border-[#e7e5e1] shadow-sm">
+            <div className="sticky top-0 z-20 bg-surface border-b border-default shadow-xs">
                 <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-10 py-4 flex items-center justify-between gap-4 flex-wrap">
-                    {/* Title + meta */}
                     <div className="min-w-0">
-                        <h1 className="text-xl sm:text-2xl font-extrabold text-[#1c1917] leading-tight truncate">
+                        <h1 className="text-xl sm:text-2xl font-extrabold text-primary leading-tight truncate font-display">
                             All Products{categoryDisplay}
                         </h1>
-                        <p className="text-[12px] sm:text-[13px] text-[#78716c] mt-0.5 font-medium">
-                            {loading
-                                ? "Loading…"
-                                : `Showing ${products.length} of ${total.toLocaleString()} products`}
+                        <p className="text-[12px] sm:text-[13px] text-secondary mt-0.5 font-medium">
+                            {loading ? "Loading…" : `Showing ${products.length} of ${total.toLocaleString()} products`}
                         </p>
                     </div>
 
-                    {/* Right: active filter chip + sort */}
                     <div className="flex items-center gap-2 flex-wrap">
                         {category && (
                             <button
                                 onClick={clearCategory}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#f7f4f0] border border-[#e7e5e1] text-[12px] font-bold text-[#78716c] hover:bg-[#ede9e4] transition-colors"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-canvas border border-default text-[12px] font-bold text-secondary hover:bg-[var(--color-graphite-100)] transition-colors"
                             >
-                                <FaFilter size={10} className="text-[#c8a96e]" />
+                                <FiFilter size={10} className="text-accent" aria-hidden="true" />
                                 {category.replace(/-/g, " ")}
-                                <FaTimes size={9} />
+                                <FiX size={9} aria-hidden="true" />
                             </button>
                         )}
                         <SortDropdown sort={sort} onSort={handleSort} />
@@ -317,11 +251,9 @@ const ProductsPage = () => {
 
                 {/* ── Pagination ── */}
                 {!loading && (
-                    <Pagination
-                        page={page}
-                        totalPages={totalPages}
-                        onChange={handlePageChange}
-                    />
+                    <div className="py-10">
+                        <Pagination page={page} totalPages={totalPages} onChange={handlePageChange} />
+                    </div>
                 )}
             </div>
         </div>

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
-import api from "../api/axios";
+import * as authApi from "../api/authApi";
 import { store } from "../app/store";
 import { clearCart } from "../features/cart/cartSlice";
 
@@ -52,7 +52,7 @@ export const AuthProvider = ({ children }) => {
                 setToken(parsed.token);
                 // Validate with server & get fresh data
                 try {
-                    const { data } = await api.get("/auth/profile", {
+                    const { data } = await authApi.getProfile({
                         headers: { Authorization: `Bearer ${parsed.token}` },
                     });
                     if (!cancelled && data?._id) {
@@ -110,7 +110,7 @@ export const AuthProvider = ({ children }) => {
         setLocationAsked(true);
         const location = await requestLocation();
         if (location) {
-            try { await api.post("/auth/save-location", location); } catch { /* silent */ }
+            try { await authApi.saveLocation(location); } catch { /* silent */ }
         }
     }, [locationAsked]);
 
@@ -131,7 +131,7 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const login = useCallback(async (email, password) => {
-        const { data } = await api.post("/auth/login", { email, password });
+        const { data } = await authApi.login({ email, password });
         _saveAuth(data);
         saveUserLocation();
     }, [_saveAuth, saveUserLocation]);
@@ -142,7 +142,7 @@ export const AuthProvider = ({ children }) => {
     }, [_saveAuth, saveUserLocation]);
 
     const register = useCallback(async (name, email, password) => {
-        await api.post("/auth/register", { name, email, password });
+        await authApi.register({ name, email, password });
     }, []);
 
     const logout = useCallback(() => {

@@ -68,7 +68,7 @@ const ShareModal = ({ product, onClose }) => {
                     <span className="text-xs text-neutral-400 flex-1 truncate">{url}</span>
                     <button
                         onClick={async () => {
-                            try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { }
+                            try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* clipboard write denied/unsupported — intentionally silent */ }
                         }}
                         aria-label="Copy product link"
                         className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all

@@ -122,7 +122,7 @@ const Checkout = () => {
         try {
             const stored = sessionStorage.getItem("ux_buy_now_item");
             if (stored) { const p = JSON.parse(stored); sessionStorage.removeItem("ux_buy_now_item"); return p; }
-        } catch { }
+        } catch { /* malformed/missing sessionStorage buy-now item — falls through to null below */ }
         return null;
     })();
     const couponFromCart = location.state?.coupon || null;

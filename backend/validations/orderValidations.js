@@ -322,6 +322,11 @@ export const validatePaymentMethod = async (method, pincode, orderChannel = "eco
      a real Number when both coordinates are actually known.
      NEVER conflate "unknown" with "0km" anymore.
 ───────────────────────────────────────────────────────────── */
+// Hard business-rule ceiling — Urbexon Hour never delivers beyond this,
+// no matter what a vendor sets their own deliveryRadius to or what the
+// admin-configured DELIVERY_CONFIG default is.
+export const HARD_MAX_RADIUS_KM = 10;
+
 export const validateDeliveryServiceability = async (
     deliveryType, latitude, longitude, vendorId, pincode
 ) => {
@@ -345,37 +350,63 @@ export const validateDeliveryServiceability = async (
         Array.isArray(vendor.servicePincodes) &&
         vendor.servicePincodes.length > 0;
 
-    // Vendor ne kuch configure nahi kiya → allow by default, distance unknown
-    if (!hasValidCoords && !hasServicePincodes) {
-        return { realDistanceKm: null };
-    }
-
-    // Customer ne GPS nahi diya
-    if (!latitude || !longitude) {
+    // BUG FIX: this pincode gate used to live ONLY inside the "customer has
+    // no GPS" branch below, so a customer who *did* send GPS coordinates
+    // skipped it entirely — and if the vendor hadn't ALSO set real lat/lng
+    // (optional, configured later, so most vendors don't have it), the code
+    // fell through to "distance unknown → allow" with NO check at all. That
+    // let an order go through from a pincode nowhere near the vendor (e.g.
+    // Lucknow ordering from an Akbarpur vendor) as long as the browser sent
+    // GPS. The pincode allowlist must be enforced whenever the vendor has
+    // configured one, independent of whether GPS was also sent.
+    if (hasServicePincodes) {
         if (!pincode) throw new Error("Pincode required for express delivery.");
-        if (hasServicePincodes &&
-            !vendor.servicePincodes.includes(String(pincode))) {
+        if (!vendor.servicePincodes.includes(String(pincode))) {
+            throw new Error("Your pincode is outside the delivery zone for this vendor.");
+        }
+        // BUG FIX: an admin marking a pincode "blocked"/"coming_soon" only
+        // ever blocked COD orders (validatePaymentMethod checks Pincode.status
+        // for COD). Online-payment UH orders never consulted the Pincode
+        // collection at all — only the vendor's own servicePincodes list —
+        // so a vendor who still had a since-blocked pincode in their list
+        // could keep taking online-payment orders there indefinitely.
+        // Enforce the same platform-level status gate for every payment method.
+        const pincodeDoc = await Pincode.findOne({ code: String(pincode) }).select("status").lean();
+        if (!pincodeDoc || pincodeDoc.status !== "active") {
             throw new Error(
-                "Your pincode is outside the delivery zone for this vendor."
+                pincodeDoc?.status === "coming_soon"
+                    ? "Urbexon Hour is coming soon to your area."
+                    : "Urbexon Hour is not available for this pincode."
             );
         }
-        // Serviceable by pincode, but we genuinely don't know the distance
+    } else if (!hasValidCoords) {
+        // Vendor configured neither a pincode list nor real coordinates —
+        // nothing to check against; allow by default, distance unknown.
         return { realDistanceKm: null };
     }
 
-    // GPS hai but vendor coordinates nahi → allow, distance unknown
+    // No GPS from customer — the pincode gate above (if it ran) already
+    // decided this; distance itself stays unknown.
+    if (!latitude || !longitude) {
+        if (!pincode) throw new Error("Pincode required for express delivery.");
+        return { realDistanceKm: null };
+    }
+
+    // GPS present but vendor has no real coordinates to measure against —
+    // the pincode gate above already covered serviceability.
     if (!hasValidCoords) {
         return { realDistanceKm: null };
     }
 
-    // Dono hain → distance check karo (only branch that returns a real number)
+    // Both sides have real coordinates → compute + enforce actual distance.
     const orderLat = Number(latitude);
     const orderLng = Number(longitude);
     const shopLng = vendor.location.coordinates[0];
     const shopLat = vendor.location.coordinates[1];
-    const maxRadius =
-        vendor.deliveryRadius ||
-        DELIVERY_CONFIG.URBEXON_HOUR.MAX_RADIUS_KM;
+    const maxRadius = Math.min(
+        vendor.deliveryRadius || DELIVERY_CONFIG.URBEXON_HOUR.MAX_RADIUS_KM,
+        HARD_MAX_RADIUS_KM
+    );
 
     const toRad = (d) => (d * Math.PI) / 180;
     const R = 6371;

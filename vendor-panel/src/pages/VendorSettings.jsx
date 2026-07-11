@@ -56,7 +56,7 @@ const VendorSettings = () => {
         shopName: "",
         shopDescription: "",
         isOpen: true,
-        deliveryRadius: 15,
+        deliveryRadius: 5,
         servicePincodes: [],
         lat: null,
         lng: null,
@@ -75,7 +75,7 @@ const VendorSettings = () => {
                 shopName: data.shopName || "",
                 shopDescription: data.shopDescription || "",
                 isOpen: data.isOpen !== false,
-                deliveryRadius: data.deliveryRadius || 15,
+                deliveryRadius: data.deliveryRadius || 5,
                 servicePincodes: data.servicePincodes || [],
                 lat: data.shopLat || null,
                 lng: data.shopLng || null,
@@ -168,7 +168,7 @@ const VendorSettings = () => {
                 <div className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Delivery Radius ({formData.deliveryRadius} km)</label>
-                        <input type="range" name="deliveryRadius" min="1" max="30" value={formData.deliveryRadius} onChange={handleChange} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+                        <input type="range" name="deliveryRadius" min="1" max="10" value={formData.deliveryRadius} onChange={handleChange} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Serviceable Pincodes</label>

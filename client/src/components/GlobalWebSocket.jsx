@@ -9,6 +9,21 @@ const WS_BASE = import.meta.env.VITE_WS_URL
     || (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
         ? "ws://localhost:9000" : "wss://api.urbexon.in");
 
+// Unlike useWebSocket.js, this always-mounted socket had no pre-flight
+// expiry check — a reconnect scheduled while the access token was already
+// expired would open a socket doomed to be rejected server-side, then
+// retry with the SAME stale token again on the next backoff tick.
+const isTokenExpired = (token) => {
+    if (!token) return true;
+    try {
+        const payloadStr = token.split(".")[1];
+        if (!payloadStr) return true;
+        return JSON.parse(atob(payloadStr)).exp * 1000 <= Date.now();
+    } catch {
+        return true;
+    }
+};
+
 export default function GlobalWebSocket() {
     const { token } = useAuth();
     const wsRef = useRef(null);
@@ -25,6 +40,7 @@ export default function GlobalWebSocket() {
         const connect = () => {
             if (!mounted || retriesRef.current >= 15) return;
             if (document.hidden) return;
+            if (isTokenExpired(token)) return; // wait for the access token to be refreshed first
 
             try {
                 const ws = new WebSocket(`${WS_BASE}/ws?token=${encodeURIComponent(token)}`);

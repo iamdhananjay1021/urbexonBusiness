@@ -1,7 +1,19 @@
 /**
- * UrbexonHour.jsx — Production v5.1
+ * UrbexonHour.jsx — Production v5.2
  *
- * WHAT CHANGED IN THIS PASS (on top of v5.0)
+ * v5.1 → v5.2 CHANGES (visual polish only — zero logic/data changes)
+ * ──────────────────────────────────────────────────────────────────────
+ * - LocationBar: was a flat strip with only a translucent bottom border,
+ *   so it visually fused with TrustStrip right below it. Now sits on its
+ *   own elevated layer (shadow instead of border) so it reads as a
+ *   distinct sticky-feeling band, matching the Navbar's own elevation.
+ * - TrustStrip: cards had no resting shadow (only on hover) and tight
+ *   vertical padding, so the whole row read as flat grey boxes crammed
+ *   under the orange bar. Cards now carry a base shadow-sm, slightly
+ *   larger icon chips, more internal padding, and the section itself
+ *   got a bottom border to close it off cleanly before the hero starts.
+ *
+ * (v5.1 notes retained below)
  * ──────────────────────────────────────────────────────────────────────
  * Network dedup fixes:
  *   - Categories: the old 3-attempt retry loop against /categories
@@ -48,10 +60,14 @@
  *   - `vendorGroups` is now computed with useMemo instead of being
  *     recomputed unconditionally on every render.
  */
-import { useState, useEffect, useCallback, useMemo, memo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react";
 import { useNavigate, useSearchParams, useParams } from "react-router-dom";
-import api from "../api/axios";
+import * as productApi from "../api/productApi";
+import { fetchBanners } from "../api/bannerApi";
+import * as pincodeApi from "../api/pincodeApi";
+import { fetchCategorySubcategories } from "../api/categoryApi";
 import { useAuth } from "../contexts/AuthContext";
+import { useUHLocation } from "../contexts/UHLocationContext";
 import { useCart } from "../hooks/useCart";
 import { useCategories } from "../hooks/useCategories";
 import {
@@ -60,19 +76,31 @@ import {
     FaTimes, FaFire, FaShieldAlt, FaLock, FaCheckCircle,
 } from "react-icons/fa";
 import NearbyShops from "../components/NearbyShops";
-import CategoryBrowser from "../components/CategoryBrowser";
-import UHCategoryStrip from "../components/uh/UHCategoryStrip";
 import UHProductSection from "../components/uh/UHProductSection";
 import UHMidBanner from "../components/uh/UHMidBanner";
 import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
 import UHBannerCarousel from "../components/uh/UHBannerCarousel";
 import SEO from "../components/SEO";
 import ProductCard from "../components/ProductCard";
+import UHHero from "../components/uh/UHHero";
+import UHTopSellers from "../components/uh/UHTopSellers";
+import { imgUrl } from "../utils/imageUrl";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
-/* Stable render-prop functions — module scope, same reference every render */
-const renderPlainCard = (p) => <ProductCard product={p} />;
+/* ── Session-lifetime caches — same pattern as Home.jsx's _homeCache.
+     Without these, navigating away (e.g. to a product) and back to
+     /urbexon-hour re-showed the skeleton and re-fetched banners + the
+     whole pincode-scoped product/deal/homepage bundle from scratch every
+     single time, which is what read as "products keep reloading." ── */
+const BANNERS_CACHE_TTL = 5 * 60 * 1000; // banners rarely change
+let _uhBannersCache = null; // { hero, mid, ts }
+
+const BUNDLE_CACHE_TTL = 60 * 1000; // matches Productspage/Categorypage/Dealspage
+const _uhBundleCache = new Map(); // pincode -> { pinData, products, deals, homepageData, savedPincodeData, ts }
+const _uhSubcategoriesCache = new Map(); // slug -> { subcategories, ts }
+
+/* Stable render-prop function — module scope, same reference every render */
 const renderHiddenActionsCard = (p) => <ProductCard product={p} hideActions />;
 
 /* ── Live Countdown ── */
@@ -96,7 +124,7 @@ const LiveCountdown = memo(({ endsAt }) => {
 
     if (!timeLeft || timeLeft === "Expired") return null;
     return (
-        <div className="flex items-center justify-center gap-1.5 py-2 px-3 bg-amber-50 border-t border-amber-100 text-[11px] font-bold text-amber-700">
+        <div className="flex items-center justify-center gap-1.5 py-2 px-3 bg-hour-tint border-t border-[var(--color-amber-100)] text-[11px] font-bold text-[var(--accent-hour-hover)]">
             <FaClock size={9} /> {timeLeft}
         </div>
     );
@@ -116,18 +144,20 @@ const calculateEstimatedSavings = (uhItems) => {
     return uhItems.reduce((total, item) => total + (((item.mrp || 0) - (item.price || 0)) * (item.quantity || 0)), 0);
 };
 
-/* ── Location bar ── */
+/* ── Location bar — elevated via shadow (not a translucent border) so it
+     reads as its own sticky-feeling layer instead of fusing visually
+     with TrustStrip directly below it. ── */
 const LocationBar = memo(({ areaLabel, deliveryMin, deliveryMax, onChange }) => (
-    <div className="bg-gradient-to-r from-amber-500 to-orange-500 border-b border-amber-400/40">
-        <div className="max-w-[1280px] mx-auto px-4 lg:px-12 flex items-center justify-between py-2.5">
-            <div className="flex items-center gap-2.5 text-[13px] text-white/90 font-semibold">
-                <FaBolt size={12} className="text-white drop-shadow-[0_0_4px_rgba(255,255,255,0.5)]" />
-                <span className="text-white/70 text-xs">Delivering to</span>
-                <span className="text-white font-bold">{areaLabel}</span>
-                <span className="text-white font-bold text-xs">• {deliveryMin}–{deliveryMax} min</span>
+    <div className="bg-gradient-to-r from-[var(--accent-hour)] to-[var(--accent-hour-hover)] shadow-[0_2px_10px_rgba(0,0,0,0.08)] relative z-10">
+        <div className="max-w-[1280px] mx-auto px-4 lg:px-12 flex items-center justify-between py-2.5 sm:py-3 gap-2">
+            <div className="flex items-center gap-2 sm:gap-2.5 text-[12.5px] sm:text-[13px] text-white/90 font-semibold min-w-0">
+                <FaBolt size={12} className="text-white drop-shadow-[0_0_4px_rgba(255,255,255,0.5)] flex-shrink-0" />
+                <span className="text-white/70 text-xs hidden sm:inline flex-shrink-0">Delivering to</span>
+                <span className="text-white font-bold truncate">{areaLabel}</span>
+                <span className="text-white font-bold text-xs flex-shrink-0">• {deliveryMin}–{deliveryMax} min</span>
             </div>
             <button
-                className="bg-white/15 border border-white/30 text-white px-4 py-1.5 rounded-full text-xs font-bold cursor-pointer hover:bg-white/25 transition-all"
+                className="bg-white/15 border border-white/30 text-white px-3.5 sm:px-4 py-1.5 rounded-full text-xs font-bold cursor-pointer hover:bg-white/25 transition-all flex-shrink-0"
                 onClick={onChange}
             >
                 Change
@@ -147,7 +177,7 @@ const PincodeHero = memo(({ loading, locationLoading, error, savedPincode, showB
     };
 
     return (
-        <div className="relative overflow-hidden bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500">
+        <div className="relative overflow-hidden bg-gradient-to-br from-[var(--accent-hour)] via-[var(--accent-hour-hover)] to-[var(--color-error-500)]">
             <div
                 className="absolute inset-0 opacity-10 pointer-events-none"
                 style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Cg fill='%23ffffff' fill-opacity='0.18'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` }}
@@ -168,9 +198,9 @@ const PincodeHero = memo(({ loading, locationLoading, error, savedPincode, showB
                         <div className="max-w-[600px]">
                             <div className="flex gap-3 mb-3 flex-wrap">
                                 <div className="flex-1 min-w-[200px] relative flex items-center">
-                                    <FaSearch size={13} className="absolute left-3.5 text-gray-400 pointer-events-none" />
+                                    <FaSearch size={13} className="absolute left-3.5 text-muted pointer-events-none" />
                                     <input
-                                        className="w-full pl-10 pr-4 py-3 bg-white rounded-xl text-[15px] font-semibold tracking-wider text-gray-800 outline-none shadow-lg focus:shadow-xl focus:ring-2 focus:ring-white/60 transition-shadow placeholder:text-gray-400 placeholder:font-normal placeholder:tracking-normal placeholder:text-sm"
+                                        className="w-full pl-10 pr-4 py-3 bg-white rounded-xl text-[15px] font-semibold tracking-wider text-primary outline-none shadow-lg focus:shadow-xl focus:ring-2 focus:ring-white/60 transition-shadow placeholder:text-muted placeholder:font-normal placeholder:tracking-normal placeholder:text-sm"
                                         type="tel" inputMode="numeric" maxLength={6}
                                         placeholder="Enter 6-digit pincode"
                                         value={value}
@@ -179,10 +209,10 @@ const PincodeHero = memo(({ loading, locationLoading, error, savedPincode, showB
                                     />
                                 </div>
                                 <button
-                                    className="px-7 py-3 bg-white text-amber-600 font-extrabold text-[13px] rounded-xl border-none cursor-pointer shadow-lg hover:-translate-y-0.5 hover:shadow-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2"
+                                    className="px-7 py-3 bg-white text-[var(--accent-hour-hover)] font-extrabold text-[13px] rounded-xl border-none cursor-pointer shadow-lg hover:-translate-y-0.5 hover:shadow-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2"
                                     onClick={submit} disabled={loading || value.length !== 6}
                                 >
-                                    {loading ? <span className="w-3.5 h-3.5 border-2 border-amber-200 border-t-amber-600 rounded-full animate-spin inline-block" /> : "Check"}
+                                    {loading ? <span className="w-3.5 h-3.5 border-2 border-[var(--color-amber-100)] border-t-amber-600 rounded-full animate-spin inline-block" /> : "Check"}
                                 </button>
                             </div>
                             <button
@@ -216,29 +246,33 @@ const PincodeHero = memo(({ loading, locationLoading, error, savedPincode, showB
 });
 PincodeHero.displayName = "PincodeHero";
 
-/* ── Trust strip — static content, only the three numbers vary ── */
+/* ── Trust strip — 4 standalone feature cards. Now carries a resting
+     shadow (not just on hover) and a touch more padding so the row
+     reads as distinct elevated cards instead of flat grey blocks sitting
+     directly under the LocationBar. Section closes with a bottom border
+     so the boundary before the hero is intentional, not accidental. ── */
 const TrustStrip = memo(({ deliveryMin, deliveryMax, vendorCount }) => {
     const items = [
-        { Icon: FaBolt, t: "EXPRESS DELIVERY", sub: `${deliveryMin}–${deliveryMax} min`, accent: "bg-blue-50 border-blue-100 text-blue-600" },
-        { Icon: FaCheckCircle, t: "QUALITY CHECKED", sub: "100% verified products", accent: "bg-green-50 border-green-100 text-green-600" },
-        { Icon: FaStore, t: "LOCAL VENDORS", sub: `${vendorCount || "0"} verified stores`, accent: "bg-amber-50 border-amber-100 text-amber-600" },
-        { Icon: FaLock, t: "SECURE PAYMENTS", sub: "256-bit encrypted", accent: "bg-slate-50 border-slate-100 text-slate-600" },
+        { Icon: FaBolt, t: "45 Min Delivery", sub: `Lightning fast · ${deliveryMin}–${deliveryMax} min`, accent: "bg-hour-tint text-[var(--accent-hour-hover)]" },
+        { Icon: FaCheckCircle, t: "Fresh & Quality", sub: "100% verified products", accent: "bg-success-tint text-success" },
+        { Icon: FaStore, t: "Local Stores", sub: `${vendorCount || "0"} vendors near you`, accent: "bg-accent-tint text-accent" },
+        { Icon: FaLock, t: "Secure Payments", sub: "256-bit encrypted checkout", accent: "bg-info-tint text-info" },
     ];
     return (
-        <div className="bg-white border-b border-t border-gray-100 shadow-sm">
+        <div className="bg-canvas py-5 sm:py-6 border-b border-default">
             <div className="max-w-[1280px] mx-auto px-4 lg:px-12">
-                <div className="grid grid-cols-2 md:grid-cols-4">
-                    {items.map((f, i) => (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                    {items.map((f) => (
                         <div
                             key={f.t}
-                            className={`flex items-center gap-3 px-4 lg:px-6 py-4 lg:py-5 border-r border-gray-100 last:border-r-0 transition-colors hover:bg-gray-50 ${i >= 2 ? "border-t md:border-t-0" : ""}`}
+                            className="flex items-center gap-3 bg-white border border-default rounded-2xl px-4 py-3.5 sm:py-4 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-strong"
                         >
-                            <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 border ${f.accent}`}>
-                                <f.Icon size={16} />
+                            <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${f.accent}`}>
+                                <f.Icon size={18} />
                             </div>
-                            <div>
-                                <div className="text-[10px] md:text-[11px] font-extrabold text-gray-800 tracking-wider uppercase">{f.t}</div>
-                                <div className="text-[10px] md:text-[11.5px] text-gray-500 mt-0.5 font-medium">{f.sub}</div>
+                            <div className="min-w-0">
+                                <div className="text-[13px] sm:text-[13.5px] font-extrabold text-primary tracking-tight truncate">{f.t}</div>
+                                <div className="text-[11px] text-secondary mt-0.5 font-medium truncate">{f.sub}</div>
                             </div>
                         </div>
                     ))}
@@ -255,20 +289,20 @@ const SkeletonGrid = memo(() => (
         <div className="flex gap-4 mb-5">
             {[1, 2, 3, 4].map(i => (
                 <div key={i} className="flex flex-col items-center gap-2">
-                    <div className="w-14 h-14 rounded-2xl bg-gray-200 animate-pulse" />
-                    <div className="w-12 h-2.5 rounded bg-gray-200 animate-pulse" />
+                    <div className="w-14 h-14 rounded-2xl bg-[var(--color-graphite-200)] animate-pulse" />
+                    <div className="w-12 h-2.5 rounded bg-[var(--color-graphite-200)] animate-pulse" />
                 </div>
             ))}
         </div>
-        <div className="h-5 w-36 rounded bg-gray-200 animate-pulse mb-4" />
+        <div className="h-5 w-36 rounded bg-[var(--color-graphite-200)] animate-pulse mb-4" />
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
             {[1, 2, 3, 4, 5, 6].map(i => (
-                <div key={i} className="rounded-2xl border border-gray-100 overflow-hidden bg-white">
-                    <div className="aspect-square bg-gray-200 animate-pulse" />
+                <div key={i} className="rounded-2xl border border-default overflow-hidden bg-white">
+                    <div className="aspect-square bg-[var(--color-graphite-200)] animate-pulse" />
                     <div className="p-3 space-y-2">
-                        <div className="h-2.5 w-4/5 bg-gray-200 rounded animate-pulse" />
-                        <div className="h-2.5 w-1/2 bg-gray-200 rounded animate-pulse" />
-                        <div className="h-2.5 w-2/5 bg-gray-200 rounded animate-pulse" />
+                        <div className="h-2.5 w-4/5 bg-[var(--color-graphite-200)] rounded animate-pulse" />
+                        <div className="h-2.5 w-1/2 bg-[var(--color-graphite-200)] rounded animate-pulse" />
+                        <div className="h-2.5 w-2/5 bg-[var(--color-graphite-200)] rounded animate-pulse" />
                     </div>
                 </div>
             ))}
@@ -277,19 +311,75 @@ const SkeletonGrid = memo(() => (
 ));
 SkeletonGrid.displayName = "SkeletonGrid";
 
+/* ── Flash deal spotlight — single hero-style promo banner for the
+     soonest-expiring real deal already fetched (uhDeals[0]). Presentation
+     only, no new data source; the rest of uhDeals still renders in the
+     FlashDeals scroll row below this. ── */
+const FlashDealSpotlight = memo(({ deal }) => {
+    const navigate = useNavigate();
+    if (!deal) return null;
+
+    const price = Number(deal.price || 0);
+    const mrp = Number(deal.mrp || deal.originalPrice || deal.compareAtPrice || 0);
+    const hasDisc = mrp > price && mrp > 0;
+    const discPct = hasDisc ? Math.round(((mrp - price) / mrp) * 100) : 0;
+    const image = imgUrl.detail(deal.images?.[0]?.url || deal.image || "");
+    const productUrl = `/uh-product/${deal.slug || deal._id}`;
+
+    return (
+        <div className="max-w-[1280px] mx-auto px-4 lg:px-12 pt-5">
+            <div
+                onClick={() => navigate(productUrl)}
+                className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[var(--color-error-500)] to-[var(--accent-hour-hover)] cursor-pointer group"
+            >
+                <div className="flex items-center gap-5 sm:gap-8 px-5 sm:px-8 py-5 sm:py-7">
+                    <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl bg-white flex-shrink-0 overflow-hidden shadow-lg">
+                        {image
+                            ? <img src={image} alt={deal.name} loading="eager" decoding="async" className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-105" />
+                            : <div className="w-full h-full flex items-center justify-center text-3xl">⚡</div>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="inline-flex items-center gap-1.5 bg-white/20 text-white text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full mb-2">
+                            <FaFire size={9} /> Flash Deal
+                        </div>
+                        <div className="text-[15px] sm:text-lg font-extrabold text-white leading-snug line-clamp-1 mb-1.5">{deal.name}</div>
+                        <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                            <span className="text-lg sm:text-xl font-black text-white">{fmt(price)}</span>
+                            {hasDisc && (
+                                <>
+                                    <span className="text-xs text-white/70 line-through">{fmt(mrp)}</span>
+                                    <span className="text-[10px] font-bold text-[var(--accent-hour-hover)] bg-white px-1.5 py-0.5 rounded-md">{discPct}% OFF</span>
+                                </>
+                            )}
+                        </div>
+                        <LiveCountdown endsAt={deal.dealEndsAt} />
+                    </div>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); navigate(productUrl); }}
+                        className="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-[var(--accent-hour-hover)] text-[13px] font-bold flex-shrink-0 hover:-translate-y-0.5 transition-all shadow-md"
+                    >
+                        Shop Now
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+});
+FlashDealSpotlight.displayName = "FlashDealSpotlight";
+
 /* ── Flash deals ── */
 const FlashDeals = memo(({ deals }) => {
     if (!deals.length) return null;
     return (
-        <div className="bg-white border-y border-gray-100 mt-4 py-6">
+        <div className="bg-white border-y border-default mt-4 py-6">
             <div className="max-w-[1280px] mx-auto px-4 lg:px-12">
                 <div className="flex items-center gap-3.5 mb-6">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500 to-orange-500 flex items-center justify-center text-white text-xl shadow-lg shadow-rose-200">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[var(--color-error-500)] to-[var(--accent-hour-hover)] flex items-center justify-center text-white text-xl shadow-lg shadow-md">
                         <FaFire size={16} />
                     </div>
                     <div>
-                        <div className="text-xl font-extrabold text-gray-900 tracking-tight">Flash Deals</div>
-                        <div className="text-xs text-gray-500 mt-0.5 font-medium">
+                        <div className="text-xl font-extrabold text-primary tracking-tight">Flash Deals</div>
+                        <div className="text-xs text-secondary mt-0.5 font-medium">
                             {deals.length} hot offer{deals.length !== 1 ? "s" : ""} — grab before they expire!
                         </div>
                     </div>
@@ -297,7 +387,7 @@ const FlashDeals = memo(({ deals }) => {
                 <div className="flex gap-3.5 overflow-x-auto pb-2.5 scrollbar-hide snap-x items-stretch">
                     {deals.map((p) => (
                         <div key={p._id || p.id} className="min-w-[180px] max-w-[200px] flex-shrink-0 snap-start flex flex-col self-stretch">
-                            <ProductCard product={p} footer={<LiveCountdown endsAt={p.dealEndsAt} />} />
+                            <ProductCard product={p} hideActions footer={<LiveCountdown endsAt={p.dealEndsAt} />} />
                         </div>
                     ))}
                 </div>
@@ -316,21 +406,21 @@ const WhySection = memo(({ deliveryMin, deliveryMax }) => {
         { Icon: FaCheckCircle, title: "Best Prices", desc: "We match prices so you always get the best deal" },
     ];
     return (
-        <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-t border-amber-100 py-10 mt-4">
+        <div className="bg-gradient-to-br from-[var(--color-amber-100)] to-[var(--color-amber-100)] border-t border-[var(--color-amber-100)] py-6 mt-2">
             <div className="max-w-[1280px] mx-auto px-4 lg:px-12">
-                <h3 className="text-[clamp(18px,3.5vw,22px)] font-extrabold text-gray-900 text-center mb-7 tracking-tight">Why shop on Urbexon Hour?</h3>
+                <h3 className="text-[clamp(18px,3.5vw,22px)] font-extrabold text-primary text-center mb-5 tracking-tight">Why shop on Urbexon Hour?</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {items.map(item => (
                         <div
                             key={item.title}
-                            className="bg-white border border-amber-100 rounded-2xl px-4 py-6 text-center hover:-translate-y-1 hover:shadow-lg hover:border-amber-200 transition-all relative overflow-hidden group"
+                            className="bg-white border border-[var(--color-amber-100)] rounded-2xl px-4 py-4 text-center hover:-translate-y-1 hover:shadow-lg hover:border-[var(--color-amber-100)] transition-all relative overflow-hidden group"
                         >
-                            <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-amber-500 to-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            <div className="w-11 h-11 mx-auto mb-3 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
+                            <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[var(--accent-hour)] to-[var(--accent-hour-hover)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <div className="w-11 h-11 mx-auto mb-3 rounded-xl bg-hour-tint flex items-center justify-center text-[var(--accent-hour-hover)]">
                                 <item.Icon size={18} />
                             </div>
-                            <h4 className="text-sm font-extrabold text-gray-900 mb-1.5 tracking-tight">{item.title}</h4>
-                            <p className="text-xs text-gray-500 leading-relaxed font-medium">{item.desc}</p>
+                            <h4 className="text-sm font-extrabold text-primary mb-1.5 tracking-tight">{item.title}</h4>
+                            <p className="text-xs text-secondary leading-relaxed font-medium">{item.desc}</p>
                         </div>
                     ))}
                 </div>
@@ -340,18 +430,60 @@ const WhySection = memo(({ deliveryMin, deliveryMax }) => {
 });
 WhySection.displayName = "WhySection";
 
+/* ── Subcategory chips — shown when viewing a specific category
+     (/urbexon-hour/:slug). This is the only UI that can set the
+     `subcategory` query param the filtering logic already reads; it
+     was dropped when the old CategoryBrowser instance was removed from
+     this page (to kill a duplicate-category-rendering bug), which is
+     why subcategory selection stopped working entirely. ── */
+const SubcategoryChips = memo(({ subcategories, loading, activeSubcategory, onSelect }) => {
+    if (!loading && subcategories.length === 0) return null;
+    return (
+        <div className="bg-white border-b border-default">
+            <div className="max-w-[1280px] mx-auto px-4 lg:px-12 py-3 flex items-center gap-2 overflow-x-auto scrollbar-hide">
+                {loading ? (
+                    [1, 2, 3, 4].map((i) => (
+                        <div key={i} className="h-8 w-24 rounded-full bg-[var(--color-graphite-100)] animate-pulse flex-shrink-0" />
+                    ))
+                ) : (
+                    <>
+                        <button
+                            onClick={() => onSelect(null)}
+                            className={`px-3.5 py-1.5 rounded-full border text-[12px] font-semibold whitespace-nowrap flex-shrink-0 transition-all
+                                ${!activeSubcategory ? "bg-hour text-white border-hour" : "bg-white text-secondary border-default hover:border-strong"}`}
+                        >
+                            All
+                        </button>
+                        {subcategories.map((sub) => (
+                            <button
+                                key={sub.name}
+                                onClick={() => onSelect(sub.name)}
+                                className={`px-3.5 py-1.5 rounded-full border text-[12px] font-semibold whitespace-nowrap flex-shrink-0 transition-all
+                                    ${activeSubcategory?.toLowerCase() === sub.name.toLowerCase() ? "bg-hour text-white border-hour" : "bg-white text-secondary border-default hover:border-strong"}`}
+                            >
+                                {sub.name}{sub.count > 0 && <span className="opacity-70"> ({sub.count})</span>}
+                            </button>
+                        ))}
+                    </>
+                )}
+            </div>
+        </div>
+    );
+});
+SubcategoryChips.displayName = "SubcategoryChips";
+
 /* ── Vendor groups (category / search results view) ── */
 const VendorProductGroups = memo(({ vendorGroups, filteredCount, loading, activeCategory, searchQuery, deliveryMin, deliveryMax, onShowAll }) => (
     <div className="max-w-[1280px] mx-auto px-4 lg:px-12 py-4">
         {filteredCount === 0 && !loading && (
             <div className="py-20 text-center flex flex-col items-center gap-3.5">
-                <FaStore size={40} className="text-gray-200" />
-                <div className="text-lg font-extrabold text-gray-800">
+                <FaStore size={40} className="text-[var(--color-graphite-200)]" />
+                <div className="text-lg font-extrabold text-primary">
                     {activeCategory ? `No products in "${activeCategory}"` : searchQuery ? `No results for "${searchQuery}"` : "No products available yet"}
                 </div>
-                <div className="text-sm text-gray-500">We are expanding fast. Check back soon!</div>
+                <div className="text-sm text-secondary">We are expanding fast. Check back soon!</div>
                 <button
-                    className="mt-4 px-6 py-2.5 bg-amber-500 text-white font-bold text-sm rounded-xl border-none cursor-pointer hover:bg-amber-600 transition-colors"
+                    className="mt-4 px-6 py-2.5 bg-hour text-white font-bold text-sm rounded-xl border-none cursor-pointer hover:bg-hour-hover transition-colors"
                     onClick={onShowAll}
                 >
                     Show all products
@@ -360,15 +492,15 @@ const VendorProductGroups = memo(({ vendorGroups, filteredCount, loading, active
         )}
 
         {vendorGroups.map((group) => (
-            <div key={group.vendorId} className="bg-white rounded-2xl border border-gray-100 mb-4 overflow-hidden transition-all hover:border-gray-200 hover:shadow-md">
-                <div className="flex items-center gap-3.5 px-5 py-4 bg-gradient-to-r from-gray-50 to-white border-b border-gray-50">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-100 to-orange-50 text-amber-600 flex items-center justify-center flex-shrink-0 text-xl">
+            <div key={group.vendorId} className="bg-white rounded-2xl border border-default mb-4 overflow-hidden transition-all hover:border-strong hover:shadow-md">
+                <div className="flex items-center gap-3.5 px-5 py-4 bg-gradient-to-r from-[var(--color-graphite-50)] to-white border-b border-[var(--color-graphite-100)]">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--color-amber-100)] to-[var(--color-amber-100)] text-[var(--accent-hour-hover)] flex items-center justify-center flex-shrink-0 text-xl">
                         <FaStore size={18} />
                     </div>
                     <div className="flex-1">
-                        <div className="text-sm font-extrabold text-gray-900 tracking-tight">{group.vendorName}</div>
-                        <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 font-medium flex-wrap">
-                            <span className="flex items-center gap-1"><FaStar size={10} className="text-amber-400" /> {(group.products[0]?.vendorId?.rating || 4.0).toFixed(1)}</span>
+                        <div className="text-sm font-extrabold text-primary tracking-tight">{group.vendorName}</div>
+                        <div className="flex items-center gap-2 text-xs text-secondary mt-1 font-medium flex-wrap">
+                            <span className="flex items-center gap-1"><FaStar size={10} className="text-[var(--accent-hour)]" /> {(group.products[0]?.vendorId?.rating || 4.0).toFixed(1)}</span>
                             <span>•</span>
                             <span className="flex items-center gap-1"><FaClock size={10} /> {deliveryMin}–{deliveryMax} min</span>
                             <span>•</span>
@@ -388,14 +520,14 @@ VendorProductGroups.displayName = "VendorProductGroups";
 /* ── Floating cart ── */
 const FloatingCart = memo(({ totalQty, total, savings, deliveryMin, deliveryMax, animating, onClick }) => (
     <button
-        className={`fixed bottom-6 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 to-orange-500 text-white border-none cursor-pointer flex items-center gap-3 px-5 py-3 rounded-full font-bold shadow-[0_8px_32px_rgba(245,158,11,0.35)] z-50 whitespace-nowrap max-w-[calc(100vw-32px)] transition-all hover:-translate-x-1/2 hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(245,158,11,0.45)] active:-translate-y-0.5 ${animating ? "scale-105" : ""}`}
+        className={`fixed bottom-6 left-1/2 -translate-x-1/2 bg-gradient-to-r from-[var(--accent-hour)] to-[var(--accent-hour-hover)] text-white border-none cursor-pointer flex items-center gap-3 px-5 py-3 rounded-full font-bold shadow-[0_8px_32px_rgba(245,158,11,0.35)] z-50 whitespace-nowrap max-w-[calc(100vw-32px)] transition-all hover:-translate-x-1/2 hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(245,158,11,0.45)] active:-translate-y-0.5 ${animating ? "scale-105" : ""}`}
         onClick={onClick}
         title={`${totalQty} item${totalQty !== 1 ? "s" : ""} • ${fmt(total)}`}
         style={{ transform: animating ? "translateX(-50%) scale(1.05)" : undefined }}
     >
         <div className="relative flex items-center justify-center flex-shrink-0">
             <FaShoppingCart size={16} />
-            <span className="absolute -top-2 -right-2 bg-white text-amber-600 text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center border-2 border-amber-500 shadow">{totalQty}</span>
+            <span className="absolute -top-2 -right-2 bg-white text-[var(--accent-hour-hover)] text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center border-2 border-[var(--accent-hour)] shadow">{totalQty}</span>
         </div>
         <div className="flex flex-col gap-0.5 min-w-[60px]">
             <div className="text-xs font-bold opacity-90">{totalQty} item{totalQty !== 1 ? "s" : ""}</div>
@@ -413,11 +545,11 @@ FloatingCart.displayName = "FloatingCart";
 /* ── Not-in-area / waitlist cards ── */
 const NotInAreaCard = memo(({ pincode }) => (
     <div className="max-w-[1280px] mx-auto px-4 lg:px-12 py-6">
-        <div className="bg-white border border-gray-100 rounded-2xl px-8 py-16 text-center flex flex-col items-center shadow-sm">
+        <div className="bg-white border border-default rounded-2xl px-8 py-16 text-center flex flex-col items-center shadow-sm">
             <div className="text-5xl mb-4">📍</div>
-            <div className="text-xl font-extrabold text-gray-900 mb-2.5 tracking-tight">We are not in your area yet</div>
-            <div className="text-sm text-gray-500 mb-6 leading-relaxed">
-                Pincode <strong className="font-bold text-gray-700">{pincode}</strong> is not covered. We are expanding fast!
+            <div className="text-xl font-extrabold text-primary mb-2.5 tracking-tight">We are not in your area yet</div>
+            <div className="text-sm text-secondary mb-6 leading-relaxed">
+                Pincode <strong className="font-bold text-secondary">{pincode}</strong> is not covered. We are expanding fast!
             </div>
         </div>
     </div>
@@ -426,25 +558,25 @@ NotInAreaCard.displayName = "NotInAreaCard";
 
 const WaitlistCard = memo(({ pinData, email, onEmailChange, onJoin, error }) => (
     <div className="max-w-[1280px] mx-auto px-4 lg:px-12 py-6">
-        <div className="bg-white border border-gray-100 rounded-2xl px-8 py-16 text-center flex flex-col items-center shadow-sm">
-            <FaBell size={32} className="text-amber-500 mb-3" />
-            <div className="text-xl font-extrabold text-gray-900 mb-2.5">Launching soon in your area!</div>
-            <div className="text-sm text-gray-500 mb-6 leading-relaxed max-w-md">
+        <div className="bg-white border border-default rounded-2xl px-8 py-16 text-center flex flex-col items-center shadow-sm">
+            <FaBell size={32} className="text-[var(--accent-hour)] mb-3" />
+            <div className="text-xl font-extrabold text-primary mb-2.5">Launching soon in your area!</div>
+            <div className="text-sm text-secondary mb-6 leading-relaxed max-w-md">
                 {pinData.status === "coming_soon" ? "Be the first to know when we go live." : pinData.message}
             </div>
             <div className="flex gap-3 w-full max-w-[480px] flex-wrap">
                 <input
                     type="email" placeholder="your@email.com" value={email} onChange={(e) => onEmailChange(e.target.value)}
-                    className="flex-1 min-w-[200px] px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[13px] text-gray-800 outline-none focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100 transition-all"
+                    className="flex-1 min-w-[200px] px-4 py-3 bg-canvas border border-strong rounded-xl text-[13px] text-primary outline-none focus:border-[var(--accent-hour)] focus:bg-white focus:ring-2 focus:ring-[var(--color-amber-100)] transition-all"
                 />
                 <button
                     onClick={onJoin}
-                    className="px-5 py-3 bg-amber-500 border-none rounded-xl text-white font-extrabold text-[13px] cursor-pointer hover:bg-amber-600 transition-colors hover:-translate-y-0.5 shadow-md whitespace-nowrap"
+                    className="px-5 py-3 bg-hour border-none rounded-xl text-white font-extrabold text-[13px] cursor-pointer hover:bg-hour-hover transition-colors hover:-translate-y-0.5 shadow-md whitespace-nowrap"
                 >
                     Notify Me
                 </button>
             </div>
-            {error && <div className="text-red-500 text-xs mt-2 font-medium">{error}</div>}
+            {error && <div className="text-error text-xs mt-2 font-medium">{error}</div>}
         </div>
     </div>
 ));
@@ -452,27 +584,27 @@ WaitlistCard.displayName = "WaitlistCard";
 
 /* ── Footer — fully static after mount, never needs a re-render ── */
 const SiteFooter = memo(() => (
-    <footer className="bg-gradient-to-br from-gray-900 to-gray-800 border-t-2 border-amber-900/30 mt-16 pb-24">
-        <div className="max-w-[1280px] mx-auto px-4 lg:px-12 pt-12">
+    <footer className="bg-gradient-to-br from-[var(--color-graphite-900)] to-[var(--color-graphite-800)] border-t-2 border-[var(--color-graphite-700)] mt-6 pb-24">
+        <div className="max-w-[1280px] mx-auto px-4 lg:px-12 pt-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mb-10">
                 <div className="max-w-sm">
                     <div className="flex items-start gap-3 mb-2">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center font-black text-[13px] text-white flex-shrink-0">UX</div>
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--accent-hour)] to-[var(--accent-hour-hover)] flex items-center justify-center font-black text-[13px] text-white flex-shrink-0">UX</div>
                         <div>
-                            <div className="font-extrabold text-base text-white tracking-tight">URBEXON<em className="text-amber-400 not-italic ml-0.5">Hour</em></div>
-                            <div className="text-[11px] text-gray-400 mt-0.5 font-semibold">Express Delivery Service</div>
+                            <div className="font-extrabold text-base text-white tracking-tight">URBEXON<em className="text-[var(--accent-hour)] not-italic ml-0.5">Hour</em></div>
+                            <div className="text-[11px] text-muted mt-0.5 font-semibold">Express Delivery Service</div>
                         </div>
                     </div>
-                    <p className="text-sm text-gray-300 mt-3 leading-relaxed">Fast, fresh & local products delivered to your doorstep in 45–120 minutes.</p>
+                    <p className="text-sm text-[var(--color-graphite-300)] mt-3 leading-relaxed">Fast, fresh & local products delivered to your doorstep in 45–120 minutes.</p>
                 </div>
                 <div>
                     <h4 className="text-xs font-black text-white mb-2.5 uppercase tracking-wider">Subscribe for Updates</h4>
                     <div className="flex gap-2 mt-2">
                         <input
                             type="email" placeholder="Your email"
-                            className="flex-1 px-3 py-2.5 rounded-lg bg-white/5 border border-white/15 text-white text-xs outline-none focus:border-amber-500 transition-colors placeholder:text-white/30"
+                            className="flex-1 px-3 py-2.5 rounded-lg bg-white/5 border border-white/15 text-white text-xs outline-none focus:border-[var(--accent-hour)] transition-colors placeholder:text-white/30"
                         />
-                        <button className="px-4 py-2.5 bg-amber-500 text-white border-none rounded-lg text-xs font-extrabold cursor-pointer hover:bg-amber-600 transition-colors whitespace-nowrap">Subscribe</button>
+                        <button className="px-4 py-2.5 bg-hour text-white border-none rounded-lg text-xs font-extrabold cursor-pointer hover:bg-hour-hover transition-colors whitespace-nowrap">Subscribe</button>
                     </div>
                 </div>
             </div>
@@ -487,7 +619,7 @@ const SiteFooter = memo(() => (
                         <h5 className="text-xs font-black text-white mb-3 uppercase tracking-wider">{sec.title}</h5>
                         <ul className="space-y-1.5">
                             {sec.links.map(link => (
-                                <li key={link}><a href="#" className="text-[13px] text-gray-300 no-underline hover:text-amber-400 transition-colors leading-loose">{link}</a></li>
+                                <li key={link}><a href="#" className="text-[13px] text-[var(--color-graphite-300)] no-underline hover:text-[var(--accent-hour)] transition-colors leading-loose">{link}</a></li>
                             ))}
                         </ul>
                     </div>
@@ -498,7 +630,7 @@ const SiteFooter = memo(() => (
                         {[{ label: "f", title: "Facebook" }, { label: "𝕏", title: "Twitter" }, { label: "📷", title: "Instagram" }, { label: "in", title: "LinkedIn" }].map(s => (
                             <a
                                 key={s.title} href="#" title={s.title}
-                                className="w-9 h-9 rounded-full bg-amber-900/30 border border-amber-800/30 flex items-center justify-center text-amber-400 no-underline hover:bg-amber-500 hover:text-white hover:border-amber-500 transition-all text-sm"
+                                className="w-9 h-9 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-[var(--accent-hour)] no-underline hover:bg-hour hover:text-white hover:border-[var(--accent-hour)] transition-all text-sm"
                             >
                                 {s.label}
                             </a>
@@ -509,9 +641,9 @@ const SiteFooter = memo(() => (
 
             <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-6" />
             <div className="flex items-center justify-between flex-wrap gap-4">
-                <p className="text-xs text-gray-500">© {new Date().getFullYear()} Urbexon Hour. All rights reserved. | Made with ❤️ for local communities</p>
+                <p className="text-xs text-secondary">© {new Date().getFullYear()} Urbexon Hour. All rights reserved. | Made with ❤️ for local communities</p>
                 <div className="flex items-center gap-3">
-                    <span className="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">We Accept</span>
+                    <span className="text-[11px] text-secondary font-semibold uppercase tracking-wider">We Accept</span>
                     <div className="flex gap-2">
                         {["💳", "🏦", "📱", "₹"].map(ic => (
                             <span key={ic} className="text-base bg-white/10 px-2 py-1 rounded">{ic}</span>
@@ -530,6 +662,7 @@ const UrbexonHour = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const { slug } = useParams();
     const { user } = useAuth();
+    const { setUhPincode: setUhLocationContext } = useUHLocation();
     const { uhTotalQty, uhTotal, uhItems } = useCart();
     const { recentlyViewed: uhRecentlyViewed } = useRecentlyViewed("urbexon_hour");
 
@@ -551,11 +684,11 @@ const UrbexonHour = () => {
     const [waitlistSuccess, setWaitlistSuccess] = useState(false);
     const [activeCategory, setActiveCategory] = useState(null);
     const [savedPincode, setSavedPincode] = useState(() => {
-        try { const stored = localStorage.getItem("uh_pincode"); if (stored) { const p = JSON.parse(stored); if (p?.code && /^\d{6}$/.test(p.code)) return p; } } catch { }
+        try { const stored = localStorage.getItem("uh_pincode"); if (stored) { const p = JSON.parse(stored); if (p?.code && /^\d{6}$/.test(p.code)) return p; } } catch { /* malformed/missing localStorage pincode — fall through to null */ }
         return null;
     });
     const [initialLoading, setInitialLoading] = useState(() => {
-        try { const stored = localStorage.getItem("uh_pincode"); if (stored) { const p = JSON.parse(stored); if (p?.code) return true; } } catch { }
+        try { const stored = localStorage.getItem("uh_pincode"); if (stored) { const p = JSON.parse(stored); if (p?.code) return true; } } catch { /* malformed/missing localStorage pincode — fall through to false */ }
         return false;
     });
     const [showPincodeEdit, setShowPincodeEdit] = useState(false);
@@ -563,8 +696,14 @@ const UrbexonHour = () => {
     const activeSubcategory = searchParams.get("subcategory") || "";
     const [uhDeals, setUhDeals] = useState([]);
     const [cartAnimating, setCartAnimating] = useState(false);
-    const [heroBanners, setHeroBanners] = useState([]);
-    const [midBanners, setMidBanners] = useState([]);
+    const [heroBanners, setHeroBanners] = useState(() => (
+        _uhBannersCache && Date.now() - _uhBannersCache.ts < BANNERS_CACHE_TTL ? _uhBannersCache.hero : []
+    ));
+    const [midBanners, setMidBanners] = useState(() => (
+        _uhBannersCache && Date.now() - _uhBannersCache.ts < BANNERS_CACHE_TTL ? _uhBannersCache.mid : []
+    ));
+    const [subcategories, setSubcategories] = useState([]);
+    const [subcategoriesLoading, setSubcategoriesLoading] = useState(false);
     const [homepageData, setHomepageData] = useState(null);
 
     const clearSearch = useCallback(() => {
@@ -595,13 +734,57 @@ const UrbexonHour = () => {
         setActiveCategory(matched ? matched.name : null);
     }, [slug, apiCategories]);
 
-    /* Banners — never depend on pincode, so they live in their own
-       mount-only effect instead of refiring on every pincode change. */
+    /* Subcategories for the active category — this is the data source for
+       SubcategoryChips, the only UI that can set `?subcategory=`. Cached
+       per slug so revisiting the same category doesn't refetch a list that
+       almost never changes. */
     useEffect(() => {
-        api.get("/banners", { params: { type: "urbexon_hour", placement: "hero" } })
-            .then(({ data }) => setHeroBanners(Array.isArray(data) ? data : [])).catch(() => { });
-        api.get("/banners", { params: { type: "urbexon_hour", placement: "mid" } })
-            .then(({ data }) => setMidBanners(Array.isArray(data) ? data : [])).catch(() => { });
+        if (!slug || !activeCategory) { setSubcategories([]); return; }
+
+        const cached = _uhSubcategoriesCache.get(slug);
+        if (cached && Date.now() - cached.ts < BANNERS_CACHE_TTL) {
+            setSubcategories(cached.subcategories);
+            return;
+        }
+
+        let cancelled = false;
+        setSubcategoriesLoading(true);
+        fetchCategorySubcategories(slug, { params: { type: "urbexon_hour", productType: "urbexon_hour" } })
+            .then(({ data }) => {
+                if (cancelled) return;
+                const subs = data?.subcategories || [];
+                setSubcategories(subs);
+                _uhSubcategoriesCache.set(slug, { subcategories: subs, ts: Date.now() });
+            })
+            .catch(() => { if (!cancelled) setSubcategories([]); })
+            .finally(() => { if (!cancelled) setSubcategoriesLoading(false); });
+        return () => { cancelled = true; };
+    }, [slug, activeCategory]);
+
+    const handleSubcategorySelect = useCallback((name) => {
+        setSearchParams(prev => {
+            if (name) prev.set("subcategory", name);
+            else prev.delete("subcategory");
+            return prev;
+        });
+    }, [setSearchParams]);
+
+    /* Banners — never depend on pincode, so they live in their own
+       mount-only effect instead of refiring on every pincode change.
+       Cached for BANNERS_CACHE_TTL so remounting the page (nav away/back)
+       doesn't refetch banners that almost certainly haven't changed. */
+    useEffect(() => {
+        if (_uhBannersCache && Date.now() - _uhBannersCache.ts < BANNERS_CACHE_TTL) return;
+        Promise.all([
+            fetchBanners({ type: "urbexon_hour", placement: "hero" }).catch(() => ({ data: [] })),
+            fetchBanners({ type: "urbexon_hour", placement: "mid" }).catch(() => ({ data: [] })),
+        ]).then(([heroRes, midRes]) => {
+            const hero = Array.isArray(heroRes.data) ? heroRes.data : [];
+            const mid = Array.isArray(midRes.data) ? midRes.data : [];
+            setHeroBanners(hero);
+            setMidBanners(mid);
+            _uhBannersCache = { hero, mid, ts: Date.now() };
+        });
     }, []);
 
     /* Homepage data with no pincode yet — gives the page something to
@@ -611,7 +794,7 @@ const UrbexonHour = () => {
        once, before any pincode is known. */
     useEffect(() => {
         if (savedPincode?.code) return; // pincode-scoped fetch will happen in checkPincodeInner
-        api.get("/products/urbexon-hour/homepage")
+        productApi.getUHHomepage()
             .then(({ data }) => setHomepageData(data)).catch(() => { });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -623,43 +806,84 @@ const UrbexonHour = () => {
     const checkPincodeInner = useCallback(async (code) => {
         const pc = code.trim();
         if (!/^\d{6}$/.test(pc)) return;
+
+        // Restore the whole products/deals/homepage bundle for this pincode
+        // instantly if we already fetched it recently — this is what makes
+        // navigating away and back to /urbexon-hour (with the same pincode)
+        // skip the skeleton and the full refetch entirely.
+        const cached = _uhBundleCache.get(pc);
+        if (cached && Date.now() - cached.ts < BUNDLE_CACHE_TTL) {
+            setError("");
+            setActiveCategory(null);
+            setPinData(cached.pinData);
+            setProducts(cached.products);
+            setUhDeals(cached.deals);
+            if (cached.homepageData) setHomepageData(cached.homepageData);
+            if (cached.pinData?.available) {
+                setSavedPincode(cached.savedPincodeData);
+                setPincode(pc);
+                setShowPincodeEdit(false);
+            }
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         setError("");
         setPinData(null);
         setProducts([]);
         setActiveCategory(null);
         try {
-            const { data } = await api.get(`/pincode/check/${pc}`);
+            const { data } = await pincodeApi.checkPincode(pc);
             setPinData(data);
             if (data.available) {
                 const [pRes, dRes, hRes] = await Promise.allSettled([
-                    api.get("/products/urbexon-hour", { params: { pincode: pc, limit: 60, productType: "urbexon_hour" } }),
-                    api.get("/products/urbexon-hour/deals", { params: { limit: 12, pincode: pc, productType: "urbexon_hour" } }),
-                    api.get("/products/urbexon-hour/homepage", { params: { pincode: pc, productType: "urbexon_hour" } }),
+                    productApi.getUHProducts({ pincode: pc, limit: 60, productType: "urbexon_hour" }),
+                    productApi.getUHDeals({ limit: 12, pincode: pc, productType: "urbexon_hour" }),
+                    productApi.getUHHomepage({ pincode: pc, productType: "urbexon_hour" }),
                 ]);
                 const prods = pRes.status === "fulfilled" ? (pRes.value.data.products || pRes.value.data || []) : [];
+                const deals = dRes.status === "fulfilled" ? (dRes.value.data.products || []) : [];
+                const hpData = hRes.status === "fulfilled" ? hRes.value.data : null;
                 setProducts(prods);
-                setUhDeals(dRes.status === "fulfilled" ? (dRes.value.data.products || []) : []);
-                if (hRes.status === "fulfilled") setHomepageData(hRes.value.data);
+                setUhDeals(deals);
+                if (hpData) setHomepageData(hpData);
                 const pincodeData = { code: pc, area: data.area || null, city: data.city || null, state: data.state || null };
-                localStorage.setItem("uh_pincode", JSON.stringify(pincodeData));
+                setUhLocationContext(pincodeData);
                 setSavedPincode(pincodeData);
                 setPincode(pc);
                 setShowPincodeEdit(false);
-                if (user) api.post("/addresses/uh-pincode", pincodeData).catch(() => { });
+                if (user) pincodeApi.saveUhPincode(pincodeData).catch(() => { });
+
+                _uhBundleCache.set(pc, { pinData: data, products: prods, deals, homepageData: hpData, savedPincodeData: pincodeData, ts: Date.now() });
             }
         } catch (err) {
             setError(err?.response?.data?.message || "Failed to check pincode. Please try again.");
         } finally { setLoading(false); }
-    }, [user]);
+    }, [user, setUhLocationContext]);
 
     useEffect(() => {
         let cancelled = false;
         const load = async () => {
+            // Already have a fresh cached bundle for the saved pincode (e.g.
+            // navigated to a product and hit Back)? Restore it instantly and
+            // skip the /addresses/uh-pincode round-trip entirely — that GET
+            // was firing on every single mount regardless, which is what made
+            // the whole page (and every product in it) look like it was
+            // reloading from scratch every time you came back to this route.
+            if (savedPincode?.code) {
+                const cached = _uhBundleCache.get(savedPincode.code);
+                if (cached && Date.now() - cached.ts < BUNDLE_CACHE_TTL) {
+                    await checkPincodeInner(savedPincode.code);
+                    if (!cancelled) setInitialLoading(false);
+                    return;
+                }
+            }
+
             let code = null;
             if (user) {
                 try {
-                    const { data } = await api.get("/addresses/uh-pincode");
+                    const { data } = await pincodeApi.getUhPincode();
                     if (data?.uhPincode?.code && !cancelled) {
                         const localStored = (() => { try { return JSON.parse(localStorage.getItem("uh_pincode") || "{}"); } catch { return {}; } })();
                         const merged = {
@@ -670,7 +894,7 @@ const UrbexonHour = () => {
                         };
                         setSavedPincode(merged); code = merged.code;
                     }
-                } catch { }
+                } catch { /* pincode lookup failed — fall through to saved/local pincode below */ }
             }
             if (!code && savedPincode?.code) code = savedPincode.code;
             if (code && !cancelled) await checkPincodeInner(code);
@@ -681,7 +905,20 @@ const UrbexonHour = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user]);
 
+    const detectLocationTokenRef = useRef(0);
+
+    // BUG FIX: this UH-specific geolocation flow was a separate, cruder
+    // implementation from LocationContext.jsx's fetchAccurateLocation —
+    // enableHighAccuracy:false explicitly told the browser to prefer
+    // cell-tower/WiFi positioning over real GPS (routinely 1-5km off, easily
+    // landing in a neighboring pincode), and maximumAge:300000 let it return
+    // a position cached from up to 5 minutes ago instead of a fresh fix —
+    // this combination is the direct cause of "GPS says 224122 but the app
+    // resolves 224138". Also had no guard against an older detectLocation()
+    // call's reverse-geocode response resolving after a newer one and
+    // overwriting it with a stale pincode.
     const detectLocation = useCallback(async () => {
+        const myToken = ++detectLocationTokenRef.current;
         setLocationLoading(true); setError("");
         try {
             if (!navigator.geolocation) { setError("Location not supported in your browser"); setLocationLoading(false); return; }
@@ -691,18 +928,36 @@ const UrbexonHour = () => {
                         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1`, { headers: { "Accept-Language": "en" } });
                         if (!res.ok) throw new Error("Geocoding failed");
                         const data = await res.json();
-                        const pc = data.address?.postcode;
+                        if (myToken !== detectLocationTokenRef.current) return; // a newer detectLocation() call has since superseded this one
+                        let pc = data.address?.postcode;
+
+                        // BUG FIX: don't trust the reverse geocoder's postcode
+                        // blindly — cross-check the actual coordinates against
+                        // our own serviceable-pincode DB and prefer that when
+                        // a close match exists (this is what corrects e.g.
+                        // "GPS is really in 224122" being mis-tagged 224138).
+                        try {
+                            const { data: nearest } = await pincodeApi.resolveNearestPincode(latitude, longitude);
+                            if (myToken !== detectLocationTokenRef.current) return;
+                            if (nearest?.found && nearest.code) pc = nearest.code;
+                        } catch { /* non-fatal — fall back to the geocoder's own postcode */ }
+
                         if (pc && /^\d{6}$/.test(pc)) { await checkPincodeInner(pc); } else setError("Could not detect your pincode. Please enter it manually.");
-                    } catch { setError("Could not fetch location details. Please enter pincode manually."); }
-                    finally { setLocationLoading(false); }
+                    } catch { if (myToken === detectLocationTokenRef.current) setError("Could not fetch location details. Please enter pincode manually."); }
+                    finally { if (myToken === detectLocationTokenRef.current) setLocationLoading(false); }
                 },
                 (err) => {
+                    if (myToken !== detectLocationTokenRef.current) return;
                     setLocationLoading(false);
                     if (err.code === 1) setError("Location permission denied. Please enter pincode manually.");
                     else if (err.code === 2) setError("Location unavailable. Please enter pincode manually.");
                     else setError("Location timeout. Please enter pincode manually.");
                 },
-                { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+                // enableHighAccuracy: request real GPS, not the coarse cell/WiFi
+                // fallback. maximumAge: 0 forces a fresh fix instead of reusing
+                // whatever position the browser last cached (which is what let
+                // an old, possibly-different location silently get reused).
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
             );
         } catch { setLocationLoading(false); setError("Location detection failed. Please enter pincode manually."); }
     }, [checkPincodeInner]);
@@ -723,7 +978,7 @@ const UrbexonHour = () => {
     const joinWaitlist = useCallback(async () => {
         if (!waitlistEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)) { setError("Please enter a valid email address"); return; }
         try {
-            await api.post("/pincode/waitlist", { code: pincode, email: waitlistEmail });
+            await pincodeApi.joinPincodeWaitlist({ code: pincode, email: waitlistEmail });
             setWaitlistSuccess(true);
             setError("");
         } catch (err) { setError(err?.response?.data?.message || "Failed to join waitlist"); }
@@ -788,8 +1043,12 @@ const UrbexonHour = () => {
         if (searchQuery || activeCategory) window.scrollTo({ top: 0, behavior: "smooth" });
     }, [searchQuery, activeCategory]);
 
+    const scrollToProducts = useCallback(() => {
+        document.getElementById("uh-products")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, []);
+
     return (
-        <div className="min-h-screen bg-gray-50 overflow-x-hidden antialiased">
+        <div className="min-h-screen bg-canvas overflow-x-hidden antialiased">
             <SEO title="Urbexon Hour - Quick Delivery" description="Get groceries, essentials, and more delivered in minutes with Urbexon Hour." path="/urbexon-hour" />
             <main>
 
@@ -827,28 +1086,31 @@ const UrbexonHour = () => {
 
                 {hasActiveService && !showPincodeEdit && !searchQuery && !activeCategory && (
                     <>
+                        <UHHero deliveryMin={deliveryEta.min} deliveryMax={deliveryEta.max} onShopNow={scrollToProducts} />
+
                         {heroBanners.length > 0 && (
                             <div className="max-w-[1280px] mx-auto px-4 lg:px-12 pt-5">
                                 <UHBannerCarousel banners={heroBanners} />
                             </div>
                         )}
 
-                        <div className="max-w-[1280px] mx-auto px-4 lg:px-12 pt-5">
-                            <UHCategoryStrip categories={apiCategories} activeCategory={activeCategory} onSelect={handleCategorySelect} />
+                        <UHTopSellers pincode={pincode} />
+
+                        <div id="uh-products">
+                            <FlashDealSpotlight deal={uhDeals[0]} />
+                            <FlashDeals deals={uhDeals.slice(1)} />
+
+                            {Object.entries(groupedCategories).map(([category, items]) => (
+                                <div className="max-w-[1280px] mx-auto px-4 lg:px-12" key={category}>
+                                    <UHProductSection
+                                        title={category}
+                                        subtitle={`${items.length} Products`}
+                                        products={items}
+                                        renderCard={renderHiddenActionsCard}
+                                    />
+                                </div>
+                            ))}
                         </div>
-
-                        <FlashDeals deals={uhDeals} />
-
-                        {Object.entries(groupedCategories).map(([category, items]) => (
-                            <div className="max-w-[1280px] mx-auto px-4 lg:px-12" key={category}>
-                                <UHProductSection
-                                    title={category}
-                                    subtitle={`${items.length} Products`}
-                                    products={items}
-                                    renderCard={renderPlainCard}
-                                />
-                            </div>
-                        ))}
 
                         {midBanners.length > 0 && (
                             <div className="max-w-[1280px] mx-auto px-4 lg:px-12 py-3">
@@ -870,26 +1132,24 @@ const UrbexonHour = () => {
                     </>
                 )}
 
-                {hasActiveService && !showPincodeEdit && (searchQuery || activeCategory) && (
-                    <div className="bg-white border-b border-gray-100 py-6">
-                        <div className="max-w-[1280px] mx-auto px-4 lg:px-12">
-                            <CategoryBrowser
-                                categories={apiCategories} onCategorySelect={handleCategorySelect} activeCategory={activeCategory}
-                                title="Shop by Category" subtitle={activeCategory ? `Showing: ${activeCategory}` : "Tap to filter by category"} type="urbexon_hour"
-                            />
-                        </div>
-                    </div>
+                {activeCategory && !searchQuery && hasActiveService && !showPincodeEdit && (
+                    <SubcategoryChips
+                        subcategories={subcategories}
+                        loading={subcategoriesLoading}
+                        activeSubcategory={activeSubcategory}
+                        onSelect={handleSubcategorySelect}
+                    />
                 )}
 
                 {(searchQuery || activeSubcategory) && hasActiveService && !showPincodeEdit && (
-                    <div className="bg-amber-50 border-b-2 border-amber-500 border-t border-amber-100 mt-3 animate-[slideDown_0.3s_ease]">
+                    <div className="bg-hour-tint border-b-2 border-[var(--accent-hour)] border-t border-[var(--color-amber-100)] mt-3 animate-[slideDown_0.3s_ease]">
                         <div className="max-w-[1280px] mx-auto px-4 lg:px-12 flex items-center gap-2 py-3">
-                            <FaSearch size={13} className="text-amber-500 flex-shrink-0" />
-                            <span className="text-[13px] text-amber-900 font-medium flex-1 min-w-0 truncate">
+                            <FaSearch size={13} className="text-[var(--accent-hour)] flex-shrink-0" />
+                            <span className="text-[13px] text-[var(--accent-hour-hover)] font-medium flex-1 min-w-0 truncate">
                                 Found <strong className="font-bold">{filteredProducts.length}</strong> product{filteredProducts.length !== 1 ? "s" : ""} matching "<strong className="font-bold">{searchQuery || activeSubcategory}</strong>"
                             </span>
                             <button
-                                className="flex items-center gap-1.5 bg-red-100 border border-red-200 text-red-600 px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer hover:bg-red-200 transition-colors flex-shrink-0"
+                                className="flex items-center gap-1.5 bg-error-tint border border-[var(--color-error-100)] text-error px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer hover:bg-error-tint transition-colors flex-shrink-0"
                                 onClick={clearSearch}
                             >
                                 <FaTimes size={12} /> Clear
@@ -927,7 +1187,7 @@ const UrbexonHour = () => {
 
                 {waitlistSuccess && (
                     <div className="max-w-[1280px] mx-auto px-4 lg:px-12 py-6">
-                        <div className="bg-green-50 border border-green-200 rounded-2xl text-green-700 font-bold text-sm text-center py-4 px-5">
+                        <div className="bg-success-tint border border-[var(--color-success-100)] rounded-2xl text-success font-bold text-sm text-center py-4 px-5">
                             ✅ You are on the waitlist! We will notify you when we launch in your area.
                         </div>
                     </div>

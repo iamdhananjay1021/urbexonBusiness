@@ -41,6 +41,16 @@ const AccurateLocationMap = () => {
   const MAX_RETRIES = 2;
   const ACCEPTABLE_ACCURACY = 100; // Require accuracy within 100 meters
 
+  // BUG FIX: neither the IP-lookup fetch, the getCurrentPosition callbacks,
+  // nor the 1.5s retry setTimeout were ever cancelled/guarded on unmount —
+  // navigating away mid-retry let a delayed response call setState on an
+  // already-unmounted component.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   // 1. IP-Based Fallback Location
   const fetchIPBasedLocation = async () => {
     try {
@@ -48,7 +58,8 @@ const AccurateLocationMap = () => {
       // Fetching from ipapi (free, no API key required for low volume)
       const response = await fetch('https://ipapi.co/json/');
       const data = await response.json();
-      
+      if (!isMountedRef.current) return;
+
       if (data.latitude && data.longitude) {
         setLocation([data.latitude, data.longitude]);
         setAccuracy(null); // Mark as approximate
@@ -56,11 +67,12 @@ const AccurateLocationMap = () => {
       } else {
         throw new Error('IP Location failed');
       }
-    } catch (err) {
+    } catch {
+      if (!isMountedRef.current) return;
       setError('Could not fetch IP location. Please enter your address manually.');
       setUseManualInput(true);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   };
 
@@ -78,14 +90,15 @@ const AccurateLocationMap = () => {
     // NOTE: Geolocation API requires HTTPS or localhost in production
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        if (!isMountedRef.current) return;
         const { latitude, longitude, accuracy: posAccuracy } = position.coords;
-        
+
         // 3. Retry logic if accuracy is poor
         if (posAccuracy > ACCEPTABLE_ACCURACY && retryCount.current < MAX_RETRIES) {
           retryCount.current += 1;
           console.warn(`Accuracy too low (${posAccuracy}m). Retrying... ${retryCount.current}/${MAX_RETRIES}`);
           // Add a short delay before trying again to let GPS lock stabilize
-          setTimeout(getAccurateLocation, 1500);
+          setTimeout(() => { if (isMountedRef.current) getAccurateLocation(); }, 1500);
           return;
         }
 
@@ -101,8 +114,9 @@ const AccurateLocationMap = () => {
         setLoading(false);
       },
       (err) => {
+        if (!isMountedRef.current) return;
         setLoading(false);
-        
+
         // 4. Handle Permissions and Errors
         if (err.code === err.PERMISSION_DENIED) {
           setError('Location permission denied. Please allow access or enter address manually.');

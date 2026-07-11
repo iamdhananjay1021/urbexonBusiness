@@ -34,6 +34,12 @@ const deliveryBoySchema = new mongoose.Schema(
             lat: { type: Number, default: null },
             lng: { type: Number, default: null },
             updatedAt: { type: Date, default: null },
+            // Device-clock timestamp of the GPS fix itself (from
+            // GeolocationPosition.timestamp), distinct from `updatedAt`
+            // (server-write time) — lets the backend reject an update whose
+            // underlying GPS reading is actually OLDER than one already
+            // stored, even if its HTTP request happens to arrive later.
+            gpsTimestamp: { type: Number, default: null },
         },
 
         // ── GeoJSON location for $nearSphere queries ──

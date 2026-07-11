@@ -39,7 +39,7 @@ class ErrorBoundary extends Component {
                     <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 24, lineHeight: 1.6 }}>
                         An unexpected error occurred. Please refresh the page.
                     </p>
-                    {process.env.NODE_ENV !== "production" && (
+                    {import.meta.env.DEV && (
                         <pre style={{
                             textAlign: "left", background: "#f8fafc",
                             border: "1px solid #e2e8f0", borderRadius: 8,

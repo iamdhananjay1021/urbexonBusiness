@@ -120,6 +120,25 @@ const userSchema = new mongoose.Schema(
         // ── Block ──
         isBlocked: { type: Boolean, default: false },
         blockedAt: { type: Date, default: null },
+
+        // ── Soft delete ──
+        isDeleted: { type: Boolean, default: false },
+
+        // ── Session management ──
+        // BUG FIX: authController.js (issueTokens/refreshToken/logoutAllDevices/
+        // changePassword/toggleBlockUser/adminResetPassword) has always read
+        // and written `refreshToken`, `refreshTokenExpires`, and `tokenVersion`
+        // on the user document, but none of these paths were declared on this
+        // schema. Mongoose's default `strict: true` silently drops any field
+        // not in the schema on `.save()`, so the refresh token was NEVER
+        // actually persisted to MongoDB — every `/api/auth/refresh` call after
+        // the 15-minute access token expired queried for a `refreshToken` that
+        // had never been written, always got no match, and always 403'd
+        // ("Invalid or expired refresh token"). Declaring the fields here is
+        // what makes issueTokens()'s existing `user.save()` actually store them.
+        refreshToken: { type: String, select: false, default: undefined, index: true },
+        refreshTokenExpires: { type: Date, select: false, default: undefined },
+        tokenVersion: { type: Number, default: 0, select: false },
     },
     { timestamps: true }
 );

@@ -76,6 +76,19 @@ const Orders = () => {
     load();
   }, [load]);
 
+  // BUG FIX: this page never reacted to a new order arriving — the sound
+  // and badge count (NotificationContext.jsx) already fire correctly, but
+  // the actual order table only ever refetched on filter/page/search
+  // changes. A vendor sitting on this tab (not Dashboard) would hear the
+  // notification and see the badge tick up, but the new order wouldn't
+  // appear in the list until they changed a filter or navigated away and
+  // back — looked exactly like a missed order.
+  useEffect(() => {
+    const onNewOrder = () => load();
+    window.addEventListener("vendor:new_order", onNewOrder);
+    return () => window.removeEventListener("vendor:new_order", onNewOrder);
+  }, [load]);
+
   const updateStatus = async (id, status, extra = {}) => {
     try {
       await api.patch(`/vendor/orders/${id}/status`, { status, ...extra });

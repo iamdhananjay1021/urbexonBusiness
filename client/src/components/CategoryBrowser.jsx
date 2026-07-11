@@ -332,14 +332,23 @@ const CategoryBrowser = memo(({ categories: propCategories, onCategorySelect, ac
         });
     }, []);
 
+    // BUG FIX: scroll fires far more often than the browser can paint —
+    // coalesce the setState call to once per animation frame instead of
+    // once per raw scroll event.
     useEffect(() => {
         checkArrows();
         const el = stripRef.current;
-        if (el) el.addEventListener("scroll", checkArrows, { passive: true });
-        window.addEventListener("resize", checkArrows, { passive: true });
+        let rafId = null;
+        const onScroll = () => {
+            if (rafId) return;
+            rafId = requestAnimationFrame(() => { rafId = null; checkArrows(); });
+        };
+        if (el) el.addEventListener("scroll", onScroll, { passive: true });
+        window.addEventListener("resize", onScroll, { passive: true });
         return () => {
-            if (el) el.removeEventListener("scroll", checkArrows);
-            window.removeEventListener("resize", checkArrows);
+            if (el) el.removeEventListener("scroll", onScroll);
+            window.removeEventListener("resize", onScroll);
+            if (rafId) cancelAnimationFrame(rafId);
         };
     }, [categories, checkArrows]);
 

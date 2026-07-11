@@ -2,11 +2,12 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { Toast, useToast } from "./components/Toast";
 import GlobalWebSocket from "./components/GlobalWebSocket";
 import { BrowserRouter as Router } from "react-router-dom";
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, useEffect } from "react";
 import { HelmetProvider } from "react-helmet-async";
 
 import { AuthProvider } from "./contexts/AuthContext";
 import { LocationProvider } from "./contexts/LocationContext";
+import { UHLocationProvider } from "./contexts/UHLocationContext";
 
 import AppRoutes from "./routes/AppRoutes";
 
@@ -33,9 +34,11 @@ export default function App() {
         <Router>
           <AuthProvider>
             <LocationProvider>
-              <GlobalWebSocket />
-              <AppRoutes />
-              <Toast toast={toast} />
+              <UHLocationProvider>
+                <GlobalWebSocket />
+                <AppRoutes />
+                <Toast toast={toast} />
+              </UHLocationProvider>
             </LocationProvider>
           </AuthProvider>
         </Router>

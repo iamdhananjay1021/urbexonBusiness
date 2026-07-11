@@ -90,6 +90,56 @@ export const checkPincode = async (req, res) => {
     }
 };
 
+/* ── PUBLIC: Resolve nearest serviceable pincode by GPS coordinates ──
+   BUG FIX: the client's reverse-geocoding providers (Nominatim/Google)
+   sometimes return the WRONG postal_code for coordinates near a pincode
+   boundary — OSM's Indian postal-code coverage is patchy, so a genuinely-
+   224122 GPS fix can come back tagged 224138. Rather than trusting that
+   verbatim, cross-check the raw coordinates against our OWN serviceable-
+   pincode database (which admin populates with real geo coordinates) and
+   prefer whichever pincode is actually closest, when one is within a
+   sane radius. If no admin-configured pincode is close enough, the
+   caller falls back to whatever the reverse geocoder said — this only
+   ever CORRECTS a mismatch, never blocks a result. ── */
+const NEAREST_PINCODE_MAX_KM = 8; // beyond this, don't override the geocoder's guess
+
+export const resolveNearestPincode = async (req, res) => {
+    try {
+        const lat = Number(req.query.lat);
+        const lng = Number(req.query.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            return res.status(400).json({ success: false, message: "Valid lat/lng required" });
+        }
+
+        const nearest = await Pincode.findOne({
+            location: {
+                $near: {
+                    $geometry: { type: "Point", coordinates: [lng, lat] },
+                    $maxDistance: NEAREST_PINCODE_MAX_KM * 1000,
+                },
+            },
+        }).select("code area city state status").lean();
+
+        if (!nearest) {
+            return res.json({ success: true, found: false });
+        }
+
+        return res.json({
+            success: true,
+            found: true,
+            code: nearest.code,
+            area: nearest.area || "",
+            city: nearest.city || "",
+            state: nearest.state || "",
+            status: nearest.status,
+        });
+    } catch (err) {
+        console.error("[resolveNearestPincode]", err);
+        // Non-fatal by design — caller falls back to the reverse geocoder's own pincode.
+        res.json({ success: true, found: false });
+    }
+};
+
 /* ── PUBLIC: Join waitlist ─────────────────────────────────────────── */
 // [FIX-PM3] Atomic duplicate email prevention using $addToSet-style update with condition (preserved)
 export const joinWaitlist = async (req, res) => {
@@ -287,6 +337,15 @@ export const deletePincode = async (req, res) => {
     try {
         const pincode = await Pincode.findByIdAndDelete(req.params.id);
         if (!pincode) return res.status(404).json({ success: false, message: "Pincode not found" });
+
+        // BUG FIX: a deleted pincode used to leave dangling entries in every
+        // vendor's servicePincodes array — those vendors kept believing (and
+        // checkPincode/validateDeliveryServiceability kept treating) the
+        // removed code as serviceable, since nothing ever pulled it back out.
+        await Vendor.updateMany(
+            { servicePincodes: pincode.code },
+            { $pull: { servicePincodes: pincode.code } }
+        );
 
         // [FIX-PM6] Invalidate all related caches
         await Promise.all([

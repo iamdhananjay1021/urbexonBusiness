@@ -21,8 +21,6 @@ import {
     deleteAddress as apiDeleteAddress,
     setDefaultAddress as apiSetDefaultAddress,
     placeCODOrder,
-    serializeItems,
-    formatAddressString,
 } from "../services/checkoutService";
 import { initiateOnlinePayment } from "../services/paymentService";
 
@@ -53,7 +51,7 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
     const [error, setError] = useState("");
 
     /* ── Coupon (passed from Cart) ── */
-    const [coupon, setCoupon] = useState(couponFromCart);
+    const [coupon] = useState(couponFromCart);
 
     /* ── Contact ── */
     const [contact, setContact] = useState({

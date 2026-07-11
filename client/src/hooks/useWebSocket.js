@@ -35,6 +35,24 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
     const [isConnected, setIsConnected] = useState(false);
     const [lastMessage, setLastMessage] = useState(null);
 
+    // BUG FIX: callers overwhelmingly pass inline arrow functions for
+    // onMessage/onConnect/onDisconnect (a new identity every render). The
+    // socket's event handlers are set up once, inside connect() — without
+    // this ref indirection they'd keep calling whichever closure existed
+    // at connect() time, silently going stale on every subsequent render
+    // (any state/props referenced inside the caller's callback would be
+    // frozen at connection time). Refs always resolve to the latest
+    // version, and — as a bonus — connect() no longer needs to be
+    // recreated when these callbacks change identity.
+    const onMessageRef = useRef(onMessage);
+    const onConnectRef = useRef(onConnect);
+    const onDisconnectRef = useRef(onDisconnect);
+    useEffect(() => {
+        onMessageRef.current = onMessage;
+        onConnectRef.current = onConnect;
+        onDisconnectRef.current = onDisconnect;
+    }, [onMessage, onConnect, onDisconnect]);
+
     const connect = useCallback(() => {
         if (!token) return;
         if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -52,7 +70,7 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
             globalWsFailures = 0;
             backoffRef.current = 3000;
             console.log(`[Client WS] Connected to: ${WS_BASE}`);
-            onConnect?.();
+            onConnectRef.current?.();
 
             pingRef.current = setInterval(() => {
                 if (ws.readyState === WebSocket.OPEN) {
@@ -66,7 +84,7 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
                 const data = JSON.parse(event.data);
                 if (data.type === "pong") return;
                 setLastMessage(data);
-                onMessage?.(data);
+                onMessageRef.current?.(data);
             } catch { /* ignore */ }
         };
 
@@ -74,7 +92,7 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
             setIsConnected(false);
             clearInterval(pingRef.current);
             wsRef.current = null;
-            onDisconnect?.();
+            onDisconnectRef.current?.();
 
             if (intentionalCloseRef.current) {
                 intentionalCloseRef.current = false;
@@ -94,7 +112,7 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
         ws.onerror = () => {
             ws.close();
         };
-    }, [token, onMessage, onConnect, onDisconnect]);
+    }, [token]);
 
     const disconnect = useCallback(() => {
         intentionalCloseRef.current = true;

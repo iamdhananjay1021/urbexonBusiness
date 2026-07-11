@@ -9,42 +9,23 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import api from "../api/axios";
-import { FaStore, FaUser, FaBuilding, FaUniversity, FaMapMarkerAlt, FaUpload, FaCheckCircle, FaClock, FaTimes, FaArrowRight } from "react-icons/fa";
+import * as vendorApi from "../api/vendorApi";
+import { fetchActiveCategories } from "../api/categoryApi";
+import { FiUpload, FiArrowRight, FiCheckCircle } from "react-icons/fi";
+import { FaStore, FaUser, FaUniversity, FaMapMarkerAlt } from "react-icons/fa";
 import SEO from "../components/SEO";
-
-const CSS = `
-*{box-sizing:border-box}
-.bv-root{min-height:100vh;background:#f7f4ee;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.bv-hero{background:linear-gradient(135deg,#1a1740 0%,#252060 100%);color:#fff;padding:60px clamp(20px,6vw,80px);text-align:center}
-.bv-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.4);color:#c9a84c;padding:6px 16px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:20px}
-.bv-title{font-size:clamp(26px,5vw,44px);font-weight:800;margin-bottom:12px}
-.bv-desc{font-size:14px;color:rgba(255,255,255,.65);max-width:500px;margin:0 auto 32px;line-height:1.7}
-.bv-perks{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;max-width:700px;margin:0 auto}
-.bv-perk{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px;text-align:center}
-.bv-perk-icon{font-size:24px;margin-bottom:8px}
-.bv-perk-label{font-size:12px;font-weight:700;color:rgba(255,255,255,.85)}
-.bv-body{max-width:760px;margin:0 auto;padding:40px clamp(16px,4vw,40px) 60px}
-.bv-card{background:#fff;border:1px solid #e8e4d9;border-radius:14px;padding:28px;margin-bottom:20px}
-.bv-sec-title{font-size:16px;font-weight:800;color:#1a1740;margin-bottom:20px;display:flex;align-items:center;gap:10px}
-.bv-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-@media(max-width:600px){.bv-grid{grid-template-columns:1fr}}
-.bv-field{margin-bottom:0}
-.bv-label{display:block;font-size:11px;font-weight:700;color:#64748b;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px}
-.bv-inp{width:100%;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13.5px;color:#1e293b;outline:none;transition:border .15s;background:#fafafe;font-family:inherit}
-.bv-inp:focus{border-color:#c9a84c;background:#fff}
-.bv-inp.full{grid-column:1/-1}
-.bv-upload{border:2px dashed #e2e8f0;border-radius:9px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;position:relative}
-.bv-upload:hover,.bv-upload.has{border-color:#c9a84c;background:#fffbeb}
-.bv-submit{width:100%;padding:15px;background:#1a1740;border:none;color:#c9a84c;font-size:14px;font-weight:800;letter-spacing:2px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .2s;margin-top:8px}
-.bv-submit:hover{background:#252060;box-shadow:0 8px 24px rgba(26,23,64,.2)}
-.bv-submit:disabled{opacity:.5;cursor:not-allowed}
-.status-box{background:#fff;border-radius:14px;border:2px solid;padding:32px;text-align:center;margin:40px auto;max-width:500px}
-`;
+import Card from "../design-system/Card";
+import Input from "../design-system/Input";
+import Textarea from "../design-system/Textarea";
+import Select from "../design-system/Select";
+import Button from "../design-system/Button";
+import Alert from "../design-system/Alert";
+import Loader from "../design-system/Loader";
+import { cn } from "../design-system/utils/cn";
 
 const Field = ({ label, children, full }) => (
-  <div style={full ? { gridColumn: "1/-1" } : {}}>
-    <label className="bv-label">{label}</label>
+  <div className={full ? "sm:col-span-2" : ""}>
+    <label className="block text-[13px] font-semibold text-primary mb-1.5">{label}</label>
     {children}
   </div>
 );
@@ -69,7 +50,7 @@ const BecomeVendor = () => {
 
   // ✅ Fetch categories independently on mount to ensure dropdown always populates
   useEffect(() => {
-    api.get("/categories", { params: { type: "ecommerce" } })
+    fetchActiveCategories({ params: { type: "ecommerce" } })
       .then(({ data }) => {
         const cats = Array.isArray(data) ? data : data.categories || data.data || [];
         setCategories(cats.filter(c => c.isActive !== false));
@@ -86,7 +67,7 @@ const BecomeVendor = () => {
     }
 
     // ✅ Only check vendor status if user is authenticated
-    api.get("/vendor/status")
+    vendorApi.getVendorStatus()
       .then(({ data }) => {
         if (data.registered) setStatus(data);
         else setStatus(false);
@@ -127,7 +108,7 @@ const BecomeVendor = () => {
       fd.append("servicePincodes", JSON.stringify([form.pincode]));
       Object.entries(files).forEach(([k, f]) => fd.append(k, f));
 
-      await api.post("/vendor/register", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      await vendorApi.registerVendor(fd);
       setSuccess(true);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to submit application");
@@ -136,9 +117,8 @@ const BecomeVendor = () => {
 
   // ✅ Show loading during auth check
   if (authLoading) return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f7f4ee" }}>
-      <div style={{ width: 36, height: 36, border: "3px solid #e8e4d9", borderTop: "3px solid #c9a84c", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
-      <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
+    <div className="min-h-screen flex items-center justify-center bg-canvas">
+      <Loader size="lg" />
     </div>
   );
 
@@ -146,160 +126,177 @@ const BecomeVendor = () => {
   if (!user) return null;
 
   if (loading) return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f7f4ee" }}>
-      <div style={{ width: 36, height: 36, border: "3px solid #e8e4d9", borderTop: "3px solid #c9a84c", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
-      <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
+    <div className="min-h-screen flex items-center justify-center bg-canvas">
+      <Loader size="lg" />
     </div>
   );
 
   // Already applied
   if (status) {
     const cfg = {
-      pending: { color: "#f59e0b", bg: "#fffbeb", icon: "⏳", title: "Application Under Review", msg: "Your application is under review. You will receive an update within 24-48 hours." },
-      approved: { color: "#059669", bg: "#f0fdf4", icon: "✅", title: "You are an Approved Vendor!", msg: "Congratulations! You can now access your vendor dashboard." },
-      rejected: { color: "#dc2626", bg: "#fef2f2", icon: "❌", title: "Application Rejected", msg: `Reason: ${status.rejectionReason || "Please contact support."}` },
+      pending: { variant: "warning", border: "border-[var(--color-warning-500)]", icon: "⏳", title: "Application Under Review", msg: "Your application is under review. You will receive an update within 24-48 hours." },
+      approved: { variant: "success", border: "border-[var(--color-success-500)]", icon: "✅", title: "You are an Approved Vendor!", msg: "Congratulations! You can now access your vendor dashboard." },
+      rejected: { variant: "error", border: "border-[var(--color-error-500)]", icon: "❌", title: "Application Rejected", msg: `Reason: ${status.rejectionReason || "Please contact support."}` },
     };
     const c = cfg[status.status] || cfg.pending;
     return (
-      <div className="bv-root">
-        <style>{CSS}</style>
-        <div style={{ padding: "60px 20px" }}>
-          <div className="status-box" style={{ borderColor: c.color }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>{c.icon}</div>
-            <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>{c.title}</h2>
-            <p style={{ fontSize: 14, color: "#64748b", marginBottom: 24, lineHeight: 1.6 }}>{c.msg}</p>
+      <div className="min-h-screen bg-canvas">
+        <SEO title="Become a Vendor" noindex />
+        <div className="py-16 px-5">
+          <Card padding="lg" className={cn("border-2 text-center max-w-[500px] mx-auto", c.border)}>
+            <div className="text-5xl mb-3">{c.icon}</div>
+            <h2 className="text-xl font-bold text-primary mb-2 font-display">{c.title}</h2>
+            <p className="text-sm text-secondary mb-6 leading-relaxed">{c.msg}</p>
 
-            <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+            <div className="flex gap-3 justify-center flex-wrap">
               {status.status === "approved" && (
-                <a href={(import.meta.env.VITE_VENDOR_URL || "http://localhost:5175") + "/dashboard"} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 24px", background: "#1a1740", color: "#c9a84c", borderRadius: 8, fontWeight: 700, fontSize: 13, textDecoration: "none" }}>
-                  Vendor Dashboard <FaArrowRight size={11} />
+                <a
+                  href={(import.meta.env.VITE_VENDOR_URL || "http://localhost:5175") + "/dashboard"}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-[var(--radius-md)] bg-[var(--color-graphite-900)] text-accent font-bold text-[13px] no-underline"
+                >
+                  Vendor Dashboard <FiArrowRight size={11} aria-hidden="true" />
                 </a>
               )}
               {status.status === "rejected" && (
-                <button onClick={() => setStatus(false)} style={{ padding: "11px 22px", background: "#1a1740", border: "none", color: "#c9a84c", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>
-                  Reapply
-                </button>
+                <Button variant="primary" onClick={() => setStatus(false)}>Reapply</Button>
               )}
-
-              {/* Home button for all statuses */}
-              <button onClick={() => navigate("/")} style={{ padding: "11px 22px", background: "#f3f4f6", border: "1px solid #e5e7eb", color: "#1a1740", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>
-                Go to Home
-              </button>
+              <Button variant="secondary" onClick={() => navigate("/")}>Go to Home</Button>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
     );
   }
 
   if (success) return (
-    <div className="bv-root">
-      <style>{CSS}</style>
-      <div style={{ padding: "60px 20px" }}>
-        <div className="status-box" style={{ borderColor: "#059669" }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1a1740", marginBottom: 8 }}>Application Submitted!</h2>
-          <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6 }}>
+    <div className="min-h-screen bg-canvas">
+      <SEO title="Become a Vendor" noindex />
+      <div className="py-16 px-5">
+        <Card padding="lg" className="border-2 border-[var(--color-success-500)] text-center max-w-[500px] mx-auto">
+          <div className="text-5xl mb-3">🎉</div>
+          <h2 className="text-xl font-bold text-primary mb-2 font-display">Application Submitted!</h2>
+          <p className="text-sm text-secondary leading-relaxed">
             We will review your application within 24-48 hours.<br />You will receive an update via email.
           </p>
-          <button onClick={() => navigate("/")} style={{ marginTop: 20, padding: "11px 24px", background: "#1a1740", border: "none", color: "#c9a84c", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>
-            Go to Home
-          </button>
-        </div>
+          <Button variant="primary" className="mt-5" onClick={() => navigate("/")}>Go to Home</Button>
+        </Card>
       </div>
     </div>
   );
 
   return (
-    <div className="bv-root">
+    <div className="min-h-screen bg-canvas">
       <SEO title="Become a Vendor" description="Start selling on Urbexon. Register as a vendor partner and reach lakhs of customers across India." path="/become-vendor" />
-      <style>{CSS}</style>
-      <div className="bv-hero">
-        <div className="bv-badge"><FaStore size={11} />Vendor Partner Program</div>
-        <h1 className="bv-title">Start Your Business on <span style={{ color: "#c9a84c" }}>Urbexon</span></h1>
-        <p className="bv-desc">Reach millions of customers. List your products and grow your business.</p>
-        <div className="bv-perks">
+
+      <div className="bg-[var(--color-graphite-900)] text-white text-center px-[clamp(20px,6vw,80px)] py-14">
+        <div className="inline-flex items-center gap-1.5 bg-accent-tint border border-[var(--accent-primary)]/40 text-accent px-4 py-1.5 rounded-full text-[11px] font-bold tracking-wide uppercase mb-5">
+          <FaStore size={11} aria-hidden="true" />Vendor Partner Program
+        </div>
+        <h1 className="font-display text-[clamp(26px,5vw,44px)] font-bold mb-3">
+          Start Your Business on <span className="text-accent">Urbexon</span>
+        </h1>
+        <p className="text-sm text-white/65 max-w-[500px] mx-auto mb-8 leading-relaxed">
+          Reach millions of customers. List your products and grow your business.
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 max-w-[700px] mx-auto">
           {[["🚀", "Quick Setup"], ["💰", "Fast Payouts"], ["📊", "Live Analytics"], ["🛡️", "Secure Platform"]].map(([i, l]) => (
-            <div key={l} className="bv-perk"><div className="bv-perk-icon">{i}</div><div className="bv-perk-label">{l}</div></div>
+            <div key={l} className="bg-white/[.06] border border-white/10 rounded-[var(--radius-md)] p-4 text-center">
+              <div className="text-2xl mb-2">{i}</div>
+              <div className="text-xs font-bold text-white/85">{l}</div>
+            </div>
           ))}
         </div>
       </div>
 
-      <div className="bv-body">
-        {error && (
-          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", padding: "12px 16px", borderRadius: 10, fontSize: 13, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
-            <FaTimes size={12} />{error}
-          </div>
-        )}
+      <div className="max-w-[760px] mx-auto px-[clamp(16px,4vw,40px)] pt-10 pb-16">
+        {error && <Alert variant="error" className="mb-5">{error}</Alert>}
 
-        <form onSubmit={submit}>
+        <form onSubmit={submit} className="space-y-5">
           {/* Shop Info */}
-          <div className="bv-card">
-            <div className="bv-sec-title"><FaStore color="#c9a84c" size={16} />Shop Information</div>
-            <div className="bv-grid">
-              <Field label="Shop Name *"><input className="bv-inp" value={form.shopName} onChange={set("shopName")} placeholder="Your shop name" /></Field>
-              <Field label="Shop Category *">
-                <select className="bv-inp" value={form.shopCategory} onChange={set("shopCategory")} required>
-                  <option value="">-- Select Category --</option>
-                  {categories.map((cat) => (
-                    <option key={cat._id || cat.slug} value={cat.slug || cat.name}>
-                      {cat.emoji ? `${cat.emoji} ` : ""}{cat.name}
-                    </option>
-                  ))}
-                  <option value="other">Other</option>
-                </select>
-              </Field>
-              <Field label="Shop Description" full={true}><textarea className="bv-inp" rows={3} value={form.shopDescription} onChange={set("shopDescription")} placeholder="Tell us about your shop..." style={{ resize: "vertical" }} /></Field>
+          <Card padding="lg">
+            <div className="flex items-center gap-2.5 text-base font-extrabold text-primary mb-5">
+              <FaStore className="text-accent" size={16} aria-hidden="true" />Shop Information
             </div>
-          </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Shop Name *"><Input value={form.shopName} onChange={set("shopName")} placeholder="Your shop name" /></Field>
+              <Field label="Shop Category *">
+                <Select
+                  value={form.shopCategory}
+                  onChange={set("shopCategory")}
+                  required
+                  placeholder="-- Select Category --"
+                  options={[
+                    ...categories.map((cat) => ({
+                      value: cat.slug || cat.name,
+                      label: `${cat.emoji ? cat.emoji + " " : ""}${cat.name}`,
+                    })),
+                    { value: "other", label: "Other" },
+                  ]}
+                />
+              </Field>
+              <Field label="Shop Description" full><Textarea rows={3} value={form.shopDescription} onChange={set("shopDescription")} placeholder="Tell us about your shop..." /></Field>
+            </div>
+          </Card>
 
           {/* Owner Info */}
-          <div className="bv-card">
-            <div className="bv-sec-title"><FaUser color="#c9a84c" size={16} />Owner / Contact Details</div>
-            <div className="bv-grid">
-              <Field label="Owner Name *"><input className="bv-inp" value={form.ownerName} onChange={set("ownerName")} /></Field>
-              <Field label="Email *"><input className="bv-inp" type="email" value={form.email} onChange={set("email")} /></Field>
-              <Field label="Phone *"><input className="bv-inp" value={form.phone} onChange={set("phone")} placeholder="10-digit mobile number" /></Field>
-              <Field label="Business Type">
-                <select className="bv-inp" value={form.businessType} onChange={set("businessType")}>
-                  <option value="individual">Individual</option>
-                  <option value="proprietorship">Proprietorship</option>
-                  <option value="partnership">Partnership</option>
-                  <option value="pvtltd">Pvt. Ltd.</option>
-                </select>
-              </Field>
-              <Field label="GST Number"><input className="bv-inp" value={form.gstNumber} onChange={set("gstNumber")} placeholder="15-digit GST" /></Field>
-              <Field label="PAN Number"><input className="bv-inp" value={form.panNumber} onChange={set("panNumber")} placeholder="AAAAA0000A" /></Field>
+          <Card padding="lg">
+            <div className="flex items-center gap-2.5 text-base font-extrabold text-primary mb-5">
+              <FaUser className="text-accent" size={16} aria-hidden="true" />Owner / Contact Details
             </div>
-          </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Owner Name *"><Input value={form.ownerName} onChange={set("ownerName")} /></Field>
+              <Field label="Email *"><Input type="email" value={form.email} onChange={set("email")} /></Field>
+              <Field label="Phone *"><Input value={form.phone} onChange={set("phone")} placeholder="10-digit mobile number" /></Field>
+              <Field label="Business Type">
+                <Select
+                  value={form.businessType}
+                  onChange={set("businessType")}
+                  options={[
+                    { value: "individual", label: "Individual" },
+                    { value: "proprietorship", label: "Proprietorship" },
+                    { value: "partnership", label: "Partnership" },
+                    { value: "pvtltd", label: "Pvt. Ltd." },
+                  ]}
+                />
+              </Field>
+              <Field label="GST Number"><Input value={form.gstNumber} onChange={set("gstNumber")} placeholder="15-digit GST" /></Field>
+              <Field label="PAN Number"><Input value={form.panNumber} onChange={set("panNumber")} placeholder="AAAAA0000A" /></Field>
+            </div>
+          </Card>
 
           {/* Address */}
-          <div className="bv-card">
-            <div className="bv-sec-title"><FaMapMarkerAlt color="#c9a84c" size={16} />Shop Address & Service Area</div>
-            <div className="bv-grid">
-              <Field label="Address Line 1 *" full={true}><input className="bv-inp" value={form.addressLine1} onChange={set("addressLine1")} placeholder="Shop no., Street" /></Field>
-              <Field label="Address Line 2"><input className="bv-inp" value={form.addressLine2} onChange={set("addressLine2")} /></Field>
-              <Field label="City *"><input className="bv-inp" value={form.city} onChange={set("city")} /></Field>
-              <Field label="State *"><input className="bv-inp" value={form.state} onChange={set("state")} /></Field>
-              <Field label="Pincode *"><input className="bv-inp" value={form.pincode} onChange={set("pincode")} placeholder="6-digit pincode" maxLength={6} /></Field>
+          <Card padding="lg">
+            <div className="flex items-center gap-2.5 text-base font-extrabold text-primary mb-5">
+              <FaMapMarkerAlt className="text-accent" size={16} aria-hidden="true" />Shop Address & Service Area
             </div>
-          </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Address Line 1 *" full><Input value={form.addressLine1} onChange={set("addressLine1")} placeholder="Shop no., Street" /></Field>
+              <Field label="Address Line 2"><Input value={form.addressLine2} onChange={set("addressLine2")} /></Field>
+              <Field label="City *"><Input value={form.city} onChange={set("city")} /></Field>
+              <Field label="State *"><Input value={form.state} onChange={set("state")} /></Field>
+              <Field label="Pincode *"><Input value={form.pincode} onChange={set("pincode")} placeholder="6-digit pincode" maxLength={6} /></Field>
+            </div>
+          </Card>
 
           {/* Bank Details */}
-          <div className="bv-card">
-            <div className="bv-sec-title"><FaUniversity color="#c9a84c" size={16} />Bank Account Details</div>
-            <div className="bv-grid">
-              <Field label="Account Holder Name"><input className="bv-inp" value={form.bankHolder} onChange={set("bankHolder")} /></Field>
-              <Field label="Account Number"><input className="bv-inp" value={form.bankAccount} onChange={set("bankAccount")} /></Field>
-              <Field label="IFSC Code"><input className="bv-inp" value={form.bankIFSC} onChange={set("bankIFSC")} placeholder="SBIN0001234" /></Field>
-              <Field label="Bank Name"><input className="bv-inp" value={form.bankName} onChange={set("bankName")} /></Field>
+          <Card padding="lg">
+            <div className="flex items-center gap-2.5 text-base font-extrabold text-primary mb-5">
+              <FaUniversity className="text-accent" size={16} aria-hidden="true" />Bank Account Details
             </div>
-          </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Account Holder Name"><Input value={form.bankHolder} onChange={set("bankHolder")} /></Field>
+              <Field label="Account Number"><Input value={form.bankAccount} onChange={set("bankAccount")} /></Field>
+              <Field label="IFSC Code"><Input value={form.bankIFSC} onChange={set("bankIFSC")} placeholder="SBIN0001234" /></Field>
+              <Field label="Bank Name"><Input value={form.bankName} onChange={set("bankName")} /></Field>
+            </div>
+          </Card>
 
           {/* Documents */}
-          <div className="bv-card">
-            <div className="bv-sec-title"><FaUpload color="#c9a84c" size={16} />Documents Upload</div>
-            <div className="bv-grid">
+          <Card padding="lg">
+            <div className="flex items-center gap-2.5 text-base font-extrabold text-primary mb-5">
+              <FiUpload className="text-accent" size={16} aria-hidden="true" />Documents Upload
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[
                 ["shopLogo", "Shop Logo (Image)"],
                 ["gstCertificate", "GST Certificate (PDF/Image)"],
@@ -307,21 +304,26 @@ const BecomeVendor = () => {
                 ["cancelledCheque", "Cancelled Cheque"],
               ].map(([k, label]) => (
                 <Field key={k} label={label}>
-                  <label className={`bv-upload ${files[k] ? "has" : ""}`}>
-                    <FaUpload size={16} color={files[k] ? "#c9a84c" : "#94a3b8"} />
-                    <div style={{ fontSize: 12, color: files[k] ? "#92400e" : "#94a3b8", marginTop: 6 }}>
+                  <label
+                    className={cn(
+                      "flex flex-col items-center justify-center border-2 border-dashed rounded-[var(--radius-sm)] p-5 text-center cursor-pointer transition-colors duration-150",
+                      files[k] ? "border-[var(--accent-primary)] bg-accent-tint" : "border-default hover:border-strong"
+                    )}
+                  >
+                    <FiUpload size={16} className={files[k] ? "text-accent" : "text-muted"} aria-hidden="true" />
+                    <div className={cn("text-xs mt-1.5", files[k] ? "text-accent" : "text-muted")}>
                       {files[k] ? files[k].name : "Choose file"}
                     </div>
-                    <input type="file" accept="image/*,.pdf" onChange={setFile(k)} style={{ display: "none" }} />
+                    <input type="file" accept="image/*,.pdf" onChange={setFile(k)} className="hidden" />
                   </label>
                 </Field>
               ))}
             </div>
-          </div>
+          </Card>
 
-          <button type="submit" className="bv-submit" disabled={submitting}>
-            {submitting ? "Submitting..." : <><FaCheckCircle size={14} />Submit Application</>}
-          </button>
+          <Button type="submit" variant="primary" className="w-full" loading={submitting} icon={submitting ? undefined : FiCheckCircle}>
+            Submit Application
+          </Button>
         </form>
       </div>
     </div>

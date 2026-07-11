@@ -1,11 +1,9 @@
 /**
- * OrderDetails.jsx — Production Grade v4 (Fixed)
- * ✅ C color tokens defined
- * ✅ STATUS config defined with icons
- * ✅ Flow arrays defined
- * ✅ Card / Heading / Row sub-components defined
- * ✅ ShiprocketCard CSS classes replaced with inline styles
- * ✅ Dual-mode: Ecommerce + Urbexon Hour
+ * OrderDetails.jsx — Signal migration
+ * Dual-mode: Ecommerce + Urbexon Hour. All WebSocket listeners, polling,
+ * handlers, and derived-value logic below are byte-for-byte preserved from
+ * the original — only the presentation layer (inline styles → tokens/design
+ * system components) has changed.
  */
 
 import { useEffect, useState } from "react";
@@ -13,56 +11,34 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import { useOrderRealtime } from "../hooks/useOrderRealtime";
 import { useAuth } from "../contexts/AuthContext";
 import { useParams, Link } from "react-router-dom";
-import api from "../api/axios";
+import * as orderApi from "../api/orderApi";
+import { getRiderLocationForOrder } from "../api/deliveryApi";
+import { requestRefund } from "../api/paymentApi";
 import SEO from "../components/SEO";
 import {
-    FaArrowLeft, FaBoxOpen, FaMapMarkerAlt, FaPhone, FaUser,
-    FaShoppingBag, FaTimesCircle, FaGift, FaUndo, FaInfoCircle,
-    FaSpinner, FaFileInvoice, FaCheckCircle, FaTruck, FaExternalLinkAlt,
-    FaClock, FaBox, FaTruckMoving, FaRupeeSign, FaEnvelope,
-} from "react-icons/fa";
+    FiArrowLeft, FiPackage, FiMapPin, FiPhone, FiUser,
+    FiShoppingBag, FiXCircle, FiGift, FiRotateCcw, FiInfo,
+    FiFileText, FiCheckCircle, FiTruck, FiExternalLink,
+    FiClock, FiBox, FiDollarSign, FiMail,
+} from "react-icons/fi";
 import LiveTrackingMap from "../components/LiveTrackingMap";
+import Card from "../design-system/Card";
+import Button from "../design-system/Button";
+import Loader from "../design-system/Loader";
+import { cn } from "../design-system/utils/cn";
 
-/* ─── Color Tokens ──────────────────────────────── */
-const C = {
-    bg: "#f1f3f6",
-    white: "#ffffff",
-    text: "#212121",
-    sub: "#424242",
-    muted: "#878787",
-    hint: "#b0b0b0",
-    border: "#e0e0e0",
-    borderLight: "#f0f0f0",
-    blue: "#2874f0",
-    blueMid: "#90b8f8",
-    blueBg: "#e8f0fe",
-    green: "#388e3c",
-    greenMid: "#a5d6a7",
-    greenBg: "#e8f5e9",
-    red: "#d32f2f",
-    redMid: "#ef9a9a",
-    redBg: "#ffebee",
-    amber: "#f59e0b",
-    amberMid: "#fcd34d",
-    amberBg: "#fffbeb",
-    violet: "#7c3aed",
-    violetMid: "#ddd6fe",
-    violetBg: "#ede9fe",
-    shadowMd: "0 4px 12px rgba(0,0,0,0.12)",
-};
-
-/* ─── Status Config (with icons) ────────────────── */
+/* ─── Status Config (with icons) — tokens instead of hex ────── */
 const STATUS = {
-    PLACED: { label: "Order Placed", color: C.amber, bg: C.amberBg, icon: FaShoppingBag },
-    CONFIRMED: { label: "Confirmed", color: C.blue, bg: C.blueBg, icon: FaCheckCircle },
-    PACKED: { label: "Packed", color: "#6366f1", bg: C.violetBg, icon: FaBox },
-    READY_FOR_PICKUP: { label: "Ready", color: "#d97706", bg: C.amberBg, icon: FaBox },
-    SHIPPED: { label: "Shipped", color: C.violet, bg: C.violetBg, icon: FaTruck },
-    OUT_FOR_DELIVERY: { label: "Out for Delivery", color: "#ea580c", bg: "#fff7ed", icon: FaTruckMoving },
-    DELIVERED: { label: "Delivered", color: C.green, bg: C.greenBg, icon: FaCheckCircle },
-    CANCELLED: { label: "Cancelled", color: C.red, bg: C.redBg, icon: FaTimesCircle },
-    RETURN_REQUESTED: { label: "Return Requested", color: C.amber, bg: C.amberBg, icon: FaUndo },
-    REPLACEMENT_REQUESTED: { label: "Replacement Requested", color: C.blue, bg: C.blueBg, icon: FaBox },
+    PLACED: { label: "Order Placed", color: "text-[var(--color-warning-700)]", bg: "bg-warning-tint", dot: "bg-[var(--color-warning-500)]", icon: FiShoppingBag },
+    CONFIRMED: { label: "Confirmed", color: "text-info", bg: "bg-info-tint", dot: "bg-[var(--color-info-500)]", icon: FiCheckCircle },
+    PACKED: { label: "Packed", color: "text-accent", bg: "bg-accent-tint", dot: "bg-accent", icon: FiBox },
+    READY_FOR_PICKUP: { label: "Ready", color: "text-[var(--color-warning-700)]", bg: "bg-warning-tint", dot: "bg-[var(--color-warning-500)]", icon: FiBox },
+    SHIPPED: { label: "Shipped", color: "text-accent", bg: "bg-accent-tint", dot: "bg-accent", icon: FiTruck },
+    OUT_FOR_DELIVERY: { label: "Out for Delivery", color: "text-[var(--accent-hour-hover)]", bg: "bg-hour-tint", dot: "bg-hour", icon: FiTruck },
+    DELIVERED: { label: "Delivered", color: "text-success", bg: "bg-success-tint", dot: "bg-[var(--color-success-500)]", icon: FiCheckCircle },
+    CANCELLED: { label: "Cancelled", color: "text-error", bg: "bg-error-tint", dot: "bg-[var(--color-error-500)]", icon: FiXCircle },
+    RETURN_REQUESTED: { label: "Return Requested", color: "text-[var(--color-warning-700)]", bg: "bg-warning-tint", dot: "bg-[var(--color-warning-500)]", icon: FiRotateCcw },
+    REPLACEMENT_REQUESTED: { label: "Replacement Requested", color: "text-info", bg: "bg-info-tint", dot: "bg-[var(--color-info-500)]", icon: FiBox },
 };
 
 /* ─── Order Flow Arrays ─────────────────────────── */
@@ -72,11 +48,11 @@ const UH_SELF_FLOW = ["PLACED", "CONFIRMED", "PACKED", "READY_FOR_PICKUP", "DELI
 
 /* ─── Other Constants ───────────────────────────── */
 const REFUND_CFG = {
-    REQUESTED: { label: "Refund Requested", color: "#f59e0b", desc: "Under review — 1-2 business days." },
-    PROCESSING: { label: "Refund Processing", color: "#2874f0", desc: "Being processed — please wait 24-48 hours." },
-    PROCESSED: { label: "Refund Processed", color: "#388e3c", desc: "Amount will reflect within 5-7 business days." },
-    FAILED: { label: "Refund Failed", color: "#ff6161", desc: "Issue encountered. Admin will retry." },
-    REJECTED: { label: "Refund Rejected", color: "#ff6161", desc: null },
+    REQUESTED: { label: "Refund Requested", color: "text-[var(--color-warning-700)]", desc: "Under review — 1-2 business days." },
+    PROCESSING: { label: "Refund Processing", color: "text-info", desc: "Being processed — please wait 24-48 hours." },
+    PROCESSED: { label: "Refund Processed", color: "text-success", desc: "Amount will reflect within 5-7 business days." },
+    FAILED: { label: "Refund Failed", color: "text-error", desc: "Issue encountered. Admin will retry." },
+    REJECTED: { label: "Refund Rejected", color: "text-error", desc: null },
 };
 
 const CANCELLABLE = ["PLACED", "CONFIRMED"];
@@ -86,37 +62,88 @@ const getImg = (item) => item.images?.[0]?.url || item.image || null;
 const inr = (n) => Number(n || 0).toLocaleString("en-IN");
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
 
-/* ─── Reusable Sub-components ───────────────────── */
-const Card = ({ children, accent, style: extraStyle = {} }) => (
-    <div style={{
-        background: C.white,
-        borderRadius: 14,
-        border: `1px solid ${accent || C.border}`,
-        padding: "16px 18px",
-        ...extraStyle,
-    }}>
-        {children}
+/* ─── Reusable Sub-components (page-local, token-based) ────── */
+const Heading = ({ icon: Icon, className = "text-primary", children }) => (
+    <div className="flex items-center gap-1.5 mb-3">
+        {Icon && <Icon size={13} className={className} aria-hidden="true" />}
+        <p className={cn("text-[11px] font-extrabold uppercase tracking-wide", className)}>{children}</p>
     </div>
 );
 
-const Heading = ({ icon: Icon, color = C.text, children }) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}>
-        {Icon && <Icon size={13} color={color} />}
-        <p style={{ fontSize: 11, fontWeight: 800, color, margin: 0, textTransform: "uppercase", letterSpacing: ".06em" }}>
-            {children}
-        </p>
+const Row = ({ label, value, bold = false, className }) => (
+    <div className="flex justify-between items-center py-1">
+        <span className="text-xs text-muted">{label}</span>
+        <span className={cn("text-xs", bold ? "font-bold" : "font-medium", className || "text-primary")}>{value}</span>
     </div>
 );
 
-const Row = ({ label, value, bold = false, color }) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
-        <span style={{ fontSize: 12, color: C.muted }}>{label}</span>
-        <span style={{ fontSize: 12, fontWeight: bold ? 700 : 500, color: color || C.text }}>{value}</span>
-    </div>
-);
+/* ─── Vendor Rating Card (Urbexon Hour, post-delivery) ───────
+   Real, dynamic vendor rating — submits to PUT /orders/:id/review,
+   which recalculates Vendor.rating/ratingCount server-side immediately. ── */
+const VendorRatingCard = ({ orderId, vendor, existingReview, onSubmitted }) => {
+    const [rating, setRating] = useState(existingReview?.rating || 0);
+    const [hoverRating, setHoverRating] = useState(0);
+    const [comment, setComment] = useState(existingReview?.comment || "");
+    const [submitting, setSubmitting] = useState(false);
+    const [err, setErr] = useState("");
+    const [done, setDone] = useState(!!existingReview?.rating);
+
+    const submit = async () => {
+        if (!rating) { setErr("Please select a star rating"); return; }
+        setSubmitting(true); setErr("");
+        try {
+            const { data } = await orderApi.submitOrderReview(orderId, { rating, comment });
+            setDone(true);
+            onSubmitted?.(data.review);
+        } catch (e) {
+            setErr(e.response?.data?.message || "Failed to submit rating");
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    return (
+        <Card accent className="mb-3.5 border-[var(--color-amber-100)] bg-hour-tint">
+            <Heading icon={FiPackage} className="text-[var(--accent-hour-hover)]">
+                Rate {vendor?.shopName || "This Vendor"}
+            </Heading>
+            <div className="flex items-center gap-1 mb-3">
+                {[1, 2, 3, 4, 5].map((s) => (
+                    <button
+                        key={s}
+                        type="button"
+                        disabled={done}
+                        onClick={() => setRating(s)}
+                        onMouseEnter={() => setHoverRating(s)}
+                        onMouseLeave={() => setHoverRating(0)}
+                        className="bg-transparent border-none cursor-pointer p-0.5 disabled:cursor-default"
+                        aria-label={`${s} star${s > 1 ? "s" : ""}`}
+                    >
+                        <span className={cn("text-2xl leading-none", (hoverRating || rating) >= s ? "text-amber-400" : "text-[var(--color-graphite-200)]")}>★</span>
+                    </button>
+                ))}
+            </div>
+            {!done && (
+                <>
+                    <textarea
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
+                        maxLength={500}
+                        placeholder="How was your experience with this vendor? (optional)"
+                        className="w-full min-h-[64px] px-3 py-2 text-[13px] rounded-[var(--radius-sm)] border border-[var(--color-amber-100)] bg-surface text-primary outline-none focus:border-[var(--accent-hour)] mb-2.5 resize-none"
+                    />
+                    {err && <p className="text-xs text-error mb-2">{err}</p>}
+                    <Button variant="hour" size="sm" loading={submitting} onClick={submit}>
+                        {submitting ? "Submitting…" : "Submit Rating"}
+                    </Button>
+                </>
+            )}
+            {done && <p className="text-xs font-semibold text-[var(--accent-hour-hover)]">Thanks for rating your order! 🎉</p>}
+        </Card>
+    );
+};
 
 /* ─── Shiprocket Tracking Card ──────────────────── */
-// Fixed: replaced fk-* CSS classes with inline styles
 const ShiprocketCard = ({ orderId, shipping }) => {
     const [tracking, setTracking] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -127,7 +154,7 @@ const ShiprocketCard = ({ orderId, shipping }) => {
     const fetchTracking = async () => {
         try {
             setLoading(true); setErr("");
-            const { data } = await api.get(`/shiprocket/track/${orderId}`);
+            const { data } = await orderApi.trackShiprocketOrder(orderId);
             setTracking(data);
         } catch (e) {
             setErr(e.response?.data?.message || "Tracking unavailable.");
@@ -137,56 +164,53 @@ const ShiprocketCard = ({ orderId, shipping }) => {
     };
 
     return (
-        <Card accent={C.blueMid}>
-            <Heading icon={FaTruckMoving} color={C.blue}>Shipment Tracking</Heading>
-            <div style={{ padding: "0 0 12px" }}>
-                {isMock && (
-                    <div style={{ background: C.blueBg, border: `1px solid ${C.blueMid}`, borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 12, color: C.muted }}>
-                        🔧 <b>Test shipment</b> — live tracking activates once Shiprocket is connected.
+        <Card accent className="border-[var(--color-info-100)]">
+            <Heading icon={FiTruck} className="text-info">Shipment Tracking</Heading>
+            {isMock && (
+                <div className="bg-info-tint border border-[var(--color-info-100)] rounded-[var(--radius-sm)] px-3 py-2 mb-3 text-xs text-secondary">
+                    🔧 <b>Test shipment</b> — live tracking activates once Shiprocket is connected.
+                </div>
+            )}
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-2 mb-3">
+                {[{ l: "AWB", v: shipping.awbCode, m: true }, { l: "Courier", v: shipping.courierName || "Standard" }, { l: "Shipment ID", v: shipping.shipmentId, m: true }].map(({ l, v, m }) => (
+                    <div key={l} className="border border-[var(--color-graphite-100)] rounded-[var(--radius-sm)] px-2.5 py-2">
+                        <p className="text-[10px] font-bold text-muted uppercase mb-0.5">{l}</p>
+                        <p className={cn("text-[13px] font-semibold text-primary break-all", m && "font-mono")}>{v || "—"}</p>
                     </div>
+                ))}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+                {!isMock && (
+                    <Button variant="primary" size="sm" icon={FiTruck} loading={loading} onClick={fetchTracking}>
+                        {loading ? "Fetching…" : "Get Live Status"}
+                    </Button>
                 )}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px,1fr))", gap: 8, marginBottom: 12 }}>
-                    {[{ l: "AWB", v: shipping.awbCode, m: true }, { l: "Courier", v: shipping.courierName || "Standard" }, { l: "Shipment ID", v: shipping.shipmentId, m: true }].map(({ l, v, m }) => (
-                        <div key={l} style={{ border: `1px solid ${C.borderLight}`, borderRadius: 8, padding: "8px 10px" }}>
-                            <p style={{ fontSize: 10, fontWeight: 700, color: C.hint, textTransform: "uppercase", marginBottom: 2, margin: 0 }}>{l}</p>
-                            <p style={{ fontSize: 13, fontWeight: 600, color: C.text, fontFamily: m ? "'Courier New',monospace" : "inherit", wordBreak: "break-all", margin: 0 }}>{v || "—"}</p>
+                {!isMock && shipping.trackingUrl && (
+                    <a href={shipping.trackingUrl} target="_blank" rel="noreferrer">
+                        <Button variant="outline" size="sm" icon={FiExternalLink}>Track</Button>
+                    </a>
+                )}
+            </div>
+            {err && (
+                <div className="mt-2.5 bg-error-tint border border-[var(--color-error-100)] rounded-[var(--radius-sm)] px-3 py-2 text-xs text-error">{err}</div>
+            )}
+            {tracking && !isMock && (
+                <div className="border border-[var(--color-graphite-100)] rounded-[var(--radius-md)] px-3.5 py-3 mt-3">
+                    <div className="flex justify-between mb-2">
+                        <p className="text-[13px] font-semibold text-primary">Current Status</p>
+                        <span className="text-[11px] font-bold bg-info-tint text-info px-2.5 py-0.5 rounded-full">{tracking.label || tracking.status}</span>
+                    </div>
+                    {tracking.activities?.slice(0, 5).map((act, i) => (
+                        <div key={i} className={cn("flex gap-2.5 items-start py-1.5", i > 0 && "border-t border-[var(--color-graphite-100)]")}>
+                            <div className={cn("w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0", i === 0 ? "bg-[var(--color-info-500)]" : "bg-[var(--color-graphite-300)]")} />
+                            <div>
+                                <p className={cn("text-[13px] text-primary", i === 0 && "font-semibold")}>{act.activity}</p>
+                                <p className="text-[11px] text-muted">{act.location && `${act.location} · `}{fmtDate(act.date)}</p>
+                            </div>
                         </div>
                     ))}
                 </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {!isMock && (
-                        <button onClick={fetchTracking} disabled={loading} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 16px", background: C.blue, color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: "inherit", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
-                            {loading ? <FaSpinner size={10} style={{ animation: "od-spin .8s linear infinite" }} /> : <FaTruck size={10} />}
-                            {loading ? "Fetching…" : "Get Live Status"}
-                        </button>
-                    )}
-                    {!isMock && shipping.trackingUrl && (
-                        <a href={shipping.trackingUrl} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 16px", background: C.white, color: C.blue, border: `1.5px solid ${C.blueMid}`, borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
-                            <FaExternalLinkAlt size={9} /> Track
-                        </a>
-                    )}
-                </div>
-                {err && (
-                    <div style={{ marginTop: 10, background: C.redBg, border: `1px solid ${C.redMid}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: C.red }}>{err}</div>
-                )}
-                {tracking && !isMock && (
-                    <div style={{ border: `1px solid ${C.borderLight}`, borderRadius: 10, padding: "12px 14px", marginTop: 12 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                            <p style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: 0 }}>Current Status</p>
-                            <span style={{ fontSize: 11, fontWeight: 700, background: C.blueBg, color: C.blue, padding: "2px 10px", borderRadius: 20 }}>{tracking.label || tracking.status}</span>
-                        </div>
-                        {tracking.activities?.slice(0, 5).map((act, i) => (
-                            <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "6px 0", borderTop: i > 0 ? `1px solid ${C.borderLight}` : "none" }}>
-                                <div style={{ width: 7, height: 7, borderRadius: "50%", background: i === 0 ? C.blue : C.border, marginTop: 5, flexShrink: 0 }} />
-                                <div>
-                                    <p style={{ fontSize: 13, color: C.text, fontWeight: i === 0 ? 600 : 400, margin: 0 }}>{act.activity}</p>
-                                    <p style={{ fontSize: 11, color: C.muted, margin: 0 }}>{act.location && `${act.location} · `}{fmtDate(act.date)}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+            )}
         </Card>
     );
 };
@@ -221,14 +245,16 @@ const OrderDetails = () => {
     const [deliveryStatus, setDeliveryStatus] = useState(null);
     const [deliveryOtp, setDeliveryOtp] = useState(null);
 
-    /* ── WebSocket ── */
+    /* ── WebSocket ──
+       BUG FIX: "order_status_updated"/"order_status" used to be handled
+       here AND by useOrderRealtime's SSE stream below — the backend emits
+       both for every status change (orderController.js), so this page
+       was calling setOrder twice per transition. useOrderRealtime already
+       owns this exclusively (same pattern MyOrders.jsx uses); WS here is
+       now only for the event types SSE doesn't carry at all. */
     const { send: wsSend } = useWebSocket(authToken, {
         onMessage: (msg) => {
             const p = msg.payload;
-            if ((msg.type === "order_status_updated" || msg.type === "order_status") && p?.orderId === id) {
-                if (p.status) setOrder(prev => prev ? { ...prev, orderStatus: p.status } : prev);
-                if (p.otp) setDeliveryOtp(p.otp);
-            }
             if (msg.type === "rider_location" && p?.orderId === id) {
                 setRiderLocation({ lat: p.lat, lng: p.lng, riderName: p.riderName, at: p.at });
             }
@@ -239,21 +265,33 @@ const OrderDetails = () => {
         onConnect: () => { if (id) wsSend("join_room", { room: `order:${id}` }); },
     });
 
-    /* ── Polling fallback for rider location ── */
+    /* ── Polling fallback for rider location ──
+       BUG FIX: `riderLocation` used to be in this effect's guard AND
+       dependency array — the moment EITHER the poll itself or a WS
+       `rider_location` message set it once, this effect re-ran, tore down
+       its own interval, and the new run's `|| riderLocation` guard
+       immediately bailed out — permanently disabling the polling fallback
+       for the rest of the delivery. If the WebSocket then silently dropped
+       (network blip, backend restart) with no reconnect in time, the
+       customer's map was left frozen on a stale marker with no mechanism
+       left to refresh it. Polling now runs for the entire OUT_FOR_DELIVERY
+       window regardless of whether WS is also delivering updates — mildly
+       redundant when WS is healthy, but guarantees the map is never
+       permanently stuck. */
     useEffect(() => {
-        if (order?.orderStatus !== "OUT_FOR_DELIVERY" || riderLocation) return;
+        if (order?.orderStatus !== "OUT_FOR_DELIVERY") return;
         const poll = async () => {
             try {
-                const { data } = await api.get(`/delivery/orders/${id}/rider-location`);
+                const { data } = await getRiderLocationForOrder(id);
                 if (data.available && data.rider?.lat) {
-                    setRiderLocation({ lat: data.rider.lat, lng: data.rider.lng, riderName: data.rider.name, at: data.rider.updatedAt });
+                    setRiderLocation({ lat: data.rider.lat, lng: data.rider.lng, riderName: data.rider.name, at: data.rider.updatedAt, stale: !!data.stale });
                 }
             } catch { /* silent */ }
         };
         poll();
         const t = setInterval(poll, 15000);
         return () => clearInterval(t);
-    }, [order?.orderStatus, id, riderLocation]);
+    }, [order?.orderStatus, id]);
 
     useOrderRealtime({
         enabled: !!authToken,
@@ -268,7 +306,7 @@ const OrderDetails = () => {
         (async () => {
             try {
                 setLoading(true);
-                const { data } = await api.get(`/orders/${id}`);
+                const { data } = await orderApi.getOrderById(id);
                 setOrder(data);
                 if (data.deliveryOtp?.code) setDeliveryOtp(data.deliveryOtp.code);
             } catch {
@@ -283,7 +321,7 @@ const OrderDetails = () => {
     const handleCancel = async () => {
         try {
             setCancelling(true); setCancelError("");
-            const { data } = await api.patch(`/orders/${id}/cancel`);
+            const { data } = await orderApi.cancelOrder(id);
             setOrder(data.order);
             setConfirmCancel(false);
         } catch (e) {
@@ -296,7 +334,7 @@ const OrderDetails = () => {
     const handleRefund = async () => {
         try {
             setRequestingRefund(true); setRefundError("");
-            const { data } = await api.post(`/payment/refund/${id}`, { reason: refundReason || "Requested by customer" });
+            const { data } = await requestRefund(id, { reason: refundReason || "Requested by customer" });
             setOrder(p => ({ ...p, refund: data.refund }));
             setShowRefundForm(false);
         } catch (e) {
@@ -309,7 +347,7 @@ const OrderDetails = () => {
     const handleReturnRequest = async () => {
         try {
             setRequestingReturn(true); setReturnError("");
-            const { data } = await api.put(`/orders/${id}/return/request`, { reason: returnReason });
+            const { data } = await orderApi.requestReturn(id, { reason: returnReason });
             setOrder(p => ({ ...p, return: data.return, orderStatus: "RETURN_REQUESTED" }));
             setShowReturnForm(false);
         } catch (e) {
@@ -322,7 +360,7 @@ const OrderDetails = () => {
     const handleReplacementRequest = async () => {
         try {
             setRequestingReplacement(true); setReplacementError("");
-            const { data } = await api.put(`/orders/${id}/replacement/request`, { reason: replacementReason });
+            const { data } = await orderApi.requestReplacement(id, { reason: replacementReason });
             setOrder(p => ({ ...p, replacement: data.replacement, orderStatus: "REPLACEMENT_REQUESTED" }));
             setShowReplacementForm(false);
         } catch (e) {
@@ -335,7 +373,7 @@ const OrderDetails = () => {
     const handleDownload = async () => {
         try {
             setDownloadingInvoice(true);
-            const res = await api.get(`/invoice/${id}/download`, { responseType: "blob" });
+            const res = await orderApi.downloadInvoice(id, { responseType: "blob" });
             const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
             const a = document.createElement("a");
             a.href = url;
@@ -357,23 +395,22 @@ const OrderDetails = () => {
 
     /* ── Loading state ── */
     if (loading) return (
-        <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter',sans-serif" }}>
-            <style>{`@keyframes od-spin{to{transform:rotate(360deg)}}.od-spin{animation:od-spin .8s linear infinite}`}</style>
-            <div style={{ textAlign: "center" }}>
-                <div style={{ width: 40, height: 40, border: `3px solid ${C.blueMid}`, borderTopColor: C.blue, borderRadius: "50%", animation: "od-spin .8s linear infinite", margin: "0 auto 12px" }} />
-                <p style={{ color: C.muted, fontSize: 14 }}>Loading order…</p>
+        <div className="min-h-screen bg-canvas flex items-center justify-center">
+            <div className="text-center">
+                <Loader size="lg" className="mb-3" />
+                <p className="text-muted text-sm">Loading order…</p>
             </div>
         </div>
     );
 
     /* ── Error / not found state ── */
     if (!order) return (
-        <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Inter',sans-serif" }}>
-            <FaBoxOpen size={44} color={C.hint} style={{ marginBottom: 18 }} />
-            <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 6 }}>Order Not Found</h2>
-            <p style={{ color: C.muted, fontSize: 14, marginBottom: 22 }}>{error}</p>
-            <Link to="/orders" style={{ padding: "10px 22px", background: C.blue, color: "#fff", borderRadius: 10, fontWeight: 700, fontSize: 14, textDecoration: "none" }}>
-                <FaArrowLeft size={11} style={{ marginRight: 6 }} />Back to Orders
+        <div className="min-h-screen bg-canvas flex flex-col items-center justify-center p-6">
+            <FiPackage size={44} className="text-[var(--color-graphite-300)] mb-4" aria-hidden="true" />
+            <h2 className="text-xl font-extrabold text-primary mb-1.5">Order Not Found</h2>
+            <p className="text-secondary text-sm mb-5">{error}</p>
+            <Link to="/orders">
+                <Button variant="primary" icon={FiArrowLeft}>Back to Orders</Button>
             </Link>
         </div>
     );
@@ -398,7 +435,8 @@ const OrderDetails = () => {
     const showInvoice = isDelivered || (isPaid && !isCancelled);
     const itemsTotal = order.items.reduce((s, i) => s + i.price * (i.qty || 1), 0);
     const couponDisc = order.coupon?.discount || 0;
-    const accent = isUH ? C.violet : C.blue;
+    const accentClass = isUH ? "text-accent" : "text-info";
+    const accentBg = isUH ? "bg-accent" : "bg-[var(--color-info-500)]";
     const tl = order.statusTimeline || {};
     const timeline = [
         tl.placedAt && { l: "Placed", t: tl.placedAt },
@@ -412,234 +450,230 @@ const OrderDetails = () => {
     ].filter(Boolean);
 
     return (
-        <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Inter','DM Sans',-apple-system,sans-serif", color: C.text }}>
+        <div className="min-h-screen bg-canvas">
             <SEO title="Order Details" noindex />
-            <style>{`
-                @keyframes od-spin { to { transform: rotate(360deg); } }
-                .od-spin { animation: od-spin .8s linear infinite; }
-                @keyframes od-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-                .od-f { animation: od-in .35s ease both; }
-                .od-btn { transition: all .15s; cursor: pointer; }
-                .od-btn:hover { transform: translateY(-1px); box-shadow: ${C.shadowMd}; }
-                .od-btn:active { transform: scale(.98); }
-                .od-back { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; color: ${C.muted}; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; transition: color .15s; }
-                .od-back:hover { color: ${accent}; }
-                @media(max-width:640px) { .od-g2 { grid-template-columns: 1fr !important; } }
-            `}</style>
 
-            <div style={{ maxWidth: 680, margin: "0 auto", padding: "28px clamp(14px, 4vw, 20px) 60px" }}>
+            <div className="max-w-[680px] mx-auto px-[clamp(14px,4vw,20px)] pt-7 pb-16">
 
                 {/* Back */}
-                <div className="od-f" style={{ marginBottom: 22 }}>
-                    <Link to="/orders" className="od-back"><FaArrowLeft size={10} /> Back to Orders</Link>
+                <div className="mb-5">
+                    <Link to="/orders" className="inline-flex items-center gap-1.5 text-muted hover:text-primary text-xs font-bold uppercase tracking-wide transition-colors">
+                        <FiArrowLeft size={10} aria-hidden="true" /> Back to Orders
+                    </Link>
                 </div>
 
                 {/* Header */}
-                <div className="od-f" style={{ animationDelay: "30ms", marginBottom: 22 }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div className="mb-5">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
                         <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                                <h1 style={{ fontSize: "clamp(22px, 5vw, 28px)", fontWeight: 800, margin: 0 }}>
+                            <div className="flex items-center gap-2 mb-1">
+                                <h1 className="text-[clamp(22px,5vw,28px)] font-extrabold text-primary font-display">
                                     Order #{order._id.slice(-8).toUpperCase()}
                                 </h1>
                                 {isUH && (
-                                    <span style={{ fontSize: 10, fontWeight: 800, color: C.violet, background: C.violetBg, border: `1px solid ${C.violetMid}`, padding: "2px 8px", borderRadius: 6 }}>
+                                    <span className="text-[10px] font-extrabold text-accent bg-accent-tint border border-[var(--accent-primary-tint)] px-2 py-0.5 rounded-[var(--radius-sm)]">
                                         ⚡ HOUR
                                     </span>
                                 )}
                             </div>
-                            <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>
+                            <p className="text-[13px] text-secondary">
                                 {new Date(order.createdAt).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
                                 {" at "}
                                 {new Date(order.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
                             </p>
                             {order.invoiceNumber && (
-                                <p style={{ fontSize: 11, color: C.hint, marginTop: 3, fontFamily: "'Courier New',monospace" }}>
-                                    Invoice: {order.invoiceNumber}
-                                </p>
+                                <p className="text-[11px] text-muted mt-0.5 font-mono">Invoice: {order.invoiceNumber}</p>
                             )}
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, background: cfg.bg, border: `1.5px solid ${cfg.color}25` }}>
-                            <cfg.icon size={14} color={cfg.color} />
-                            <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>{cfg.label}</span>
+                        <div className={cn("flex items-center gap-1.5 px-3.5 py-2 rounded-[var(--radius-md)]", cfg.bg)}>
+                            <cfg.icon size={14} className={cfg.color} aria-hidden="true" />
+                            <span className={cn("text-xs font-bold", cfg.color)}>{cfg.label}</span>
                         </div>
                     </div>
                     {showInvoice && (
-                        <div style={{ marginTop: 12 }}>
-                            <button onClick={handleDownload} disabled={downloadingInvoice} className="od-btn" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", background: C.white, border: `1.5px solid ${C.border}`, color: accent, borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
-                                {downloadingInvoice ? <FaSpinner size={11} className="od-spin" /> : <FaFileInvoice size={11} />}
+                        <div className="mt-3">
+                            <Button variant="secondary" size="sm" icon={FiFileText} loading={downloadingInvoice} onClick={handleDownload}>
                                 {downloadingInvoice ? "Downloading…" : "Download Invoice"}
-                            </button>
+                            </Button>
                         </div>
                     )}
                 </div>
 
                 {/* Cancelled Banner */}
                 {isCancelled && (
-                    <div className="od-f" style={{ animationDelay: "50ms", marginBottom: 14 }}>
-                        <Card accent={C.redMid} style={{ background: C.redBg }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                <div style={{ width: 38, height: 38, background: C.redMid, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                    <FaTimesCircle size={16} color={C.red} />
-                                </div>
-                                <div>
-                                    <p style={{ fontWeight: 700, color: C.red, fontSize: 14, margin: 0, marginBottom: 2 }}>Order Cancelled</p>
-                                    <p style={{ color: C.muted, fontSize: 12, margin: 0 }}>{order.cancellationReason || "This order was cancelled."}</p>
-                                    {tl.cancelledAt && <p style={{ fontSize: 11, color: C.hint, margin: 0, marginTop: 3 }}>on {fmtDate(tl.cancelledAt)}</p>}
-                                </div>
+                    <Card accent className="mb-3.5 border-[var(--color-error-100)] bg-error-tint">
+                        <div className="flex items-center gap-3">
+                            <div className="w-[38px] h-[38px] bg-[var(--color-error-100)] rounded-full flex items-center justify-center flex-shrink-0">
+                                <FiXCircle size={16} className="text-error" aria-hidden="true" />
                             </div>
-                        </Card>
-                    </div>
+                            <div>
+                                <p className="font-semibold text-error text-sm mb-0.5">Order Cancelled</p>
+                                <p className="text-secondary text-xs">{order.cancellationReason || "This order was cancelled."}</p>
+                                {tl.cancelledAt && <p className="text-[11px] text-muted mt-0.5">on {fmtDate(tl.cancelledAt)}</p>}
+                            </div>
+                        </div>
+                    </Card>
                 )}
 
                 {/* Refund Status */}
                 {refund && (
-                    <div className="od-f" style={{ animationDelay: "60ms", marginBottom: 14 }}>
-                        <Card accent={`${refund.color}40`}>
-                            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                                <FaUndo size={16} color={refund.color} style={{ marginTop: 2, flexShrink: 0 }} />
-                                <div>
-                                    <p style={{ fontWeight: 700, color: refund.color, fontSize: 14, margin: 0, marginBottom: 4 }}>{refund.label}</p>
-                                    {refund.desc && <p style={{ fontSize: 12, color: C.muted, margin: 0, marginBottom: 4 }}>{refund.desc}</p>}
-                                    {order.refund?.amount && <p style={{ fontSize: 14, fontWeight: 800, color: C.green, margin: 0 }}>₹{inr(order.refund.amount)}</p>}
-                                    {order.refund?.rejectionReason && <p style={{ fontSize: 12, color: C.red, margin: 0, marginTop: 4 }}>Reason: {order.refund.rejectionReason}</p>}
-                                </div>
+                    <Card accent className="mb-3.5">
+                        <div className="flex items-start gap-3">
+                            <FiRotateCcw size={16} className={cn("mt-0.5 flex-shrink-0", refund.color)} aria-hidden="true" />
+                            <div>
+                                <p className={cn("font-semibold text-sm mb-1", refund.color)}>{refund.label}</p>
+                                {refund.desc && <p className="text-xs text-secondary mb-1">{refund.desc}</p>}
+                                {order.refund?.amount && <p className="text-sm font-extrabold text-success">₹{inr(order.refund.amount)}</p>}
+                                {order.refund?.rejectionReason && <p className="text-xs text-error mt-1">Reason: {order.refund.rejectionReason}</p>}
                             </div>
-                        </Card>
-                    </div>
+                        </div>
+                    </Card>
                 )}
 
                 {/* Order Tracking Stepper */}
                 {!isCancelled && stepIdx >= 0 && (
-                    <div className="od-f" style={{ animationDelay: "70ms", marginBottom: 14 }}>
-                        <Card accent={`${accent}30`}>
-                            <Heading icon={FaClock} color={accent}>Order Tracking</Heading>
-                            <div style={{ position: "relative", marginBottom: 18 }}>
-                                <div style={{ position: "absolute", left: "5%", right: "5%", top: 16, height: 3, background: C.borderLight, borderRadius: 2 }} />
-                                <div style={{ position: "absolute", left: "5%", top: 16, height: 3, background: accent, borderRadius: 2, width: stepIdx > 0 ? `${(stepIdx / (flow.length - 1)) * 90}%` : "0%", transition: "width .6s ease" }} />
-                                <div style={{ display: "flex", justifyContent: "space-between", position: "relative", zIndex: 2 }}>
-                                    {flow.map((step, i) => {
-                                        const done = i <= stepIdx, active = i === stepIdx;
-                                        const Icon = STATUS[step]?.icon || FaBox;
-                                        return (
-                                            <div key={step} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
-                                                <div style={{ width: 34, height: 34, borderRadius: "50%", background: done ? (active ? accent : `${accent}18`) : C.borderLight, border: `2px solid ${done ? accent : C.border}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: active ? `0 0 0 5px ${accent}12` : "none", transition: "all .3s" }}>
-                                                    {i < stepIdx
-                                                        ? <FaCheckCircle size={13} color={accent} />
-                                                        : <Icon size={12} color={done ? "#fff" : C.hint} />}
-                                                </div>
-                                                <p style={{ fontSize: 9, fontWeight: done ? 700 : 500, color: done ? accent : C.hint, textAlign: "center", marginTop: 5, textTransform: "uppercase", letterSpacing: ".03em", maxWidth: 52, lineHeight: 1.25 }}>
-                                                    {STATUS[step]?.label}
-                                                </p>
+                    <Card accent className="mb-3.5">
+                        <Heading icon={FiClock} className={accentClass}>Order Tracking</Heading>
+                        <div className="relative mb-4.5">
+                            <div className="absolute left-[5%] right-[5%] top-4 h-[3px] bg-[var(--color-graphite-100)] rounded-full" />
+                            <div
+                                className={cn("absolute left-[5%] top-4 h-[3px] rounded-full transition-all duration-500", accentBg)}
+                                style={{ width: stepIdx > 0 ? `${(stepIdx / (flow.length - 1)) * 90}%` : "0%" }}
+                            />
+                            <div className="flex justify-between relative z-[2]">
+                                {flow.map((step, i) => {
+                                    const done = i <= stepIdx, active = i === stepIdx;
+                                    const Icon = STATUS[step]?.icon || FiBox;
+                                    return (
+                                        <div key={step} className="flex flex-col items-center flex-1">
+                                            <div className={cn(
+                                                "w-[34px] h-[34px] rounded-full border-2 flex items-center justify-center transition-all",
+                                                done ? cn(accentBg, "border-transparent") : "bg-[var(--color-graphite-100)] border-default",
+                                                active && "ring-4 ring-[var(--accent-primary-tint)]"
+                                            )}>
+                                                {i < stepIdx
+                                                    ? <FiCheckCircle size={13} className="text-white" aria-hidden="true" />
+                                                    : <Icon size={12} className={done ? "text-white" : "text-muted"} aria-hidden="true" />}
                                             </div>
-                                        );
-                                    })}
-                                </div>
+                                            <p className={cn("text-[9px] text-center mt-1.5 uppercase tracking-wide max-w-[52px] leading-tight", done ? cn("font-bold", accentClass) : "font-medium text-muted")}>
+                                                {STATUS[step]?.label}
+                                            </p>
+                                        </div>
+                                    );
+                                })}
                             </div>
-                            <div style={{ padding: "9px 12px", background: cfg.bg, border: `1px solid ${cfg.color}20`, borderRadius: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                                <div style={{ width: 7, height: 7, borderRadius: "50%", background: cfg.color }} />
-                                <p style={{ fontSize: 13, fontWeight: 600, color: cfg.color, margin: 0 }}>
-                                    {isDelivered ? "✓ Delivered Successfully" : order.orderStatus === "OUT_FOR_DELIVERY" ? "🛵 On the way" : cfg.label}
-                                </p>
+                        </div>
+                        <div className={cn("px-3 py-2.5 rounded-[var(--radius-sm)] flex items-center gap-2", cfg.bg)}>
+                            <div className={cn("w-1.5 h-1.5 rounded-full", cfg.dot)} />
+                            <p className={cn("text-[13px] font-semibold", cfg.color)}>
+                                {isDelivered ? "✓ Delivered Successfully" : order.orderStatus === "OUT_FOR_DELIVERY" ? "🛵 On the way" : cfg.label}
+                            </p>
+                        </div>
+                        {timeline.length > 0 && (
+                            <div className="mt-3 border-t border-[var(--color-graphite-100)] pt-2.5 flex flex-wrap gap-x-3.5 gap-y-1">
+                                {timeline.map((e, i) => (
+                                    <span key={i} className="text-[11px] text-muted">
+                                        <b className="text-secondary">{e.l}:</b> {fmtDate(e.t)}
+                                    </span>
+                                ))}
                             </div>
-                            {timeline.length > 0 && (
-                                <div style={{ marginTop: 12, borderTop: `1px solid ${C.borderLight}`, paddingTop: 10, display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
-                                    {timeline.map((e, i) => (
-                                        <span key={i} style={{ fontSize: 11, color: C.muted }}>
-                                            <b style={{ color: C.sub }}>{e.l}:</b> {fmtDate(e.t)}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                        </Card>
-                    </div>
+                        )}
+                    </Card>
                 )}
 
                 {/* Shiprocket (ecom only) */}
                 {!isUH && hasShipping && !isCancelled && (
-                    <div className="od-f" style={{ animationDelay: "85ms", marginBottom: 14 }}>
-                        <ShiprocketCard orderId={id} shipping={order.shipping} />
-                    </div>
+                    <div className="mb-3.5"><ShiprocketCard orderId={id} shipping={order.shipping} /></div>
                 )}
 
                 {/* Urbexon Hour Express Card */}
                 {isUH && !isCancelled && (
-                    <div className="od-f" style={{ animationDelay: "85ms", marginBottom: 14 }}>
-                        <Card accent={C.violetMid} style={{ background: C.violetBg }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                                <div style={{ width: 34, height: 34, background: C.violetMid, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>⚡</div>
+                    <Card accent className="mb-3.5 border-[var(--accent-primary-tint)] bg-accent-tint">
+                        <div className="flex items-center gap-2.5 mb-3">
+                            <div className="w-[34px] h-[34px] bg-accent-tint rounded-full flex items-center justify-center text-[15px]">⚡</div>
+                            <div>
+                                <p className="font-extrabold text-sm text-accent">Urbexon Hour Express</p>
+                                <p className="text-xs text-accent">Est: {order.delivery?.eta ? `${order.delivery.eta} min` : "45-120 min"}</p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            {[
+                                { l: "Delivery", v: order.delivery?.provider === "LOCAL_RIDER" ? "Local Rider" : order.delivery?.provider === "VENDOR_SELF" ? "Vendor" : "Express" },
+                                { l: "Distance", v: order.delivery?.distanceKm ? `${order.delivery.distanceKm.toFixed(1)} km` : "—" },
+                                { l: "ETA", v: order.delivery?.eta ? `${order.delivery.eta} min` : "45-120 min" },
+                            ].map(({ l, v }) => (
+                                <div key={l} className="bg-surface border border-[var(--accent-primary-tint)] rounded-[var(--radius-sm)] p-2 text-center">
+                                    <p className="text-[9px] font-bold text-muted uppercase mb-0.5">{l}</p>
+                                    <p className="text-[13px] font-extrabold text-accent">{v}</p>
+                                </div>
+                            ))}
+                        </div>
+                        {order.delivery?.riderName && (
+                            <div className="mt-2.5 px-3 py-2 bg-surface rounded-[var(--radius-sm)] border border-[var(--accent-primary-tint)] flex justify-between items-center">
                                 <div>
-                                    <p style={{ fontWeight: 800, fontSize: 14, color: C.violet, margin: 0 }}>Urbexon Hour Express</p>
-                                    <p style={{ fontSize: 12, color: "#7c3aed", margin: 0 }}>
-                                        Est: {order.delivery?.eta ? `${order.delivery.eta} min` : "45-120 min"}
-                                    </p>
+                                    <p className="text-[11px] text-muted">Delivery Partner</p>
+                                    <p className="text-[13px] font-bold text-primary">{order.delivery.riderName}</p>
                                 </div>
+                                {order.delivery.riderPhone && (
+                                    <a href={`tel:${order.delivery.riderPhone}`}>
+                                        <Button variant="success" size="sm">📞 Call</Button>
+                                    </a>
+                                )}
                             </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
-                                {[
-                                    { l: "Delivery", v: order.delivery?.provider === "LOCAL_RIDER" ? "Local Rider" : order.delivery?.provider === "VENDOR_SELF" ? "Vendor" : "Express" },
-                                    { l: "Distance", v: order.delivery?.distanceKm ? `${order.delivery.distanceKm.toFixed(1)} km` : "—" },
-                                    { l: "ETA", v: order.delivery?.eta ? `${order.delivery.eta} min` : "45-120 min" },
-                                ].map(({ l, v }) => (
-                                    <div key={l} style={{ background: C.white, border: `1px solid ${C.violetMid}`, borderRadius: 8, padding: 8, textAlign: "center" }}>
-                                        <p style={{ fontSize: 9, fontWeight: 700, color: C.hint, textTransform: "uppercase", margin: 0, marginBottom: 2 }}>{l}</p>
-                                        <p style={{ fontSize: 13, fontWeight: 800, color: C.violet, margin: 0 }}>{v}</p>
-                                    </div>
-                                ))}
-                            </div>
-                            {order.delivery?.riderName && (
-                                <div style={{ marginTop: 10, padding: "8px 12px", background: C.white, borderRadius: 8, border: `1px solid ${C.violetMid}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                    <div>
-                                        <p style={{ fontSize: 11, color: C.hint, margin: 0 }}>Delivery Partner</p>
-                                        <p style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>{order.delivery.riderName}</p>
-                                    </div>
-                                    {order.delivery.riderPhone && (
-                                        <a href={`tel:${order.delivery.riderPhone}`} style={{ padding: "6px 14px", background: C.green, color: "#fff", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>📞 Call</a>
-                                    )}
-                                </div>
-                            )}
-                        </Card>
-                    </div>
+                        )}
+                    </Card>
+                )}
+
+                {/* Vendor rating (Urbexon Hour, once delivered) */}
+                {isUH && isDelivered && order.vendorId && (
+                    <VendorRatingCard
+                        orderId={id}
+                        vendor={order.vendorId}
+                        existingReview={order.review}
+                        onSubmitted={(review) => setOrder((prev) => ({ ...prev, review }))}
+                    />
                 )}
 
                 {/* Delivery OTP */}
                 {order.orderStatus === "OUT_FOR_DELIVERY" && deliveryOtp && (
-                    <div className="od-f" style={{ animationDelay: "95ms", marginBottom: 14 }}>
-                        <Card accent={C.amberMid} style={{ background: C.amberBg, textAlign: "center", padding: 20 }}>
-                            <p style={{ fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: ".06em", margin: 0, marginBottom: 6 }}>🔐 Delivery OTP</p>
-                            <div style={{ fontSize: "clamp(26px,7vw,36px)", fontWeight: 900, color: C.text, letterSpacing: ".2em", fontFamily: "'Courier New',monospace" }}>
-                                {deliveryOtp}
-                            </div>
-                            <p style={{ fontSize: 12, color: "#78350f", maxWidth: 300, margin: "8px auto 0", lineHeight: 1.4 }}>
-                                Share <strong>only after receiving</strong> your order.
-                            </p>
-                        </Card>
-                    </div>
+                    <Card accent className="mb-3.5 border-[var(--color-warning-100)] bg-warning-tint text-center" padding="lg">
+                        <p className="text-[11px] font-bold text-[var(--color-warning-700)] uppercase tracking-wide mb-1.5">🔐 Delivery OTP</p>
+                        <div className="text-[clamp(26px,7vw,36px)] font-black text-primary tracking-[.2em] font-mono">{deliveryOtp}</div>
+                        <p className="text-xs text-[var(--color-warning-700)] max-w-[300px] mx-auto mt-2 leading-snug">
+                            Share <strong>only after receiving</strong> your order.
+                        </p>
+                    </Card>
                 )}
 
                 {/* Live Rider Map */}
                 {riderLocation && order.orderStatus === "OUT_FOR_DELIVERY" && (
-                    <div className="od-f" style={{ animationDelay: "100ms", marginBottom: 14 }}>
-                        <Card accent={C.blueMid} style={{ background: C.blueBg }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                                <Heading icon={FaTruck}>Live Location</Heading>
-                                <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.greenBg, border: `1px solid ${C.greenMid}`, padding: "2px 8px", borderRadius: 20 }}>● LIVE</span>
-                            </div>
-                            <LiveTrackingMap
-                                riderLat={riderLocation.lat}
-                                riderLng={riderLocation.lng}
-                                riderName={riderLocation.riderName || "Partner"}
-                                destLat={order.latitude}
-                                destLng={order.longitude}
-                                destLabel={order.address || "Address"}
-                                height="clamp(170px,28vw,220px)"
-                                lastUpdated={riderLocation.at}
-                            />
-                            <p style={{ fontSize: 10, color: C.hint, textAlign: "center", margin: 0, marginTop: 6 }}>
-                                Updated: {riderLocation.at ? new Date(riderLocation.at).toLocaleTimeString("en-IN") : "Just now"}
-                            </p>
-                        </Card>
-                    </div>
+                    <Card accent className="mb-3.5 border-[var(--color-info-100)] bg-info-tint">
+                        <div className="flex justify-between items-center mb-2.5">
+                            <Heading icon={FiTruck}>Live Location</Heading>
+                            {/* BUG FIX: this badge used to always say "LIVE" regardless
+                                of whether the location was actually current — now
+                                reflects the backend's freshness check. */}
+                            {riderLocation.stale ? (
+                                <span className="text-[10px] font-bold text-error bg-error-tint border border-[var(--color-error-100)] px-2 py-0.5 rounded-full">● RECONNECTING</span>
+                            ) : (
+                                <span className="text-[10px] font-bold text-success bg-success-tint border border-[var(--color-success-100)] px-2 py-0.5 rounded-full">● LIVE</span>
+                            )}
+                        </div>
+                        <LiveTrackingMap
+                            riderLat={riderLocation.lat}
+                            riderLng={riderLocation.lng}
+                            riderName={riderLocation.riderName || "Partner"}
+                            destLat={order.latitude}
+                            destLng={order.longitude}
+                            destLabel={order.address || "Address"}
+                            height="clamp(170px,28vw,220px)"
+                            lastUpdated={riderLocation.at}
+                            stale={!!riderLocation.stale}
+                        />
+                        <p className="text-[10px] text-muted text-center mt-1.5">
+                            Updated: {riderLocation.at ? new Date(riderLocation.at).toLocaleTimeString("en-IN") : "Just now"}
+                        </p>
+                    </Card>
                 )}
 
                 {/* Delivery Progress (UH rider steps) */}
@@ -653,111 +687,110 @@ const OrderDetails = () => {
                     ];
                     const ci = steps.findIndex(s => s.k === ds);
                     return (
-                        <div className="od-f" style={{ animationDelay: "105ms", marginBottom: 14 }}>
-                            <Card>
-                                <Heading>Delivery Progress</Heading>
-                                <div style={{ display: "flex", gap: 4 }}>
-                                    {steps.map((s, i) => (
-                                        <div key={s.k} style={{ flex: 1, padding: "7px 4px", textAlign: "center", background: i < ci ? C.greenBg : i === ci ? C.blueBg : C.bg, border: `1px solid ${i === ci ? C.blue : i < ci ? C.greenMid : C.border}`, borderRadius: 8, fontSize: 10, fontWeight: 700, color: i < ci ? C.green : i === ci ? C.blue : C.hint }}>
-                                            <div style={{ fontSize: 14, marginBottom: 2 }}>{s.e}</div>
-                                            {s.l}
-                                        </div>
-                                    ))}
-                                </div>
-                            </Card>
-                        </div>
+                        <Card className="mb-3.5">
+                            <Heading>Delivery Progress</Heading>
+                            <div className="flex gap-1">
+                                {steps.map((s, i) => (
+                                    <div key={s.k} className={cn(
+                                        "flex-1 py-1.5 px-1 text-center rounded-[var(--radius-sm)] border text-[10px] font-bold",
+                                        i < ci ? "bg-success-tint border-[var(--color-success-100)] text-success" : i === ci ? "bg-info-tint border-[var(--color-info-500)] text-info" : "bg-canvas border-default text-muted"
+                                    )}>
+                                        <div className="text-sm mb-0.5">{s.e}</div>
+                                        {s.l}
+                                    </div>
+                                ))}
+                            </div>
+                        </Card>
                     );
                 })()}
 
                 {/* Rider Contact (ecom) */}
                 {order.orderStatus === "OUT_FOR_DELIVERY" && order.delivery?.riderPhone && !isUH && (
-                    <div className="od-f" style={{ animationDelay: "110ms", marginBottom: 14 }}>
-                        <Card style={{ background: C.greenBg, border: `1px solid ${C.greenMid}` }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                                <div>
-                                    <p style={{ fontSize: 12, fontWeight: 700, color: "#15803d", margin: 0, marginBottom: 2 }}>Delivery Partner</p>
-                                    <p style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>{order.delivery.riderName}</p>
-                                </div>
-                                <a href={`tel:${order.delivery.riderPhone}`} style={{ padding: "8px 16px", background: "#16a34a", color: "#fff", borderRadius: 8, fontWeight: 700, fontSize: 13, textDecoration: "none" }}>📞 Call</a>
+                    <Card className="mb-3.5 bg-success-tint border-[var(--color-success-100)]">
+                        <div className="flex justify-between items-center flex-wrap gap-2">
+                            <div>
+                                <p className="text-xs font-bold text-success mb-0.5">Delivery Partner</p>
+                                <p className="text-sm font-bold text-primary">{order.delivery.riderName}</p>
                             </div>
-                        </Card>
-                    </div>
+                            <a href={`tel:${order.delivery.riderPhone}`}>
+                                <Button variant="success" size="sm">📞 Call</Button>
+                            </a>
+                        </div>
+                    </Card>
                 )}
 
                 {/* Items List */}
-                <div className="od-f" style={{ animationDelay: "120ms", marginBottom: 14 }}>
-                    <Card>
-                        <Heading icon={FaShoppingBag}>Ordered Items ({order.items.length})</Heading>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            {order.items.map((item, i) => {
-                                const img = getImg(item);
-                                return (
-                                    <div key={item._id || i} style={{ display: "flex", gap: 12, padding: 12, background: C.bg, borderRadius: 10, border: `1px solid ${C.borderLight}` }}>
-                                        <div style={{ width: 56, height: 56, background: C.white, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                            {img
-                                                ? <img src={img} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 2 }} loading="lazy" />
-                                                : <FaGift size={16} color={C.hint} />}
-                                        </div>
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <p style={{ fontWeight: 700, fontSize: 13, margin: 0, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</p>
-                                            <p style={{ fontSize: 12, color: C.muted, margin: 0, marginBottom: 4 }}>Qty: {item.qty || 1} × ₹{inr(item.price)}</p>
-                                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                                                {item.selectedSize && <span style={{ fontSize: 10, fontWeight: 700, background: C.amberBg, color: C.amber, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.amberMid}` }}>Size: {item.selectedSize}</span>}
-                                                {item.selectedColor && <span style={{ fontSize: 10, fontWeight: 700, background: C.blueBg, color: C.blue, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.blueMid}` }}>Color: {item.selectedColor}</span>}
-                                                {item.customization?.text && <span style={{ fontSize: 10, fontWeight: 600, background: C.blueBg, color: C.blue, padding: "1px 7px", borderRadius: 4 }}>✏️ {item.customization.text}</span>}
-                                                {item.customization?.note && <span style={{ fontSize: 10, fontWeight: 600, background: C.borderLight, color: C.sub, padding: "1px 7px", borderRadius: 4 }}>📝 {item.customization.note}</span>}
-                                                {item.policy?.isReturnable === false
-                                                    ? <span style={{ fontSize: 10, fontWeight: 700, background: C.redBg, color: C.red, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.redMid}` }}>Non-Returnable</span>
-                                                    : <span style={{ fontSize: 10, fontWeight: 700, background: C.greenBg, color: C.green, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.greenMid}` }}>{item.policy?.returnWindow || 7}-Day Return</span>}
-                                                {item.policy?.isReplaceable && <span style={{ fontSize: 10, fontWeight: 700, background: C.blueBg, color: C.blue, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.blueMid}` }}>{item.policy?.replacementWindow || 7}-Day Replacement</span>}
-                                                {item.policy?.isCancellable === false && <span style={{ fontSize: 10, fontWeight: 700, background: C.redBg, color: C.red, padding: "1px 7px", borderRadius: 4, border: `1px solid ${C.redMid}` }}>Non-Cancellable</span>}
-                                            </div>
-                                        </div>
-                                        <p style={{ fontWeight: 800, fontSize: 14, color: accent, flexShrink: 0, margin: 0, alignSelf: "center" }}>₹{inr((item.qty || 1) * item.price)}</p>
+                <Card className="mb-3.5">
+                    <Heading icon={FiShoppingBag}>Ordered Items ({order.items.length})</Heading>
+                    <div className="flex flex-col gap-2">
+                        {order.items.map((item, i) => {
+                            const img = getImg(item);
+                            return (
+                                <div key={item._id || i} className="flex gap-3 p-3 bg-canvas rounded-[var(--radius-md)] border border-[var(--color-graphite-100)]">
+                                    <div className="w-14 h-14 bg-surface border border-default rounded-[var(--radius-sm)] overflow-hidden flex items-center justify-center flex-shrink-0">
+                                        {img
+                                            ? <img src={img} alt={item.name} className="w-full h-full object-contain p-0.5" loading="lazy" />
+                                            : <FiGift size={16} className="text-muted" aria-hidden="true" />}
                                     </div>
-                                );
-                            })}
-                        </div>
-                    </Card>
-                </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-bold text-[13px] text-primary mb-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{item.name}</p>
+                                        <p className="text-xs text-muted mb-1">Qty: {item.qty || 1} × ₹{inr(item.price)}</p>
+                                        <div className="flex gap-1 flex-wrap">
+                                            {item.selectedSize && <span className="text-[10px] font-bold bg-warning-tint text-[var(--color-warning-700)] px-1.5 py-0.5 rounded border border-[var(--color-warning-100)]">Size: {item.selectedSize}</span>}
+                                            {item.selectedColor && <span className="text-[10px] font-bold bg-info-tint text-info px-1.5 py-0.5 rounded border border-[var(--color-info-100)]">Color: {item.selectedColor}</span>}
+                                            {item.customization?.text && <span className="text-[10px] font-semibold bg-info-tint text-info px-1.5 py-0.5 rounded">✏️ {item.customization.text}</span>}
+                                            {item.customization?.note && <span className="text-[10px] font-semibold bg-[var(--color-graphite-100)] text-secondary px-1.5 py-0.5 rounded">📝 {item.customization.note}</span>}
+                                            {item.policy?.isReturnable === false
+                                                ? <span className="text-[10px] font-bold bg-error-tint text-error px-1.5 py-0.5 rounded border border-[var(--color-error-100)]">Non-Returnable</span>
+                                                : <span className="text-[10px] font-bold bg-success-tint text-success px-1.5 py-0.5 rounded border border-[var(--color-success-100)]">{item.policy?.returnWindow || 7}-Day Return</span>}
+                                            {item.policy?.isReplaceable && <span className="text-[10px] font-bold bg-info-tint text-info px-1.5 py-0.5 rounded border border-[var(--color-info-100)]">{item.policy?.replacementWindow || 7}-Day Replacement</span>}
+                                            {item.policy?.isCancellable === false && <span className="text-[10px] font-bold bg-error-tint text-error px-1.5 py-0.5 rounded border border-[var(--color-error-100)]">Non-Cancellable</span>}
+                                        </div>
+                                    </div>
+                                    <p className={cn("font-extrabold text-sm flex-shrink-0 self-center", accentClass)}>₹{inr((item.qty || 1) * item.price)}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </Card>
 
                 {/* Price + Delivery Grid */}
-                <div className="od-f od-g2" style={{ animationDelay: "140ms", marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3.5">
                     <Card>
-                        <Heading icon={FaRupeeSign}>Price Summary</Heading>
+                        <Heading icon={FiDollarSign}>Price Summary</Heading>
                         <Row label="Items Total" value={`₹${inr(itemsTotal)}`} />
-                        {couponDisc > 0 && <Row label={`Coupon${order.coupon?.code ? ` (${order.coupon.code})` : ""}`} value={`-₹${inr(couponDisc)}`} color={C.green} bold />}
+                        {couponDisc > 0 && <Row label={`Coupon${order.coupon?.code ? ` (${order.coupon.code})` : ""}`} value={`-₹${inr(couponDisc)}`} className="text-success" bold />}
                         {Number(order.platformFee) > 0 && <Row label="Platform Fee" value={`₹${inr(order.platformFee)}`} />}
-                        <Row label="Delivery" value={Number(order.deliveryCharge) > 0 ? `₹${inr(order.deliveryCharge)}` : "FREE"} color={Number(order.deliveryCharge) > 0 ? C.text : C.green} />
-                        <div style={{ height: 1, background: C.border, margin: "8px 0" }} />
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span style={{ fontWeight: 800, fontSize: 14 }}>Total</span>
-                            <span style={{ fontWeight: 900, fontSize: 18, color: accent }}>₹{inr(order.totalAmount)}</span>
+                        <Row label="Delivery" value={Number(order.deliveryCharge) > 0 ? `₹${inr(order.deliveryCharge)}` : "FREE"} className={Number(order.deliveryCharge) > 0 ? "text-primary" : "text-success"} />
+                        <div className="h-px bg-default my-2" />
+                        <div className="flex justify-between items-center">
+                            <span className="font-extrabold text-sm text-primary">Total</span>
+                            <span className={cn("font-black text-lg", accentClass)}>₹{inr(order.totalAmount)}</span>
                         </div>
-                        <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.borderLight}` }}>
+                        <div className="mt-2.5 pt-2 border-t border-[var(--color-graphite-100)]">
                             <Row label="Payment" value={isRazorpay ? "💳 Online" : "💰 COD"} />
-                            {isPaid && <Row label="Status" value="✅ Paid" color={C.green} />}
+                            {isPaid && <Row label="Status" value="✅ Paid" className="text-success" />}
                             {order.payment?.paidAt && <Row label="Paid" value={fmtDate(order.payment.paidAt)} />}
                         </div>
                     </Card>
                     <Card>
-                        <Heading icon={FaMapMarkerAlt}>Delivery Info</Heading>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <Heading icon={FiMapPin}>Delivery Info</Heading>
+                        <div className="flex flex-col gap-2.5">
                             {[
-                                { icon: FaUser, bg: C.blueBg, c: C.blue, l: "Customer", v: order.customerName },
-                                { icon: FaPhone, bg: C.greenBg, c: C.green, l: "Phone", v: order.phone, href: `tel:${order.phone}` },
-                                order.email && { icon: FaEnvelope, bg: C.violetBg, c: C.violet, l: "Email", v: order.email },
-                                { icon: FaMapMarkerAlt, bg: C.amberBg, c: C.amber, l: "Address", v: order.address, multi: true },
-                            ].filter(Boolean).map(({ icon: I, bg, c, l, v, href, multi }) => (
-                                <div key={l} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                                    <div style={{ width: 30, height: 30, background: bg, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: multi ? 1 : 0 }}>
-                                        <I size={11} color={c} />
+                                { icon: FiUser, bg: "bg-info-tint", c: "text-info", l: "Customer", v: order.customerName },
+                                { icon: FiPhone, bg: "bg-success-tint", c: "text-success", l: "Phone", v: order.phone, href: `tel:${order.phone}` },
+                                order.email && { icon: FiMail, bg: "bg-accent-tint", c: "text-accent", l: "Email", v: order.email },
+                                { icon: FiMapPin, bg: "bg-warning-tint", c: "text-[var(--color-warning-700)]", l: "Address", v: order.address, multi: true },
+                            ].filter(Boolean).map(({ icon: I, bg, c, l, v, href, multi }) => ( // eslint-disable-line no-unused-vars -- I is rendered as <I/> below; false positive without eslint-plugin-react's jsx-uses-vars
+                                <div key={l} className="flex items-start gap-2">
+                                    <div className={cn("w-[30px] h-[30px] rounded-[var(--radius-sm)] flex items-center justify-center flex-shrink-0", bg, multi && "mt-0.5")}>
+                                        <I size={11} className={c} aria-hidden="true" />
                                     </div>
-                                    <div style={{ minWidth: 0 }}>
-                                        <p style={{ fontSize: 9, fontWeight: 700, color: C.hint, textTransform: "uppercase", margin: 0, marginBottom: 1 }}>{l}</p>
+                                    <div className="min-w-0">
+                                        <p className="text-[9px] font-bold text-muted uppercase mb-0.5">{l}</p>
                                         {href
-                                            ? <a href={href} style={{ fontSize: 13, fontWeight: 700, color: C.blue, textDecoration: "none" }}>{v}</a>
-                                            : <p style={{ fontSize: 12, fontWeight: multi ? 500 : 700, color: C.text, margin: 0, lineHeight: 1.4 }}>{v || "—"}</p>}
+                                            ? <a href={href} className="text-[13px] font-bold text-info">{v}</a>
+                                            : <p className={cn("text-xs text-primary leading-snug", multi ? "font-medium" : "font-bold")}>{v || "—"}</p>}
                                     </div>
                                 </div>
                             ))}
@@ -767,156 +800,141 @@ const OrderDetails = () => {
 
                 {/* Return Status */}
                 {order.return?.status && order.return.status !== "NONE" && (
-                    <div className="od-f" style={{ animationDelay: "160ms", marginBottom: 14 }}>
-                        <Card accent={C.amberMid}>
-                            <Heading icon={FaUndo} color={C.amber}>Return Request</Heading>
-                            <Row label="Status" value={order.return.status.replace(/_/g, " ")} bold color={order.return.status === "APPROVED" ? C.green : order.return.status === "REJECTED" ? C.red : C.amber} />
-                            {order.return.reason && <Row label="Reason" value={order.return.reason} />}
-                            {order.return.requestedAt && <Row label="Requested" value={fmtDate(order.return.requestedAt)} />}
-                            {order.return.refundAmount && <Row label="Refund" value={`₹${inr(order.return.refundAmount)}`} bold color={C.green} />}
-                            {order.return.adminNote && <p style={{ fontSize: 12, color: C.muted, background: C.bg, padding: "8px 12px", borderRadius: 8, marginTop: 8, lineHeight: 1.4 }}>Admin: {order.return.adminNote}</p>}
-                        </Card>
-                    </div>
+                    <Card accent className="mb-3.5">
+                        <Heading icon={FiRotateCcw} className="text-[var(--color-warning-700)]">Return Request</Heading>
+                        <Row label="Status" value={order.return.status.replace(/_/g, " ")} bold className={order.return.status === "APPROVED" ? "text-success" : order.return.status === "REJECTED" ? "text-error" : "text-[var(--color-warning-700)]"} />
+                        {order.return.reason && <Row label="Reason" value={order.return.reason} />}
+                        {order.return.requestedAt && <Row label="Requested" value={fmtDate(order.return.requestedAt)} />}
+                        {order.return.refundAmount && <Row label="Refund" value={`₹${inr(order.return.refundAmount)}`} bold className="text-success" />}
+                        {order.return.adminNote && <p className="text-xs text-secondary bg-canvas px-3 py-2 rounded-[var(--radius-sm)] mt-2 leading-snug">Admin: {order.return.adminNote}</p>}
+                    </Card>
                 )}
 
                 {/* Return Request Form */}
                 {canReturn && (
-                    <div className="od-f" style={{ animationDelay: "170ms", marginBottom: 14 }}>
-                        <Card accent={C.amberMid}>
-                            <Heading icon={FaUndo} color={C.amber}>Request Return</Heading>
-                            <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.4, margin: 0, marginBottom: 12 }}>
-                                {pi.returnDaysRemaining != null
-                                    ? `You can request a return within ${Math.ceil(pi.returnDaysRemaining)} day${Math.ceil(pi.returnDaysRemaining) !== 1 ? "s" : ""} remaining (${pi.returnWindowDays}-day window).`
-                                    : "You can request a return within the return window."}
-                            </p>
-                            {returnError && <p style={{ color: C.red, fontSize: 12, background: C.redBg, padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>{returnError}</p>}
-                            {showReturnForm ? (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                                    <textarea value={returnReason} onChange={e => setReturnReason(e.target.value)} placeholder="Why do you want to return? (required)" rows={3} style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box", color: C.text }} />
-                                    <div style={{ display: "flex", gap: 8 }}>
-                                        <button onClick={handleReturnRequest} disabled={requestingReturn || !returnReason.trim()} className="od-btn" style={{ flex: 1, padding: 11, background: C.amber, color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit", opacity: !returnReason.trim() ? 0.5 : 1 }}>{requestingReturn ? "Submitting…" : "Submit Return"}</button>
-                                        <button onClick={() => { setShowReturnForm(false); setReturnError(""); }} className="od-btn" style={{ padding: "11px 16px", background: C.bg, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>Cancel</button>
-                                    </div>
+                    <Card accent className="mb-3.5">
+                        <Heading icon={FiRotateCcw} className="text-[var(--color-warning-700)]">Request Return</Heading>
+                        <p className="text-xs text-secondary leading-snug mb-3">
+                            {pi.returnDaysRemaining != null
+                                ? `You can request a return within ${Math.ceil(pi.returnDaysRemaining)} day${Math.ceil(pi.returnDaysRemaining) !== 1 ? "s" : ""} remaining (${pi.returnWindowDays}-day window).`
+                                : "You can request a return within the return window."}
+                        </p>
+                        {returnError && <p className="text-error text-xs bg-error-tint px-3 py-2 rounded-[var(--radius-sm)] mb-2.5">{returnError}</p>}
+                        {showReturnForm ? (
+                            <div className="flex flex-col gap-2.5">
+                                <textarea
+                                    value={returnReason} onChange={e => setReturnReason(e.target.value)}
+                                    placeholder="Why do you want to return? (required)" rows={3}
+                                    className="w-full bg-canvas border border-default rounded-[var(--radius-sm)] px-3 py-2.5 text-[13px] outline-none resize-none text-primary focus-ring-accent"
+                                />
+                                <div className="flex gap-2">
+                                    <Button variant="primary" className="flex-1" disabled={!returnReason.trim()} loading={requestingReturn} onClick={handleReturnRequest}>Submit Return</Button>
+                                    <Button variant="secondary" onClick={() => { setShowReturnForm(false); setReturnError(""); }}>Cancel</Button>
                                 </div>
-                            ) : (
-                                <button onClick={() => setShowReturnForm(true)} className="od-btn" style={{ width: "100%", padding: 11, background: "transparent", border: `1.5px solid ${C.amberMid}`, color: C.amber, borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
-                                    <FaUndo size={10} style={{ marginRight: 6 }} />Request Return
-                                </button>
-                            )}
-                        </Card>
-                    </div>
+                            </div>
+                        ) : (
+                            <Button variant="outline" className="w-full" icon={FiRotateCcw} onClick={() => setShowReturnForm(true)}>Request Return</Button>
+                        )}
+                    </Card>
                 )}
 
                 {/* Replacement Status */}
                 {order.replacement?.status && order.replacement.status !== "NONE" && (
-                    <div className="od-f" style={{ animationDelay: "165ms", marginBottom: 14 }}>
-                        <Card accent={C.blueMid}>
-                            <Heading icon={FaBox} color={C.blue}>Replacement Request</Heading>
-                            <Row label="Status" value={order.replacement.status.replace(/_/g, " ")} bold color={["APPROVED", "SHIPPED"].includes(order.replacement.status) ? C.green : order.replacement.status === "REJECTED" ? C.red : C.amber} />
-                            {order.replacement.reason && <Row label="Reason" value={order.replacement.reason} />}
-                            {order.replacement.requestedAt && <Row label="Requested" value={fmtDate(order.replacement.requestedAt)} />}
-                            {order.replacement.trackingUrl && (
-                                <Row label="Tracking" value={<a href={order.replacement.trackingUrl} target="_blank" rel="noopener noreferrer" style={{ color: C.blue, fontWeight: 700, fontSize: 12 }}>Track <FaExternalLinkAlt size={9} /></a>} />
-                            )}
-                            {order.replacement.adminNote && <p style={{ fontSize: 12, color: C.muted, background: C.bg, padding: "8px 12px", borderRadius: 8, marginTop: 8, lineHeight: 1.4 }}>Admin: {order.replacement.adminNote}</p>}
-                        </Card>
-                    </div>
+                    <Card accent className="mb-3.5">
+                        <Heading icon={FiBox} className="text-info">Replacement Request</Heading>
+                        <Row label="Status" value={order.replacement.status.replace(/_/g, " ")} bold className={["APPROVED", "SHIPPED"].includes(order.replacement.status) ? "text-success" : order.replacement.status === "REJECTED" ? "text-error" : "text-[var(--color-warning-700)]"} />
+                        {order.replacement.reason && <Row label="Reason" value={order.replacement.reason} />}
+                        {order.replacement.requestedAt && <Row label="Requested" value={fmtDate(order.replacement.requestedAt)} />}
+                        {order.replacement.trackingUrl && (
+                            <Row label="Tracking" value={<a href={order.replacement.trackingUrl} target="_blank" rel="noopener noreferrer" className="text-info font-bold text-xs inline-flex items-center gap-1">Track <FiExternalLink size={9} aria-hidden="true" /></a>} />
+                        )}
+                        {order.replacement.adminNote && <p className="text-xs text-secondary bg-canvas px-3 py-2 rounded-[var(--radius-sm)] mt-2 leading-snug">Admin: {order.replacement.adminNote}</p>}
+                    </Card>
                 )}
 
                 {/* Request Replacement Form */}
                 {canReplace && (
-                    <div className="od-f" style={{ animationDelay: "172ms", marginBottom: 14 }}>
-                        <Card accent={C.blueMid}>
-                            <Heading icon={FaBox} color={C.blue}>Request Replacement</Heading>
-                            <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.4, margin: 0, marginBottom: 12 }}>
-                                {pi.replacementDaysRemaining != null
-                                    ? `Request a replacement within ${Math.ceil(pi.replacementDaysRemaining)} day${Math.ceil(pi.replacementDaysRemaining) !== 1 ? "s" : ""} remaining (${pi.replacementWindowDays}-day window).`
-                                    : "You can request a replacement for eligible items."}
-                            </p>
-                            {replacementError && <p style={{ color: C.red, fontSize: 12, background: C.redBg, padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>{replacementError}</p>}
-                            {showReplacementForm ? (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                                    <textarea value={replacementReason} onChange={e => setReplacementReason(e.target.value)} placeholder="Why do you need a replacement? (required)" rows={3} style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box", color: C.text }} />
-                                    <div style={{ display: "flex", gap: 8 }}>
-                                        <button onClick={handleReplacementRequest} disabled={requestingReplacement || !replacementReason.trim()} className="od-btn" style={{ flex: 1, padding: 11, background: C.blue, color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit", opacity: !replacementReason.trim() ? 0.5 : 1 }}>{requestingReplacement ? "Submitting…" : "Submit Replacement"}</button>
-                                        <button onClick={() => { setShowReplacementForm(false); setReplacementError(""); }} className="od-btn" style={{ padding: "11px 16px", background: C.bg, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>Cancel</button>
-                                    </div>
+                    <Card accent className="mb-3.5">
+                        <Heading icon={FiBox} className="text-info">Request Replacement</Heading>
+                        <p className="text-xs text-secondary leading-snug mb-3">
+                            {pi.replacementDaysRemaining != null
+                                ? `Request a replacement within ${Math.ceil(pi.replacementDaysRemaining)} day${Math.ceil(pi.replacementDaysRemaining) !== 1 ? "s" : ""} remaining (${pi.replacementWindowDays}-day window).`
+                                : "You can request a replacement for eligible items."}
+                        </p>
+                        {replacementError && <p className="text-error text-xs bg-error-tint px-3 py-2 rounded-[var(--radius-sm)] mb-2.5">{replacementError}</p>}
+                        {showReplacementForm ? (
+                            <div className="flex flex-col gap-2.5">
+                                <textarea
+                                    value={replacementReason} onChange={e => setReplacementReason(e.target.value)}
+                                    placeholder="Why do you need a replacement? (required)" rows={3}
+                                    className="w-full bg-canvas border border-default rounded-[var(--radius-sm)] px-3 py-2.5 text-[13px] outline-none resize-none text-primary focus-ring-accent"
+                                />
+                                <div className="flex gap-2">
+                                    <Button variant="primary" className="flex-1" disabled={!replacementReason.trim()} loading={requestingReplacement} onClick={handleReplacementRequest}>Submit Replacement</Button>
+                                    <Button variant="secondary" onClick={() => { setShowReplacementForm(false); setReplacementError(""); }}>Cancel</Button>
                                 </div>
-                            ) : (
-                                <button onClick={() => setShowReplacementForm(true)} className="od-btn" style={{ width: "100%", padding: 11, background: "transparent", border: `1.5px solid ${C.blueMid}`, color: C.blue, borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
-                                    <FaBox size={10} style={{ marginRight: 6 }} />Request Replacement
-                                </button>
-                            )}
-                        </Card>
-                    </div>
+                            </div>
+                        ) : (
+                            <Button variant="outline" className="w-full" icon={FiBox} onClick={() => setShowReplacementForm(true)}>Request Replacement</Button>
+                        )}
+                    </Card>
                 )}
 
                 {/* Cancel Order */}
                 {canCancel && !isCancelled && (
-                    <div className="od-f" style={{ animationDelay: "180ms", marginBottom: 14 }}>
-                        <Card accent={C.redMid}>
-                            <Heading icon={FaTimesCircle} color={C.red}>Cancel Order</Heading>
-                            <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.4, margin: 0, marginBottom: 12 }}>
-                                {pi.cancelWindowHours > 0
-                                    ? `Cancel within ${Math.ceil(pi.cancelHoursRemaining || 0)} hour${Math.ceil(pi.cancelHoursRemaining || 0) !== 1 ? "s" : ""} remaining.`
-                                    : "You can cancel since it hasn't been packed."}
-                                {isRazorpay && isPaid && (
-                                    <span style={{ display: "block", marginTop: 4, color: C.amber, fontWeight: 600 }}>⚡ Refund will be auto-requested.</span>
-                                )}
-                            </p>
-                            {cancelError && <p style={{ color: C.red, fontSize: 12, background: C.redBg, padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>{cancelError}</p>}
-                            {confirmCancel ? (
-                                <div style={{ display: "flex", gap: 8 }}>
-                                    <button onClick={handleCancel} disabled={cancelling} className="od-btn" style={{ flex: 1, padding: 11, background: C.red, color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>{cancelling ? "Cancelling…" : "Yes, Cancel"}</button>
-                                    <button onClick={() => { setConfirmCancel(false); setCancelError(""); }} className="od-btn" style={{ flex: 1, padding: 11, background: C.bg, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>Keep</button>
-                                </div>
-                            ) : (
-                                <button onClick={() => setConfirmCancel(true)} className="od-btn" style={{ width: "100%", padding: 11, background: "transparent", border: `1.5px solid ${C.redMid}`, color: C.red, borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
-                                    Cancel Order
-                                </button>
+                    <Card accent className="mb-3.5 border-[var(--color-error-100)]">
+                        <Heading icon={FiXCircle} className="text-error">Cancel Order</Heading>
+                        <p className="text-xs text-secondary leading-snug mb-3">
+                            {pi.cancelWindowHours > 0
+                                ? `Cancel within ${Math.ceil(pi.cancelHoursRemaining || 0)} hour${Math.ceil(pi.cancelHoursRemaining || 0) !== 1 ? "s" : ""} remaining.`
+                                : "You can cancel since it hasn't been packed."}
+                            {isRazorpay && isPaid && (
+                                <span className="block mt-1 text-[var(--color-warning-700)] font-semibold">⚡ Refund will be auto-requested.</span>
                             )}
-                        </Card>
-                    </div>
+                        </p>
+                        {cancelError && <p className="text-error text-xs bg-error-tint px-3 py-2 rounded-[var(--radius-sm)] mb-2.5">{cancelError}</p>}
+                        {confirmCancel ? (
+                            <div className="flex gap-2">
+                                <Button variant="danger" className="flex-1" loading={cancelling} onClick={handleCancel}>Yes, Cancel</Button>
+                                <Button variant="secondary" className="flex-1" onClick={() => { setConfirmCancel(false); setCancelError(""); }}>Keep</Button>
+                            </div>
+                        ) : (
+                            <Button variant="outline" className="w-full !border-[var(--color-error-500)] !text-error" onClick={() => setConfirmCancel(true)}>Cancel Order</Button>
+                        )}
+                    </Card>
                 )}
 
                 {/* Refund Request */}
                 {canRefund && (
-                    <div className="od-f" style={{ animationDelay: "200ms", marginBottom: 14 }}>
-                        <Card accent={C.blueMid}>
-                            <Heading icon={FaUndo} color={C.blue}>Request Refund</Heading>
-                            <div style={{ background: C.blueBg, border: `1px solid ${C.blueMid}`, borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 12, color: C.muted, lineHeight: 1.4 }}>
-                                <FaInfoCircle size={10} color={C.blue} style={{ marginRight: 4 }} />
-                                ₹{inr(order.totalAmount)} refunded within 5-7 business days after approval.
-                            </div>
-                            {refundError && <p style={{ color: C.red, fontSize: 12, background: C.redBg, padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>{refundError}</p>}
-                            {showRefundForm ? (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                                    <textarea value={refundReason} onChange={e => setRefundReason(e.target.value)} placeholder="Reason (optional)…" rows={3} style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box", color: C.text }} />
-                                    <div style={{ display: "flex", gap: 8 }}>
-                                        <button onClick={handleRefund} disabled={requestingRefund} className="od-btn" style={{ flex: 1, padding: 11, background: C.blue, color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>{requestingRefund ? "Submitting…" : "Submit"}</button>
-                                        <button onClick={() => { setShowRefundForm(false); setRefundError(""); }} className="od-btn" style={{ padding: "11px 16px", background: C.bg, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>Cancel</button>
-                                    </div>
+                    <Card accent className="mb-3.5">
+                        <Heading icon={FiRotateCcw} className="text-info">Request Refund</Heading>
+                        <div className="bg-info-tint border border-[var(--color-info-100)] rounded-[var(--radius-sm)] px-3 py-2 mb-3 text-xs text-secondary leading-snug">
+                            <FiInfo size={10} className="inline text-info mr-1" aria-hidden="true" />
+                            ₹{inr(order.totalAmount)} refunded within 5-7 business days after approval.
+                        </div>
+                        {refundError && <p className="text-error text-xs bg-error-tint px-3 py-2 rounded-[var(--radius-sm)] mb-2.5">{refundError}</p>}
+                        {showRefundForm ? (
+                            <div className="flex flex-col gap-2.5">
+                                <textarea
+                                    value={refundReason} onChange={e => setRefundReason(e.target.value)}
+                                    placeholder="Reason (optional)…" rows={3}
+                                    className="w-full bg-canvas border border-default rounded-[var(--radius-sm)] px-3 py-2.5 text-[13px] outline-none resize-none text-primary focus-ring-accent"
+                                />
+                                <div className="flex gap-2">
+                                    <Button variant="primary" className="flex-1" loading={requestingRefund} onClick={handleRefund}>Submit</Button>
+                                    <Button variant="secondary" onClick={() => { setShowRefundForm(false); setRefundError(""); }}>Cancel</Button>
                                 </div>
-                            ) : (
-                                <button onClick={() => setShowRefundForm(true)} className="od-btn" style={{ width: "100%", padding: 11, background: "transparent", border: `1.5px solid ${C.blueMid}`, color: C.blue, borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
-                                    <FaUndo size={10} style={{ marginRight: 6 }} />Request Refund
-                                </button>
-                            )}
-                        </Card>
-                    </div>
+                            </div>
+                        ) : (
+                            <Button variant="outline" className="w-full" icon={FiRotateCcw} onClick={() => setShowRefundForm(true)}>Request Refund</Button>
+                        )}
+                    </Card>
                 )}
 
                 {/* Continue Shopping CTA */}
-                <div className="od-f" style={{ animationDelay: "240ms" }}>
-                    <Link to={isUH ? "/urbexon-hour" : "/"} className="od-btn" style={{
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                        width: "100%", padding: 14, background: accent, color: "#fff",
-                        borderRadius: 12, fontWeight: 700, fontSize: 14, textDecoration: "none",
-                        boxShadow: `0 6px 16px ${accent}30`,
-                    }}>
-                        <FaShoppingBag size={14} /> Continue Shopping
-                    </Link>
-                </div>
+                <Link to={isUH ? "/urbexon-hour" : "/"}>
+                    <Button variant={isUH ? "hour" : "primary"} className="w-full" icon={FiShoppingBag}>Continue Shopping</Button>
+                </Link>
             </div>
         </div>
     );

@@ -89,6 +89,18 @@ export const initWebSocket = (server) => {
         if (!clients.has(userId)) clients.set(userId, new Set());
         clients.get(userId).add(ws);
 
+        // BUG FIX: nothing was ever cleaning up a connection that goes dark
+        // without a clean TCP close (phone backgrounded/killed, network
+        // dropped) — `ws.close` never fires for those, so the socket stays
+        // "OPEN" in `clients` indefinitely (a slow memory leak, and every
+        // sendToUser/broadcastToRoom call against it silently no-ops instead
+        // of ever being detected as dead). This is a real protocol-level
+        // ping/pong (heartbeat sweep below), separate from the existing
+        // app-level {type:"ping"} JSON echo, which only proves the app is
+        // running — not that the transport itself is still alive.
+        ws.isAlive = true;
+        ws.on("pong", () => { ws.isAlive = true; });
+
         // [FIX v3] Auto-join the "admins" room for admin-role tokens so
         // broadcastToAdmins() works out of the box without relying on the
         // frontend remembering to send a join_room message.
@@ -112,8 +124,23 @@ export const initWebSocket = (server) => {
 
                 // Handle room join (for live tracking, admin monitoring)
                 if (msg.type === "join_room" && msg.room) {
-                    joinRoom(msg.room, userId);
-                    ws.send(JSON.stringify({ type: "room_joined", room: msg.room }));
+                    // "order:<id>" rooms carry a rider's live GPS — only the
+                    // order's own customer, its assigned rider, or an admin
+                    // may subscribe. Any other room name keeps the previous
+                    // open-join behavior (no PII involved there).
+                    if (msg.room.startsWith("order:")) {
+                        authorizeOrderRoomJoin(msg.room.slice(6), userId, userRole).then((allowed) => {
+                            if (!allowed) {
+                                ws.send(JSON.stringify({ type: "room_join_denied", room: msg.room }));
+                                return;
+                            }
+                            joinRoom(msg.room, userId);
+                            ws.send(JSON.stringify({ type: "room_joined", room: msg.room }));
+                        });
+                    } else {
+                        joinRoom(msg.room, userId);
+                        ws.send(JSON.stringify({ type: "room_joined", room: msg.room }));
+                    }
                 }
 
                 // Handle room leave
@@ -151,6 +178,24 @@ export const initWebSocket = (server) => {
             console.error("[WS] Error:", err.message);
         });
     });
+
+    // Heartbeat sweep — every 30s, ping every connection; any socket that
+    // didn't respond with a pong since the previous sweep (i.e. `isAlive`
+    // is still false from last time) is dead and gets forcibly terminated,
+    // which fires the normal "close" handler above and cleans up
+    // `clients`/`rooms` the same way a graceful disconnect would.
+    const heartbeatInterval = setInterval(() => {
+        wss.clients.forEach((ws) => {
+            if (ws.isAlive === false) {
+                ws.terminate();
+                return;
+            }
+            ws.isAlive = false;
+            ws.ping();
+        });
+    }, 30000);
+
+    wss.on("close", () => clearInterval(heartbeatInterval));
 
     return wss;
 };
@@ -246,6 +291,32 @@ export const broadcastToAdmins = async (type, payload = {}) => {
         broadcastToRoom("admins", type, payload);
     } catch (err) {
         console.error(`[broadcastToAdmins:${type}] Failed:`, err.message);
+    }
+};
+
+/**
+ * Authorize a "join_room" request for an "order:<id>" room, which streams a
+ * rider's live GPS for that order. Mirrors the ownership check already
+ * enforced on the equivalent REST endpoint (getRiderLocationForOrder) —
+ * without this, any authenticated user who knew/guessed an order id could
+ * subscribe to a stranger's live delivery location over WS.
+ */
+const authorizeOrderRoomJoin = async (orderId, userId, userRole) => {
+    if (["admin", "owner"].includes(userRole)) return true;
+    try {
+        const Order = (await import("../models/Order.js")).default;
+        const order = await Order.findById(orderId).select("user delivery.assignedTo").lean();
+        if (!order) return false;
+        if (String(order.user) === String(userId)) return true;
+
+        if (order.delivery?.assignedTo) {
+            const DeliveryBoy = (await import("../models/deliveryModels/DeliveryBoy.js")).default;
+            const rider = await DeliveryBoy.findById(order.delivery.assignedTo).select("userId").lean();
+            if (rider && String(rider.userId) === String(userId)) return true;
+        }
+        return false;
+    } catch {
+        return false;
     }
 };
 

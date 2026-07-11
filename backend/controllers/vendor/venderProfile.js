@@ -21,6 +21,7 @@ import Vendor from "../../models/vendorModels/Vendor.js";
 import Pincode from "../../models/vendorModels/Pincode.js";
 import { uploadToCloudinary } from "../../config/cloudinary.js";
 import { delCacheByPrefix } from "../../utils/Cache.js";
+import { HARD_MAX_RADIUS_KM } from "../../validations/orderValidations.js";
 
 // GET /api/vendor/me
 export const getMyProfile = async (req, res) => {
@@ -68,11 +69,28 @@ export const updateMyProfile = async (req, res) => {
             if (field === "deliveryRadius") {
                 const num = Number(val);
                 if (!Number.isFinite(num)) return; // skip invalid values instead of crashing
-                val = Math.min(Math.max(num, 1), 50); // clamp to schema's min/max
+                // BUG FIX: was clamped to the schema's raw min/max (1-50), but
+                // checkout (validateDeliveryServiceability) never honors more
+                // than HARD_MAX_RADIUS_KM regardless — vendors could set/see
+                // e.g. 30km "saved" here while every order beyond 10km was
+                // silently rejected at checkout with no explanation in the panel.
+                val = Math.min(Math.max(num, 1), HARD_MAX_RADIUS_KM);
             }
 
             vendor[field] = val;
         });
+
+        // BUG FIX: servicePincodes was only ever checked against the real
+        // Pincode collection at vendor signup (vendorAuth.js) — editing it
+        // later via this endpoint accepted any string as-is, letting a
+        // vendor "serve" a pincode that doesn't exist or was delisted.
+        if (Array.isArray(vendor.servicePincodes) && vendor.servicePincodes.length > 0) {
+            const found = await Pincode.find({
+                code: { $in: vendor.servicePincodes },
+                status: { $in: ["active", "coming_soon"] },
+            }).select("code").lean();
+            vendor.servicePincodes = found.map((p) => p.code);
+        }
 
         // Handle image uploads
         if (req.files?.shopLogo?.[0]) {

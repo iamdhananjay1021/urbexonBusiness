@@ -22,13 +22,14 @@ const ACTIVE_VENDOR_BASE = {
 export const getVendorStore = async (req, res) => {
     try {
         const { slug } = req.params;
+        const pincode = req.query.pincode?.trim() || null;
 
         const vendor = await Vendor.findOne({
             $or: [{ shopSlug: slug }, { _id: slug.match(/^[0-9a-fA-F]{24}$/) ? slug : undefined }],
             status: "approved",
             isDeleted: false,
         })
-            .select("shopName shopLogo shopBanner shopSlug shopCategory shopDescription rating ratingCount totalOrders isOpen address.city address.state createdAt subscription.isActive subscription.expiryDate")
+            .select("shopName shopLogo shopBanner shopSlug shopCategory shopDescription rating ratingCount totalOrders isOpen address.city address.state createdAt subscription.isActive subscription.expiryDate servicePincodes")
             .lean();
 
         if (!vendor) {
@@ -42,6 +43,17 @@ export const getVendorStore = async (req, res) => {
             return res.status(404).json({ success: false, message: "This store is currently unavailable" });
         }
 
+        // Deliverability for the visiting user's pincode — same rule as
+        // validateDeliveryServiceability, computed here so the store page
+        // can warn/disable ordering BEFORE the user fills a cart with
+        // items this vendor can't actually deliver to them (checkout would
+        // reject it anyway, but that's a bad place to find out).
+        const hasServicePincodes = Array.isArray(vendor.servicePincodes) && vendor.servicePincodes.length > 0;
+        const deliverableToYou = !pincode || !hasServicePincodes
+            ? null // unknown — no pincode to check, or vendor hasn't restricted by pincode
+            : vendor.servicePincodes.includes(pincode);
+        delete vendor.servicePincodes; // internal list, not needed by the client
+
         const products = await Product.find({
             vendorId: vendor._id,
             isActive: true,
@@ -50,7 +62,7 @@ export const getVendorStore = async (req, res) => {
             .select("name slug images price mrp rating numReviews stock inStock category")
             .lean();
 
-        res.json({ success: true, vendor, products });
+        res.json({ success: true, vendor, products, deliverableToYou });
     } catch (err) {
         res.status(500).json({ success: false, message: "Failed to fetch vendor store" });
     }
@@ -87,7 +99,9 @@ export const getNearbyVendors = async (req, res) => {
     try {
         const lat = parseFloat(req.query.lat);
         const lng = parseFloat(req.query.lng);
-        const radiusKm = Math.min(Math.max(parseFloat(req.query.radius) || 10, 1), 50);
+        // Hard-capped at 10km — Urbexon Hour's delivery radius ceiling
+        // (matches validateDeliveryServiceability in orderValidations.js).
+        const radiusKm = Math.min(Math.max(parseFloat(req.query.radius) || 10, 1), 10);
         const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 50);
         const category = req.query.category?.trim() || null;
         const pincode = req.query.pincode?.trim() || null;
@@ -140,19 +154,13 @@ export const getNearbyVendors = async (req, res) => {
                 .select("shopName shopLogo shopCategory shopSlug rating ratingCount totalOrders preparationTime deliveryMode location address minOrderAmount freeDeliveryAbove isOpen acceptingOrders");
         }
 
-        // 3️⃣ All approved + subscribed vendors fallback
-        if (vendors.length === 0) {
-            const filter = {
-                status: "approved",
-                isDeleted: false,
-                ...subFilter,
-            };
-            if (category) filter.shopCategory = category;
-            vendors = await Vendor.find(filter)
-                .sort({ rating: -1, totalOrders: -1 })
-                .limit(limit)
-                .select("shopName shopLogo shopCategory shopSlug rating ratingCount totalOrders preparationTime deliveryMode location address minOrderAmount freeDeliveryAbove isOpen acceptingOrders");
-        }
+        // BUG FIX: there used to be a 3rd fallback here that returned ALL
+        // approved+subscribed vendors — regardless of location — whenever
+        // neither the geo search nor the pincode match found anything. That
+        // is what let a Lucknow customer see (and order from) an Akbarpur
+        // vendor: "no vendors near you" silently became "every vendor,
+        // everywhere." Removed — no local match now correctly means an
+        // empty result, not a global one.
 
         const hasGeo = Number.isFinite(lat) && Number.isFinite(lng);
         const results = vendors.map((v) => {

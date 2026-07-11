@@ -19,16 +19,20 @@ import {
     deleteAddress as apiDeleteAddress,
     setDefaultAddress as apiSetDefaultAddress,
     placeCODOrder,
-    serializeItems,
-    formatAddressString,
 } from "../services/checkoutService";
 import { initiateOnlinePayment } from "../services/paymentService";
 
-export const useUHCheckout = () => {
+// BUG FIX: this hook never accepted a buyNowItem, unlike useCheckout — so
+// "Buy Now" on a UH product (ProductCard.jsx already navigated here with
+// one in location.state) landed on this page with the buy-now item
+// silently discarded, showing whatever was in the UH cart instead (or the
+// empty-cart guard, if the cart was empty). Mirrors useCheckout's exact
+// buyNowItem-bypasses-cart pattern.
+export const useUHCheckout = (buyNowItem = null) => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { uhItems, clearUH } = useCart();
-    const checkoutItems = uhItems || [];
+    const checkoutItems = buyNowItem ? [buyNowItem] : (uhItems || []);
 
     const [step, setStep] = useState(1);
     const [error, setError] = useState("");
@@ -196,12 +200,6 @@ export const useUHCheckout = () => {
         try {
             setLoading(true); setError("");
 
-            // DEBUG — console mein dekho kya ja raha hai
-            console.log("=== UH COD Debug ===");
-            console.log("checkoutItems:", checkoutItems);
-            console.log("contact:", contact);
-            console.log("selectedAddress:", selectedAddress);
-
             const data = await placeCODOrder({
                 items: checkoutItems,
                 contact,
@@ -212,7 +210,7 @@ export const useUHCheckout = () => {
                 distanceKm: 0,
                 coupon: null,
             });
-            clearUH();
+            if (!buyNowItem) clearUH();
             navigate(`/order-success/${data.orderId}`, {
                 replace: true,
                 state: { paymentMethod: "COD", orderId: data.orderId, finalTotal: data.finalTotal },
@@ -221,7 +219,7 @@ export const useUHCheckout = () => {
             console.error("=== COD Error ===", err.response?.data || err.message);
             setError(err.response?.data?.message || "Order placement failed. Please try again.");
         } finally { setLoading(false); }
-    }, [checkoutItems, contact, selectedAddress, clearUH, navigate]);
+    }, [checkoutItems, contact, selectedAddress, clearUH, navigate, buyNowItem]);
 
     /* ── Online ── */
     const handlePayOnline = useCallback(async () => {
@@ -232,7 +230,7 @@ export const useUHCheckout = () => {
                 contact,
                 address: selectedAddress,
                 navigate,
-                onSuccess: () => { clearUH(); setPayState("success"); },
+                onSuccess: () => { if (!buyNowItem) clearUH(); setPayState("success"); },
                 onFailure: (msg) => { setError(msg); setPayState("failed"); setLoading(false); },
                 onCancel: (msg) => { setError(msg); setPayState("failed"); setLoading(false); },
                 deliveryType: "URBEXON_HOUR",  // ← yeh add karo
@@ -244,7 +242,7 @@ export const useUHCheckout = () => {
             setError(err.message || "Payment initialization failed.");
             setPayState("failed");
         } finally { setLoading(false); }
-    }, [checkoutItems, contact, selectedAddress, clearUH, navigate]);
+    }, [checkoutItems, contact, selectedAddress, clearUH, navigate, buyNowItem]);
 
     const selectPaymentMethod = useCallback((method) => {
         setPaymentMethod(method); setError(""); setPayState("idle");

@@ -31,6 +31,7 @@ const UHMidBanner = memo(({ banners = [] }) => {
                         alt={b.title || "Promo"}
                         className="uhmb-img"
                         loading="lazy"
+                        decoding="async"
                         draggable={false}
                     />
                     {(b.title || b.subtitle) && (

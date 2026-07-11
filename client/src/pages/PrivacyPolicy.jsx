@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import SEO from "../components/SEO";
+import Card from "../design-system/Card";
 
 export default function PrivacyPolicy() {
     useEffect(() => {
@@ -7,22 +8,22 @@ export default function PrivacyPolicy() {
     }, []);
 
     return (
-        <div className="min-h-screen bg-[#fdf8f3]">
+        <div className="min-h-screen bg-canvas">
             <SEO title="Privacy Policy" description="Read Urbexon's privacy policy. Learn how we collect, use, and protect your personal information." path="/privacy-policy" />
             {/* Header */}
-            <div className="bg-white border-b border-stone-100 py-12">
+            <div className="bg-surface border-b border-default py-12">
                 <div className="max-w-3xl mx-auto px-6 text-center">
-                    <p className="text-zinc-500 text-sm font-medium tracking-widest uppercase mb-3">Legal</p>
-                    <h1 className="text-4xl font-bold text-gray-900" style={{ fontFamily: "'Playfair Display', serif" }}>
+                    <p className="text-muted text-sm font-medium tracking-widest uppercase mb-3">Legal</p>
+                    <h1 className="text-4xl font-bold text-primary font-display">
                         Privacy Policy
                     </h1>
-                    <p className="mt-3 text-gray-500 text-sm">Last updated: March 2026</p>
+                    <p className="mt-3 text-secondary text-sm">Last updated: March 2026</p>
                 </div>
             </div>
 
             {/* Content */}
             <div className="max-w-3xl mx-auto px-6 py-12">
-                <div className="bg-white rounded-2xl shadow-sm border border-stone-100 p-8 md:p-12 space-y-10">
+                <Card padding="lg" className="md:p-12 space-y-10">
 
                     <Section title="1. Information We Collect">
                         <p>We collect information you provide directly to us when you create an account, place an order, or contact us. This includes:</p>
@@ -87,7 +88,7 @@ export default function PrivacyPolicy() {
                         <ContactBox />
                     </Section>
 
-                </div>
+                </Card>
             </div>
         </div>
     );
@@ -96,10 +97,10 @@ export default function PrivacyPolicy() {
 function Section({ title, children }) {
     return (
         <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
+            <h2 className="text-xl font-semibold text-primary mb-4 font-display">
                 {title}
             </h2>
-            <div className="text-gray-600 leading-relaxed space-y-3 [&_ul]:mt-2 [&_ul]:space-y-1 [&_ul]:list-disc [&_ul]:pl-5">
+            <div className="text-secondary leading-relaxed space-y-3 [&_ul]:mt-2 [&_ul]:space-y-1 [&_ul]:list-disc [&_ul]:pl-5">
                 {children}
             </div>
         </div>
@@ -108,7 +109,7 @@ function Section({ title, children }) {
 
 function ContactBox() {
     return (
-        <div className="mt-3 bg-zinc-50 border border-zinc-200 rounded-xl p-5 text-sm text-gray-700 space-y-1">
+        <div className="mt-3 bg-canvas border border-default rounded-[var(--radius-md)] p-5 text-sm text-primary space-y-1">
             <p><strong>Urbexon</strong></p>
             <p>Email: support@urbexon.in</p>
             <p>Phone: +91 88084 85840</p>

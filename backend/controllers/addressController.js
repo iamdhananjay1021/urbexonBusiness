@@ -55,6 +55,18 @@ const getDistanceKm = (lat1, lng1, lat2, lng2) => {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+const withFreshCodStatus = async (cachedData) => {
+    const pincodeDoc = await Pincode.findOne({ code: cachedData.pincode }).select("status").lean();
+    let codAllowed = false;
+    let codStatus = "unavailable";
+    if (pincodeDoc) {
+        if (pincodeDoc.status === "active") { codAllowed = true; codStatus = "available"; }
+        else if (pincodeDoc.status === "coming_soon") codStatus = "coming_soon";
+        else codStatus = "blocked";
+    }
+    return { ...cachedData, codAllowed, codStatus };
+};
+
 const fetchLatLng = async (pincode) => {
     if (LOCAL_PINCODE_COORDS[pincode]) return LOCAL_PINCODE_COORDS[pincode];
     try {
@@ -232,10 +244,16 @@ export const verifyPincode = async (req, res) => {
         if (!/^\d{6}$/.test(pin))
             return res.status(400).json({ success: false, message: "Invalid pincode format" });
 
-        // Cache hit
+        // Cache hit — the 24h TTL is fine for the geocode-derived fields
+        // (city/state/lat/lng/distanceKm, which never change), but BUG FIX:
+        // codAllowed/codStatus come from the admin-editable Pincode
+        // collection and were being served from this same 24h-stale cache
+        // with no invalidation hook — a customer could see "COD available"
+        // for up to a day after an admin blocked that pincode. Re-check COD
+        // status fresh on every request instead of trusting the cached copy.
         const cached = pincodeCache.get(pin);
         if (cached && Date.now() - cached.ts < CACHE_TTL)
-            return res.json(cached.data);
+            return res.json(await withFreshCodStatus(cached.data));
 
         // FIX #2 — if this pincode is already being fetched by another request,
         // wait briefly then serve from cache to avoid duplicate external API calls
@@ -243,7 +261,7 @@ export const verifyPincode = async (req, res) => {
             await new Promise(r => setTimeout(r, 800));
             const cachedNow = pincodeCache.get(pin);
             if (cachedNow && Date.now() - cachedNow.ts < CACHE_TTL)
-                return res.json(cachedNow.data);
+                return res.json(await withFreshCodStatus(cachedNow.data));
         }
 
         inflightRequests.add(pin);

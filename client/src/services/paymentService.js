@@ -6,7 +6,7 @@
  * ✅ FIX: All required fields passed so backend validation passes
  */
 
-import api from "../api/axios";
+import * as paymentApi from "../api/paymentApi";
 import { serializeItems, formatAddressString } from "./checkoutService";
 
 const loadRazorpay = () =>
@@ -43,7 +43,7 @@ export const initiateOnlinePayment = async ({
 
     // ✅ FIX: Send all required fields to create-order
     // Backend validateOrderParams needs: customerName, phone, address, items, pincode
-    const { data: rpOrder } = await api.post("/payment/create-order", {
+    const { data: rpOrder } = await paymentApi.createRazorpayOrder({
         items: serializeItems(items),
         // FIX: these fields were missing — backend returns 400 without them
         customerName: contact.name,
@@ -79,7 +79,7 @@ export const initiateOnlinePayment = async ({
             handler: async (response) => {
                 try {
                     // ✅ Verify payment + create order (server recalculates from DB)
-                    const { data } = await api.post("/payment/verify", {
+                    const { data } = await paymentApi.verifyRazorpayPayment({
                         razorpay_order_id: response.razorpay_order_id,
                         razorpay_payment_id: response.razorpay_payment_id,
                         razorpay_signature: response.razorpay_signature,

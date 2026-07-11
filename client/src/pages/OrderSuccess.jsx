@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import api from "../api/axios";
+import { getOrderById } from "../api/orderApi";
 import { imgUrl } from "../utils/imageUrl";
 import {
-    FaShoppingBag, FaClipboardList, FaWhatsapp,
-    FaCheckCircle, FaMapMarkerAlt, FaPhone, FaUser,
-    FaTruck, FaReceipt,
-} from "react-icons/fa";
+    FiShoppingBag, FiClipboard, FiCheckCircle, FiMapPin, FiPhone, FiUser,
+    FiTruck, FiFileText,
+} from "react-icons/fi";
+import { FaWhatsapp } from "react-icons/fa";
 import SEO from "../components/SEO";
+import Card from "../design-system/Card";
+import Loader from "../design-system/Loader";
 
 const OrderSuccess = () => {
     const { id } = useParams();
@@ -28,7 +30,7 @@ const OrderSuccess = () => {
         const fetchOrder = async () => {
             try {
                 setLoading(true);
-                const { data } = await api.get(`/orders/${id}`);
+                const { data } = await getOrderById(id);
                 setOrder(data);
             } catch {
                 setError("Order not found");
@@ -39,23 +41,18 @@ const OrderSuccess = () => {
     }, [id, user, navigate]);
 
     if (loading) return (
-        <div style={{ minHeight: "100vh", background: "#f7f4ee", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ textAlign: "center" }}>
-                <div style={{
-                    width: 48, height: 48, border: "4px solid #e5d9c0",
-                    borderTopColor: "#c9a84c", borderRadius: "50%",
-                    animation: "spin 0.8s linear infinite", margin: "0 auto 16px"
-                }} />
-                <p style={{ color: "#94a3b8", fontSize: 14 }}>Processing your order...</p>
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <div className="min-h-screen bg-canvas flex items-center justify-center">
+            <div className="text-center">
+                <Loader size="lg" className="mb-4" />
+                <p className="text-muted text-sm">Processing your order...</p>
             </div>
         </div>
     );
 
     if (error || !order) return (
-        <div style={{ minHeight: "100vh", background: "#f7f4ee", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <p style={{ color: "#64748b", fontWeight: 600, marginBottom: 8 }}>Order not found</p>
-            <p style={{ color: "#94a3b8", fontSize: 14 }}>Redirecting...</p>
+        <div className="min-h-screen bg-canvas flex flex-col items-center justify-center">
+            <p className="text-secondary font-semibold mb-2">Order not found</p>
+            <p className="text-muted text-sm">Redirecting...</p>
         </div>
     );
 
@@ -67,111 +64,51 @@ const OrderSuccess = () => {
     )}`;
 
     return (
-        <div style={{
-            minHeight: "100vh",
-            background: "#f7f4ee",
-            fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
-            padding: "24px 16px 48px",
-        }}>
+        <div className="min-h-screen bg-canvas px-4 pt-6 pb-12">
             <SEO title="Order Confirmed" description="Your Urbexon order has been placed successfully!" noindex />
-            <style>{`
-                @keyframes fadeUp {
-                    from { opacity: 0; transform: translateY(16px); }
-                    to   { opacity: 1; transform: translateY(0); }
-                }
-                .os-card {
-                    background: #fff;
-                    border-radius: 12px;
-                    border: 1px solid #e8e2d9;
-                    overflow: hidden;
-                    margin-bottom: 12px;
-                    animation: fadeUp 0.4s ease both;
-                }
-                .os-card:nth-child(1) { animation-delay: 0.05s; }
-                .os-card:nth-child(2) { animation-delay: 0.1s; }
-                .os-card:nth-child(3) { animation-delay: 0.15s; }
-                .os-card:nth-child(4) { animation-delay: 0.2s; }
-                .os-card:nth-child(5) { animation-delay: 0.25s; }
-                .os-card:nth-child(6) { animation-delay: 0.3s; }
-                .os-btn-whatsapp {
-                    display: flex; align-items: center; justify-content: center; gap: 8px;
-                    width: 100%; padding: 14px;
-                    background: #22c55e; color: #fff;
-                    font-weight: 700; font-size: 14px;
-                    border-radius: 8px; border: none;
-                    text-decoration: none; cursor: pointer;
-                    transition: background 0.2s, transform 0.1s;
-                }
-                .os-btn-whatsapp:hover { background: #16a34a; }
-                .os-btn-whatsapp:active { transform: scale(0.98); }
-                .os-btn-orders {
-                    flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
-                    padding: 13px; background: #1a1740; color: #c9a84c;
-                    font-weight: 700; font-size: 13px;
-                    border-radius: 8px; text-decoration: none;
-                    transition: background 0.2s;
-                }
-                .os-btn-orders:hover { background: #252060; }
-                .os-btn-shop {
-                    flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
-                    padding: 13px; background: #f1f5f9; color: #475569;
-                    font-weight: 700; font-size: 13px;
-                    border-radius: 8px; text-decoration: none;
-                    transition: background 0.2s;
-                }
-                .os-btn-shop:hover { background: #e2e8f0; }
-                .os-item-row:not(:last-child) { border-bottom: 1px solid #f8f9fa; }
-            `}</style>
 
-            <div style={{ maxWidth: 560, margin: "0 auto" }}>
+            <div className="max-w-[560px] mx-auto space-y-3">
 
                 {/* ── Success Banner ── */}
-                <div className="os-card">
-                    <div style={{ height: 4, background: "linear-gradient(90deg, #c9a84c, #f0c060)" }} />
-                    <div style={{ padding: "20px 20px 20px", display: "flex", alignItems: "center", gap: 16 }}>
-                        <div style={{
-                            width: 56, height: 56, borderRadius: "50%",
-                            background: "#fef9ec", border: "2px solid #f0c060",
-                            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                        }}>
-                            <FaCheckCircle size={26} color="#c9a84c" />
+                <Card padding="none" className="overflow-hidden">
+                    <div className="h-1 bg-accent" />
+                    <div className="p-5 flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-full bg-accent-tint border-2 border-[var(--accent-primary)] flex items-center justify-center flex-shrink-0">
+                            <FiCheckCircle size={26} className="text-accent" aria-hidden="true" />
                         </div>
                         <div>
-                            <h1 style={{ fontSize: 17, fontWeight: 800, color: "#1e293b", margin: 0 }}>
+                            <h1 className="text-[17px] font-bold text-primary">
                                 Order Placed Successfully! 🎉
                             </h1>
-                            <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>
-                                Thank you, <strong style={{ color: "#1e293b" }}>{order.customerName}</strong>! Your order has been confirmed.
+                            <p className="text-[13px] text-secondary mt-1">
+                                Thank you, <strong className="text-primary">{order.customerName}</strong>! Your order has been confirmed.
                             </p>
                         </div>
                     </div>
-                </div>
+                </Card>
 
                 {/* ── Order Summary ── */}
-                <div className="os-card">
-                    <div style={{ padding: "12px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <FaReceipt size={13} color="#c9a84c" />
-                            <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>Order Summary</span>
+                <Card padding="none" className="overflow-hidden">
+                    <div className="px-5 py-3 border-b border-default flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <FiFileText size={13} className="text-accent" aria-hidden="true" />
+                            <span className="text-[13px] font-bold text-primary">Order Summary</span>
                         </div>
-                        <span style={{ fontSize: 11, fontFamily: "monospace", fontWeight: 700, color: "#94a3b8" }}>
+                        <span className="text-[11px] font-mono font-bold text-muted">
                             #{order._id.slice(-8).toUpperCase()}
                         </span>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr" }}>
+                    <div className="grid grid-cols-3">
                         {[
                             { label: "Order ID", value: `#${order._id.slice(-8).toUpperCase()}` },
                             { label: "Total", value: `₹${Number(order.totalAmount).toLocaleString("en-IN")}`, gold: true },
                             { label: "Payment", value: isCOD ? "COD" : "Online ✓" },
                         ].map(({ label, value, gold }, i) => (
-                            <div key={i} style={{
-                                padding: "14px 12px", textAlign: "center",
-                                borderRight: i < 2 ? "1px solid #f1f5f9" : "none",
-                            }}>
-                                <div style={{ fontSize: 9, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+                            <div key={i} className={`py-3.5 px-3 text-center ${i < 2 ? "border-r border-default" : ""}`}>
+                                <div className="text-[9px] font-extrabold text-muted uppercase tracking-wide mb-1.5">
                                     {label}
                                 </div>
-                                <div style={{ fontSize: gold ? 18 : 13, fontWeight: 800, color: gold ? "#c9a84c" : "#1e293b" }}>
+                                <div className={`font-extrabold ${gold ? "text-lg text-accent" : "text-[13px] text-primary"}`}>
                                     {value}
                                 </div>
                             </div>
@@ -179,40 +116,40 @@ const OrderSuccess = () => {
                     </div>
                     {/* Delivery charge + breakdown */}
                     {(order.deliveryCharge !== undefined || order.platformFee !== undefined) && (
-                        <div style={{ padding: "12px 20px", borderTop: "1px solid #f8f9fa", background: "#fafaf9" }}>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b" }}>
+                        <div className="px-5 py-3 border-t border-default bg-canvas">
+                            <div className="flex flex-col gap-1.5">
+                                <div className="flex justify-between text-xs text-secondary">
                                     <span>Items Total</span>
-                                    <span style={{ fontWeight: 600 }}>
+                                    <span className="font-semibold">
                                         ₹{(Number(order.totalAmount) - Number(order.deliveryCharge || 0) - Number(order.platformFee || 0)).toLocaleString("en-IN")}
                                     </span>
                                 </div>
                                 {order.deliveryCharge > 0 && (
-                                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b" }}>
+                                    <div className="flex justify-between text-xs text-secondary">
                                         <span>Delivery</span>
-                                        <span style={{ fontWeight: 600 }}>+₹{order.deliveryCharge}</span>
+                                        <span className="font-semibold">+₹{order.deliveryCharge}</span>
                                     </div>
                                 )}
                                 {order.platformFee > 0 && (
-                                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b" }}>
+                                    <div className="flex justify-between text-xs text-secondary">
                                         <span>Platform Fee</span>
-                                        <span style={{ fontWeight: 600 }}>+₹{order.platformFee}</span>
+                                        <span className="font-semibold">+₹{order.platformFee}</span>
                                     </div>
                                 )}
-                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 800, color: "#1e293b", paddingTop: 6, borderTop: "1px dashed #e2e8f0" }}>
+                                <div className="flex justify-between text-[13px] font-extrabold text-primary pt-1.5 border-t border-dashed border-default">
                                     <span>Grand Total</span>
-                                    <span style={{ color: "#c9a84c" }}>₹{Number(order.totalAmount).toLocaleString("en-IN")}</span>
+                                    <span className="text-accent">₹{Number(order.totalAmount).toLocaleString("en-IN")}</span>
                                 </div>
                             </div>
                         </div>
                     )}
-                </div>
+                </Card>
 
                 {/* ── Items ── */}
-                <div className="os-card">
-                    <div style={{ padding: "12px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 8 }}>
-                        <FaShoppingBag size={13} color="#c9a84c" />
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
+                <Card padding="none" className="overflow-hidden">
+                    <div className="px-5 py-3 border-b border-default flex items-center gap-2">
+                        <FiShoppingBag size={13} className="text-accent" aria-hidden="true" />
+                        <span className="text-[13px] font-bold text-primary">
                             Items Ordered ({order.items?.length || 0})
                         </span>
                     </div>
@@ -220,96 +157,100 @@ const OrderSuccess = () => {
                         const rawImg = item.images?.[0]?.url || item.image || null;
                         const thumbImg = rawImg ? (imgUrl?.thumbnail ? imgUrl.thumbnail(rawImg) : rawImg) : null;
                         return (
-                            <div key={idx} className="os-item-row" style={{ padding: "14px 20px", display: "flex", gap: 14, alignItems: "center" }}>
-                                <div style={{
-                                    width: 60, height: 60, borderRadius: 8,
-                                    border: "1px solid #f1f5f9", background: "#f8f9fa",
-                                    overflow: "hidden", flexShrink: 0,
-                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                }}>
+                            <div key={idx} className={`px-5 py-3.5 flex gap-3.5 items-center ${idx < order.items.length - 1 ? "border-b border-[var(--color-graphite-100)]" : ""}`}>
+                                <div className="w-[60px] h-[60px] rounded-[var(--radius-sm)] border border-[var(--color-graphite-100)] bg-canvas overflow-hidden flex-shrink-0 flex items-center justify-center">
                                     {thumbImg ? (
-                                        <img src={thumbImg} alt={item.name} loading="lazy"
-                                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                                            onError={e => { e.target.style.display = "none"; }} />
+                                        <img
+                                            src={thumbImg}
+                                            alt={item.name}
+                                            loading="lazy"
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => { e.target.style.display = "none"; }}
+                                        />
                                     ) : (
-                                        <span style={{ fontSize: 24 }}>🎁</span>
+                                        <span className="text-2xl">🎁</span>
                                     )}
                                 </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <p style={{ fontWeight: 700, fontSize: 13, color: "#1e293b", margin: "0 0 3px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-[13px] text-primary mb-0.5 overflow-hidden text-ellipsis whitespace-nowrap">
                                         {item.name}
                                     </p>
-                                    <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>
+                                    <p className="text-xs text-muted">
                                         Qty: {item.qty || item.quantity || 1} × ₹{Number(item.price).toLocaleString("en-IN")}
                                     </p>
-                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                                    <div className="flex gap-1.5 flex-wrap mt-1">
                                         {item.selectedSize && (
-                                            <span style={{ fontSize: 10, fontWeight: 700, color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", padding: "2px 8px", borderRadius: 20 }}>Size: {item.selectedSize}</span>
+                                            <span className="text-[10px] font-bold text-warning bg-warning-tint border border-[var(--color-warning-100)] px-2 py-0.5 rounded-full">Size: {item.selectedSize}</span>
                                         )}
                                         {item.selectedColor && (
-                                            <span style={{ fontSize: 10, fontWeight: 700, color: "#1e40af", background: "#dbeafe", border: "1px solid #bfdbfe", padding: "2px 8px", borderRadius: 20 }}>Color: {item.selectedColor}</span>
+                                            <span className="text-[10px] font-bold text-info bg-info-tint border border-[var(--color-info-100)] px-2 py-0.5 rounded-full">Color: {item.selectedColor}</span>
                                         )}
                                         {item.customization?.text && (
-                                            <span style={{ fontSize: 10, fontWeight: 700, color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", padding: "2px 8px", borderRadius: 20 }}>✏️ {item.customization.text}</span>
+                                            <span className="text-[10px] font-bold text-warning bg-warning-tint border border-[var(--color-warning-100)] px-2 py-0.5 rounded-full">✏️ {item.customization.text}</span>
                                         )}
                                     </div>
                                 </div>
-                                <p style={{ fontWeight: 800, fontSize: 14, color: "#1e293b", flexShrink: 0, margin: 0 }}>
+                                <p className="font-extrabold text-sm text-primary flex-shrink-0">
                                     ₹{((item.qty || item.quantity || 1) * item.price).toLocaleString("en-IN")}
                                 </p>
                             </div>
                         );
                     })}
-                </div>
+                </Card>
 
                 {/* ── Delivery Info ── */}
-                <div className="os-card">
-                    <div style={{ padding: "12px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 8 }}>
-                        <FaTruck size={13} color="#c9a84c" />
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>Delivery Details</span>
+                <Card padding="none" className="overflow-hidden">
+                    <div className="px-5 py-3 border-b border-default flex items-center gap-2">
+                        <FiTruck size={13} className="text-accent" aria-hidden="true" />
+                        <span className="text-[13px] font-bold text-primary">Delivery Details</span>
                     </div>
-                    <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div className="px-5 py-4 flex flex-col gap-3">
                         {[
-                            { icon: <FaUser size={11} color="#c9a84c" />, text: order.customerName },
-                            { icon: <FaPhone size={11} color="#c9a84c" />, text: order.phone },
-                            { icon: <FaMapMarkerAlt size={11} color="#c9a84c" />, text: order.address },
-                        ].map(({ icon, text }, i) => (
-                            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                                <div style={{
-                                    width: 28, height: 28, background: "#fef9ec",
-                                    borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                                }}>
-                                    {icon}
+                            { icon: FiUser, text: order.customerName },
+                            { icon: FiPhone, text: order.phone },
+                            { icon: FiMapPin, text: order.address },
+                        ].map(({ icon: Icon, text }, i) => ( // eslint-disable-line no-unused-vars -- Icon rendered as <Icon/> below; false positive without eslint-plugin-react's jsx-uses-vars
+                            <div key={i} className="flex items-start gap-3">
+                                <div className="w-7 h-7 bg-accent-tint rounded-[var(--radius-sm)] flex items-center justify-center flex-shrink-0">
+                                    <Icon size={11} className="text-accent" aria-hidden="true" />
                                 </div>
-                                <p style={{ fontSize: 13, color: "#475569", margin: 0, lineHeight: 1.5, paddingTop: 5 }}>{text}</p>
+                                <p className="text-[13px] text-secondary leading-relaxed pt-1">{text}</p>
                             </div>
                         ))}
                         {order.delivery?.eta && (
-                            <div style={{
-                                marginTop: 4, padding: "10px 14px",
-                                background: "#f0fdf4", border: "1px solid #bbf7d0",
-                                borderRadius: 8, fontSize: 12, color: "#166534", fontWeight: 600,
-                            }}>
+                            <div className="mt-1 px-3.5 py-2.5 bg-success-tint border border-[var(--color-success-100)] rounded-[var(--radius-md)] text-xs text-success font-semibold">
                                 🕐 Estimated Delivery: {order.delivery.eta}
                             </div>
                         )}
                     </div>
-                </div>
+                </Card>
 
                 {/* ── CTAs ── */}
-                <div className="os-card" style={{ padding: 16 }}>
-                    <a href={userWhatsApp} target="_blank" rel="noreferrer" className="os-btn-whatsapp" style={{ marginBottom: 10 }}>
-                        <FaWhatsapp size={16} /> Get WhatsApp Confirmation
+                <Card padding="md">
+                    <a
+                        href={userWhatsApp}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center gap-2 w-full mb-2.5 h-10 px-4 rounded-[var(--radius-md)] bg-[var(--color-success-500)] text-white text-sm font-medium hover:bg-[var(--color-success-700)] transition-colors duration-150 focus-ring-accent"
+                    >
+                        <FaWhatsapp className="h-4 w-4" aria-hidden="true" />
+                        Get WhatsApp Confirmation
                     </a>
-                    <div style={{ display: "flex", gap: 10 }}>
-                        <Link to="/orders" className="os-btn-orders">
-                            <FaClipboardList size={13} /> My Orders
+                    <div className="flex gap-2.5">
+                        <Link
+                            to="/orders"
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-[var(--radius-md)] bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors duration-150 focus-ring-accent"
+                        >
+                            <FiClipboard size={13} aria-hidden="true" /> My Orders
                         </Link>
-                        <Link to="/" className="os-btn-shop">
-                            <FaShoppingBag size={13} /> Shop More
+                        <Link
+                            to="/"
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-[var(--radius-md)] bg-surface text-primary border border-strong text-sm font-medium hover:bg-canvas transition-colors duration-150 focus-ring-accent"
+                        >
+                            <FiShoppingBag size={13} aria-hidden="true" /> Shop More
                         </Link>
                     </div>
-                </div>
+                </Card>
 
             </div>
         </div>

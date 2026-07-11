@@ -49,7 +49,7 @@ const useUserLocation = () => {
                         data.address?.town ||
                         data.address?.village ||
                         place;
-                } catch { }
+                } catch { /* reverse-geocode lookup failed — place stays at its "Your location" default above */ }
 
                 const payload = {
                     location: { latitude, longitude },

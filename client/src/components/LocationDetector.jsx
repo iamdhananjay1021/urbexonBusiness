@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import { Icon } from "leaflet";
 import { MapPin, Loader, AlertCircle, CheckCircle } from "lucide-react";
@@ -235,7 +235,7 @@ export const LocationMap = ({ showMarker = true, className = "" }) => {
  * Shows current location with quick actions
  */
 export const LocationCard = ({ onChangeLocation }) => {
-    const { locationData, loading, deviceType } = useLocation();
+    const { locationData, loading } = useLocation();
 
     if (!locationData) {
         return null;

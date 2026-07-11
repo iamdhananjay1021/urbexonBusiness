@@ -1,15 +1,17 @@
 @import "tailwindcss";
+@import "./tokens.css";
 
+/* ── Legacy vars kept as aliases (unused elsewhere, safe no-op) ── */
 :root {
-    --uk-primary: #6366f1;
-    --uk-primary-dark: #4f46e5;
-    --uk-accent: #f97316;
-    --uk-accent-light: #fed7aa;
-    --uk-bg: #f8f7ff;
-    --uk-surface: #ffffff;
-    --uk-text: #1e1b4b;
-    --uk-muted: #6b7280;
-    --uk-border: #e5e7f0;
+    --uk-primary: var(--accent-primary);
+    --uk-primary-dark: var(--accent-primary-hover);
+    --uk-accent: var(--accent-hour);
+    --uk-accent-light: var(--accent-hour-tint);
+    --uk-bg: var(--bg-canvas);
+    --uk-surface: var(--bg-surface);
+    --uk-text: var(--text-primary);
+    --uk-muted: var(--text-secondary);
+    --uk-border: var(--border-default);
 }
 
 * {
@@ -28,9 +30,9 @@ html {
 }
 
 body {
-    background-color: var(--uk-bg);
-    color: var(--uk-text);
-    font-family: 'DM Sans', system-ui, sans-serif;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
@@ -38,18 +40,15 @@ body {
     min-height: 100vh;
     position: relative;
     text-rendering: optimizeSpeed;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+h1, h2, h3, h4 {
+    font-family: var(--font-display);
 }
 
 img {
     content-visibility: auto;
-}
-
-.uk-font-display {
-    font-family: 'Syne', sans-serif;
-}
-
-.uk-font-body {
-    font-family: 'DM Sans', sans-serif;
 }
 
 /* Scrollbar */
@@ -68,32 +67,20 @@ img {
 }
 
 ::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: var(--bg-canvas);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #c7d2fe;
+    background: var(--color-graphite-300);
     border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #6366f1;
+    background: var(--accent-primary);
 }
 
-/* Input styles */
-.input-uk {
-    @apply w-full bg-white border border-[#e5e7f0] rounded-xl px-4 py-3 text-[#1e1b4b] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all duration-200;
-}
-
-/* Gradient text */
-.uk-gradient-text {
-    background: linear-gradient(135deg, #6366f1, #f97316);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-/* Page load animation */
+/* Page load animation (verified: no longer referenced in JSX, kept as a harmless
+   utility in case something constructs the class name dynamically) */
 @keyframes uk-fadein {
     from {
         opacity: 0;
@@ -108,4 +95,10 @@ img {
 
 .uk-fadein {
     animation: uk-fadein 0.4s ease forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .uk-fadein {
+        animation: none;
+    }
 }

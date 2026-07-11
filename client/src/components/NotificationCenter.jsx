@@ -11,7 +11,7 @@ import {
     FaTrash,
 } from "react-icons/fa";
 import { useAuth } from "../contexts/AuthContext";
-import api from "../api/axios";
+import * as notificationApi from "../api/notificationApi";
 
 const TYPE_STYLES = {
     price_drop: {
@@ -84,7 +84,7 @@ const fetchUnreadShared = async (force = false) => {
 
     sharedInFlightPromise = (async () => {
         try {
-            const { data } = await api.get("/user-notifications/unread-count");
+            const { data } = await notificationApi.getUnreadCount();
             const count = typeof data?.count === "number" ? data.count : 0;
             notifySubscribers(count);
             return count;
@@ -138,7 +138,7 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
         notificationFetchRef.current = true;
         setLoading(true);
         try {
-            const { data } = await api.get(`/user-notifications?page=${pg}&limit=15`);
+            const { data } = await notificationApi.getNotifications(pg, 15);
             const nextNotifications = Array.isArray(data?.notifications) ? data.notifications : [];
             const totalPages = Math.max(1, data?.totalPages || data?.pages || 1);
 
@@ -245,7 +245,7 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
         if (!target || target.isRead) return;
 
         try {
-            await api.put(`/user-notifications/${id}/read`);
+            await notificationApi.markNotificationRead(id);
             setNotifications((prev) =>
                 prev.map((item) => (item._id === id ? { ...item, isRead: true } : item))
             );
@@ -257,7 +257,7 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
 
     const markAllRead = async () => {
         try {
-            await api.put("/user-notifications/read-all");
+            await notificationApi.markAllNotificationsRead();
             setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
             notifySubscribers(0);
         } catch {
@@ -280,7 +280,7 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
         event.stopPropagation();
 
         try {
-            await api.delete(`/user-notifications/${notification._id}`);
+            await notificationApi.deleteNotification(notification._id);
             setNotifications((prev) => prev.filter((item) => item._id !== notification._id));
             if (!notification.isRead) {
                 notifySubscribers(Math.max(0, sharedUnreadCount - 1));
@@ -301,8 +301,8 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
         return `${Math.floor(seconds / 86400)}d ago`;
     };
 
-    const btnTextColor = theme === "dark" ? "text-white" : "text-[#1a1740]";
-    const btnHover = theme === "dark" ? "hover:bg-white/10" : "hover:bg-black/5";
+    const btnTextColor = theme === "dark" ? "text-white" : "text-gray-700";
+    const btnHover = theme === "dark" ? "hover:bg-white/10" : "hover:bg-gray-100";
 
     const buttonClassName = isMobile
         ? `w-10 h-10 border-none bg-transparent rounded-lg flex items-center justify-center cursor-pointer relative transition-colors ${btnTextColor} ${btnHover}`
@@ -321,7 +321,7 @@ const NotificationCenter = ({ variant = "desktop", theme = "dark" }) => {
                 aria-label="Notifications"
                 aria-expanded={open}
             >
-                <FaBell size={17} className={`shrink-0 ${theme === "dark" ? "text-white" : "text-[#1a1740]"}`} />
+                <FaBell size={17} className={`shrink-0 ${theme === "dark" ? "text-white" : "text-gray-700"}`} />
                 {unread > 0 && (
                     <span className={`absolute -top-0.5 right-0.5 min-w-[16px] h-4 rounded-full text-[9px] font-black flex items-center justify-center px-0.5 ${theme === "dark" ? "bg-yellow-400 text-[#2874f0]" : "bg-red-500 text-white"}`}>
                         {unread > 9 ? "9+" : unread}

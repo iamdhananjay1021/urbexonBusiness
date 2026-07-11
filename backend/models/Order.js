@@ -294,6 +294,19 @@ const orderSchema = new mongoose.Schema(
             ],
             default: [],
         },
+
+        /* ── VENDOR REVIEW (Urbexon Hour orders only, post-delivery) ──
+           BUG FIX: jobs/sellerJobs.js's updateVendorRatings() has always
+           aggregated `Order.review.rating` to compute Vendor.rating, but
+           this field was never declared on the schema (same class of bug
+           as the missing User.refreshToken fields) — nothing could ever
+           write it, so the aggregation always matched zero orders and
+           vendor ratings never actually updated from real customer input. */
+        review: {
+            rating: { type: Number, min: 1, max: 5, default: null },
+            comment: { type: String, trim: true, maxlength: 500, default: "" },
+            createdAt: { type: Date, default: null },
+        },
     },
     { timestamps: true }
 );

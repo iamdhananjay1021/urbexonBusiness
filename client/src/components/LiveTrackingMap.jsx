@@ -75,6 +75,7 @@ const LiveTrackingMap = ({
     destLabel = "Delivery Address",
     height = 260,
     lastUpdated,
+    stale = false,
     style = {},
 }) => {
     const riderPos = useMemo(
@@ -115,10 +116,12 @@ const LiveTrackingMap = ({
                                 <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>
                                     🏍️ {riderName}
                                 </div>
-                                <div style={{ fontSize: 11, color: "#64748b" }}>
-                                    {lastUpdated
-                                        ? `Updated: ${new Date(lastUpdated).toLocaleTimeString("en-IN")}`
-                                        : "Live location"}
+                                <div style={{ fontSize: 11, color: stale ? "#dc2626" : "#64748b" }}>
+                                    {stale
+                                        ? `Last seen ${lastUpdated ? new Date(lastUpdated).toLocaleTimeString("en-IN") : "a while ago"} — reconnecting…`
+                                        : lastUpdated
+                                            ? `Updated: ${new Date(lastUpdated).toLocaleTimeString("en-IN")}`
+                                            : "Live location"}
                                 </div>
                             </div>
                         </Popup>

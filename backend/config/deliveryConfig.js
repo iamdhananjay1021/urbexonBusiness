@@ -1,7 +1,8 @@
 /**
  * deliveryConfig.js — PRODUCTION
  * COD: Available PAN-INDIA (restriction removed)
- * Urbexon Hour: Local express delivery up to 15km
+ * Urbexon Hour: Local express delivery up to 10km (hard business rule —
+ *   see HARD_MAX_RADIUS_KM in validations/orderValidations.js)
  * ✅ Loads from DB (DeliveryConfig model) with hardcoded fallbacks
  */
 
@@ -14,7 +15,7 @@ const DEFAULTS = {
 
     URBEXON_HOUR: {
         ENABLED: true,
-        MAX_RADIUS_KM: 15,
+        MAX_RADIUS_KM: 10,
         VENDOR_SELF_RADIUS_KM: 2,
         BASE_CHARGE: 25,
         CHARGE_PER_KM: 8,
@@ -77,8 +78,20 @@ export const getDeliveryETA = ({ deliveryType = DELIVERY_TYPES.ECOMMERCE_STANDAR
     return DELIVERY_CONFIG.DELIVERY_ETA.ECOMMERCE_STANDARD;
 };
 
-export const getDeliveryProvider = ({ deliveryType, distanceKm = 0 }) => {
+// BUG FIX: `Vendor.deliveryMode` ("self" | "platform" | "both") has existed
+// on the model and been vendor-editable via the vendor panel for a while,
+// but nothing here ever consulted it — the provider was always decided
+// purely by distance, so a vendor's own delivery-mode choice had zero
+// actual effect on their orders. Now: an explicit "self" or "platform"
+// choice always wins over the distance heuristic; "both" (the schema
+// default, and what any order without a resolvable vendor also falls back
+// to) keeps the original distance-based behavior unchanged. This is
+// re-evaluated fresh on every order, so a vendor switching modes takes
+// effect immediately on their very next order — nothing to cache/invalidate.
+export const getDeliveryProvider = ({ deliveryType, distanceKm = 0, vendorDeliveryMode }) => {
     if (deliveryType !== DELIVERY_TYPES.URBEXON_HOUR) return "SHIPROCKET";
+    if (vendorDeliveryMode === "self") return "VENDOR_SELF";
+    if (vendorDeliveryMode === "platform") return "LOCAL_RIDER";
     return distanceKm <= DELIVERY_CONFIG.URBEXON_HOUR.VENDOR_SELF_RADIUS_KM ? "VENDOR_SELF" : "LOCAL_RIDER";
 };
 

@@ -18,15 +18,25 @@ const RelatedProductsSlider = ({ products }) => {
         setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
     };
 
+    // BUG FIX: scroll fires far more often than the browser can paint —
+    // coalesce the 2 setState calls to once per animation frame instead of
+    // once per raw scroll event, so a scroll gesture doesn't queue dozens
+    // of redundant re-renders.
     useEffect(() => {
         checkScroll();
         const el = sliderRef.current;
         if (!el) return;
-        el.addEventListener("scroll", checkScroll, { passive: true });
-        window.addEventListener("resize", checkScroll);
+        let rafId = null;
+        const onScroll = () => {
+            if (rafId) return;
+            rafId = requestAnimationFrame(() => { rafId = null; checkScroll(); });
+        };
+        el.addEventListener("scroll", onScroll, { passive: true });
+        window.addEventListener("resize", onScroll);
         return () => {
-            el.removeEventListener("scroll", checkScroll);
-            window.removeEventListener("resize", checkScroll);
+            el.removeEventListener("scroll", onScroll);
+            window.removeEventListener("resize", onScroll);
+            if (rafId) cancelAnimationFrame(rafId);
         };
     }, [products]);
 

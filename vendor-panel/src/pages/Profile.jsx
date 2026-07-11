@@ -160,12 +160,13 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const Field = ({ label, children }) => (
+const Field = ({ label, hint, children }) => (
   <div>
     <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
       {label}
     </label>
     {children}
+    {hint && <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>{hint}</p>}
   </div>
 );
 
@@ -295,7 +296,12 @@ const Profile = () => {
       fields.forEach(f => { if (vendor[f] !== undefined && vendor[f] !== null) fd.append(f, vendor[f]); });
       fd.append("address", JSON.stringify(vendor.address || {}));
       fd.append("servicePincodes", JSON.stringify(vendor.servicePincodes || []));
-      await api.put("/vendor/me", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const { data } = await api.put("/vendor/me", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      // BUG FIX: the backend can clamp/filter values (e.g. deliveryRadius
+      // capped, invalid servicePincodes dropped) — without this, the form
+      // kept showing whatever the vendor typed even though a different
+      // value was actually persisted, until a full page reload.
+      if (data?.vendor) setVendor({ ...data.vendor, servicePincodes: data.vendor.servicePincodes || [] });
       setMsg({ text: "Changes saved successfully!", type: "success" });
     } catch (err) {
       setMsg({ text: err.response?.data?.message || "Failed to save", type: "error" });
@@ -567,11 +573,11 @@ const Profile = () => {
               {DELIVERY_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </Field>
-          <Field label="Delivery Radius (km)">
+          <Field label="Delivery Radius (km)" hint="Urbexon Hour never delivers beyond 10km, regardless of this setting.">
             <Input
               type="number"
               min={1}
-              max={50}
+              max={10}
               value={vendor.deliveryRadius ?? 5}
               onChange={v => set("deliveryRadius", v)}
               placeholder="5"
