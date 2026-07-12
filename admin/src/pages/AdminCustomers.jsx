@@ -3,68 +3,18 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import api from "../api/adminApi";
-
-const STYLES = `
-    .ac-root { padding: 28px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-    .ac-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
-    .ac-title { font-size: 22px; font-weight: 800; color: #1e293b; }
-    .ac-subtitle { font-size: 13px; color: #64748b; margin-top: 2px; }
-    .ac-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .ac-search { padding: 9px 14px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; outline: none; min-width: 220px; }
-    .ac-search:focus { border-color: #2563eb; }
-    .ac-role-tab { padding: 8px 16px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; color: #64748b; }
-    .ac-role-tab.active { background: #2563eb; border-color: #2563eb; color: #fff; }
-
-    .ac-table-wrap { background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; }
-    .ac-table { width: 100%; border-collapse: collapse; }
-    .ac-table th { padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 700; color: #64748b; letter-spacing: 0.08em; text-transform: uppercase; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
-    .ac-table td { padding: 14px 16px; font-size: 13px; color: #1e293b; border-bottom: 1px solid #f1f5f9; }
-    .ac-table tr:last-child td { border-bottom: none; }
-    .ac-table tr:hover td { background: #f8fafc; }
-    .ac-avatar { width: 34px; height: 34px; border-radius: 8px; background: #eff6ff; color: #2563eb; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
-    .ac-role-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
-    .ac-badge-user     { background: #eff6ff; color: #2563eb; }
-    .ac-badge-vendor   { background: #f0fdf4; color: #16a34a; }
-    .ac-badge-delivery { background: #fffbeb; color: #d97706; }
-    .ac-verified { color: #22c55e; font-size: 11px; font-weight: 700; }
-    .ac-unverified { color: #94a3b8; font-size: 11px; }
-    .ac-action-btn { padding: 5px 12px; border-radius: 6px; border: 1px solid #e2e8f0; background: #fff; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.15s; }
-    .ac-action-btn:hover { background: #f1f5f9; }
-    .ac-action-btn.block { color: #dc2626; border-color: #fecaca; }
-    .ac-action-btn.block:hover { background: #fef2f2; }
-    .ac-action-btn.unblock { color: #16a34a; border-color: #bbf7d0; }
-    .ac-action-btn.unblock:hover { background: #f0fdf4; }
-    .ac-blocked-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; background: #fef2f2; color: #dc2626; margin-left: 6px; }
-    .ac-empty { padding: 60px; text-align: center; color: #94a3b8; font-size: 14px; }
-    .ac-pagination { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b; }
-    .ac-page-btns { display: flex; gap: 6px; }
-    .ac-page-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0; background: #fff; cursor: pointer; font-size: 12px; font-weight: 600; color: #475569; }
-    .ac-page-btn:hover:not(:disabled) { background: #f1f5f9; }
-    .ac-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .ac-page-btn.current { background: #2563eb; border-color: #2563eb; color: #fff; }
-    .ac-spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.7s linear infinite; margin: 60px auto; display: block; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .ac-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
-    .ac-stat { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px; }
-    .ac-stat-val { font-size: 26px; font-weight: 800; color: #1e293b; }
-    .ac-stat-lbl { font-size: 12px; color: #64748b; margin-top: 4px; }
-    @media(max-width:768px){
-        .ac-root{padding:16px;}
-        .ac-search{min-width:0;width:100%;}
-        .ac-table-wrap{overflow-x:auto;}
-        .ac-pagination{flex-direction:column;gap:10px;text-align:center;}
-        .ac-page-btns{justify-content:center;}
-    }
-    @media(max-width:480px){
-        .ac-root{padding:12px;}
-    }
-`;
+import { FiUsers, FiShoppingBag, FiTruck, FiUserX, FiUserCheck } from "react-icons/fi";
+import {
+    Button, Badge, Card, Table, Pagination, SearchBar, Modal,
+} from "../components/ui";
 
 const TABS = [
     { value: "user", label: "Customers" },
     { value: "vendor", label: "Vendors" },
     { value: "delivery_boy", label: "Delivery Boys" },
 ];
+
+const ROLE_TONE = { user: "info", vendor: "success", delivery_boy: "warning" };
 
 const AdminCustomers = ({ defaultRole = "user" }) => {
     const [activeRole, setActiveRole] = useState("user");
@@ -75,6 +25,8 @@ const AdminCustomers = ({ defaultRole = "user" }) => {
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(false);
     const [stats, setStats] = useState({});
+    const [actionLoading, setActionLoading] = useState(null);
+    const [confirmTarget, setConfirmTarget] = useState(null); // user pending block/unblock
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
@@ -109,146 +61,175 @@ const AdminCustomers = ({ defaultRole = "user" }) => {
     useEffect(() => { fetchStats(); }, [fetchStats]);
     useEffect(() => { setPage(1); }, [activeRole, search]);
 
-    const toggleBlock = async (userId, currentlyBlocked) => {
-        if (!window.confirm(`${currentlyBlocked ? "Unblock" : "Block"} this user?`)) return;
+    const toggleBlock = async () => {
+        if (!confirmTarget) return;
+        const { _id: userId } = confirmTarget;
+        setActionLoading(userId);
         try {
             const { data } = await api.patch(`/auth/users/${userId}/toggle-block`);
             setUsers(prev => prev.map(u => u._id === userId ? { ...u, isBlocked: data.isBlocked } : u));
+            setConfirmTarget(null);
         } catch (e) {
             alert(e.response?.data?.message || "Action failed");
+        } finally {
+            setActionLoading(null);
         }
     };
 
-    const roleBadgeClass = (role) => {
-        if (role === "vendor") return "ac-badge-vendor";
-        if (role === "delivery_boy") return "ac-badge-delivery";
-        return "ac-badge-user";
-    };
-    const roleLabel = (role) => {
-        if (role === "delivery_boy") return "Delivery";
-        return role;
-    };
+    const roleLabel = (role) => (role === "delivery_boy" ? "Delivery" : role);
+
+    const columns = [
+        { key: "user", label: "User" },
+        { key: "email", label: "Email" },
+        { key: "phone", label: "Phone" },
+        { key: "role", label: "Role" },
+        { key: "verified", label: "Verified" },
+        { key: "joined", label: "Joined" },
+        { key: "actions", label: "Actions" },
+    ];
 
     return (
-        <div className="ac-root">
-            <style>{STYLES}</style>
+        <div style={{ fontFamily: "var(--adm-font-sans)", color: "var(--adm-text-primary)", padding: 28 }}>
+            <Modal
+                open={!!confirmTarget}
+                onClose={() => setConfirmTarget(null)}
+                title={confirmTarget?.isBlocked ? "Unblock this user?" : "Block this user?"}
+                width={380}
+                footer={(
+                    <>
+                        <Button variant="secondary" onClick={() => setConfirmTarget(null)} disabled={!!actionLoading}>Cancel</Button>
+                        <Button
+                            variant={confirmTarget?.isBlocked ? "success" : "danger"}
+                            icon={confirmTarget?.isBlocked ? FiUserCheck : FiUserX}
+                            loading={actionLoading === confirmTarget?._id}
+                            onClick={toggleBlock}
+                        >
+                            {confirmTarget?.isBlocked ? "Unblock" : "Block"}
+                        </Button>
+                    </>
+                )}
+            >
+                <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", margin: 0, lineHeight: 1.55 }}>
+                    {confirmTarget?.isBlocked
+                        ? `${confirmTarget?.name || "This user"} will regain access immediately.`
+                        : `${confirmTarget?.name || "This user"} will lose access immediately.`}
+                </p>
+            </Modal>
 
-            <div className="ac-header">
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
                 <div>
-                    <div className="ac-title">
-                        {activeRole === "user" ? "Customers"
-                            : activeRole === "vendor" ? "Vendors"
-                                : "Delivery Boys"}
-                    </div>
-                    <div className="ac-subtitle">
+                    <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--adm-text-primary)", margin: 0 }}>
+                        {activeRole === "user" ? "Customers" : activeRole === "vendor" ? "Vendors" : "Delivery Boys"}
+                    </h1>
+                    <p style={{ fontSize: 13, color: "var(--adm-muted)", marginTop: 2 }}>
                         {total} {activeRole === "delivery_boy" ? "delivery partners" : activeRole + "s"} total
-                    </div>
+                    </p>
                 </div>
             </div>
 
             {/* Stats */}
-            <div className="ac-stat-row">
-                <div className="ac-stat">
-                    <div className="ac-stat-val">{stats.users ?? "—"}</div>
-                    <div className="ac-stat-lbl">Total Customers</div>
-                </div>
-                <div className="ac-stat">
-                    <div className="ac-stat-val">{stats.vendors ?? "—"}</div>
-                    <div className="ac-stat-lbl">Vendors</div>
-                </div>
-                <div className="ac-stat">
-                    <div className="ac-stat-val">{stats.delivery ?? "—"}</div>
-                    <div className="ac-stat-lbl">Delivery Partners</div>
-                </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14, marginBottom: 24 }}>
+                <Card>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <FiUsers size={18} color="var(--adm-info)" />
+                        <div>
+                            <div style={{ fontSize: 26, fontWeight: 800, color: "var(--adm-text-primary)" }}>{stats.users ?? "—"}</div>
+                            <div style={{ fontSize: 12, color: "var(--adm-muted)", marginTop: 2 }}>Total Customers</div>
+                        </div>
+                    </div>
+                </Card>
+                <Card>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <FiShoppingBag size={18} color="var(--adm-success)" />
+                        <div>
+                            <div style={{ fontSize: 26, fontWeight: 800, color: "var(--adm-text-primary)" }}>{stats.vendors ?? "—"}</div>
+                            <div style={{ fontSize: 12, color: "var(--adm-muted)", marginTop: 2 }}>Vendors</div>
+                        </div>
+                    </div>
+                </Card>
+                <Card>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <FiTruck size={18} color="var(--adm-warning)" />
+                        <div>
+                            <div style={{ fontSize: 26, fontWeight: 800, color: "var(--adm-text-primary)" }}>{stats.delivery ?? "—"}</div>
+                            <div style={{ fontSize: 12, color: "var(--adm-muted)", marginTop: 2 }}>Delivery Partners</div>
+                        </div>
+                    </div>
+                </Card>
             </div>
 
             {/* Filters */}
-            <div className="ac-filters" style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
                 {TABS.map(t => (
-                    <button key={t.value} className={`ac-role-tab ${activeRole === t.value ? "active" : ""}`}
-                        onClick={() => setActiveRole(t.value)}>
+                    <Button
+                        key={t.value}
+                        variant={activeRole === t.value ? "primary" : "secondary"}
+                        size="sm"
+                        onClick={() => setActiveRole(t.value)}
+                    >
                         {t.label}
-                    </button>
+                    </Button>
                 ))}
-                <input
-                    className="ac-search"
-                    placeholder="Search by name, email, phone…"
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                />
+                <div style={{ minWidth: 240 }}>
+                    <SearchBar value={search} onChange={setSearch} placeholder="Search by name, email, phone…" />
+                </div>
             </div>
 
             {/* Table */}
-            <div className="ac-table-wrap">
-                {loading ? (
-                    <div className="ac-spinner" />
-                ) : users.length === 0 ? (
-                    <div className="ac-empty">No {activeRole === "delivery_boy" ? "delivery partners" : activeRole + "s"} found</div>
-                ) : (
-                    <table className="ac-table">
-                        <thead>
-                            <tr>
-                                <th>User</th>
-                                <th>Email</th>
-                                <th>Phone</th>
-                                <th>Role</th>
-                                <th>Verified</th>
-                                <th>Joined</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {users.map(u => (
-                                <tr key={u._id}>
-                                    <td>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                            <div className="ac-avatar">{u.name?.[0]?.toUpperCase()}</div>
-                                            <span style={{ fontWeight: 600 }}>{u.name}{u.isBlocked && <span className="ac-blocked-badge">Blocked</span>}</span>
-                                        </div>
-                                    </td>
-                                    <td style={{ color: "#64748b" }}>{u.email}</td>
-                                    <td style={{ color: "#64748b" }}>{u.phone || "—"}</td>
-                                    <td>
-                                        <span className={`ac-role-badge ${roleBadgeClass(u.role)}`}>
-                                            {roleLabel(u.role)}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        {u.isEmailVerified
-                                            ? <span className="ac-verified">✓ Verified</span>
-                                            : <span className="ac-unverified">Pending</span>}
-                                    </td>
-                                    <td style={{ color: "#64748b" }}>
-                                        {u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
-                                    </td>
-                                    <td>
-                                        <button
-                                            className={`ac-action-btn ${u.isBlocked ? "unblock" : "block"}`}
-                                            onClick={() => toggleBlock(u._id, u.isBlocked)}
-                                        >
-                                            {u.isBlocked ? "Unblock" : "Block"}
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+            <Table
+                columns={columns}
+                rows={users}
+                loading={loading}
+                empty={{ icon: FiUsers, title: `No ${activeRole === "delivery_boy" ? "delivery partners" : activeRole + "s"} found` }}
+                renderRow={(u) => (
+                    <tr key={u._id}>
+                        <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <div style={{
+                                    width: 34, height: 34, borderRadius: "var(--adm-radius-sm)",
+                                    background: "var(--adm-primary-tint)", color: "var(--adm-primary)",
+                                    fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center",
+                                }}>
+                                    {u.name?.[0]?.toUpperCase()}
+                                </div>
+                                <span style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                                    {u.name}
+                                    {u.isBlocked && <Badge tone="danger">Blocked</Badge>}
+                                </span>
+                            </div>
+                        </td>
+                        <td style={{ color: "var(--adm-text-secondary)" }}>{u.email}</td>
+                        <td style={{ color: "var(--adm-text-secondary)" }}>{u.phone || "—"}</td>
+                        <td><Badge tone={ROLE_TONE[u.role] || "neutral"}>{roleLabel(u.role)}</Badge></td>
+                        <td>
+                            {u.isEmailVerified
+                                ? <span style={{ color: "var(--adm-success)", fontSize: 11, fontWeight: 700 }}>✓ Verified</span>
+                                : <span style={{ color: "var(--adm-muted)", fontSize: 11 }}>Pending</span>}
+                        </td>
+                        <td style={{ color: "var(--adm-text-secondary)" }}>
+                            {u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                        </td>
+                        <td>
+                            <Button
+                                variant={u.isBlocked ? "success" : "danger"}
+                                size="sm"
+                                icon={u.isBlocked ? FiUserCheck : FiUserX}
+                                onClick={() => setConfirmTarget(u)}
+                            >
+                                {u.isBlocked ? "Unblock" : "Block"}
+                            </Button>
+                        </td>
+                    </tr>
                 )}
+            />
 
-                {!loading && users.length > 0 && (
-                    <div className="ac-pagination">
-                        <span>Showing {(page - 1) * 20 + 1}–{Math.min(page * 20, total)} of {total}</span>
-                        <div className="ac-page-btns">
-                            <button className="ac-page-btn" disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
-                            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                                const p = i + 1;
-                                return <button key={p} className={`ac-page-btn ${page === p ? "current" : ""}`} onClick={() => setPage(p)}>{p}</button>;
-                            })}
-                            <button className="ac-page-btn" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next →</button>
-                        </div>
-                    </div>
-                )}
-            </div>
+            {!loading && users.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 20, flexWrap: "wrap", gap: 12 }}>
+                    <span style={{ fontSize: 13, color: "var(--adm-muted)" }}>Showing {(page - 1) * 20 + 1}–{Math.min(page * 20, total)} of {total}</span>
+                    <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} disabled={loading} />
+                </div>
+            )}
         </div>
     );
 };

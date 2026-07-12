@@ -5,16 +5,17 @@
  * CHANGELOG (from the previous version)
  * --------------------------------------
  * DESIGN
- *  - New visual identity: indigo/amber "ops console" palette instead of
- *    generic blue-on-white, a monospace treatment for codes, and a
- *    coverage bar as the page's signature element — a single glance at
- *    how many pincodes are active / coming soon / blocked, which is the
- *    thing an admin actually opens this page to check.
- *  - Add/Edit moved from a center modal to a right-side drawer so the
- *    table stays visible and orientation isn't lost while editing.
- *  - Delete confirmation moved off window.confirm() into an in-app
- *    dialog (accessible, styleable, doesn't block the JS thread).
- *  - Skeleton rows instead of a blocking spinner on first load.
+ *  - Migrated onto the shared admin design system (theme/tokens.css +
+ *    components/ui/*): the coverage bar, filter tabs, list, pagination,
+ *    search and dialogs now read from the same tokens every other admin
+ *    page uses instead of a page-local color object.
+ *  - Add/Edit stays a right-side drawer so the table remains visible and
+ *    orientation isn't lost while editing (a centered modal would hide
+ *    the list entirely, which is a worse editing experience here).
+ *  - Delete confirmation uses the shared Modal component instead of
+ *    window.confirm() — accessible, styleable, doesn't block the JS thread.
+ *  - Skeleton rows (via the shared Table component) instead of a blocking
+ *    spinner on first load.
  *
  * AUTH
  *  - The page is gated by useAdminAuth(): unauthenticated → sign-in
@@ -43,39 +44,28 @@
  *    an easy state to forget to fill in.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePincodes } from "../hooks/usePincodes";
 import { useAdminAuth } from "../auth/AdminAuthContext";
 import {
-    FiMapPin, FiPlus, FiEdit2, FiTrash2, FiSearch, FiX,
+    FiMapPin, FiPlus, FiEdit2, FiTrash2, FiX,
     FiCheckCircle, FiAlertCircle, FiLoader, FiUsers, FiLock,
-    FiArrowUp, FiArrowDown, FiDownload, FiShieldOff,
+    FiArrowUp, FiArrowDown, FiDownload,
 } from "react-icons/fi";
+import {
+    Button, Badge, Card, Table, Pagination, SearchBar,
+    ErrorState, Modal, FormField, Input,
+} from "../components/ui";
 
-/* ══════════════════════════════════════════
-   DESIGN TOKENS
-   Indigo/amber "ops console" identity — kept distinct from the generic
-   blue-on-white admin-panel default. Status colors stay semantic
-   (green/amber/red) since admins scan these by color, not novelty.
-══════════════════════════════════════════ */
-const T = {
-    canvas: "#f5f6fb", surface: "#ffffff", surfaceAlt: "#f0f1f8",
-    line: "#e3e5f0", lineSoft: "#edeef6",
-    ink: "#14162b", sub: "#383a55", muted: "#5b5e7e", hint: "#9497b3",
-    primary: "#4338ca", primarySoft: "#eef0fd", primaryMid: "#dfe1fb",
-    amber: "#d97706", amberSoft: "#fef3e2",
-    green: "#0d9488", greenSoft: "#ecfdf9",
-    red: "#dc2626", redSoft: "#fef2f2",
-    mono: "ui-monospace,'JetBrains Mono','SF Mono',Consolas,monospace",
-};
+const MONO_FONT = "ui-monospace,'JetBrains Mono','SF Mono',Consolas,monospace";
 
 const STATUS_CONFIG = {
-    active: { label: "Active", color: T.green, bg: T.greenSoft },
-    coming_soon: { label: "Coming Soon", color: T.amber, bg: T.amberSoft },
-    blocked: { label: "Blocked", color: T.red, bg: T.redSoft },
+    active: { label: "Active", tone: "success" },
+    coming_soon: { label: "Coming Soon", tone: "warning" },
+    blocked: { label: "Blocked", tone: "danger" },
 };
 
-const EMPTY_FORM = { code: "", status: "coming_soon", area: "", city: "", district: "", state: "", expectedLaunchDate: "", note: "", priority: 0 };
+const EMPTY_FORM = { code: "", status: "coming_soon", area: "", city: "", district: "", state: "", expectedLaunchDate: "", note: "", priority: 0, lat: "", lng: "", deliveryRadiusKm: 8 };
 
 /* ── small utils ── */
 const relTime = (iso) => {
@@ -126,10 +116,10 @@ const Toast = ({ toast, onDismiss }) => {
     return (
         <div role="status" aria-live="polite" style={{
             position: "fixed", top: 20, right: 20, zIndex: 9999,
-            background: isErr ? T.redSoft : T.greenSoft,
-            border: `1px solid ${isErr ? "#fecaca" : "#a7e8dc"}`,
-            color: isErr ? T.red : T.green, padding: "10px 14px", borderRadius: 10,
-            fontSize: 13, fontWeight: 600, boxShadow: "0 8px 28px rgba(20,22,43,0.14)",
+            background: isErr ? "var(--adm-danger-tint)" : "var(--adm-success-tint)",
+            border: `1px solid ${isErr ? "var(--adm-danger)" : "var(--adm-success)"}`,
+            color: isErr ? "var(--adm-danger)" : "var(--adm-success)", padding: "10px 14px", borderRadius: "var(--adm-radius-md)",
+            fontSize: 13, fontWeight: 600, boxShadow: "var(--adm-shadow-lg)",
             display: "flex", alignItems: "center", gap: 8, maxWidth: 360, animation: "ap-fadeUp .2s ease",
         }}>
             {isErr ? <FiAlertCircle size={14} /> : <FiCheckCircle size={14} />}
@@ -143,13 +133,13 @@ const Toast = ({ toast, onDismiss }) => {
    AUTH SCREENS
 ══════════════════════════════════════════ */
 const AuthScreen = ({ icon, title, body, cta }) => (
-    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter',system-ui,sans-serif" }}>
+    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--adm-font-sans)" }}>
         <div style={{ textAlign: "center", maxWidth: 320 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 14, background: T.primarySoft, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", color: T.primary }}>
+            <div style={{ width: 48, height: 48, borderRadius: "var(--adm-radius-lg)", background: "var(--adm-primary-tint)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", color: "var(--adm-primary)" }}>
                 {icon}
             </div>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: T.ink, margin: "0 0 6px" }}>{title}</h2>
-            <p style={{ fontSize: 13, color: T.muted, lineHeight: 1.6, margin: "0 0 18px" }}>{body}</p>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--adm-text-primary)", margin: "0 0 6px" }}>{title}</h2>
+            <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", lineHeight: 1.6, margin: "0 0 18px" }}>{body}</p>
             {cta}
         </div>
     </div>
@@ -180,52 +170,88 @@ const CoverageBar = ({ stats, total, pincodes, pages }) => {
     const sum = Math.max(1, segments.reduce((s, x) => s + x.value, 0));
 
     return (
-        <div style={{ background: T.surface, border: `1px solid ${T.line}`, borderRadius: 16, padding: "18px 20px", marginBottom: 22, boxShadow: "0 1px 2px rgba(20,22,43,0.03)" }}>
+        <Card style={{ marginBottom: 22 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap" }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8, paddingRight: 24, borderRight: source ? `1px solid ${T.lineSoft}` : "none" }}>
-                    <span style={{ fontSize: 28, fontWeight: 800, color: T.ink, letterSpacing: "-0.02em" }}>{total}</span>
-                    <span style={{ fontSize: 12.5, color: T.hint, fontWeight: 600 }}>pincodes</span>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, paddingRight: 24, borderRight: source ? "1px solid var(--adm-border-soft)" : "none" }}>
+                    <span style={{ fontSize: 28, fontWeight: 800, color: "var(--adm-text-primary)", letterSpacing: "-0.02em" }}>{total}</span>
+                    <span style={{ fontSize: 12.5, color: "var(--adm-muted)", fontWeight: 600 }}>pincodes</span>
                 </div>
 
                 {source ? (
                     <div style={{ flex: 1, minWidth: 220 }}>
-                        <div style={{ display: "flex", height: 8, borderRadius: 99, overflow: "hidden", background: T.surfaceAlt, marginBottom: 10 }}>
+                        <div style={{ display: "flex", height: 8, borderRadius: 99, overflow: "hidden", background: "var(--adm-surface-alt)", marginBottom: 10 }}>
                             {segments.map((s) => (
-                                <div key={s.key} title={`${s.label}: ${s.value}`} style={{ width: `${(s.value / sum) * 100}%`, background: s.color, transition: "width .3s ease" }} />
+                                <div key={s.key} title={`${s.label}: ${s.value}`} style={{ width: `${(s.value / sum) * 100}%`, background: `var(--adm-${s.tone})`, transition: "width .3s ease" }} />
                             ))}
                         </div>
                         <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
                             {segments.map((s) => (
                                 <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.color }} />
-                                    <span style={{ fontSize: 12.5, color: T.sub, fontWeight: 700 }}>{s.value}</span>
-                                    <span style={{ fontSize: 12.5, color: T.hint }}>{s.label}</span>
+                                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: `var(--adm-${s.tone})` }} />
+                                    <span style={{ fontSize: 12.5, color: "var(--adm-text-secondary)", fontWeight: 700 }}>{s.value}</span>
+                                    <span style={{ fontSize: 12.5, color: "var(--adm-muted)" }}>{s.label}</span>
                                 </div>
                             ))}
                         </div>
                     </div>
                 ) : (
-                    <p style={{ fontSize: 12.5, color: T.hint, margin: 0 }}>Status breakdown shows once all pages are loaded, or filter by status above.</p>
+                    <p style={{ fontSize: 12.5, color: "var(--adm-muted)", margin: 0 }}>Status breakdown shows once all pages are loaded, or filter by status above.</p>
                 )}
             </div>
-        </div>
+        </Card>
     );
 };
 
 /* ══════════════════════════════════════════
    ADD / EDIT DRAWER
+   A right-side slide-in rather than a centered dialog, so the list stays
+   visible while editing — kept as a bespoke overlay (not the shared
+   <Modal>, which is always a centered dialog) but every color, input and
+   button inside now reads from the shared tokens/components.
 ══════════════════════════════════════════ */
 const PincodeDrawer = ({ initial, onSave, onClose, loading, serverError }) => {
-    const [form, setForm] = useState(initial || EMPTY_FORM);
+    const [form, setForm] = useState(() => {
+        if (!initial) return EMPTY_FORM;
+        const coords = initial.location?.coordinates;
+        return {
+            ...EMPTY_FORM,
+            ...initial,
+            lat: coords?.[1] != null ? String(coords[1]) : "",
+            lng: coords?.[0] != null ? String(coords[0]) : "",
+            deliveryRadiusKm: initial.deliveryRadiusKm ?? 8,
+        };
+    });
     const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
     const isEdit = !!initial?._id;
     const firstFieldRef = useRef(null);
+
+    // Coordinates decide which pincode a GPS fix resolves to backend-side —
+    // fat-fingering these silently breaks resolution for real users near
+    // this point, so validate the same India-bounded range the backend does.
+    const latNum = form.lat === "" ? null : Number(form.lat);
+    const lngNum = form.lng === "" ? null : Number(form.lng);
+    const latLngPartial = (form.lat === "") !== (form.lng === "");
+    const latLngInvalid = (latNum !== null && (!Number.isFinite(latNum) || latNum < -90 || latNum > 90))
+        || (lngNum !== null && (!Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180));
 
     // Client-side format check up front so a malformed code never even
     // reaches the network — the 6-digit rule is still enforced
     // server-side as the source of truth.
     const codeValid = isEdit || /^\d{6}$/.test(form.code.trim());
     const launchDateMissing = form.status === "coming_soon" && !form.expectedLaunchDate;
+    const canSave = codeValid && !latLngPartial && !latLngInvalid;
+
+    const buildPayload = (f) => {
+        const { lat, lng, ...rest } = f;
+        const payload = { ...rest };
+        if (lat !== "" && lng !== "") {
+            payload.location = { type: "Point", coordinates: [Number(lng), Number(lat)] };
+        } else {
+            payload.location = null; // explicit clear when both left blank
+        }
+        payload.deliveryRadiusKm = Number(f.deliveryRadiusKm) || 8;
+        return payload;
+    };
 
     useEffect(() => {
         firstFieldRef.current?.focus();
@@ -239,29 +265,26 @@ const PincodeDrawer = ({ initial, onSave, onClose, loading, serverError }) => {
             <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(15,17,36,0.45)", animation: "ap-fade .15s ease" }} />
             <div style={{
                 position: "absolute", top: 0, right: 0, bottom: 0, width: "min(420px, 100%)",
-                background: T.surface, boxShadow: "-16px 0 40px rgba(15,17,36,0.18)",
+                background: "var(--adm-surface)", boxShadow: "var(--adm-shadow-lg)",
                 display: "flex", flexDirection: "column", animation: "ap-slideIn .22s cubic-bezier(.32,.72,0,1)",
             }}>
-                <div style={{ padding: "20px 24px", borderBottom: `1px solid ${T.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 700, color: T.ink, margin: 0 }}>{isEdit ? `Edit ${initial.code}` : "Add pincode"}</h3>
-                    <button onClick={onClose} aria-label="Close" style={{ width: 30, height: 30, border: "none", background: T.surfaceAlt, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}><FiX size={15} /></button>
+                <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--adm-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--adm-text-primary)", margin: 0 }}>{isEdit ? `Edit ${initial.code}` : "Add pincode"}</h3>
+                    <button onClick={onClose} aria-label="Close" style={{ width: 30, height: 30, border: "none", background: "var(--adm-surface-alt)", borderRadius: "var(--adm-radius-sm)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--adm-muted)" }}><FiX size={15} /></button>
                 </div>
 
                 <div style={{ padding: 24, overflowY: "auto", flex: 1 }}>
-                    {serverError && (
-                        <div style={{ background: T.redSoft, border: "1px solid #fecaca", color: T.red, padding: "10px 12px", borderRadius: 8, fontSize: 12.5, marginBottom: 16, display: "flex", gap: 8 }}>
-                            <FiAlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} /> {serverError}
-                        </div>
-                    )}
+                    {serverError && <ErrorState message={serverError} />}
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: serverError ? 16 : 0 }}>
                         <div style={{ gridColumn: "1 / -1" }}>
-                            <label style={LabelStyle}>Pincode *</label>
-                            <input ref={firstFieldRef} type="text" inputMode="numeric" maxLength={6} value={form.code} disabled={isEdit}
-                                onChange={(e) => set("code", e.target.value.replace(/\D/g, ""))} placeholder="e.g. 226010"
-                                style={{ ...InputStyle, fontFamily: T.mono, letterSpacing: "0.04em", background: isEdit ? T.surfaceAlt : T.surface }} />
-                            {!codeValid && form.code.trim() && <p style={HintErr}>Pincode must be exactly 6 digits.</p>}
-                            {isEdit && <p style={{ ...HintErr, color: T.hint }}>Pincode can't be changed after creation.</p>}
+                            <FormField label="Pincode *" error={!codeValid && form.code.trim() ? "Pincode must be exactly 6 digits." : (isEdit ? "Pincode can't be changed after creation." : undefined)}>
+                                {/* plain input (not the shared <Input/>, which doesn't forward refs) so autofocus-on-open still works */}
+                                <input ref={firstFieldRef} type="text" inputMode="numeric" maxLength={6} value={form.code} disabled={isEdit}
+                                    onChange={(e) => set("code", e.target.value.replace(/\D/g, ""))} placeholder="e.g. 226010"
+                                    className="adm-field-input"
+                                    style={{ width: "100%", boxSizing: "border-box", fontFamily: MONO_FONT, letterSpacing: "0.04em" }} />
+                            </FormField>
                         </div>
 
                         {[
@@ -270,28 +293,46 @@ const PincodeDrawer = ({ initial, onSave, onClose, loading, serverError }) => {
                             { key: "district", label: "District", placeholder: "Lucknow" },
                             { key: "state", label: "State", placeholder: "Uttar Pradesh" },
                         ].map(({ key, label, placeholder }) => (
-                            <div key={key}>
-                                <label style={LabelStyle}>{label}</label>
-                                <input type="text" value={form[key]} onChange={(e) => set(key, e.target.value)} placeholder={placeholder} style={InputStyle} />
-                            </div>
+                            <FormField key={key} label={label}>
+                                <Input type="text" value={form[key]} onChange={(e) => set(key, e.target.value)} placeholder={placeholder} style={{ width: "100%", boxSizing: "border-box" }} />
+                            </FormField>
                         ))}
 
-                        <div>
-                            <label style={LabelStyle}>Priority</label>
-                            <input type="number" value={form.priority} onChange={(e) => set("priority", e.target.value)} placeholder="0" style={InputStyle} />
-                        </div>
+                        <FormField label="Priority">
+                            <Input type="number" value={form.priority} onChange={(e) => set("priority", e.target.value)} placeholder="0" style={{ width: "100%", boxSizing: "border-box" }} />
+                        </FormField>
                     </div>
 
                     <div style={{ marginTop: 14 }}>
-                        <label style={LabelStyle}>Status</label>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: "var(--adm-text-secondary)", display: "block", marginBottom: 5 }}>Coordinates (drives GPS → pincode resolution)</label>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                            <Input type="text" inputMode="decimal" value={form.lat} onChange={(e) => set("lat", e.target.value)} placeholder="Latitude e.g. 26.4192" style={{ width: "100%", boxSizing: "border-box" }} />
+                            <Input type="text" inputMode="decimal" value={form.lng} onChange={(e) => set("lng", e.target.value)} placeholder="Longitude e.g. 82.5359" style={{ width: "100%", boxSizing: "border-box" }} />
+                        </div>
+                        {latLngPartial && <p style={{ fontSize: 11, color: "var(--adm-danger)", marginTop: 6 }}>Enter both latitude and longitude, or leave both blank.</p>}
+                        {latLngInvalid && <p style={{ fontSize: 11, color: "var(--adm-danger)", marginTop: 6 }}>Latitude must be -90..90 and longitude -180..180.</p>}
+                        <p style={{ fontSize: 11, color: "var(--adm-muted)", marginTop: 6 }}>Leave blank if unknown — GPS lookups near this pincode will fall back to the reverse-geocoder guess until coordinates are set.</p>
+                    </div>
+
+                    <div style={{ marginTop: 14 }}>
+                        <FormField label="Delivery radius (km)">
+                            <Input type="number" min={1} max={25} value={form.deliveryRadiusKm} onChange={(e) => set("deliveryRadiusKm", e.target.value)} style={{ maxWidth: 140 }} />
+                        </FormField>
+                        <p style={{ fontSize: 11, color: "var(--adm-muted)", marginTop: 6 }}>How far (km) a detected GPS point can be from these coordinates and still resolve to this pincode.</p>
+                    </div>
+
+                    <div style={{ marginTop: 14 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: "var(--adm-text-secondary)", display: "block", marginBottom: 5 }}>Status</label>
                         <div style={{ display: "flex", gap: 6 }}>
                             {Object.entries(STATUS_CONFIG).map(([key, cfg]) => {
                                 const active = form.status === key;
                                 return (
                                     <button key={key} type="button" onClick={() => set("status", key)}
                                         style={{
-                                            flex: 1, padding: "8px 6px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                                            border: `1px solid ${active ? cfg.color : T.line}`, background: active ? cfg.bg : T.surface, color: active ? cfg.color : T.muted,
+                                            flex: 1, padding: "8px 6px", borderRadius: "var(--adm-radius-sm)", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                                            border: `1px solid ${active ? `var(--adm-${cfg.tone})` : "var(--adm-border)"}`,
+                                            background: active ? `var(--adm-${cfg.tone}-tint)` : "var(--adm-surface)",
+                                            color: active ? `var(--adm-${cfg.tone})` : "var(--adm-text-secondary)",
                                         }}>{cfg.label}</button>
                                 );
                             })}
@@ -300,50 +341,60 @@ const PincodeDrawer = ({ initial, onSave, onClose, loading, serverError }) => {
 
                     {form.status === "coming_soon" && (
                         <div style={{ marginTop: 14 }}>
-                            <label style={LabelStyle}>Expected launch date</label>
-                            <input type="date" value={form.expectedLaunchDate?.split("T")[0] || ""} onChange={(e) => set("expectedLaunchDate", e.target.value)} style={InputStyle} />
-                            {launchDateMissing && <p style={{ ...HintErr, color: T.amber }}>Consider adding a launch date so this doesn't sit forgotten.</p>}
+                            <FormField label="Expected launch date" error={launchDateMissing ? "Consider adding a launch date so this doesn't sit forgotten." : undefined}>
+                                <Input type="date" value={form.expectedLaunchDate?.split("T")[0] || ""} onChange={(e) => set("expectedLaunchDate", e.target.value)} style={{ width: "100%", boxSizing: "border-box" }} />
+                            </FormField>
                         </div>
                     )}
 
                     <div style={{ marginTop: 14 }}>
-                        <label style={LabelStyle}>Internal note</label>
-                        <textarea rows={3} value={form.note} onChange={(e) => set("note", e.target.value)} placeholder="Visible to admins only..." style={{ ...InputStyle, resize: "vertical", fontFamily: "inherit" }} />
+                        <FormField label="Internal note">
+                            <textarea rows={3} value={form.note} onChange={(e) => set("note", e.target.value)}
+                                placeholder="Visible to admins only..."
+                                style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", border: "1px solid var(--adm-border)", borderRadius: "var(--adm-radius-md)", fontSize: 13, color: "var(--adm-text-primary)", background: "var(--adm-surface)", outline: "none", fontFamily: "inherit", resize: "vertical" }} />
+                        </FormField>
                     </div>
                 </div>
 
-                <div style={{ padding: 20, borderTop: `1px solid ${T.line}`, display: "flex", gap: 10 }}>
-                    <button onClick={() => codeValid && onSave(form)} disabled={loading || !codeValid}
-                        style={{ flex: 1, padding: "11px", background: T.primary, color: "#fff", border: "none", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: !codeValid ? 0.5 : 1 }}>
-                        {loading ? <FiLoader size={13} style={{ animation: "ap-spin 0.8s linear infinite" }} /> : <FiCheckCircle size={13} />}
+                <div style={{ padding: 20, borderTop: "1px solid var(--adm-border)", display: "flex", gap: 10 }}>
+                    <Button variant="primary" icon={FiCheckCircle} loading={loading} disabled={!canSave} onClick={() => canSave && onSave(buildPayload(form))} style={{ flex: 1 }}>
                         {isEdit ? "Save changes" : "Create pincode"}
-                    </button>
-                    <button onClick={onClose} style={{ padding: "11px 18px", background: T.surfaceAlt, border: `1px solid ${T.line}`, borderRadius: 9, fontSize: 13, color: T.muted, cursor: "pointer", fontWeight: 600 }}>Cancel</button>
+                    </Button>
+                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
                 </div>
             </div>
         </div>
     );
 };
 
-const LabelStyle = { fontSize: 12, fontWeight: 600, color: T.muted, display: "block", marginBottom: 5 };
-const InputStyle = { width: "100%", padding: "9px 12px", border: `1px solid ${T.line}`, borderRadius: 8, fontSize: 13, color: T.ink, outline: "none", fontFamily: "inherit", boxSizing: "border-box" };
-const HintErr = { fontSize: 11, color: T.red, marginTop: 6 };
-
-/* ── delete confirm dialog ── */
+/* ── delete confirm dialog — shared Modal ── */
 const ConfirmDialog = ({ title, body, confirmLabel, onConfirm, onCancel, danger = true, loading }) => (
-    <div style={{ position: "fixed", inset: 0, zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} role="alertdialog" aria-modal="true">
-        <div onClick={onCancel} style={{ position: "absolute", inset: 0, background: "rgba(15,17,36,0.45)" }} />
-        <div style={{ position: "relative", background: T.surface, borderRadius: 14, padding: 22, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px rgba(15,17,36,0.2)" }}>
-            <h4 style={{ fontSize: 15, fontWeight: 700, color: T.ink, margin: "0 0 6px" }}>{title}</h4>
-            <p style={{ fontSize: 13, color: T.muted, lineHeight: 1.55, margin: "0 0 18px" }}>{body}</p>
-            <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={onConfirm} disabled={loading} style={{ flex: 1, padding: "10px", background: danger ? T.red : T.primary, color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                    {loading ? <FiLoader size={13} style={{ animation: "ap-spin 0.8s linear infinite" }} /> : null}{confirmLabel}
-                </button>
-                <button onClick={onCancel} style={{ padding: "10px 16px", background: T.surfaceAlt, border: `1px solid ${T.line}`, borderRadius: 8, fontSize: 13, color: T.muted, cursor: "pointer" }}>Cancel</button>
-            </div>
-        </div>
-    </div>
+    <Modal
+        open
+        onClose={onCancel}
+        title={title}
+        width={360}
+        footer={(
+            <>
+                <Button variant="secondary" onClick={onCancel} disabled={loading}>Cancel</Button>
+                <Button variant={danger ? "danger" : "primary"} loading={loading} onClick={onConfirm}>{confirmLabel}</Button>
+            </>
+        )}
+    >
+        <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", lineHeight: 1.55, margin: 0 }}>{body}</p>
+    </Modal>
+);
+
+/* BUG FIX: this used to be defined INSIDE AdminPincodesInner (a new
+   function identity — and a new React component type — on every render),
+   which the react-hooks/static-components rule correctly flags as an
+   anti-pattern. Hoisted to module scope, taking sort/onSort as explicit
+   props instead of closing over component state. */
+const SortHeader = ({ label, sortKey, sort, onSort }) => (
+    <span className="ap-th-sort" onClick={() => onSort(sortKey)}>
+        {label}
+        {sort.by === sortKey && (sort.dir === "asc" ? <FiArrowUp size={10} /> : <FiArrowDown size={10} />)}
+    </span>
 );
 
 /* ══════════════════════════════════════════
@@ -445,27 +496,25 @@ const AdminPincodesInner = ({ admin }) => {
 
     const filters = [
         { key: "ALL", label: "All" },
-        { key: "active", label: "Active", dot: T.green },
-        { key: "coming_soon", label: "Coming Soon", dot: T.amber },
-        { key: "blocked", label: "Blocked", dot: T.red },
+        { key: "active", label: "Active", tone: "success" },
+        { key: "coming_soon", label: "Coming Soon", tone: "warning" },
+        { key: "blocked", label: "Blocked", tone: "danger" },
     ];
 
     const columns = [
-        { key: "code", label: "Pincode", sortable: true },
-        { key: "area", label: "Area / City", sortable: false },
-        { key: "status", label: "Status", sortable: false },
-        { key: "assignedVendors", label: "Vendors", sortable: false },
-        { key: "priority", label: "Priority", sortable: true },
-        { key: "updatedAt", label: "Updated", sortable: true },
-        { key: "actions", label: "", sortable: false },
+        { key: "select", label: <input type="checkbox" checked={pincodes.length > 0 && selected.size === pincodes.length} onChange={toggleSelectAll} aria-label="Select all" />, width: 32 },
+        { key: "code", label: <SortHeader label="Pincode" sortKey="code" sort={sort} onSort={handleSort} /> },
+        { key: "area", label: "Area / City" },
+        { key: "status", label: "Status" },
+        { key: "assignedVendors", label: "Vendors" },
+        { key: "priority", label: <SortHeader label="Priority" sortKey="priority" sort={sort} onSort={handleSort} /> },
+        { key: "updatedAt", label: <SortHeader label="Updated" sortKey="updatedAt" sort={sort} onSort={handleSort} /> },
+        { key: "actions", label: "" },
     ];
 
-    const allSelected = pincodes.length > 0 && selected.size === pincodes.length;
-
     return (
-        <div style={{ fontFamily: "'Inter',system-ui,sans-serif", color: T.ink, background: T.canvas, minHeight: "100%", padding: "28px 32px 40px", animation: "ap-pageIn .45s cubic-bezier(.22,.8,.32,1)" }}>
+        <div style={{ fontFamily: "var(--adm-font-sans)", color: "var(--adm-text-primary)", background: "var(--adm-bg)", minHeight: "100%", padding: "28px 32px 40px", animation: "ap-pageIn .45s cubic-bezier(.22,.8,.32,1)" }}>
             <style>{`
-                @keyframes ap-spin{to{transform:rotate(360deg)}}
                 @keyframes ap-fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
                 @keyframes ap-fade{from{opacity:0}to{opacity:1}}
                 @keyframes ap-pageIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
@@ -473,17 +522,7 @@ const AdminPincodesInner = ({ admin }) => {
                 .ap-enter-2{animation:ap-fadeUp .4s cubic-bezier(.22,.8,.32,1) both; animation-delay:.09s}
                 .ap-enter-3{animation:ap-fadeUp .4s cubic-bezier(.22,.8,.32,1) both; animation-delay:.15s}
                 @keyframes ap-slideIn{from{transform:translateX(24px);opacity:.6}to{transform:translateX(0);opacity:1}}
-                @keyframes ap-shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
-                .ap-row{animation:ap-fadeUp .25s ease forwards;}
-                .ap-card{transition:border-color .15s,box-shadow .15s;}
-                .ap-card:hover{border-color:#c7cbf5 !important;box-shadow:0 2px 14px rgba(67,56,202,0.08) !important;}
-                button:disabled{cursor:not-allowed;opacity:.6}
-                .ap-th-sort{cursor:pointer;user-select:none;display:flex;align-items:center;gap:4px}
-                .ap-skel{background:linear-gradient(90deg,#eef0f8 25%,#e4e6f2 37%,#eef0f8 63%);background-size:400px 100%;animation:ap-shimmer 1.3s ease infinite;border-radius:6px}
-                .pin-desktop{display:block}
-                .pin-mobile{display:none}
-                @media(max-width:720px){ .pin-desktop{display:none !important} .pin-mobile{display:block !important} }
-                input:focus, textarea:focus, select:focus { border-color:${T.primary} !important; box-shadow:0 0 0 3px ${T.primaryMid}; }
+                .ap-th-sort{cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px}
             `}</style>
 
             <Toast toast={toast} onDismiss={dismiss} />
@@ -511,23 +550,15 @@ const AdminPincodesInner = ({ admin }) => {
             {/* Header */}
             <div className="ap-enter-1" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 800, color: T.ink, margin: 0, letterSpacing: "-0.01em" }}>Pincode coverage</h1>
-                    <p style={{ fontSize: 13.5, color: T.hint, marginTop: 4 }}>Manage where the service is live, launching, or paused.</p>
+                    <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--adm-text-primary)", margin: 0, letterSpacing: "-0.01em" }}>Pincode coverage</h1>
+                    <p style={{ fontSize: 13.5, color: "var(--adm-muted)", marginTop: 4 }}>Manage where the service is live, launching, or paused.</p>
                 </div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                    <div style={{ position: "relative" }}>
-                        <FiSearch size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: T.hint, pointerEvents: "none" }} />
-                        <input type="text" value={search} onChange={(e) => onSearchChange(e.target.value)} placeholder="Search pincode, city..."
-                            style={{ height: 38, boxSizing: "border-box", paddingLeft: 34, paddingRight: 12, background: T.surface, border: `1px solid ${T.line}`, borderRadius: 10, color: T.ink, fontSize: 13, fontFamily: "inherit", outline: "none", width: 210 }} />
+                    <div style={{ width: 220 }}>
+                        <SearchBar value={search} onChange={onSearchChange} placeholder="Search pincode, city..." />
                     </div>
-                    <button onClick={() => downloadCSV(pincodes)} disabled={pincodes.length === 0}
-                        style={{ height: 38, boxSizing: "border-box", display: "flex", alignItems: "center", gap: 6, padding: "0 14px", background: T.surface, color: T.sub, border: `1px solid ${T.line}`, borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                        <FiDownload size={13} /> Export
-                    </button>
-                    <button onClick={() => setDrawer({ type: "add" })}
-                        style={{ height: 38, boxSizing: "border-box", display: "flex", alignItems: "center", gap: 6, padding: "0 16px", background: T.primary, color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 1px 2px rgba(67,56,202,0.25)" }}>
-                        <FiPlus size={14} /> Add pincode
-                    </button>
+                    <Button variant="secondary" icon={FiDownload} disabled={pincodes.length === 0} onClick={() => downloadCSV(pincodes)}>Export</Button>
+                    <Button variant="primary" icon={FiPlus} onClick={() => setDrawer({ type: "add" })}>Add pincode</Button>
                 </div>
             </div>
 
@@ -536,160 +567,93 @@ const AdminPincodesInner = ({ admin }) => {
             {/* Filter Tabs + bulk bar */}
             <div className="ap-enter-3" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
-                    {filters.map(({ key, label, dot }) => {
+                    {filters.map(({ key, label, tone }) => {
                         const active = filterStatus === key;
                         return (
                             <button key={key} onClick={() => handleFilter(key)}
-                                style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", fontSize: 12, fontWeight: 600, border: active ? `1px solid ${T.primary}` : `1px solid ${T.line}`, background: active ? T.primarySoft : T.surface, color: active ? T.primary : T.muted, cursor: "pointer", fontFamily: "inherit", borderRadius: 8 }}>
-                                {dot && <span style={{ width: 6, height: 6, borderRadius: "50%", background: dot }} />}{label}
+                                style={{
+                                    flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", fontSize: 12, fontWeight: 600,
+                                    border: active ? "1px solid var(--adm-primary)" : "1px solid var(--adm-border)",
+                                    background: active ? "var(--adm-primary-tint)" : "var(--adm-surface)",
+                                    color: active ? "var(--adm-primary)" : "var(--adm-text-secondary)",
+                                    cursor: "pointer", fontFamily: "inherit", borderRadius: "var(--adm-radius-md)",
+                                }}>
+                                {tone && <span style={{ width: 6, height: 6, borderRadius: "50%", background: `var(--adm-${tone})` }} />}{label}
                             </button>
                         );
                     })}
                 </div>
 
                 {selected.size > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, background: T.primarySoft, border: `1px solid ${T.primaryMid}`, borderRadius: 9, padding: "6px 10px" }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: T.primary }}>{selected.size} selected</span>
-                        <button onClick={() => handleBulkStatus("active")} style={BulkBtn}>Mark active</button>
-                        <button onClick={() => handleBulkStatus("blocked")} style={BulkBtn}>Block</button>
-                        {canDelete && <button onClick={() => setPendingDelete({ bulk: true, ids: [...selected] })} style={{ ...BulkBtn, color: T.red }}>Delete</button>}
-                        <button onClick={() => setSelected(new Set())} aria-label="Clear selection" style={{ background: "none", border: "none", cursor: "pointer", color: T.hint, display: "flex" }}><FiX size={14} /></button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--adm-primary-tint)", border: "1px solid color-mix(in srgb, var(--adm-primary) 25%, transparent)", borderRadius: "var(--adm-radius-md)", padding: "6px 10px" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--adm-primary)" }}>{selected.size} selected</span>
+                        <Button variant="ghost" size="sm" onClick={() => handleBulkStatus("active")}>Mark active</Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleBulkStatus("blocked")}>Block</Button>
+                        {canDelete && <Button variant="ghost" size="sm" style={{ color: "var(--adm-danger)" }} onClick={() => setPendingDelete({ bulk: true, ids: [...selected] })}>Delete</Button>}
+                        <button onClick={() => setSelected(new Set())} aria-label="Clear selection" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--adm-muted)", display: "flex" }}><FiX size={14} /></button>
                     </div>
                 )}
             </div>
 
-            {error && <div style={{ background: T.redSoft, border: "1px solid #fecaca", color: T.red, padding: "10px 14px", borderRadius: 9, fontSize: 13, marginBottom: 16 }}>{error}</div>}
+            {error && <div style={{ marginBottom: 16 }}><ErrorState message={error} onRetry={() => fetchPincodes(buildParams({ page }))} /></div>}
 
-            {/* Desktop Table */}
-            <div className="pin-desktop ap-enter-3" style={{ background: T.surface, border: `1px solid ${T.line}`, borderRadius: 16, overflowX: "auto" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "32px 90px 1fr 120px 90px 80px 90px 76px", gap: 12, padding: "11px 20px", background: T.surfaceAlt, borderBottom: `1px solid ${T.line}`, minWidth: 760 }}>
-                    <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all" />
-                    {columns.map((c) => (
-                        <p key={c.key} onClick={() => c.sortable && handleSort(c.key)} className={c.sortable ? "ap-th-sort" : ""}
-                            style={{ fontSize: 10, fontWeight: 700, color: T.hint, textTransform: "uppercase", letterSpacing: "0.06em", margin: 0 }}>
-                            {c.label}
-                            {c.sortable && sort.by === c.key && (sort.dir === "asc" ? <FiArrowUp size={10} /> : <FiArrowDown size={10} />)}
-                        </p>
-                    ))}
-                </div>
-
-                {loading && pincodes.length === 0 ? (
-                    Array.from({ length: 6 }).map((_, i) => (
-                        <div key={i} style={{ display: "grid", gridTemplateColumns: "32px 90px 1fr 120px 90px 80px 90px 76px", gap: 12, padding: "16px 20px", borderBottom: `1px solid ${T.lineSoft}`, minWidth: 760, alignItems: "center" }}>
-                            <div className="ap-skel" style={{ height: 14, width: 14 }} />
-                            {Array.from({ length: 7 }).map((__, j) => <div key={j} className="ap-skel" style={{ height: 14, width: `${60 + (j % 3) * 15}%` }} />)}
-                        </div>
-                    ))
-                ) : pincodes.length === 0 ? (
-                    <div style={{ padding: "56px 0", textAlign: "center" }}>
-                        <FiMapPin size={28} style={{ color: T.hint, marginBottom: 10 }} />
-                        <p style={{ color: T.sub, fontSize: 14, fontWeight: 600, marginBottom: 4 }}>No pincodes found</p>
-                        <p style={{ color: T.hint, fontSize: 12.5 }}>Try a different filter or search, or add a new pincode.</p>
-                    </div>
-                ) : pincodes.map((p, idx) => {
-                    const cfg = STATUS_CONFIG[p.status] || STATUS_CONFIG.coming_soon;
-                    const isActing = actionLoading === p._id;
-                    const needsLaunchDate = p.status === "coming_soon" && !p.expectedLaunchDate;
-                    return (
-                        <div key={p._id} className="ap-card ap-row"
-                            style={{ display: "grid", gridTemplateColumns: "32px 90px 1fr 120px 90px 80px 90px 76px", gap: 12, padding: "13px 20px", borderBottom: idx < pincodes.length - 1 ? `1px solid ${T.lineSoft}` : "none", alignItems: "center", animationDelay: `${idx * 18}ms`, minWidth: 760 }}>
-                            <input type="checkbox" checked={selected.has(p._id)} onChange={() => toggleSelect(p._id)} aria-label={`Select ${p.code}`} />
-                            <p style={{ fontSize: 13, fontWeight: 700, color: T.ink, fontFamily: T.mono }}>{p.code}</p>
-                            <div>
-                                <p style={{ fontSize: 13, fontWeight: 600, color: T.sub }}>{p.area || "—"}</p>
-                                <p style={{ fontSize: 11, color: T.hint }}>{[p.city, p.state].filter(Boolean).join(", ") || "—"}</p>
-                            </div>
-                            <div>
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: cfg.color, background: cfg.bg, padding: "3px 10px", borderRadius: 99 }}>
-                                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.color }} />{cfg.label}
-                                </span>
-                                {needsLaunchDate && <p style={{ fontSize: 10, color: T.amber, marginTop: 4 }}>No launch date set</p>}
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                                <FiUsers size={12} color={T.hint} />
-                                <span style={{ fontSize: 13, color: T.sub }}>{p.assignedVendors?.length || 0}</span>
-                            </div>
-                            <p style={{ fontSize: 13, color: T.muted }}>{p.priority || 0}</p>
-                            <p style={{ fontSize: 12, color: T.hint }}>{relTime(p.updatedAt)}</p>
-                            <div style={{ display: "flex", gap: 6 }}>
-                                <button onClick={() => setDrawer({ type: "edit", pincode: p })} title="Edit" aria-label={`Edit ${p.code}`}
-                                    style={{ width: 30, height: 30, background: T.primarySoft, border: `1px solid ${T.primaryMid}`, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                                    <FiEdit2 size={12} color={T.primary} />
-                                </button>
-                                {canDelete && (
-                                    <button onClick={() => setPendingDelete(p)} disabled={isActing} title="Delete" aria-label={`Delete ${p.code}`}
-                                        style={{ width: 30, height: 30, background: T.redSoft, border: "1px solid #fecaca", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                                        {isActing ? <FiLoader size={11} color={T.red} style={{ animation: "ap-spin 0.8s linear infinite" }} /> : <FiTrash2 size={12} color={T.red} />}
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-
-            {/* Mobile Cards */}
-            <div className="pin-mobile" style={{ display: "none", flexDirection: "column", gap: 10 }}>
-                {pincodes.length === 0 && !loading ? (
-                    <div style={{ padding: "52px 0", textAlign: "center", background: T.surface, borderRadius: 14, border: `1px solid ${T.line}` }}>
-                        <FiMapPin size={28} style={{ color: T.hint, marginBottom: 10 }} />
-                        <p style={{ color: T.hint, fontSize: 14 }}>No pincodes found</p>
-                    </div>
-                ) : pincodes.map((p, idx) => {
-                    const cfg = STATUS_CONFIG[p.status] || STATUS_CONFIG.coming_soon;
-                    const isActing = actionLoading === p._id;
-                    return (
-                        <div key={p._id} className="ap-card ap-row" style={{ background: T.surface, border: `1px solid ${T.line}`, borderRadius: 12, padding: 14, animationDelay: `${idx * 18}ms` }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                                <div style={{ display: "flex", gap: 8 }}>
-                                    <input type="checkbox" checked={selected.has(p._id)} onChange={() => toggleSelect(p._id)} style={{ marginTop: 4 }} />
-                                    <div>
-                                        <p style={{ fontSize: 15, fontWeight: 700, color: T.ink, fontFamily: T.mono }}>{p.code}</p>
-                                        <p style={{ fontSize: 12, color: T.sub, marginTop: 2 }}>{p.area || "—"}, {[p.city, p.state].filter(Boolean).join(", ") || "—"}</p>
-                                    </div>
-                                </div>
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: cfg.color, background: cfg.bg, padding: "3px 8px", borderRadius: 99, flexShrink: 0 }}>
-                                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.color }} />{cfg.label}
-                                </span>
-                            </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <div style={{ display: "flex", gap: 12, fontSize: 11, color: T.hint, flexWrap: "wrap" }}>
-                                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}><FiUsers size={11} /> {p.assignedVendors?.length || 0} vendors</span>
-                                    <span>Priority {p.priority || 0}</span>
-                                    <span>{relTime(p.updatedAt)}</span>
-                                </div>
-                                <div style={{ display: "flex", gap: 6 }}>
-                                    <button onClick={() => setDrawer({ type: "edit", pincode: p })} title="Edit"
-                                        style={{ width: 30, height: 30, background: T.primarySoft, border: `1px solid ${T.primaryMid}`, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                                        <FiEdit2 size={12} color={T.primary} />
-                                    </button>
-                                    {canDelete && (
-                                        <button onClick={() => setPendingDelete(p)} disabled={isActing} title="Delete"
-                                            style={{ width: 30, height: 30, background: T.redSoft, border: "1px solid #fecaca", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                                            {isActing ? <FiLoader size={11} color={T.red} style={{ animation: "ap-spin 0.8s linear infinite" }} /> : <FiTrash2 size={12} color={T.red} />}
+            {/* Pincode list */}
+            <div className="ap-enter-3">
+                <Table
+                    columns={columns}
+                    rows={pincodes}
+                    loading={loading}
+                    skeletonRows={6}
+                    empty={{ icon: FiMapPin, title: "No pincodes found", description: "Try a different filter or search, or add a new pincode." }}
+                    renderRow={(p) => {
+                        const cfg = STATUS_CONFIG[p.status] || STATUS_CONFIG.coming_soon;
+                        const isActing = actionLoading === p._id;
+                        const needsLaunchDate = p.status === "coming_soon" && !p.expectedLaunchDate;
+                        return (
+                            <tr key={p._id}>
+                                <td><input type="checkbox" checked={selected.has(p._id)} onChange={() => toggleSelect(p._id)} aria-label={`Select ${p.code}`} /></td>
+                                <td style={{ fontWeight: 700, fontFamily: MONO_FONT }}>{p.code}</td>
+                                <td>
+                                    <div>{p.area || "—"}</div>
+                                    <div style={{ fontSize: 11, color: "var(--adm-muted)" }}>{[p.city, p.state].filter(Boolean).join(", ") || "—"}</div>
+                                </td>
+                                <td>
+                                    <Badge tone={cfg.tone} dot>{cfg.label}</Badge>
+                                    {needsLaunchDate && <div style={{ fontSize: 10, color: "var(--adm-warning)", marginTop: 4 }}>No launch date set</div>}
+                                </td>
+                                <td>
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><FiUsers size={12} color="var(--adm-muted)" />{p.assignedVendors?.length || 0}</span>
+                                </td>
+                                <td>{p.priority || 0}</td>
+                                <td style={{ color: "var(--adm-muted)" }}>{relTime(p.updatedAt)}</td>
+                                <td>
+                                    <div style={{ display: "flex", gap: 6 }}>
+                                        <button onClick={() => setDrawer({ type: "edit", pincode: p })} title="Edit" aria-label={`Edit ${p.code}`}
+                                            style={{ width: 30, height: 30, background: "var(--adm-primary-tint)", border: "1px solid color-mix(in srgb, var(--adm-primary) 25%, transparent)", borderRadius: "var(--adm-radius-sm)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                                            <FiEdit2 size={12} color="var(--adm-primary)" />
                                         </button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
+                                        {canDelete && (
+                                            <button onClick={() => setPendingDelete(p)} disabled={isActing} title="Delete" aria-label={`Delete ${p.code}`}
+                                                style={{ width: 30, height: 30, background: "var(--adm-danger-tint)", border: "1px solid color-mix(in srgb, var(--adm-danger) 25%, transparent)", borderRadius: "var(--adm-radius-sm)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                                                {isActing ? <FiLoader size={11} color="var(--adm-danger)" style={{ animation: "adm-spin 0.6s linear infinite" }} /> : <FiTrash2 size={12} color="var(--adm-danger)" />}
+                                            </button>
+                                        )}
+                                    </div>
+                                </td>
+                            </tr>
+                        );
+                    }}
+                />
             </div>
 
             {pages > 1 && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 20 }}>
-                    <button onClick={() => goToPage(page - 1)} disabled={page <= 1 || loading}
-                        style={{ padding: "7px 14px", fontSize: 12, fontWeight: 600, border: `1px solid ${T.line}`, background: T.surface, color: page <= 1 ? T.hint : T.muted, borderRadius: 8, cursor: page <= 1 ? "not-allowed" : "pointer" }}>← Prev</button>
-                    <span style={{ fontSize: 12, color: T.hint }}>Page {page} of {pages}</span>
-                    <button onClick={() => goToPage(page + 1)} disabled={page >= pages || loading}
-                        style={{ padding: "7px 14px", fontSize: 12, fontWeight: 600, border: `1px solid ${T.line}`, background: T.surface, color: page >= pages ? T.hint : T.muted, borderRadius: 8, cursor: page >= pages ? "not-allowed" : "pointer" }}>Next →</button>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginTop: 20 }}>
+                    <Pagination currentPage={page} totalPages={pages} onPageChange={goToPage} disabled={loading} />
                 </div>
             )}
         </div>
     );
 };
-
-const BulkBtn = { background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, color: T.primary, padding: "4px 6px" };
 
 /* ══════════════════════════════════════════
    AUTH GATE WRAPPER — this is the exported component.
@@ -708,7 +672,7 @@ const AdminPincodes = () => {
     const { admin, loading } = useAdminAuth();
 
     if (loading) {
-        return <AuthScreen icon={<FiLoader size={20} style={{ animation: "ap-spin 0.8s linear infinite" }} />} title="Checking your session…" body="One moment." />;
+        return <AuthScreen icon={<FiLoader size={20} style={{ animation: "adm-spin 0.6s linear infinite" }} />} title="Checking your session…" body="One moment." />;
     }
     if (!admin) {
         // Shouldn't normally be reached — AdminRoute already redirects.
@@ -717,7 +681,7 @@ const AdminPincodes = () => {
                 icon={<FiLock size={20} />}
                 title="Admin sign-in required"
                 body="Sign in with an admin or owner account to manage pincode coverage."
-                cta={<a href="/admin/login" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 18px", background: T.primary, color: "#fff", borderRadius: 9, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>Go to sign in</a>}
+                cta={<a href="/admin/login" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 18px", background: "var(--adm-primary)", color: "var(--adm-text-on-accent)", borderRadius: "var(--adm-radius-md)", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>Go to sign in</a>}
             />
         );
     }

@@ -44,6 +44,9 @@ const pincodeSchema = new mongoose.Schema(
                 default: undefined,
             },
         },
+        // Radius (km) within which a detected GPS point still resolves to this
+        // pincode when no exact/postal match exists. Admin-configurable per pincode.
+        deliveryRadiusKm: { type: Number, default: 8, min: 1, max: 25 },
 
         assignedVendors: [{ type: mongoose.Schema.Types.ObjectId, ref: "Vendor" }],
 

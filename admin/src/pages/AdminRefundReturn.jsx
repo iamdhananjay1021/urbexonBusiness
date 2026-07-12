@@ -3,358 +3,91 @@
  * Renders flush inside Admin.jsx's zero-padding main area.
  * Manages its own sticky header + scrollable content.
  */
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import api from "../api/adminApi";
 import {
     FaSync, FaUser, FaPhone, FaMapMarkerAlt,
     FaCheckCircle, FaBan, FaMoneyBillWave, FaUndo,
-    FaExclamationTriangle, FaSpinner, FaChevronDown,
+    FaExclamationTriangle, FaChevronDown,
     FaChevronUp, FaFlag, FaBoxOpen, FaExchangeAlt, FaTruck,
 } from "react-icons/fa";
+import {
+    Button, Badge, StatusBadge, Card, EmptyState, ErrorState,
+    Skeleton, FormField, Input,
+} from "../components/ui";
+import { useAdminWsContext } from "../contexts/AdminWsContext";
 
-/* ─── Status config ─── */
-const REFUND_CFG = {
-    NONE: { cls: "badge-neutral", label: "None" },
-    REQUESTED: { cls: "badge-amber", label: "Requested" },
-    PROCESSING: { cls: "badge-blue", label: "Processing" },
-    PROCESSED: { cls: "badge-green", label: "Processed" },
-    REJECTED: { cls: "badge-red", label: "Rejected" },
-    FAILED: { cls: "badge-rose", label: "Failed" },
-};
-const RETURN_CFG = {
-    NONE: { cls: "badge-neutral", label: "None" },
-    REQUESTED: { cls: "badge-amber", label: "Requested" },
-    APPROVED: { cls: "badge-green", label: "Approved" },
-    REJECTED: { cls: "badge-red", label: "Rejected" },
-    PICKED_UP: { cls: "badge-blue", label: "Picked Up" },
-    REFUNDED: { cls: "badge-violet", label: "Refunded" },
-};
-const REPL_CFG = {
-    REQUESTED: { cls: "badge-amber", label: "Requested" },
-    APPROVED: { cls: "badge-green", label: "Approved" },
-    REJECTED: { cls: "badge-red", label: "Rejected" },
-    SHIPPED: { cls: "badge-blue", label: "Shipped" },
-    DELIVERED: { cls: "badge-green", label: "Delivered" },
+/* icon-wrap tone per underlying status, so the icon reflects state at a
+   glance — the statuses themselves now resolve through the shared
+   StatusBadge STATUS_MAP instead of the three local *_CFG color objects
+   that used to live here. */
+const iconToneForStatus = (status) => {
+    if (["FAILED", "REJECTED"].includes(status)) return "danger";
+    if (["PROCESSED", "APPROVED", "REFUNDED", "DELIVERED"].includes(status)) return "success";
+    if (["PROCESSING", "PICKED_UP", "SHIPPED"].includes(status)) return "info";
+    return "warning";
 };
 
-/* icon-wrap color per underlying status, so the icon reflects state at a glance */
-const iconClsForStatus = (status) => {
-    if (["FAILED", "REJECTED"].includes(status)) return "rr-icon-rose";
-    if (["PROCESSED", "APPROVED", "REFUNDED", "DELIVERED"].includes(status)) return "rr-icon-green";
-    if (["PROCESSING", "PICKED_UP", "SHIPPED"].includes(status)) return "rr-icon-blue";
-    return "rr-icon-amber";
-};
+/* ─── Icon wrap ─── */
+const IconWrap = ({ tone, children }) => (
+    <div style={{
+        width: 38, height: 38, borderRadius: "var(--adm-radius-md)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        flexShrink: 0,
+        background: `var(--adm-${tone}-tint)`,
+        border: `1px solid var(--adm-${tone})`,
+        color: `var(--adm-${tone})`,
+    }}>
+        {children}
+    </div>
+);
 
-const STYLES = `
-    .rr-root {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-        display: flex;
-        flex-direction: column;
-        height: calc(100vh - 54px); /* full viewport minus topbar */
-        background: #f8fafc;
-    }
-
-    /* Sticky page header */
-    .rr-header {
-        background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
-        border-bottom: 1px solid #e2e8f0;
-        padding: 18px 24px 0;
-        flex-shrink: 0;
-        position: sticky;
-        top: 0;
-        z-index: 10;
-    }
-    .rr-header-top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        margin-bottom: 16px;
-    }
-    .rr-header-titlewrap { display: flex; align-items: center; gap: 12px; }
-    .rr-header-icon {
-        width: 42px; height: 42px; border-radius: 12px;
-        background: linear-gradient(135deg, #2563eb, #7c3aed);
-        display: flex; align-items: center; justify-content: center;
-        color: #fff; flex-shrink: 0;
-        box-shadow: 0 4px 12px rgba(37,99,235,0.25);
-    }
-    .rr-title { font-size: 19px; font-weight: 800; color: #1e293b; margin: 0; letter-spacing: -0.01em; }
-    .rr-sub   { font-size: 12.5px; color: #94a3b8; margin: 3px 0 0; }
-
-    .rr-refresh {
-        display: flex; align-items: center; gap: 6px;
-        padding: 8px 16px;
-        font-size: 12.5px; font-weight: 700; color: #fff;
-        background: #2563eb; border: 1px solid #2563eb;
-        border-radius: 9px; cursor: pointer; white-space: nowrap;
-        transition: background 0.15s, transform 0.1s;
-        font-family: inherit;
-        box-shadow: 0 2px 8px rgba(37,99,235,0.22);
-    }
-    .rr-refresh:hover:not(:disabled) { background: #1d4ed8; }
-    .rr-refresh:active:not(:disabled) { transform: translateY(1px); }
-    .rr-refresh:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
-
-    /* Error banner */
-    .rr-error-banner {
-        display: flex; align-items: center; gap: 8px;
-        background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
-        padding: 10px 14px; border-radius: 8px; font-size: 12px; font-weight: 600;
-        margin-bottom: 12px;
-    }
-    .rr-error-retry {
-        margin-left: auto; background: none; border: none; color: #b91c1c;
-        font-size: 12px; font-weight: 700; text-decoration: underline; cursor: pointer;
-        font-family: inherit;
-    }
-
-    /* Tabs — segmented pill control */
-    .rr-tabs {
-        display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none;
-        background: #f1f5f9; border: 1px solid #e2e8f0;
-        border-radius: 11px; padding: 4px;
-        margin-bottom: 16px;
-        width: fit-content;
-        max-width: 100%;
-    }
-    .rr-tab {
-        display: flex; align-items: center; gap: 7px;
-        padding: 8px 15px;
-        font-size: 12.5px; font-weight: 600;
-        border: none;
-        background: transparent; cursor: pointer; color: #64748b;
-        transition: all 0.15s; font-family: inherit;
-        border-radius: 8px;
-        white-space: nowrap; flex-shrink: 0;
-    }
-    .rr-tab:hover { color: #1e293b; }
-    .rr-tab.active { color: #1e293b; background: #fff; box-shadow: 0 1px 4px rgba(15,23,42,0.1); }
-    .rr-tab-count {
-        font-size: 11px; font-weight: 700;
-        padding: 1px 7px; border-radius: 20px;
-        background: #e2e8f0; color: #64748b;
-    }
-    .rr-tab.active .rr-tab-count { background: #dbeafe; color: #1d4ed8; }
-
-    /* Scrollable content */
-    .rr-body {
-        flex: 1;
-        overflow-y: auto;
-        padding: 20px 24px;
-    }
-
-    /* Cards */
-    .rr-card {
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        border-radius: 14px;
-        overflow: hidden;
-        margin-bottom: 10px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    }
-    .rr-card.failed { border-color: #fecdd3; }
-    .rr-card.flagged { border-color: #fecdd3; }
-
-    .rr-card-header {
-        display: flex; align-items: center; gap: 14px;
-        padding: 14px 18px;
-        cursor: pointer; border: none; background: none;
-        width: 100%; text-align: left;
-        transition: background 0.12s;
-    }
-    .rr-card-header:hover { background: #f8fafc; }
-    .rr-card.flagged .rr-card-header:hover { background: #fff1f2; }
-
-    .rr-icon-wrap {
-        width: 38px; height: 38px; border-radius: 10px;
-        display: flex; align-items: center; justify-content: center;
-        flex-shrink: 0;
-    }
-    .rr-icon-amber  { background: #fffbeb; border: 1px solid #fde68a; color: #d97706; }
-    .rr-icon-violet { background: #f5f3ff; border: 1px solid #ddd6fe; color: #7c3aed; }
-    .rr-icon-rose   { background: #fff1f2; border: 1px solid #fecdd3; color: #e11d48; }
-    .rr-icon-green  { background: #f0fdf4; border: 1px solid #bbf7d0; color: #059669; }
-    .rr-icon-blue   { background: #eff6ff; border: 1px solid #bfdbfe; color: #2563eb; }
-
-    .rr-card-info { flex: 1; min-width: 0; }
-    .rr-card-name { font-weight: 600; font-size: 14px; color: #1e293b; }
-    .rr-card-sub  { font-size: 12px; color: #94a3b8; margin-top: 2px;
-                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-    .rr-card-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-    .rr-amount { font-weight: 700; font-size: 14px; color: #10b981; }
-    .rr-chevron { color: #cbd5e1; }
-
-    /* Expanded body */
-    .rr-card-body {
-        border-top: 1px solid #f1f5f9;
-        padding: 16px 18px;
-    }
-
-    .rr-info-box {
-        background: #f8fafc;
-        border: 1px solid #f1f5f9;
-        border-radius: 10px;
-        padding: 14px;
-        margin-bottom: 14px;
-        display: flex; flex-direction: column; gap: 7px;
-        font-size: 13px;
-    }
-    .rr-info-row { display: flex; align-items: flex-start; gap: 8px; color: #475569; }
-    .rr-info-row svg { color: #f59e0b; margin-top: 2px; flex-shrink: 0; }
-    .rr-info-meta { font-size: 12px; color: #64748b; margin-top: 4px; line-height: 1.6; }
-
-    /* Items list */
-    .rr-items-label {
-        font-size: 11px; font-weight: 700; color: #94a3b8;
-        letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px;
-    }
-    .rr-item-row {
-        display: flex; align-items: center; gap: 10px;
-        padding: 9px 0;
-        border-bottom: 1px solid #f1f5f9;
-    }
-    .rr-item-row:last-child { border-bottom: none; }
-    .rr-item-img { width: 36px; height: 36px; border-radius: 8px; object-fit: contain; border: 1px solid #f1f5f9; background: #f8fafc; flex-shrink: 0; }
-    .rr-item-name { font-size: 13px; font-weight: 500; color: #1e293b; }
-    .rr-item-qty  { font-size: 12px; color: #94a3b8; }
-    .rr-item-price { font-size: 13px; font-weight: 600; color: #334155; margin-left: auto; flex-shrink: 0; }
-
-    /* Actions */
-    .rr-textarea, .rr-input {
-        width: 100%;
-        padding: 9px 12px;
-        font-size: 13px;
-        border: 1px solid #e2e8f0;
-        border-radius: 9px;
-        font-family: inherit;
-        outline: none;
-        transition: border-color 0.15s, box-shadow 0.15s;
-        background: #fff;
-        resize: none;
-        box-sizing: border-box;
-    }
-    .rr-textarea:focus, .rr-input:focus {
-        border-color: #93c5fd;
-        box-shadow: 0 0 0 3px rgba(147,197,253,0.25);
-    }
-    .rr-textarea:disabled, .rr-input:disabled { background: #f8fafc; cursor: not-allowed; opacity: 0.7; }
-    .rr-label { font-size: 12px; font-weight: 600; color: #64748b; display: block; margin-bottom: 5px; }
-
-    .rr-btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-    .rr-btn {
-        display: flex; align-items: center; justify-content: center; gap: 7px;
-        padding: 10px;
-        border-radius: 9px; border: none; cursor: pointer;
-        font-size: 13px; font-weight: 600; font-family: inherit;
-        transition: opacity 0.15s, filter 0.15s;
-    }
-    .rr-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-    .rr-btn:not(:disabled):hover { filter: brightness(0.94); }
-    .rr-btn-green  { background: #10b981; color: #fff; }
-    .rr-btn-red    { background: #ef4444; color: #fff; }
-    .rr-btn-blue   { background: #2563eb; color: #fff; }
-    .rr-btn-orange { background: #f97316; color: #fff; grid-column: 1 / -1; }
-    .rr-btn-single { grid-column: 1 / -1; }
-
-    /* Badges */
-    .badge {
-        display: inline-flex; align-items: center;
-        font-size: 11px; font-weight: 700;
-        padding: 2px 8px; border-radius: 20px;
-    }
-    .badge-neutral { background: #f1f5f9; color: #64748b; }
-    .badge-amber   { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
-    .badge-blue    { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
-    .badge-green   { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
-    .badge-red     { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
-    .badge-rose    { background: #ffe4e6; color: #be123c; border: 1px solid #fecdd3; }
-    .badge-violet  { background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe; }
-
-    /* Flag chips */
-    .rr-flag-chip {
-        font-size: 11px; font-weight: 600;
-        background: #fff1f2; color: #be123c;
-        border: 1px solid #fecdd3;
-        padding: 3px 10px; border-radius: 8px;
-    }
-
-    /* Empty state */
-    .rr-empty {
-        display: flex; flex-direction: column; align-items: center;
-        justify-content: center; padding: 72px 24px; text-align: center;
-    }
-    .rr-empty-icon {
-        width: 60px; height: 60px; border-radius: 16px;
-        background: #f1f5f9; display: flex; align-items: center;
-        justify-content: center; color: #cbd5e1; margin-bottom: 16px;
-    }
-    .rr-empty-icon.rr-icon-amber  { background: #fffbeb; border: 1px solid #fde68a; color: #d97706; }
-    .rr-empty-icon.rr-icon-violet { background: #f5f3ff; border: 1px solid #ddd6fe; color: #7c3aed; }
-    .rr-empty-icon.rr-icon-blue   { background: #eff6ff; border: 1px solid #bfdbfe; color: #2563eb; }
-    .rr-empty-icon.rr-icon-rose   { background: #fff1f2; border: 1px solid #fecdd3; color: #e11d48; }
-    .rr-empty-text { font-size: 14.5px; font-weight: 700; color: #334155; }
-    .rr-empty-sub  { font-size: 12px; color: #94a3b8; margin-top: 4px; }
-    .rr-empty-refresh {
-        display: flex; align-items: center; gap: 6px;
-        margin-top: 16px; padding: 8px 16px;
-        font-size: 12.5px; font-weight: 600; color: #2563eb;
-        background: #eff6ff; border: 1px solid #bfdbfe;
-        border-radius: 8px; cursor: pointer; font-family: inherit;
-        transition: background 0.15s;
-    }
-    .rr-empty-refresh:hover { background: #dbeafe; }
-
-    /* Loader */
-    .rr-loader {
-        display: flex; flex-direction: column; align-items: center;
-        justify-content: center; padding: 80px 0; gap: 12px;
-    }
-    .rr-spin {
-        width: 32px; height: 32px;
-        border: 3px solid #fde68a;
-        border-top-color: #f59e0b;
-        border-radius: 50%;
-        animation: rr-spin 0.7s linear infinite;
-    }
-    @keyframes rr-spin { to { transform: rotate(360deg); } }
-
-    /* Fraud flag row */
-    .rr-flag-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
-
-    /* Responsive */
-    @media (max-width: 600px) {
-        .rr-header  { padding: 14px 14px 0; }
-        .rr-body    { padding: 14px; }
-        .rr-card-header { padding: 12px 14px; }
-        .rr-card-body   { padding: 12px 14px; }
-        .rr-btn-row { grid-template-columns: 1fr; }
-        .rr-btn-orange { grid-column: 1; }
-    }
-`;
-
-/* ─── Badge ─── */
-const Badge = ({ cfg }) => <span className={`badge ${cfg.cls}`}>{cfg.label}</span>;
-
-/* ─── Card header button ─── */
-const CardHead = ({ iconCls, icon, title, badge, sub, amount, open, onClick }) => (
-    <button className="rr-card-header" onClick={onClick}>
-        <div className={`rr-icon-wrap ${iconCls}`}>{icon}</div>
-        <div className="rr-card-info">
+/* ─── Card header button (clickable, expand/collapse) ─── */
+const CardHead = ({ iconTone, icon, title, badge, sub, amount, open, onClick }) => (
+    <button
+        onClick={onClick}
+        style={{
+            display: "flex", alignItems: "center", gap: 14,
+            padding: "14px 18px", cursor: "pointer", border: "none", background: "none",
+            width: "100%", textAlign: "left", fontFamily: "inherit",
+        }}
+    >
+        <IconWrap tone={iconTone}>{icon}</IconWrap>
+        <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span className="rr-card-name">{title}</span>
+                <span style={{ fontWeight: 600, fontSize: 14, color: "var(--adm-text-primary)" }}>{title}</span>
                 {badge}
             </div>
-            <div className="rr-card-sub">{sub}</div>
+            <div style={{ fontSize: 12, color: "var(--adm-muted)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>
         </div>
-        <div className="rr-card-right">
-            <span className="rr-amount">{amount}</span>
-            <span className="rr-chevron">
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            <span style={{ fontWeight: 700, fontSize: 14, color: "var(--adm-success)" }}>{amount}</span>
+            <span style={{ color: "var(--adm-border)" }}>
                 {open ? <FaChevronUp size={11} /> : <FaChevronDown size={11} />}
             </span>
         </div>
     </button>
+);
+
+const InfoBox = ({ children }) => (
+    <div style={{
+        background: "var(--adm-surface-alt)", border: "1px solid var(--adm-border-soft)",
+        borderRadius: "var(--adm-radius-md)", padding: 14, marginBottom: 14,
+        display: "flex", flexDirection: "column", gap: 7, fontSize: 13,
+    }}>
+        {children}
+    </div>
+);
+
+const InfoRow = ({ icon, children }) => (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, color: "var(--adm-text-secondary)" }}>
+        <span style={{ color: "var(--adm-warning)", marginTop: 2, flexShrink: 0 }}>{icon}</span>
+        {children}
+    </div>
+);
+
+const ItemsLabel = ({ children }) => (
+    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--adm-muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>{children}</div>
 );
 
 /* ══════════════════════════════════════
@@ -366,7 +99,6 @@ const RefundCard = ({ order, onAction }) => {
     const [busy, setBusy] = useState(false);
     const [retrying, setRetrying] = useState(false);
     const refund = order.refund || {};
-    const cfg = REFUND_CFG[refund.status] || REFUND_CFG.NONE;
     const isPending = refund.status === "REQUESTED";
     const isFailed = refund.status === "FAILED";
     const busyAny = busy || retrying;
@@ -385,49 +117,44 @@ const RefundCard = ({ order, onAction }) => {
     };
 
     return (
-        <div className={`rr-card${isFailed ? " failed" : ""}`}>
+        <Card padded={false} style={isFailed ? { borderColor: "var(--adm-danger)", marginBottom: 10 } : { marginBottom: 10 }}>
             <CardHead
-                iconCls={iconClsForStatus(refund.status)}
+                iconTone={iconToneForStatus(refund.status)}
                 icon={<FaMoneyBillWave size={15} />}
                 title={order.customerName}
-                badge={<Badge cfg={cfg} />}
+                badge={<StatusBadge status={refund.status || "NONE"} />}
                 sub={`#${order._id.slice(-8).toUpperCase()} · ${order.payment?.method || "—"}`}
                 amount={`₹${Number(refund.amount || 0).toLocaleString("en-IN")}`}
                 open={open}
                 onClick={() => setOpen(o => !o)}
             />
             {open && (
-                <div className="rr-card-body">
-                    <div className="rr-info-box">
-                        <div className="rr-info-row"><FaUser size={11} />{order.customerName}</div>
-                        <div className="rr-info-row"><FaPhone size={11} />{order.phone}</div>
-                        <div className="rr-info-meta">
+                <div style={{ borderTop: "1px solid var(--adm-border-soft)", padding: "16px 18px" }}>
+                    <InfoBox>
+                        <InfoRow icon={<FaUser size={11} />}>{order.customerName}</InfoRow>
+                        <InfoRow icon={<FaPhone size={11} />}>{order.phone}</InfoRow>
+                        <div style={{ fontSize: 12, color: "var(--adm-text-secondary)", marginTop: 4, lineHeight: 1.6 }}>
                             <b>Reason:</b> {refund.reason || "—"}<br />
                             <b>Requested:</b> {refund.requestedAt ? new Date(refund.requestedAt).toLocaleString("en-IN") : "—"}
-                            {refund.razorpayRefundId && <><br /><span style={{ color: "#10b981", fontWeight: 600 }}>Refund ID: {refund.razorpayRefundId}</span></>}
-                            {isFailed && refund.failureReason && <><br /><span style={{ color: "#e11d48", fontWeight: 600 }}>Failure reason: {refund.failureReason}</span></>}
+                            {refund.razorpayRefundId && <><br /><span style={{ color: "var(--adm-success)", fontWeight: 600 }}>Refund ID: {refund.razorpayRefundId}</span></>}
+                            {isFailed && refund.failureReason && <><br /><span style={{ color: "var(--adm-danger)", fontWeight: 600 }}>Failure reason: {refund.failureReason}</span></>}
                         </div>
-                    </div>
+                    </InfoBox>
 
                     {(isPending || isFailed) && (
                         <>
-                            <textarea className="rr-textarea" rows={2} placeholder="Admin note (optional)"
-                                value={note} onChange={e => setNote(e.target.value)} disabled={busyAny} />
-                            <div className="rr-btn-row">
+                            <FormField>
+                                <textarea className="adm-field-input" rows={2} placeholder="Admin note (optional)"
+                                    style={{ width: "100%", boxSizing: "border-box", resize: "vertical" }}
+                                    value={note} onChange={e => setNote(e.target.value)} disabled={busyAny} />
+                            </FormField>
+                            <div style={{ display: "grid", gridTemplateColumns: isFailed ? "1fr" : "1fr 1fr", gap: 10, marginTop: 12 }}>
                                 {isFailed ? (
-                                    <button className="rr-btn rr-btn-orange" onClick={doRetry} disabled={busyAny}>
-                                        {retrying ? <FaSpinner size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : <FaSync size={12} />}
-                                        Retry Refund
-                                    </button>
+                                    <Button variant="primary" icon={FaSync} loading={retrying} disabled={busyAny} onClick={doRetry}>Retry Refund</Button>
                                 ) : (
                                     <>
-                                        <button className="rr-btn rr-btn-green" onClick={() => doAction("approve")} disabled={busyAny}>
-                                            {busy ? <FaSpinner size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : <FaCheckCircle size={12} />}
-                                            Approve
-                                        </button>
-                                        <button className="rr-btn rr-btn-red" onClick={() => doAction("reject")} disabled={busyAny}>
-                                            <FaBan size={12} /> Reject
-                                        </button>
+                                        <Button variant="success" icon={FaCheckCircle} loading={busy} disabled={busyAny} onClick={() => doAction("approve")}>Approve</Button>
+                                        <Button variant="danger" icon={FaBan} disabled={busyAny} onClick={() => doAction("reject")}>Reject</Button>
                                     </>
                                 )}
                             </div>
@@ -435,7 +162,7 @@ const RefundCard = ({ order, onAction }) => {
                     )}
                 </div>
             )}
-        </div>
+        </Card>
     );
 };
 
@@ -448,7 +175,6 @@ const ReturnCard = ({ order, onAction }) => {
     const [refundAmt, setRefundAmt] = useState("");
     const [busy, setBusy] = useState(false);
     const ret = order.return || {};
-    const cfg = RETURN_CFG[ret.status] || RETURN_CFG.NONE;
     const isPending = ret.status === "REQUESTED";
 
     const doAction = async (action) => {
@@ -465,24 +191,24 @@ const ReturnCard = ({ order, onAction }) => {
     };
 
     return (
-        <div className="rr-card">
+        <Card padded={false} style={{ marginBottom: 10 }}>
             <CardHead
-                iconCls={iconClsForStatus(ret.status)}
+                iconTone={iconToneForStatus(ret.status)}
                 icon={<FaUndo size={14} />}
                 title={order.customerName}
-                badge={<Badge cfg={cfg} />}
+                badge={<StatusBadge status={ret.status || "NONE"} />}
                 sub={`#${order._id.slice(-8).toUpperCase()} · Delivered`}
                 amount={`₹${Number(order.totalAmount || 0).toLocaleString("en-IN")}`}
                 open={open}
                 onClick={() => setOpen(o => !o)}
             />
             {open && (
-                <div className="rr-card-body">
-                    <div className="rr-info-box">
-                        <div className="rr-info-row"><FaUser size={11} />{order.customerName}</div>
-                        <div className="rr-info-row"><FaPhone size={11} />{order.phone}</div>
-                        <div className="rr-info-row"><FaMapMarkerAlt size={11} /><span style={{ fontSize: 12 }}>{order.address}</span></div>
-                        <div className="rr-info-meta">
+                <div style={{ borderTop: "1px solid var(--adm-border-soft)", padding: "16px 18px" }}>
+                    <InfoBox>
+                        <InfoRow icon={<FaUser size={11} />}>{order.customerName}</InfoRow>
+                        <InfoRow icon={<FaPhone size={11} />}>{order.phone}</InfoRow>
+                        <InfoRow icon={<FaMapMarkerAlt size={11} />}><span style={{ fontSize: 12 }}>{order.address}</span></InfoRow>
+                        <div style={{ fontSize: 12, color: "var(--adm-text-secondary)", marginTop: 4, lineHeight: 1.6 }}>
                             <b>Reason:</b> {ret.reason || "—"}<br />
                             <b>Requested:</b> {ret.requestedAt ? new Date(ret.requestedAt).toLocaleString("en-IN") : "—"}
                         </div>
@@ -490,24 +216,24 @@ const ReturnCard = ({ order, onAction }) => {
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                                 {ret.images.map((img, i) => (
                                     <a key={i} href={img} target="_blank" rel="noreferrer">
-                                        <img src={img} alt="" style={{ width: 52, height: 52, borderRadius: 8, objectFit: "cover", border: "1px solid #e2e8f0" }} />
+                                        <img src={img} alt="" style={{ width: 52, height: 52, borderRadius: "var(--adm-radius-sm)", objectFit: "cover", border: "1px solid var(--adm-border)" }} />
                                     </a>
                                 ))}
                             </div>
                         )}
-                    </div>
+                    </InfoBox>
 
                     {order.items?.length > 0 && (
                         <div style={{ marginBottom: 14 }}>
-                            <div className="rr-items-label">Items to Return</div>
+                            <ItemsLabel>Items to Return</ItemsLabel>
                             {order.items.map((item, i) => (
-                                <div key={i} className="rr-item-row">
-                                    {item.image && <img src={item.image} alt={item.name} className="rr-item-img" />}
+                                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: i < order.items.length - 1 ? "1px solid var(--adm-border-soft)" : "none" }}>
+                                    {item.image && <img src={item.image} alt={item.name} style={{ width: 36, height: 36, borderRadius: "var(--adm-radius-sm)", objectFit: "contain", border: "1px solid var(--adm-border-soft)", background: "var(--adm-surface-alt)", flexShrink: 0 }} />}
                                     <div>
-                                        <div className="rr-item-name">{item.name}</div>
-                                        <div className="rr-item-qty">Qty: {item.qty}</div>
+                                        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--adm-text-primary)" }}>{item.name}</div>
+                                        <div style={{ fontSize: 12, color: "var(--adm-muted)" }}>Qty: {item.qty}</div>
                                     </div>
-                                    <span className="rr-item-price">₹{(item.price * item.qty).toLocaleString("en-IN")}</span>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--adm-text-secondary)", marginLeft: "auto", flexShrink: 0 }}>₹{(item.price * item.qty).toLocaleString("en-IN")}</span>
                                 </div>
                             ))}
                         </div>
@@ -515,28 +241,25 @@ const ReturnCard = ({ order, onAction }) => {
 
                     {isPending && (
                         <>
-                            <div style={{ marginBottom: 10 }}>
-                                <label className="rr-label">Refund Amount (₹)</label>
-                                <input type="number" className="rr-input" disabled={busy}
+                            <FormField label="Refund Amount (₹)">
+                                <Input type="number" disabled={busy}
                                     placeholder={`Default: ₹${order.totalAmount}`}
                                     value={refundAmt} onChange={e => setRefundAmt(e.target.value)} />
-                            </div>
-                            <textarea className="rr-textarea" rows={2} placeholder="Admin note (optional)"
-                                value={note} onChange={e => setNote(e.target.value)} disabled={busy} />
-                            <div className="rr-btn-row">
-                                <button className="rr-btn rr-btn-green" onClick={() => doAction("approve")} disabled={busy}>
-                                    {busy ? <FaSpinner size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : <FaCheckCircle size={12} />}
-                                    Approve
-                                </button>
-                                <button className="rr-btn rr-btn-red" onClick={() => doAction("reject")} disabled={busy}>
-                                    <FaBan size={12} /> Reject
-                                </button>
+                            </FormField>
+                            <FormField>
+                                <textarea className="adm-field-input" rows={2} placeholder="Admin note (optional)"
+                                    style={{ width: "100%", boxSizing: "border-box", resize: "vertical" }}
+                                    value={note} onChange={e => setNote(e.target.value)} disabled={busy} />
+                            </FormField>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+                                <Button variant="success" icon={FaCheckCircle} loading={busy} onClick={() => doAction("approve")}>Approve</Button>
+                                <Button variant="danger" icon={FaBan} disabled={busy} onClick={() => doAction("reject")}>Reject</Button>
                             </div>
                         </>
                     )}
                 </div>
             )}
-        </div>
+        </Card>
     );
 };
 
@@ -548,82 +271,53 @@ const FlaggedCard = ({ order }) => {
     const flagCount = order.payment?.flagReasons?.length || 0;
 
     return (
-        <div className="rr-card flagged">
+        <Card padded={false} style={{ borderColor: "var(--adm-danger)", marginBottom: 10 }}>
             <CardHead
-                iconCls="rr-icon-rose"
+                iconTone="danger"
                 icon={<FaFlag size={13} />}
                 title={order.customerName}
-                badge={
-                    <span className="badge badge-rose">{flagCount} flag{flagCount !== 1 ? "s" : ""}</span>
-                }
+                badge={<Badge tone="danger">{flagCount} flag{flagCount !== 1 ? "s" : ""}</Badge>}
                 sub={`#${order._id.slice(-8).toUpperCase()} · ${new Date(order.createdAt).toLocaleDateString("en-IN")}`}
                 amount={`₹${Number(order.totalAmount || 0).toLocaleString("en-IN")}`}
                 open={open}
                 onClick={() => setOpen(o => !o)}
             />
             {open && (
-                <div className="rr-card-body" style={{ background: "#fff8f8" }}>
+                <div style={{ borderTop: "1px solid var(--adm-border-soft)", padding: "16px 18px", background: "var(--adm-danger-tint)" }}>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 14 }}>
                         <div>
-                            <div className="rr-items-label">Customer</div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{order.customerName}</div>
-                            <div style={{ fontSize: 12, color: "#64748b" }}>{order.phone}</div>
-                            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2, wordBreak: "break-word" }}>{order.address}</div>
+                            <ItemsLabel>Customer</ItemsLabel>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--adm-text-primary)" }}>{order.customerName}</div>
+                            <div style={{ fontSize: 12, color: "var(--adm-text-secondary)" }}>{order.phone}</div>
+                            <div style={{ fontSize: 12, color: "var(--adm-muted)", marginTop: 2, wordBreak: "break-word" }}>{order.address}</div>
                         </div>
                         <div>
-                            <div className="rr-items-label">Payment</div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{order.payment?.method}</div>
-                            <div style={{ fontSize: 12, color: "#64748b" }}>{order.payment?.status}</div>
-                            {order.payment?.ip && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>IP: {order.payment.ip}</div>}
+                            <ItemsLabel>Payment</ItemsLabel>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--adm-text-primary)" }}>{order.payment?.method}</div>
+                            <div style={{ fontSize: 12, color: "var(--adm-text-secondary)" }}>{order.payment?.status}</div>
+                            {order.payment?.ip && <div style={{ fontSize: 12, color: "var(--adm-muted)", marginTop: 2 }}>IP: {order.payment.ip}</div>}
                         </div>
                     </div>
-                    <div className="rr-items-label">Fraud Flags</div>
-                    <div className="rr-flag-row">
+                    <ItemsLabel>Fraud Flags</ItemsLabel>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
                         {order.payment?.flagReasons?.map((r, i) => (
-                            <span key={i} className="rr-flag-chip">{r.replace(/_/g, " ")}</span>
+                            <Badge key={i} tone="danger">{r.replace(/_/g, " ")}</Badge>
                         ))}
                     </div>
                 </div>
             )}
-        </div>
+        </Card>
     );
 };
 
 /* ══════════════════════════════════════
-   EMPTY / LOADER
-══════════════════════════════════════ */
-const Empty = ({ icon, text, iconCls = "rr-icon-blue", onRefresh }) => (
-    <div className="rr-empty">
-        <div className={`rr-empty-icon ${iconCls}`}>{icon}</div>
-        <div className="rr-empty-text">{text}</div>
-        <div className="rr-empty-sub">New requests will show up here automatically</div>
-        {onRefresh && (
-            <button className="rr-empty-refresh" onClick={onRefresh}>
-                <FaSync size={11} /> Check again
-            </button>
-        )}
-    </div>
-);
-
-const Loader = () => (
-    <div className="rr-loader">
-        <div className="rr-spin" />
-        <span style={{ fontSize: 12, color: "#94a3b8" }}>Loading…</span>
-    </div>
-);
-
-/* ══════════════════════════════════════
    REPLACEMENT CARD
-   (rebuilt to match the Refund/Return card pattern —
-   it previously used CSS classes that didn't exist anywhere
-   in STYLES, so it rendered unstyled and didn't collapse)
 ══════════════════════════════════════ */
 const ReplacementCard = ({ order, onAction }) => {
     const [open, setOpen] = useState(false);
     const [busy, setBusy] = useState(false);
     const [adminNote, setAdminNote] = useState("");
     const repl = order.replacement || {};
-    const cfg = REPL_CFG[repl.status] || REPL_CFG.REQUESTED;
     const isRequested = repl.status === "REQUESTED";
     const isApproved = repl.status === "APPROVED";
     const isShipped = repl.status === "SHIPPED";
@@ -639,39 +333,39 @@ const ReplacementCard = ({ order, onAction }) => {
     };
 
     return (
-        <div className="rr-card">
+        <Card padded={false} style={{ marginBottom: 10 }}>
             <CardHead
-                iconCls={iconClsForStatus(repl.status)}
+                iconTone={iconToneForStatus(repl.status)}
                 icon={<FaExchangeAlt size={14} />}
                 title={order.customerName}
-                badge={<Badge cfg={cfg} />}
+                badge={<StatusBadge status={repl.status || "REQUESTED"} />}
                 sub={`#${order._id?.slice(-8).toUpperCase() || "—"} · ${repl.reason ? repl.reason : "Replacement"}`}
                 amount={`₹${Number(order.totalAmount || 0).toLocaleString("en-IN")}`}
                 open={open}
                 onClick={() => setOpen(o => !o)}
             />
             {open && (
-                <div className="rr-card-body">
-                    <div className="rr-info-box">
-                        <div className="rr-info-row"><FaUser size={11} />{order.customerName}</div>
-                        <div className="rr-info-row"><FaPhone size={11} />{order.phone}</div>
+                <div style={{ borderTop: "1px solid var(--adm-border-soft)", padding: "16px 18px" }}>
+                    <InfoBox>
+                        <InfoRow icon={<FaUser size={11} />}>{order.customerName}</InfoRow>
+                        <InfoRow icon={<FaPhone size={11} />}>{order.phone}</InfoRow>
                         {order.address && (
-                            <div className="rr-info-row"><FaMapMarkerAlt size={11} /><span style={{ fontSize: 12 }}>{order.address}</span></div>
+                            <InfoRow icon={<FaMapMarkerAlt size={11} />}><span style={{ fontSize: 12 }}>{order.address}</span></InfoRow>
                         )}
-                        <div className="rr-info-meta">
+                        <div style={{ fontSize: 12, color: "var(--adm-text-secondary)", marginTop: 4, lineHeight: 1.6 }}>
                             <b>Reason:</b> {repl.reason || "—"}<br />
                             <b>Requested:</b> {(repl.requestedAt || order.updatedAt) ? new Date(repl.requestedAt || order.updatedAt).toLocaleString("en-IN") : "—"}
                             {repl.adminNote && <><br /><b>Admin note:</b> {repl.adminNote}</>}
                         </div>
-                    </div>
+                    </InfoBox>
 
                     {repl.images?.length > 0 && (
                         <div style={{ marginBottom: 14 }}>
-                            <div className="rr-items-label">Proof Images</div>
+                            <ItemsLabel>Proof Images</ItemsLabel>
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                                 {repl.images.map((img, i) => (
                                     <a key={i} href={img} target="_blank" rel="noreferrer">
-                                        <img src={img} alt="proof" style={{ width: 52, height: 52, borderRadius: 8, objectFit: "cover", border: "1px solid #e2e8f0" }} />
+                                        <img src={img} alt="proof" style={{ width: 52, height: 52, borderRadius: "var(--adm-radius-sm)", objectFit: "cover", border: "1px solid var(--adm-border)" }} />
                                     </a>
                                 ))}
                             </div>
@@ -680,40 +374,32 @@ const ReplacementCard = ({ order, onAction }) => {
 
                     {isRequested && (
                         <>
-                            <textarea className="rr-textarea" rows={2} placeholder="Admin note (optional)"
-                                value={adminNote} onChange={e => setAdminNote(e.target.value)} disabled={busy} />
-                            <div className="rr-btn-row">
-                                <button className="rr-btn rr-btn-green" onClick={() => handle("approve")} disabled={busy}>
-                                    {busy ? <FaSpinner size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : <FaCheckCircle size={12} />}
-                                    Approve
-                                </button>
-                                <button className="rr-btn rr-btn-red" onClick={() => handle("reject")} disabled={busy}>
-                                    <FaBan size={12} /> Reject
-                                </button>
+                            <FormField>
+                                <textarea className="adm-field-input" rows={2} placeholder="Admin note (optional)"
+                                    style={{ width: "100%", boxSizing: "border-box", resize: "vertical" }}
+                                    value={adminNote} onChange={e => setAdminNote(e.target.value)} disabled={busy} />
+                            </FormField>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+                                <Button variant="success" icon={FaCheckCircle} loading={busy} onClick={() => handle("approve")}>Approve</Button>
+                                <Button variant="danger" icon={FaBan} disabled={busy} onClick={() => handle("reject")}>Reject</Button>
                             </div>
                         </>
                     )}
 
                     {isApproved && (
-                        <div className="rr-btn-row">
-                            <button className="rr-btn rr-btn-blue rr-btn-single" onClick={() => handle("ship")} disabled={busy}>
-                                {busy ? <FaSpinner size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : <FaTruck size={12} />}
-                                Mark Shipped
-                            </button>
+                        <div style={{ marginTop: 12 }}>
+                            <Button variant="primary" icon={FaTruck} loading={busy} onClick={() => handle("ship")} style={{ width: "100%" }}>Mark Shipped</Button>
                         </div>
                     )}
 
                     {isShipped && (
-                        <div className="rr-btn-row">
-                            <button className="rr-btn rr-btn-green rr-btn-single" onClick={() => handle("deliver", "Confirm this replacement has been delivered?")} disabled={busy}>
-                                {busy ? <FaSpinner size={12} style={{ animation: "rr-spin 0.7s linear infinite" }} /> : <FaCheckCircle size={12} />}
-                                Mark Delivered
-                            </button>
+                        <div style={{ marginTop: 12 }}>
+                            <Button variant="success" icon={FaCheckCircle} loading={busy} onClick={() => handle("deliver", "Confirm this replacement has been delivered?")} style={{ width: "100%" }}>Mark Delivered</Button>
                         </div>
                     )}
                 </div>
             )}
-        </div>
+        </Card>
     );
 };
 
@@ -726,6 +412,13 @@ const TABS = [
     { id: "replacements", label: "Replacements", icon: <FaExchangeAlt size={12} /> },
     { id: "flagged", label: "Flagged", icon: <FaExclamationTriangle size={12} /> },
 ];
+
+const TAB_EMPTY = {
+    refunds: { icon: FaMoneyBillWave, text: "No pending refund requests" },
+    returns: { icon: FaBoxOpen, text: "No pending return requests" },
+    replacements: { icon: FaExchangeAlt, text: "No pending replacement requests" },
+    flagged: { icon: FaFlag, text: "No flagged orders" },
+};
 
 const AdminRefundReturn = () => {
     const [tab, setTab] = useState("refunds");
@@ -760,80 +453,106 @@ const AdminRefundReturn = () => {
 
     useEffect(() => { fetchAll(); }, [fetchAll]);
 
+    // BUG FIX: this page never refreshed on its own — a customer's return/
+    // replacement/refund request only ever surfaced via the notification
+    // bell's 5-minute poll (or a manual click of the sync button), so a
+    // brand new request could sit unseen in this exact queue for minutes.
+    // admin:order_event is now broadcast by orderController.js's
+    // requestReturn/requestReplacement and Paymentcontroller.js's
+    // requestRefund (via notifyOrderStakeholders) the instant a customer
+    // submits one — this mirrors the same listen-and-refetch pattern
+    // already used in AdminOrders.jsx.
+    const { lastMessage: adminWsMessage } = useAdminWsContext();
+    const liveRefreshTimer = useRef(null);
+    useEffect(() => {
+        if (adminWsMessage?.type !== "admin:order_event") return;
+        clearTimeout(liveRefreshTimer.current);
+        liveRefreshTimer.current = setTimeout(() => fetchAll(), 800);
+        return () => clearTimeout(liveRefreshTimer.current);
+    }, [adminWsMessage, fetchAll]);
+
     const counts = { refunds: refunds.length, returns: returns.length, replacements: replacements.length, flagged: flagged.length };
+    const lists = { refunds, returns, replacements, flagged };
 
     return (
-        <div className="rr-root">
-            <style>{STYLES}</style>
-
+        <div style={{ fontFamily: "var(--adm-font-sans)", display: "flex", flexDirection: "column", height: "calc(100vh - 54px)", background: "var(--adm-bg)" }}>
             {/* Sticky header */}
-            <div className="rr-header">
-                <div className="rr-header-top">
-                    <div className="rr-header-titlewrap">
-                        <div className="rr-header-icon"><FaExchangeAlt size={17} /></div>
+            <div style={{ background: "var(--adm-surface)", borderBottom: "1px solid var(--adm-border)", padding: "18px 24px 0", flexShrink: 0, position: "sticky", top: 0, zIndex: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ width: 42, height: 42, borderRadius: "var(--adm-radius-md)", background: "var(--adm-primary)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--adm-text-on-accent)", flexShrink: 0, boxShadow: "var(--adm-shadow-md)" }}>
+                            <FaExchangeAlt size={17} />
+                        </div>
                         <div>
-                            <h1 className="rr-title">Refunds, Returns &amp; Replacements</h1>
-                            <p className="rr-sub">Manage refunds, returns, replacements &amp; fraud alerts</p>
+                            <h1 style={{ fontSize: 19, fontWeight: 800, color: "var(--adm-text-primary)", margin: 0, letterSpacing: "-0.01em" }}>Refunds, Returns &amp; Replacements</h1>
+                            <p style={{ fontSize: 12.5, color: "var(--adm-muted)", margin: "3px 0 0" }}>Manage refunds, returns, replacements &amp; fraud alerts</p>
                         </div>
                     </div>
-                    <button
-                        className="rr-refresh"
-                        onClick={() => { setSyncing(true); fetchAll(); }}
-                        disabled={syncing}
-                    >
-                        <FaSync size={11} style={syncing ? { animation: "rr-spin 0.7s linear infinite" } : {}} />
+                    <Button variant="primary" icon={FaSync} loading={syncing} onClick={() => { setSyncing(true); fetchAll(); }}>
                         {syncing ? "Syncing…" : "Refresh"}
-                    </button>
+                    </Button>
                 </div>
 
                 {/* Tabs */}
-                <div className="rr-tabs">
-                    {TABS.map(t => (
-                        <button
-                            key={t.id}
-                            className={`rr-tab${tab === t.id ? " active" : ""}`}
-                            onClick={() => setTab(t.id)}
-                        >
-                            {t.icon}
-                            {t.label}
-                            <span className="rr-tab-count">{counts[t.id]}</span>
-                        </button>
-                    ))}
+                <div style={{ display: "flex", gap: 3, overflowX: "auto", scrollbarWidth: "none", background: "var(--adm-surface-alt)", border: "1px solid var(--adm-border)", borderRadius: "var(--adm-radius-md)", padding: 4, marginBottom: 16, width: "fit-content", maxWidth: "100%" }}>
+                    {TABS.map(t => {
+                        const active = tab === t.id;
+                        return (
+                            <button
+                                key={t.id}
+                                onClick={() => setTab(t.id)}
+                                style={{
+                                    display: "flex", alignItems: "center", gap: 7,
+                                    padding: "8px 15px", fontSize: 12.5, fontWeight: 600,
+                                    border: "none", background: active ? "var(--adm-surface)" : "transparent",
+                                    cursor: "pointer", color: active ? "var(--adm-text-primary)" : "var(--adm-text-secondary)",
+                                    transition: "all 0.15s", fontFamily: "inherit",
+                                    borderRadius: "var(--adm-radius-sm)", whiteSpace: "nowrap", flexShrink: 0,
+                                    boxShadow: active ? "var(--adm-shadow-sm)" : "none",
+                                }}
+                            >
+                                {t.icon}
+                                {t.label}
+                                <span style={{
+                                    fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: "var(--adm-radius-full)",
+                                    background: active ? "var(--adm-primary-tint)" : "var(--adm-border)",
+                                    color: active ? "var(--adm-primary)" : "var(--adm-text-secondary)",
+                                }}>{counts[t.id]}</span>
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
             {/* Scrollable content */}
-            <div className="rr-body">
+            <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
                 {error && (
-                    <div className="rr-error-banner">
-                        <FaExclamationTriangle size={12} />
-                        {error}
-                        <button className="rr-error-retry" onClick={fetchAll}>Retry</button>
+                    <div style={{ marginBottom: 12 }}>
+                        <ErrorState message={error} onRetry={fetchAll} />
                     </div>
                 )}
-                {loading ? <Loader /> : (
-                    <>
-                        {tab === "refunds" && (
-                            refunds.length === 0
-                                ? <Empty icon={<FaMoneyBillWave size={22} />} iconCls="rr-icon-amber" text="No pending refund requests" onRefresh={fetchAll} />
-                                : refunds.map(o => <RefundCard key={o._id} order={o} onAction={fetchAll} />)
-                        )}
-                        {tab === "returns" && (
-                            returns.length === 0
-                                ? <Empty icon={<FaBoxOpen size={22} />} iconCls="rr-icon-violet" text="No pending return requests" onRefresh={fetchAll} />
-                                : returns.map(o => <ReturnCard key={o._id} order={o} onAction={fetchAll} />)
-                        )}
-                        {tab === "replacements" && (
-                            replacements.length === 0
-                                ? <Empty icon={<FaExchangeAlt size={22} />} iconCls="rr-icon-blue" text="No pending replacement requests" onRefresh={fetchAll} />
-                                : replacements.map(o => <ReplacementCard key={o._id} order={o} onAction={fetchAll} />)
-                        )}
-                        {tab === "flagged" && (
-                            flagged.length === 0
-                                ? <Empty icon={<FaFlag size={22} />} iconCls="rr-icon-rose" text="No flagged orders" onRefresh={fetchAll} />
-                                : flagged.map(o => <FlaggedCard key={o._id} order={o} />)
-                        )}
-                    </>
+                {loading ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {Array.from({ length: 4 }).map((_, i) => (
+                            <Card key={i} padded><Skeleton height={44} /></Card>
+                        ))}
+                    </div>
+                ) : (
+                    lists[tab].length === 0 ? (
+                        <EmptyState
+                            icon={TAB_EMPTY[tab].icon}
+                            title={TAB_EMPTY[tab].text}
+                            description="New requests will show up here automatically"
+                            action={<Button variant="secondary" size="sm" icon={FaSync} onClick={fetchAll}>Check again</Button>}
+                        />
+                    ) : (
+                        <>
+                            {tab === "refunds" && refunds.map(o => <RefundCard key={o._id} order={o} onAction={fetchAll} />)}
+                            {tab === "returns" && returns.map(o => <ReturnCard key={o._id} order={o} onAction={fetchAll} />)}
+                            {tab === "replacements" && replacements.map(o => <ReplacementCard key={o._id} order={o} onAction={fetchAll} />)}
+                            {tab === "flagged" && flagged.map(o => <FlaggedCard key={o._id} order={o} />)}
+                        </>
+                    )
                 )}
             </div>
         </div>

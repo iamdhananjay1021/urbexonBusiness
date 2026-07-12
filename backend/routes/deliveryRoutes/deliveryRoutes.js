@@ -19,6 +19,7 @@ import {
 import {
     deliveryUpdateBankDetails, deliveryRequestPayout, deliveryGetPayouts,
 } from "../../controllers/admin/payoutController.js";
+import { getMyNotifications, getMyUnreadCount, markMyNotificationRead, markAllMyNotificationsRead } from "../../controllers/platformNotificationController.js";
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -58,6 +59,14 @@ router.patch("/orders/:id/deliver", protect, deliveryOnly, validateBody({ otp: {
 const locationLimiter = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?._id?.toString() || req.ip });
 router.patch("/location", protect, deliveryOnly, locationLimiter, validateBody({ lat: { required: true, type: 'number' }, lng: { required: true, type: 'number' } }), updateRiderLocation);
 router.get("/earnings", protect, deliveryOnly, getDeliveryEarnings);
+
+// ── Delivery Notifications (persisted history — survives refresh) ──────────
+// BUG FIX: delivery riders had zero way to read back their own persisted
+// PlatformNotification history — see platformNotificationController.js.
+router.get("/notifications", protect, deliveryOnly, getMyNotifications("delivery"));
+router.get("/notifications/unread", protect, deliveryOnly, getMyUnreadCount("delivery"));
+router.put("/notifications/read-all", protect, deliveryOnly, markAllMyNotificationsRead("delivery"));
+router.put("/notifications/:id/read", protect, deliveryOnly, markMyNotificationRead("delivery"));
 router.patch("/profile", protect, deliveryOnly, updateDeliveryProfile);
 router.patch("/documents", protect, deliveryOnly, docUpload, updateDeliveryDocuments);
 router.patch("/bank-details", protect, deliveryOnly, deliveryUpdateBankDetails);

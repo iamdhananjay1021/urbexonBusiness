@@ -111,8 +111,24 @@ const MyOrders = () => {
         }
     }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentional: mount-only fetch
 
+    // BUG FIX: this page defaults to the "Ecommerce" tab and orders are
+    // split strictly by orderMode — a customer whose most recent (or only)
+    // order is Urbexon Hour landed here with that order invisible unless
+    // they happened to click the other tab, reading as "my order
+    // disappeared." Orders arrive sorted newest-first from the backend, so
+    // once they load, auto-select whichever tab actually contains the
+    // newest order — but only once, and never after the user has picked a
+    // tab themselves.
+    const autoTabPicked = useRef(false);
+    useEffect(() => {
+        if (autoTabPicked.current || orders.length === 0) return;
+        autoTabPicked.current = true;
+        setActiveTab(orders[0]?.orderMode === "URBEXON_HOUR" ? "URBEXON_HOUR" : "ECOMMERCE");
+    }, [orders]);
+
     // BUG FIX #4 & #5: Tab switch resets all stale UI state
     const handleTabChange = useCallback((tab) => {
+        autoTabPicked.current = true; // a manual switch must never be overridden by the auto-pick effect above
         setActiveTab(tab);
         setActiveFilter("ALL");
         setConfirmCancelId(null);   // BUG FIX #4: clear stale cancel dialog

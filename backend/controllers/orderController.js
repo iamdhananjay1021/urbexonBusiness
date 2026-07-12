@@ -32,7 +32,10 @@ import { sendEmail } from "../utils/emailService.js";
 import { getOrderStatusEmailTemplate } from "../utils/orderStatusEmail.js";
 import { adminOrderEmailHTML } from "../utils/adminOrderEmail.js";
 import { generateInvoiceBuffer } from "../utils/invoiceEmailHelper.js";
-import { calculateOrderPricing, deductStock, restoreStock, markCouponUsed } from "../services/pricing.js";
+import { calculateOrderPricing, deductStock, restoreStock, markCouponUsed, unmarkCouponUsed } from "../services/pricing.js";
+import { applyOrderTransition, buildTimelineEntry, notifyOrderStakeholders } from "../services/orderEngine.js";
+import { settleAllVendorsForOrder } from "../services/settlementEngine.js";
+import { refundOrderPayment } from "../services/refundEngine.js";
 import { kickoffNewOrder } from "../services/orderKickoff.js";
 import { DELIVERY_CONFIG } from "../config/deliveryConfig.js";
 import { validateOrderParams } from "../validations/orderValidations.js";
@@ -43,7 +46,6 @@ import { sendNotification as sendToUser } from "../utils/notificationQueue.js";
 import { broadcastToUsers } from "../utils/wsHub.js";
 import { startAssignment, cancelAssignment } from "../services/assignmentEngine.js";
 import { createNotification } from "./admin/notificationController.js";
-import { Settlement } from "../models/vendorModels/Settlement.js";
 import Vendor from "../models/vendorModels/Vendor.js";
 import { createShiprocketOrder } from "../utils/Shiprocketservice.js";
 
@@ -491,21 +493,18 @@ export const createOrder = async (req, res) => {
 
         kickoffNewOrder({ order: savedOrder, items: formattedItems }).catch(() => { });
 
-        // Ecommerce → Shiprocket; UH → local rider assignment
+        // Ecommerce → Shiprocket
         if (orderChannel === "ecommerce") {
             autoCreateShipment(savedOrder._id).catch(() => { });
         }
 
-        // ✅ FIX-4: UH COD orders — auto-trigger rider assignment immediately
-        // COD orders skip PLACED and go straight to CONFIRMED
-        // Assignment engine expects CONFIRMED or higher status
-        if (orderChannel === "urbexon_hour" && autoConfirm) {
-            setTimeout(() => {
-                startAssignment(savedOrder._id).catch(err =>
-                    console.warn("[Assignment] Auto-start on UH COD order failed:", err.message)
-                );
-            }, 1500);
-        }
+        // BUG FIX: this used to auto-trigger rider assignment for UH COD
+        // orders immediately at creation (CONFIRMED, not yet packed) — the
+        // exact same premature-notification bug as orderKickoff.js's now-
+        // removed call. A COD order still needs the vendor to accept and
+        // pack it; assignment starts when it reaches READY_FOR_PICKUP, same
+        // as every other UH order (see the READY_FOR_PICKUP branch below
+        // and vendorOrders.js's own trigger on the vendor's side).
 
         res.status(201).json({
             success: true,
@@ -670,69 +669,22 @@ export const cancelOrder = async (req, res) => {
             });
         }
 
-        if (
-            cancelledOrder.payment.method === "RAZORPAY" &&
-            cancelledOrder.payment.status === "PAID" &&
-            cancelledOrder.refund?.status !== "PROCESSED" &&
-            cancelledOrder.payment.status !== "REFUNDED" &&
-            cancelledOrder.payment.razorpayPaymentId
-        ) {
-            try {
-                const refundResult = await razorpay.payments.refund(
-                    cancelledOrder.payment.razorpayPaymentId,
-                    {
-                        amount: Math.round(cancelledOrder.totalAmount * 100),
-                        notes: { orderId: cancelledOrder._id.toString(), reason: "Customer cancelled" },
-                    }
-                );
-                await Order.findByIdAndUpdate(cancelledOrder._id, {
-                    $set: {
-                        "refund.status": "PROCESSED",
-                        "refund.processedAt": new Date(),
-                        "refund.razorpayRefundId": refundResult.id,
-                        "refund.requested": true,
-                        "refund.requestedAt": new Date(),
-                        "refund.reason": req.body?.reason || "Order cancelled by customer",
-                        "refund.amount": cancelledOrder.totalAmount,
-                        "payment.status": "REFUNDED",
-                    },
-                    $push: {
-                        paymentLogs: {
-                            event: "REFUND_PROCESSED",
-                            amount: cancelledOrder.totalAmount,
-                            method: "RAZORPAY",
-                            paymentId: refundResult.id,
-                            ip: getClientIp(req),
-                            at: new Date(),
-                        },
-                    },
-                });
-            } catch (refundErr) {
-                console.error("[Refund] Auto-refund failed:", cancelledOrder._id, refundErr.message);
-                await Order.findByIdAndUpdate(cancelledOrder._id, {
-                    $set: {
-                        "refund.status": "REQUESTED",
-                        "refund.requested": true,
-                        "refund.requestedAt": new Date(),
-                        "refund.reason": req.body?.reason || "Order cancelled by customer",
-                        "refund.amount": cancelledOrder.totalAmount,
-                    },
-                    $push: {
-                        paymentLogs: {
-                            event: "REFUND_FAILED",
-                            amount: cancelledOrder.totalAmount,
-                            method: "RAZORPAY",
-                            ip: getClientIp(req),
-                            meta: { error: refundErr.message },
-                            at: new Date(),
-                        },
-                    },
-                });
-            }
-        }
+        // Shared with admin force-cancel and vendor cancel — same Razorpay
+        // refund call, same fallback-to-REQUESTED-on-failure behavior.
+        await refundOrderPayment(cancelledOrder, {
+            reason: req.body?.reason || "Order cancelled by customer",
+            ip: getClientIp(req),
+        });
 
         const finalOrder = await Order.findById(cancelledOrder._id);
         await restoreStock(cancelledOrder.items);
+
+        // GAP FIX: no coupon-usage rollback existed anywhere in the
+        // codebase before — a cancelled order permanently consumed the
+        // customer's one-time coupon use and the coupon's global usedCount.
+        if (cancelledOrder.coupon?.code) {
+            await unmarkCouponUsed({ couponCode: cancelledOrder.coupon.code, userId: cancelledOrder.user }).catch(() => { });
+        }
 
         if (cancelledOrder.orderMode === "URBEXON_HOUR") {
             cancelAssignment(cancelledOrder._id);
@@ -969,16 +921,36 @@ export const updateOrderStatus = async (req, res) => {
         if (["CONFIRMED", "PACKED", "READY_FOR_PICKUP"].includes(status))
             update["delivery.status"] = "PENDING";
 
-        const order = await Order.findByIdAndUpdate(
-            req.params.id,
-            { $set: update },
-            { new: true, runValidators: true }
-        );
-        if (!order)
-            return res.status(404).json({ success: false, message: "Order not found" });
+        // Atomic + auditable: conditions the write on orderStatus STILL being
+        // what we just checked above (closes the race window a plain
+        // findByIdAndUpdate left open — two concurrent admin PUTs could
+        // previously both pass the JS check and both write, the second
+        // silently overwriting the first's OTP/timeline/payment side effects).
+        const order = await applyOrderTransition({
+            orderId: req.params.id,
+            fromStatuses: [currentOrder.orderStatus],
+            toStatus: status,
+            setFields: update,
+            timelineEntry: buildTimelineEntry({
+                status,
+                actorId: req.user._id,
+                role: "admin",
+                source: "admin_panel",
+                reason: req.body?.reason || "",
+            }),
+        });
+        if (!order) {
+            return res.status(409).json({ success: false, message: "Order status changed concurrently — please refresh and try again" });
+        }
 
         if (status === "CANCELLED") {
             await restoreStock(order.items);
+            if (order.coupon?.code) {
+                await unmarkCouponUsed({ couponCode: order.coupon.code, userId: order.user });
+            }
+            // Admin force-cancel previously never triggered a refund at all —
+            // a PAID Razorpay order stayed payment.status:"PAID" forever.
+            await refundOrderPayment(order, { reason: req.body?.reason || "Cancelled by admin", ip: getClientIp(req) });
             if (order.delivery?.assignedTo) {
                 Order.updateOne({ _id: order._id }, { $set: { "delivery.status": "CANCELLED" } }).catch(() => { });
             }
@@ -1063,85 +1035,37 @@ export const updateOrderStatus = async (req, res) => {
             (async () => {
                 try {
                     const { schedulePickup } = await import("../utils/Shiprocketservice.js");
-                    await schedulePickup(order.shipping.shipmentId);
+                    // BUG FIX: schedulePickup destructures { shipmentId } —
+                    // this was passing the bare string, so shipmentId was
+                    // always undefined inside the function and every
+                    // auto-pickup-on-SHIPPED call silently no-op'd (mock
+                    // mode always "succeeded" anyway, masking this).
+                    await schedulePickup({ shipmentId: order.shipping.shipmentId });
                 } catch (err) {
                     console.warn(`[Shiprocket] Auto-pickup on SHIPPED failed:`, err.message);
                 }
             })();
         }
 
-        publishToUser(order.user, "order_status_updated", {
-            orderId: order._id,
-            status,
-            at: new Date().toISOString(),
-        });
-        sendToUser(order.user, "order_status_updated", {
-            orderId: order._id,
-            orderNumber: order.invoiceNumber,
-            status,
-            at: new Date().toISOString(),
-        });
-
         res.json(order);
 
-        // Auto-create Settlement on DELIVERED — ONLY for vendor UH orders
+        // One call resolves + notifies customer (WS + SSE + push), vendor(s),
+        // and the assigned rider — replaces what used to be THREE separate
+        // things here: a synchronous customer-only WS send, a standalone
+        // SSE publishToUser call, and a second, independently-re-implemented
+        // vendor lookup+notify block further down in this same function.
+        notifyOrderStakeholders(order, "order_status_updated", { status }).catch((err) =>
+            console.warn("[Order] Stakeholder notification failed:", err.message)
+        );
+
+        // Settlement creation on DELIVERED (UH only) — same atomic
+        // $setOnInsert-per-vendor upsert as before, now shared with
+        // vendorOrders.js and deliveryController.markDelivered instead of
+        // being a third independent copy of this exact calculation.
         if (status === "DELIVERED" && order.orderMode === "URBEXON_HOUR") {
-            (async () => {
-                try {
-                    const productIds = order.items.map(i => i.productId);
-                    const products = await Product.find({ _id: { $in: productIds } }).select("vendorId").lean();
-                    const vendorIds = [...new Set(products.map(p => p.vendorId?.toString()).filter(Boolean))];
-
-                    for (const vid of vendorIds) {
-                        const vendor = await Vendor.findById(vid).select("commissionRate").lean();
-                        if (!vendor) continue;
-
-                        const vendorProductIdStrs = products
-                            .filter(p => p.vendorId?.toString() === vid)
-                            .map(p => p._id.toString());
-                        const vendorItems = order.items.filter(i =>
-                            vendorProductIdStrs.includes(i.productId?.toString())
-                        );
-                        const orderAmount = vendorItems.reduce(
-                            (sum, i) => sum + Number(i.price) * Number(i.qty), 0
-                        );
-
-                        const commissionRate = vendor.commissionRate ?? 18;
-                        const commissionAmount = Math.round((orderAmount * commissionRate) / 100);
-                        const vendorEarning = Math.max(0, orderAmount - commissionAmount);
-
-                        const result = await Settlement.updateOne(
-                            { orderId: order._id },
-                            {
-                                $setOnInsert: {
-                                    vendorId: vid,
-                                    orderId: order._id,
-                                    orderAmount,
-                                    commissionRate,
-                                    commissionAmount,
-                                    deliveryCharge: order.deliveryCharge || 0,
-                                    platformFee: order.platformFee || 0,
-                                    vendorEarning,
-                                    status: "pending",
-                                },
-                            },
-                            { upsert: true }
-                        );
-
-                        if (result.upsertedCount > 0) {
-                            await Vendor.findByIdAndUpdate(vid, {
-                                $inc: {
-                                    pendingSettlement: vendorEarning,
-                                    totalRevenue: orderAmount,
-                                    totalOrders: 1,
-                                },
-                            });
-                        }
-                    }
-                } catch (settleErr) {
-                    console.error("[Settlement] Auto-create failed:", order._id, settleErr.message);
-                }
-            })();
+            settleAllVendorsForOrder(order).catch((err) =>
+                console.error("[Settlement] Auto-create failed:", order._id, err.message)
+            );
         }
 
         // Email customer on status change
@@ -1580,6 +1504,18 @@ export const requestReturn = async (req, res) => {
 
         res.json({ success: true, message: "Return request submitted", return: order.return });
 
+        // BUG FIX: admin previously only found out about this via
+        // createNotification (persisted, but only surfaced by the
+        // notification bell's 5-minute poll) + email — there was no live
+        // push at all, and AdminRefundReturn.jsx's queue never refreshed
+        // on its own. notifyOrderStakeholders already broadcasts to admins
+        // via the existing admin:order_event WS channel (wired up in the
+        // realtime-engine work) — reusing it here closes that gap.
+        notifyOrderStakeholders(order, "return_requested", {
+            status: order.orderStatus,
+            message: `${order.customerName} requested a return.`,
+        }).catch((err) => console.warn("[requestReturn] stakeholder notify failed:", err.message));
+
         createNotification({
             type: "order",
             title: `Return Requested #${order._id.toString().slice(-6).toUpperCase()}`,
@@ -1893,6 +1829,12 @@ export const requestReplacement = async (req, res) => {
         await order.save();
 
         res.json({ success: true, message: "Replacement request submitted", replacement: order.replacement });
+
+        // Same live-push gap fix as requestReturn above.
+        notifyOrderStakeholders(order, "replacement_requested", {
+            status: order.orderStatus,
+            message: `${order.customerName} requested a replacement.`,
+        }).catch((err) => console.warn("[requestReplacement] stakeholder notify failed:", err.message));
 
         createNotification({
             type: "order",

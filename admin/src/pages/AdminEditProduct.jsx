@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../api/adminApi";
 import { fetchAllCategories } from "../api/categoryApi";
+import { Button, Badge, Card, ErrorState, Skeleton, FormField, Input, Select } from "../components/ui";
 
 /* ─── Constants ─────────────────────────────────────────── */
 const SIZE_TEMPLATES = {
@@ -35,11 +36,13 @@ const HIGHLIGHT_KEYS = [
 
 const PRODUCT_TYPE_CONFIG = {
     ecommerce: {
-        label: "E-Commerce", icon: "🛍️", color: "#2563eb", bg: "#eff6ff", border: "#bfdbfe",
+        label: "E-Commerce", icon: "🛍️",
+        color: "var(--adm-primary)", bg: "var(--adm-primary-tint)", border: "var(--adm-primary)",
         sections: ["basic", "pricing", "variants", "details", "images", "policy", "seo"],
     },
     urbexon_hour: {
-        label: "Urbexon Hour", icon: "⚡", color: "#d97706", bg: "#fffbeb", border: "#fde68a",
+        label: "Urbexon Hour", icon: "⚡",
+        color: "var(--adm-warning)", bg: "var(--adm-warning-tint)", border: "var(--adm-warning)",
         sections: ["basic", "pricing", "variants", "details", "images", "policy", "quick"],
     },
 };
@@ -70,101 +73,78 @@ const FIELD_TAB = {
     prepTimeMinutes: "quick", maxOrderQty: "quick", vendorId: "quick",
 };
 
-/* ─── CSS ───────────────────────────────────────────────── */
+/* ─── CSS — layout & motion only; colors come from theme tokens ───── */
 const GLOBAL_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-.pf-root{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#f5f6fa;min-height:100vh;color:#0f172a;}
-.pf-page-title{font-size:22px;font-weight:800;letter-spacing:-.03em;color:#0f172a;}
-.pf-page-sub{font-size:12px;font-weight:600;color:#6366f1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;}
-.pf-sec-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;padding-bottom:12px;border-bottom:1px solid #f1f5f9;margin-bottom:18px;}
-.pf-field-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#475569;}
-.pf-field-hint{font-size:11px;color:#94a3b8;margin-left:5px;font-weight:400;text-transform:none;letter-spacing:0;}
-.pf-field-err{font-size:11px;color:#dc2626;font-weight:600;margin-top:4px;}
-.pf-card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(15,23,42,.05);}
-.pf-card-accent{height:3px;}
-.pf-inp{width:100%;padding:10px 13px;background:#fafbfc;border:1.5px solid #e2e8f0;border-radius:10px;color:#0f172a;font-size:14px;font-family:inherit;outline:none;transition:all .18s;line-height:1.5;}
-.pf-inp::placeholder{color:#94a3b8;}
-.pf-inp:focus{background:#fff;border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
-.pf-inp.err{border-color:#dc2626;background:#fff8f8;}
-.pf-inp:read-only{background:#f1f5f9;cursor:not-allowed;color:#64748b;}
-.pf-sel{appearance:none;-webkit-appearance:none;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2364748b' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;}
-.pf-chip{height:32px;padding:0 12px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fafbfc;color:#64748b;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;}
-.pf-chip:hover:not(.on){border-color:#6366f1;color:#6366f1;background:#eef2ff;}
-.pf-chip.on{background:#eef2ff;border-color:#6366f1;color:#4f46e5;}
-.pf-tog-wrap{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:12px;cursor:pointer;border:1.5px solid #e2e8f0;background:#fafbfc;transition:all .18s;}
-.pf-tog-wrap.on{border-color:var(--tog-color,#6366f1);background:var(--tog-bg,#eef2ff);}
-.pf-tog{width:42px;height:23px;border-radius:12px;border:none;cursor:pointer;position:relative;flex-shrink:0;background:#d1d5db;transition:background .2s;}
-.pf-tog.on{background:var(--tog-color,#6366f1);}
-.pf-tog-dot{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.18);transition:left .2s;}
+.pf-root{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--adm-bg);min-height:100vh;color:var(--adm-text-primary);}
+.pf-page-title{font-size:22px;font-weight:800;letter-spacing:-.03em;color:var(--adm-text-primary);}
+.pf-page-sub{font-size:12px;font-weight:600;color:var(--adm-primary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;}
+.pf-sec-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--adm-muted);padding-bottom:12px;border-bottom:1px solid var(--adm-border-soft);margin-bottom:18px;}
+.pf-chip{height:32px;padding:0 12px;border:1.5px solid var(--adm-border);border-radius:8px;background:var(--adm-bg);color:var(--adm-neutral);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;}
+.pf-chip:hover:not(.on){border-color:var(--adm-primary);color:var(--adm-primary);background:var(--adm-primary-tint);}
+.pf-chip.on{background:var(--adm-primary-tint);border-color:var(--adm-primary);color:var(--adm-primary);}
+.pf-tog-wrap{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:12px;cursor:pointer;border:1.5px solid var(--adm-border);background:var(--adm-bg);transition:all .18s;}
+.pf-tog-wrap.on{border-color:var(--tog-color,var(--adm-primary));background:var(--tog-bg,var(--adm-primary-tint));}
+.pf-tog{width:42px;height:23px;border-radius:12px;border:none;cursor:pointer;position:relative;flex-shrink:0;background:var(--adm-border);transition:background .2s;}
+.pf-tog.on{background:var(--tog-color,var(--adm-primary));}
+.pf-tog-dot{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:var(--adm-surface);box-shadow:0 1px 4px rgba(0,0,0,.18);transition:left .2s;}
 .pf-tog.on .pf-tog-dot{left:21px;}
-.pf-tabbar{display:flex;gap:2px;padding:6px;background:#f1f5f9;border-radius:12px;overflow-x:auto;scrollbar-width:none;}
+.pf-tabbar{display:flex;gap:2px;padding:6px;background:var(--adm-surface-alt);border-radius:12px;overflow-x:auto;scrollbar-width:none;}
 .pf-tabbar::-webkit-scrollbar{display:none;}
-.pf-tab{display:flex;align-items:center;flex-direction:column;padding:7px 10px;border-radius:9px;font-size:10px;font-weight:700;font-family:inherit;letter-spacing:.04em;color:#64748b;cursor:pointer;border:none;background:transparent;white-space:nowrap;flex-shrink:0;transition:all .15s;position:relative;gap:3px;}
-.pf-tab:hover:not(.on){background:#fff;color:#475569;}
-.pf-tab.on{background:#fff;color:#4f46e5;box-shadow:0 1px 4px rgba(99,102,241,.15);}
+.pf-tab{display:flex;align-items:center;flex-direction:column;padding:7px 10px;border-radius:9px;font-size:10px;font-weight:700;font-family:inherit;letter-spacing:.04em;color:var(--adm-neutral);cursor:pointer;border:none;background:transparent;white-space:nowrap;flex-shrink:0;transition:all .15s;position:relative;gap:3px;}
+.pf-tab:hover:not(.on){background:var(--adm-surface);color:var(--adm-text-secondary);}
+.pf-tab.on{background:var(--adm-surface);color:var(--adm-primary);box-shadow:var(--adm-shadow-sm);}
 .pf-tab-icon{font-size:14px;line-height:1;}
-.pf-tab-dot{width:6px;height:6px;border-radius:50%;background:#ef4444;position:absolute;top:5px;right:5px;}
-.pf-imgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-.pf-slot{aspect-ratio:1;background:#fafbfc;border:1.5px solid #e2e8f0;border-radius:12px;overflow:hidden;position:relative;transition:all .18s;}
-.pf-slot:hover{border-color:#6366f1;}
-.pf-drop{aspect-ratio:1;border:2px dashed #cbd5e1;border-radius:12px;background:#fafbfc;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:16px;transition:all .18s;}
-.pf-drop:hover{border-color:#6366f1;background:#eef2ff;}
-.pf-img-badge{position:absolute;bottom:6px;left:6px;background:#4f46e5;color:#fff;font-size:8px;font-weight:800;padding:2px 7px;border-radius:4px;letter-spacing:.1em;}
+.pf-tab-dot{width:6px;height:6px;border-radius:50%;background:var(--adm-danger);position:absolute;top:5px;right:5px;}
+.pf-slot{aspect-ratio:1;background:var(--adm-bg);border:1.5px solid var(--adm-border);border-radius:12px;overflow:hidden;position:relative;transition:all .18s;}
+.pf-slot:hover{border-color:var(--adm-primary);}
+.pf-drop{aspect-ratio:1;border:2px dashed var(--adm-border);border-radius:12px;background:var(--adm-bg);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:16px;transition:all .18s;}
+.pf-drop:hover{border-color:var(--adm-primary);background:var(--adm-primary-tint);}
 .pf-img-del{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:6px;background:rgba(0,0,0,.55);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;transition:background .15s;}
-.pf-img-del:hover{background:#ef4444;}
-.pf-variant-card{border:1.5px solid #e2e8f0;border-radius:14px;background:#fafbfc;padding:16px;transition:all .18s;position:relative;}
-.pf-variant-card.default{border-color:#6366f1;background:#eef2ff;}
+.pf-img-del:hover{background:var(--adm-danger);}
+.pf-variant-card{border:1.5px solid var(--adm-border);border-radius:14px;background:var(--adm-bg);padding:16px;transition:all .18s;position:relative;}
+.pf-variant-card.default{border-color:var(--adm-primary);background:var(--adm-primary-tint);}
 .pf-hl-row{display:flex;gap:8px;align-items:center;}
 .pf-hl-row:hover .pf-hl-rm{opacity:1!important;}
-.pf-hl-rm{width:28px;height:28px;border-radius:7px;background:#fef2f2;border:1px solid #fecaca;color:#ef4444;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s;flex-shrink:0;font-size:10px;}
+.pf-hl-rm{width:28px;height:28px;border-radius:7px;background:var(--adm-danger-tint);border:1px solid var(--adm-danger);color:var(--adm-danger);cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s;flex-shrink:0;font-size:10px;}
 .pf-actions{display:flex;gap:8px;align-items:center;padding:14px 24px 22px;}
-.pf-btn-ghost{flex:1;padding:11px;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;color:#64748b;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;}
-.pf-btn-ghost:hover{background:#f8fafc;border-color:#cbd5e1;color:#0f172a;}
-.pf-btn-nav{width:36px;height:40px;border-radius:9px;background:#fafbfc;border:1.5px solid #e2e8f0;color:#64748b;cursor:pointer;font-size:13px;font-weight:700;transition:all .15s;display:flex;align-items:center;justify-content:center;}
-.pf-btn-nav:hover:not(:disabled){background:#eef2ff;border-color:#a5b4fc;color:#4f46e5;}
-.pf-btn-nav:disabled{opacity:.35;cursor:not-allowed;}
-.pf-btn-submit{flex:2;padding:12px 20px;background:linear-gradient(135deg,#059669,#0d9488);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(5,150,105,.3);transition:all .18s;}
-.pf-btn-submit:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 18px rgba(5,150,105,.35);}
-.pf-btn-submit:disabled{background:#e2e8f0;color:#94a3b8;box-shadow:none;cursor:not-allowed;}
-.pf-errbanner{margin:0 22px 16px;padding:12px 14px;background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;color:#991b1b;font-size:12px;font-weight:600;}
-.pf-discount-row{display:flex;align-items:center;gap:12px;padding:12px 14px;background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0;}
-.pf-toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:99999;padding:11px 22px;border-radius:10px;font-weight:700;font-size:13px;font-family:inherit;display:flex;align-items:center;gap:8px;animation:pf-pop .22s ease;white-space:nowrap;box-shadow:0 8px 28px rgba(0,0,0,.15);}
-.pf-toast.ok{background:#059669;color:#fff;}
-.pf-toast.err{background:#dc2626;color:#fff;}
-.pf-loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:14px;}
+.pf-submit-wrap{flex:2;display:flex;}
+.pf-submit-wrap .adm-btn{width:100%;justify-content:center;}
+.pf-discount-row{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--adm-success-tint);border-radius:10px;border:1px solid var(--adm-success);}
+.pf-toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:99999;padding:11px 22px;border-radius:10px;font-weight:700;font-size:13px;font-family:inherit;display:flex;align-items:center;gap:8px;animation:pf-pop .22s ease;white-space:nowrap;box-shadow:var(--adm-shadow-lg);}
+.pf-toast.ok{background:var(--adm-success);color:var(--adm-text-on-accent);}
+.pf-toast.err{background:var(--adm-danger);color:var(--adm-text-on-accent);}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
 @keyframes pf-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes pf-pop{from{opacity:0;transform:translateX(-50%) scale(.93)}to{opacity:1;transform:translateX(-50%) scale(1)}}
-@keyframes pf-spin{to{transform:rotate(360deg)}}
 .pf-anim{animation:pf-in .28s ease;}
-.pf-spin{width:14px;height:14px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:pf-spin .7s linear infinite;}
-.pf-spin-dark{width:28px;height:28px;border:3px solid #e2e8f0;border-top-color:#6366f1;border-radius:50%;animation:pf-spin .8s linear infinite;}
-@media(max-width:768px){.g2,.g3{grid-template-columns:1fr!important;gap:12px;}.pf-imgrid{grid-template-columns:repeat(2,1fr);}.pf-actions{flex-wrap:wrap;padding:12px 16px 18px;}.pf-btn-submit{order:-1;min-width:100%;}.pf-card{border-radius:12px;}.pf-tab{padding:6px 8px;}}
-@media(max-width:480px){.pf-imgrid{grid-template-columns:repeat(2,1fr);gap:7px;}.pf-tab-label{display:none;}.pf-tab{padding:5px 7px;}}
+@media(max-width:768px){.g2,.g3{grid-template-columns:1fr!important;gap:12px;}.pf-actions{flex-wrap:wrap;padding:12px 16px 18px;}.pf-submit-wrap{order:-1;min-width:100%;}.pf-tab{padding:6px 8px;}}
+@media(max-width:480px){.pf-tab-label{display:none;}.pf-tab{padding:5px 7px;}}
 `;
 
-/* ─── Shared Components ─────────────────────────────────── */
-const Field = ({ label, hint, err, required, children }) => (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <div style={{ display: "flex", alignItems: "baseline" }}>
-            <span className="pf-field-label" style={{ color: err ? "#dc2626" : undefined }}>
-                {label}{required && <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span>}
+/* ─── Shared local helpers ──────────────────────────────── */
+
+/** Composes a FormField label node with an optional required-asterisk / hint. */
+const LBL = (label, { required, hint } = {}) => (
+    <>
+        {label}
+        {required && <span style={{ color: "var(--adm-danger)", marginLeft: 2 }}>*</span>}
+        {hint && (
+            <span style={{ fontSize: 11, color: "var(--adm-muted)", marginLeft: 6, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
+                {hint}
             </span>
-            {hint && <span className="pf-field-hint">{hint}</span>}
-        </div>
-        {children}
-        {err && <p className="pf-field-err">⚠ {err}</p>}
-    </div>
+        )}
+    </>
 );
 
-const Toggle = ({ on, toggle, label, sub, color = "#6366f1", bg = "#eef2ff" }) => (
+const Toggle = ({ on, toggle, label, sub, color = "var(--adm-primary)", bg = "var(--adm-primary-tint)" }) => (
     <div className={`pf-tog-wrap${on ? " on" : ""}`}
         style={{ "--tog-color": color, "--tog-bg": bg }} onClick={toggle}>
         <div>
-            <p style={{ fontWeight: 600, fontSize: 13, color: "#0f172a", marginBottom: 2 }}>{label}</p>
-            {sub && <p style={{ fontSize: 11, color: "#94a3b8" }}>{sub}</p>}
+            <p style={{ fontWeight: 600, fontSize: 13, color: "var(--adm-text-primary)", marginBottom: 2 }}>{label}</p>
+            {sub && <p style={{ fontSize: 11, color: "var(--adm-muted)" }}>{sub}</p>}
         </div>
         <button type="button" className={`pf-tog${on ? " on" : ""}`}
             style={{ "--tog-color": color }}
@@ -597,11 +577,33 @@ const AdminEditProduct = () => {
 
     /* ── Loading screen ── */
     if (pageLoad) return (
-        <div className="pf-root">
+        <div className="pf-root" style={{ padding: "24px 14px 80px" }}>
             <style>{GLOBAL_CSS}</style>
-            <div className="pf-loading-screen">
-                <div className="pf-spin-dark" />
-                <p style={{ fontSize: 13, color: "#94a3b8" }}>Loading product…</p>
+            <div style={{ maxWidth: 880, margin: "0 auto" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22 }}>
+                    <Skeleton width={38} height={38} radius={10} />
+                    <div>
+                        <Skeleton width={70} height={11} />
+                        <div style={{ marginTop: 8 }}><Skeleton width={160} height={20} /></div>
+                    </div>
+                </div>
+                <div style={{ marginBottom: 12 }}><Skeleton height={46} radius={12} /></div>
+                <Card padded={false}>
+                    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+                        <Skeleton height={13} width={160} />
+                        <Skeleton height={40} radius={10} />
+                        <Skeleton height={80} radius={10} />
+                        <div className="g2">
+                            <Skeleton height={40} radius={10} />
+                            <Skeleton height={40} radius={10} />
+                        </div>
+                        <div className="g3">
+                            <Skeleton height={40} radius={10} />
+                            <Skeleton height={40} radius={10} />
+                            <Skeleton height={40} radius={10} />
+                        </div>
+                    </div>
+                </Card>
             </div>
         </div>
     );
@@ -623,20 +625,18 @@ const AdminEditProduct = () => {
 
                 {/* Header */}
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22 }}>
-                    <button type="button" onClick={() => navigate("/admin/products")}
-                        style={{ width: 38, height: 38, borderRadius: 10, background: "#fff", border: "1.5px solid #e2e8f0", color: "#64748b", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 14, transition: "all .15s" }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = "#6366f1"; e.currentTarget.style.color = "#6366f1"; }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; }}>
+                    <Button type="button" variant="secondary" onClick={() => navigate("/admin/products")}
+                        style={{ width: 38, height: 38, padding: 0, borderRadius: 10, flexShrink: 0 }}>
                         ←
-                    </button>
+                    </Button>
                     <div>
                         <p className="pf-page-sub">Products</p>
                         <h1 className="pf-page-title">Edit Product</h1>
                     </div>
-                    <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em", color: tc.color, background: tc.bg, border: `1px solid ${tc.border}`, padding: "4px 12px", borderRadius: 20 }}>
+                    <div style={{ marginLeft: "auto" }}>
+                        <Badge tone={productType === "ecommerce" ? "primary" : "warning"}>
                             {tc.icon} {tc.label}
-                        </span>
+                        </Badge>
                     </div>
                 </div>
 
@@ -657,65 +657,63 @@ const AdminEditProduct = () => {
                 </div>
 
                 <form onSubmit={handleSubmit}>
-                    <div className="pf-card">
-                        <div className="pf-card-accent" style={{ background: `linear-gradient(90deg,${tc.color},#059669)` }} />
-
+                    <Card padded={false} style={{ borderTop: `3px solid ${tc.color}` }}>
                         <div style={{ padding: "22px 24px 6px" }}>
 
                             {/* ══ BASIC ══ */}
                             {tab === "basic" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SL>Basic Information</SL>
-                                    <Field label="Product Name" required err={fErrs.name}>
-                                        <input name="name" value={form.name} onChange={hc} placeholder="e.g. Premium Cotton Kurta" className={`pf-inp${fErrs.name ? " err" : ""}`} />
-                                    </Field>
-                                    <Field label="Description" hint="optional">
-                                        <textarea name="description" value={form.description} onChange={hc} placeholder="Fabric, fit, occasion, care instructions…" rows={3} className="pf-inp" style={{ resize: "vertical", lineHeight: 1.65 }} />
-                                    </Field>
+                                    <FormField label={LBL("Product Name", { required: true })} error={fErrs.name}>
+                                        <Input name="name" value={form.name} onChange={hc} placeholder="e.g. Premium Cotton Kurta" error={fErrs.name} />
+                                    </FormField>
+                                    <FormField label={LBL("Description", { hint: "optional" })}>
+                                        <textarea name="description" value={form.description} onChange={hc} placeholder="Fabric, fit, occasion, care instructions…" rows={3} className="adm-field-input" style={{ resize: "vertical", lineHeight: 1.65, width: "100%" }} />
+                                    </FormField>
                                     <div className="g2">
-                                        <Field label="Brand"><input name="brand" value={form.brand} onChange={hc} placeholder="Urbexon" className="pf-inp" /></Field>
-                                        <Field label="SKU / Code"><input name="sku" value={form.sku} onChange={hc} placeholder="UX-KRT-001" className="pf-inp" /></Field>
+                                        <FormField label="Brand"><Input name="brand" value={form.brand} onChange={hc} placeholder="Urbexon" /></FormField>
+                                        <FormField label="SKU / Code"><Input name="sku" value={form.sku} onChange={hc} placeholder="UX-KRT-001" /></FormField>
                                     </div>
                                     <div className="g3">
-                                        <Field label="Color"><input name="color" value={form.color} onChange={hc} placeholder="Navy Blue" className="pf-inp" /></Field>
-                                        <Field label="Material"><input name="material" value={form.material} onChange={hc} placeholder="Cotton" className="pf-inp" /></Field>
-                                        <Field label="Occasion"><input name="occasion" value={form.occasion} onChange={hc} placeholder="Casual" className="pf-inp" /></Field>
+                                        <FormField label="Color"><Input name="color" value={form.color} onChange={hc} placeholder="Navy Blue" /></FormField>
+                                        <FormField label="Material"><Input name="material" value={form.material} onChange={hc} placeholder="Cotton" /></FormField>
+                                        <FormField label="Occasion"><Input name="occasion" value={form.occasion} onChange={hc} placeholder="Casual" /></FormField>
                                     </div>
                                     <div className="g2">
-                                        <Field label="Category" required err={fErrs.category}>
-                                            <select name="category" value={form.category} onChange={hc} className={`pf-inp pf-sel${fErrs.category ? " err" : ""}`}>
+                                        <FormField label={LBL("Category", { required: true })} error={fErrs.category}>
+                                            <Select name="category" value={form.category} onChange={hc} error={fErrs.category}>
                                                 <option value="">— Select Category —</option>
                                                 {categories.map(c => (
                                                     <option key={c._id || c.value} value={c.value || c.slug || c.name}>
                                                         {c.icon ? `${c.icon} ` : ""}{c.name}
                                                     </option>
                                                 ))}
-                                            </select>
-                                        </Field>
-                                        <Field label="Subcategory"><input name="subcategory" value={form.subcategory} onChange={hc} placeholder="e.g. Kurta Set" className="pf-inp" /></Field>
+                                            </Select>
+                                        </FormField>
+                                        <FormField label="Subcategory"><Input name="subcategory" value={form.subcategory} onChange={hc} placeholder="e.g. Kurta Set" /></FormField>
                                     </div>
-                                    <Field label="Tags" hint="comma-separated">
-                                        <input name="tags" value={form.tags} onChange={hc} placeholder="kurta, ethnic, festive" className="pf-inp" />
-                                    </Field>
+                                    <FormField label={LBL("Tags", { hint: "comma-separated" })}>
+                                        <Input name="tags" value={form.tags} onChange={hc} placeholder="kurta, ethnic, festive" />
+                                    </FormField>
                                     <div className="g2">
-                                        <Toggle on={form.isFeatured} toggle={() => setForm(p => ({ ...p, isFeatured: !p.isFeatured }))} label="⭐ Featured Product" sub="Shown on homepage" color="#f59e0b" bg="#fffbeb" />
+                                        <Toggle on={form.isFeatured} toggle={() => setForm(p => ({ ...p, isFeatured: !p.isFeatured }))} label="⭐ Featured Product" sub="Shown on homepage" color="var(--adm-warning)" bg="var(--adm-warning-tint)" />
                                         <Toggle on={form.isCustomizable} toggle={() => setForm(p => ({ ...p, isCustomizable: !p.isCustomizable }))} label="🎨 Customizable" sub="Customer can add design/text" />
                                     </div>
                                     {form.isCustomizable && (
-                                        <div style={{ background: "#fafbfc", border: "1.5px solid #e2e8f0", borderRadius: 13, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-                                            <p style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5" }}>🎨 Customization Options</p>
+                                        <div style={{ background: "var(--adm-bg)", border: "1.5px solid var(--adm-border)", borderRadius: 13, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                                            <p style={{ fontSize: 12, fontWeight: 700, color: "var(--adm-primary)" }}>🎨 Customization Options</p>
                                             <Toggle on={custConfig.allowText} toggle={() => setCustConfig(p => ({ ...p, allowText: !p.allowText }))} label="Allow Custom Text" sub="Name / message input" />
                                             {custConfig.allowText && (
                                                 <div className="g2" style={{ paddingLeft: 10 }}>
-                                                    <Field label="Text Label"><input value={custConfig.textLabel} onChange={e => setCustConfig(p => ({ ...p, textLabel: e.target.value }))} placeholder="Name / Message" className="pf-inp" /></Field>
-                                                    <Field label="Max Length"><input type="number" min="1" max="500" value={custConfig.textMaxLength} onChange={e => setCustConfig(p => ({ ...p, textMaxLength: +e.target.value || 100 }))} className="pf-inp" /></Field>
+                                                    <FormField label="Text Label"><Input value={custConfig.textLabel} onChange={e => setCustConfig(p => ({ ...p, textLabel: e.target.value }))} placeholder="Name / Message" /></FormField>
+                                                    <FormField label="Max Length"><Input type="number" min="1" max="500" value={custConfig.textMaxLength} onChange={e => setCustConfig(p => ({ ...p, textMaxLength: +e.target.value || 100 }))} /></FormField>
                                                 </div>
                                             )}
                                             <Toggle on={custConfig.allowImage} toggle={() => setCustConfig(p => ({ ...p, allowImage: !p.allowImage }))} label="Allow Image Upload" sub="Customer uploads photo" />
                                             <Toggle on={custConfig.allowNote} toggle={() => setCustConfig(p => ({ ...p, allowNote: !p.allowNote }))} label="Allow Special Notes" sub="Free-text instructions" />
-                                            <Field label="Extra Charge (₹)" hint="0 = free">
-                                                <input type="number" min="0" value={custConfig.extraPrice} onChange={e => setCustConfig(p => ({ ...p, extraPrice: +e.target.value || 0 }))} placeholder="0" className="pf-inp" style={{ maxWidth: 180 }} />
-                                            </Field>
+                                            <FormField label={LBL("Extra Charge (₹)", { hint: "0 = free" })}>
+                                                <Input type="number" min="0" value={custConfig.extraPrice} onChange={e => setCustConfig(p => ({ ...p, extraPrice: +e.target.value || 0 }))} placeholder="0" style={{ maxWidth: 180 }} />
+                                            </FormField>
                                         </div>
                                     )}
                                 </div>
@@ -725,58 +723,59 @@ const AdminEditProduct = () => {
                             {tab === "pricing" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SL>Pricing & Stock</SL>
-                                    <div style={{ padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10 }}>
-                                        <p style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>
+                                    <div style={{ padding: "10px 14px", background: "var(--adm-primary-tint)", border: "1px solid var(--adm-primary)", borderRadius: 10 }}>
+                                        <p style={{ fontSize: 11, color: "var(--adm-primary)", fontWeight: 600 }}>
                                             💡 Yeh <strong>base price</strong> hai. Agar color variants alag price pe hain toh Variants tab mein set karo.
                                         </p>
                                     </div>
                                     <div className="g2">
-                                        <Field label="Selling Price (₹)" required err={fErrs.price}>
+                                        <FormField label={LBL("Selling Price (₹)", { required: true })} error={fErrs.price}>
                                             <div style={{ position: "relative" }}>
-                                                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 13, pointerEvents: "none" }}>₹</span>
-                                                <input type="number" name="price" value={form.price} onChange={hc} placeholder="0" min="1" className={`pf-inp${fErrs.price ? " err" : ""}`} style={{ paddingLeft: 28 }} />
+                                                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--adm-muted)", fontSize: 13, pointerEvents: "none" }}>₹</span>
+                                                <Input type="number" name="price" value={form.price} onChange={hc} placeholder="0" min="1" error={fErrs.price} style={{ paddingLeft: 28 }} />
                                             </div>
-                                        </Field>
-                                        <Field label="MRP (₹)" hint="compare-at" err={fErrs.mrp}>
+                                        </FormField>
+                                        <FormField label={LBL("MRP (₹)", { hint: "compare-at" })} error={fErrs.mrp}>
                                             <div style={{ position: "relative" }}>
-                                                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 13, pointerEvents: "none" }}>₹</span>
-                                                <input type="number" name="mrp" value={form.mrp} onChange={hc} placeholder="0" min="1" className={`pf-inp${fErrs.mrp ? " err" : ""}`} style={{ paddingLeft: 28 }} />
+                                                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--adm-muted)", fontSize: 13, pointerEvents: "none" }}>₹</span>
+                                                <Input type="number" name="mrp" value={form.mrp} onChange={hc} placeholder="0" min="1" error={fErrs.mrp} style={{ paddingLeft: 28 }} />
                                             </div>
-                                        </Field>
+                                        </FormField>
                                     </div>
                                     {discPct && (
                                         <div className="pf-discount-row">
-                                            <span style={{ color: "#059669", fontWeight: 800, fontSize: 22 }}>{discPct}%</span>
+                                            <span style={{ color: "var(--adm-success)", fontWeight: 800, fontSize: 22 }}>{discPct}%</span>
                                             <div>
-                                                <p style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>Discount Applied</p>
-                                                <p style={{ fontSize: 11, color: "#64748b" }}>Customer saves ₹{(+form.mrp - +form.price).toLocaleString("en-IN")}</p>
+                                                <p style={{ fontSize: 12, fontWeight: 700, color: "var(--adm-success)" }}>Discount Applied</p>
+                                                <p style={{ fontSize: 11, color: "var(--adm-text-secondary)" }}>Customer saves ₹{(+form.mrp - +form.price).toLocaleString("en-IN")}</p>
                                             </div>
                                         </div>
                                     )}
                                     <div className="g2">
-                                        <Field label="Stock Quantity" required err={fErrs.stock} hint={selSizes.length ? "auto from sizes" : enableVariants ? "auto from variants" : undefined}>
-                                            <input type="number" name="stock" value={form.stock} onChange={hc}
+                                        <FormField label={LBL("Stock Quantity", { required: true, hint: selSizes.length ? "auto from sizes" : enableVariants ? "auto from variants" : undefined })} error={fErrs.stock}>
+                                            <Input type="number" name="stock" value={form.stock} onChange={hc}
                                                 readOnly={selSizes.length > 0 || enableVariants}
-                                                placeholder="0" min="0"
-                                                className={`pf-inp${fErrs.stock ? " err" : ""}`}
-                                                style={{ background: (selSizes.length > 0 || enableVariants) ? "#f1f5f9" : undefined }} />
+                                                placeholder="0" min="0" error={fErrs.stock}
+                                                style={{ background: (selSizes.length > 0 || enableVariants) ? "var(--adm-surface-alt)" : undefined }} />
                                             {form.stock !== "" && !fErrs.stock && (
-                                                <p style={{ fontSize: 11, fontWeight: 600, marginTop: 2, color: +form.stock > 0 ? "#059669" : "#ef4444" }}>
-                                                    {+form.stock > 0 ? `✓ In Stock — ${form.stock} units` : "✕ Out of Stock"}
-                                                </p>
+                                                <div style={{ marginTop: 4 }}>
+                                                    <Badge tone={+form.stock > 0 ? "success" : "danger"}>
+                                                        {+form.stock > 0 ? `In Stock — ${form.stock} units` : "Out of Stock"}
+                                                    </Badge>
+                                                </div>
                                             )}
-                                        </Field>
-                                        <Field label="GST Rate">
-                                            <select name="gstPercent" value={form.gstPercent} onChange={hc} className="pf-inp pf-sel">
+                                        </FormField>
+                                        <FormField label="GST Rate">
+                                            <Select name="gstPercent" value={form.gstPercent} onChange={hc}>
                                                 {GST_RATES.map(r => <option key={r} value={r}>{r}% GST</option>)}
-                                            </select>
-                                        </Field>
+                                            </Select>
+                                        </FormField>
                                     </div>
-                                    <Toggle on={form.isDeal} toggle={() => setForm(p => ({ ...p, isDeal: !p.isDeal, dealEndsAt: "" }))} label="⚡ Mark as Deal" sub="Appears in Deals section" color="#d97706" bg="#fffbeb" />
+                                    <Toggle on={form.isDeal} toggle={() => setForm(p => ({ ...p, isDeal: !p.isDeal, dealEndsAt: "" }))} label="⚡ Mark as Deal" sub="Appears in Deals section" color="var(--adm-warning)" bg="var(--adm-warning-tint)" />
                                     {form.isDeal && (
-                                        <Field label="Deal Ends At" hint="blank = no expiry">
-                                            <input type="datetime-local" name="dealEndsAt" value={form.dealEndsAt} onChange={hc} className="pf-inp" />
-                                        </Field>
+                                        <FormField label={LBL("Deal Ends At", { hint: "blank = no expiry" })}>
+                                            <Input type="datetime-local" name="dealEndsAt" value={form.dealEndsAt} onChange={hc} />
+                                        </FormField>
                                     )}
                                 </div>
                             )}
@@ -788,25 +787,25 @@ const AdminEditProduct = () => {
 
                                     {/* Sizes */}
                                     <div>
-                                        <p style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 10 }}>AVAILABLE SIZES</p>
+                                        <p style={{ fontSize: 12, fontWeight: 700, color: "var(--adm-text-secondary)", marginBottom: 10 }}>AVAILABLE SIZES</p>
                                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
                                             {availableSizes.map(s => (
                                                 <button key={s} type="button" onClick={() => toggleSize(s)} className={`pf-chip${selSizes.includes(s) ? " on" : ""}`}>{s}</button>
                                             ))}
                                         </div>
                                         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                                            <input value={newSize} onChange={e => setNewSize(e.target.value)}
+                                            <Input value={newSize} onChange={e => setNewSize(e.target.value)}
                                                 onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddCustomSize(); } }}
-                                                placeholder="Add custom size" className="pf-inp" style={{ maxWidth: 200, padding: "8px 12px" }} />
-                                            <button type="button" onClick={handleAddCustomSize} className="pf-btn-ghost" style={{ flex: "none", padding: "8px 16px" }}>Add Size</button>
+                                                placeholder="Add custom size" style={{ maxWidth: 200, padding: "8px 12px" }} />
+                                            <Button type="button" variant="secondary" size="sm" onClick={handleAddCustomSize} style={{ flexShrink: 0 }}>Add Size</Button>
                                         </div>
                                         {selSizes.length > 0 && (
                                             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                                                 {selSizes.map(s => (
-                                                    <div key={s} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fafbfc", border: "1.5px solid #e2e8f0", borderRadius: 9, padding: "6px 10px" }}>
-                                                        <span style={{ fontSize: 12, fontWeight: 700, color: "#475569", minWidth: 36 }}>{s}</span>
+                                                    <div key={s} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--adm-bg)", border: "1.5px solid var(--adm-border)", borderRadius: 9, padding: "6px 10px" }}>
+                                                        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--adm-text-secondary)", minWidth: 36 }}>{s}</span>
                                                         <input type="number" min="0" value={sizeStockMap[s] ?? 0} onChange={e => updateSizeStock(s, e.target.value)}
-                                                            style={{ width: 60, padding: "5px 8px", border: "1.5px solid #e2e8f0", borderRadius: 7, fontSize: 12, textAlign: "center", outline: "none", fontFamily: "inherit" }} />
+                                                            style={{ width: 60, padding: "5px 8px", border: "1.5px solid var(--adm-border)", borderRadius: 7, fontSize: 12, textAlign: "center", outline: "none", fontFamily: "inherit", background: "var(--adm-surface)", color: "var(--adm-text-primary)" }} />
                                                     </div>
                                                 ))}
                                             </div>
@@ -819,12 +818,12 @@ const AdminEditProduct = () => {
                                         label="🎨 Multiple Color Variants"
                                         sub="Separate price, stock and images per color" />
 
-                                    {fErrs.colorVariants && <p className="pf-field-err">⚠ {fErrs.colorVariants}</p>}
+                                    {fErrs.colorVariants && <p style={{ fontSize: 11, color: "var(--adm-danger)", fontWeight: 600 }}>⚠ {fErrs.colorVariants}</p>}
 
                                     {enableVariants && (
                                         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                                            <div style={{ padding: "10px 14px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10 }}>
-                                                <p style={{ fontSize: 11, color: "#92400e", fontWeight: 600 }}>
+                                            <div style={{ padding: "10px 14px", background: "var(--adm-warning-tint)", border: "1px solid var(--adm-warning)", borderRadius: 10 }}>
+                                                <p style={{ fontSize: 11, color: "var(--adm-warning)", fontWeight: 600 }}>
                                                     💡 Price/MRP blank chhodo = base product price use hogi. Alag price chahiye toh bharo.
                                                 </p>
                                             </div>
@@ -837,101 +836,105 @@ const AdminEditProduct = () => {
                                                             <input type="color" value={v.hex}
                                                                 onChange={e => updateVariant(v.id, "hex", e.target.value)}
                                                                 style={{ opacity: 0, position: "absolute", inset: 0, cursor: "pointer", border: "none", width: "100%", height: "100%" }} />
-                                                            <div style={{ width: 36, height: 36, borderRadius: "50%", background: v.hex, border: "3px solid #fff", boxShadow: "0 0 0 2px #e2e8f0", cursor: "pointer" }} />
+                                                            <div style={{ width: 36, height: 36, borderRadius: "50%", background: v.hex, border: "3px solid var(--adm-surface)", boxShadow: "0 0 0 2px var(--adm-border)", cursor: "pointer" }} />
                                                         </div>
-                                                        <input value={v.name}
+                                                        <Input value={v.name}
                                                             onChange={e => updateVariant(v.id, "name", e.target.value)}
                                                             placeholder={`Color ${vi + 1} (e.g. Navy Blue)`}
-                                                            className="pf-inp" style={{ flex: 1 }} />
+                                                            style={{ flex: 1 }} />
                                                         <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
-                                                            <button type="button" onClick={() => setDefaultVariant(v.id)}
-                                                                style={{ padding: "4px 10px", fontSize: 10, fontWeight: 700, border: "1.5px solid", borderRadius: 6, cursor: "pointer", background: v.isDefault ? "#4f46e5" : "#fff", color: v.isDefault ? "#fff" : "#6366f1", borderColor: v.isDefault ? "#4f46e5" : "#a5b4fc" }}>
+                                                            <Button type="button" size="sm" variant={v.isDefault ? "primary" : "secondary"} onClick={() => setDefaultVariant(v.id)}>
                                                                 {v.isDefault ? "✓ Default" : "Set Default"}
-                                                            </button>
+                                                            </Button>
                                                             {colorVariants.length > 1 && (
-                                                                <button type="button" onClick={() => removeVariant(v.id)}
-                                                                    style={{ padding: "3px 10px", fontSize: 10, fontWeight: 700, border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", background: "#fef2f2", color: "#dc2626" }}>
+                                                                <Button type="button" size="sm" variant="danger" onClick={() => removeVariant(v.id)}>
                                                                     Remove
-                                                                </button>
+                                                                </Button>
                                                             )}
                                                         </div>
                                                     </div>
 
-                                                    {/* Row 2: Price + MRP + Stock (v2.1) */}
-                                                    <div className="g3" style={{ marginBottom: 14 }}>
-                                                        <Field label="Price (₹)" hint="blank = base price">
+                                                    {/* Row 2: Price + MRP + Stock — v2.1 */}
+                                                    <div className="g3" style={{ marginBottom: 12 }}>
+                                                        <FormField label={LBL("Price (₹)", { hint: "blank = base price" })}>
                                                             <div style={{ position: "relative" }}>
-                                                                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 12, pointerEvents: "none" }}>₹</span>
-                                                                <input type="number" min="0"
+                                                                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--adm-muted)", fontSize: 12, pointerEvents: "none" }}>₹</span>
+                                                                <Input
+                                                                    type="number" min="0"
                                                                     value={v.price}
                                                                     onChange={e => updateVariant(v.id, "price", e.target.value)}
                                                                     placeholder={form.price || "Base"}
-                                                                    className="pf-inp"
-                                                                    style={{ paddingLeft: 24, fontSize: 13 }} />
+                                                                    style={{ paddingLeft: 24, fontSize: 13 }}
+                                                                />
                                                             </div>
                                                             {v.price !== "" && +v.price !== +form.price && (
-                                                                <span style={{ fontSize: 10, color: "#6366f1", background: "#eef2ff", padding: "2px 7px", borderRadius: 4, fontWeight: 600, marginTop: 4, display: "inline-block" }}>
-                                                                    Custom price set ✓
-                                                                </span>
+                                                                <div style={{ marginTop: 4 }}>
+                                                                    <Badge tone="primary">Custom price set</Badge>
+                                                                </div>
                                                             )}
-                                                        </Field>
-                                                        <Field label="MRP (₹)" hint="blank = base MRP">
+                                                        </FormField>
+                                                        <FormField label={LBL("MRP (₹)", { hint: "blank = base MRP" })}>
                                                             <div style={{ position: "relative" }}>
-                                                                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 12, pointerEvents: "none" }}>₹</span>
-                                                                <input type="number" min="0"
+                                                                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--adm-muted)", fontSize: 12, pointerEvents: "none" }}>₹</span>
+                                                                <Input type="number" min="0"
                                                                     value={v.mrp}
                                                                     onChange={e => updateVariant(v.id, "mrp", e.target.value)}
                                                                     placeholder={form.mrp || "Base"}
-                                                                    className="pf-inp"
                                                                     style={{ paddingLeft: 24, fontSize: 13 }} />
                                                             </div>
-                                                        </Field>
-                                                        <Field label="Stock">
-                                                            <input type="number" min="0"
+                                                        </FormField>
+                                                        <FormField label="Stock">
+                                                            <Input type="number" min="0"
                                                                 value={v.stock}
                                                                 onChange={e => updateVariant(v.id, "stock", e.target.value)}
-                                                                placeholder="0" className="pf-inp" />
+                                                                placeholder="0" />
                                                             {v.stock !== "" && (
-                                                                <p style={{ fontSize: 10, marginTop: 3, color: +v.stock > 0 ? "#059669" : "#ef4444", fontWeight: 600 }}>
-                                                                    {+v.stock > 0 ? `✓ ${v.stock} units` : "✕ OOS"}
-                                                                </p>
+                                                                <div style={{ marginTop: 4 }}>
+                                                                    <Badge tone={+v.stock > 0 ? "success" : "danger"}>
+                                                                        {+v.stock > 0 ? `${v.stock} units` : "OOS"}
+                                                                    </Badge>
+                                                                </div>
                                                             )}
-                                                        </Field>
+                                                        </FormField>
                                                     </div>
 
                                                     {/* Row 3: Existing images info */}
                                                     {v.existingImages?.length > 0 && v.previews.length === 0 && (
-                                                        <div style={{ marginBottom: 10, padding: "8px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8 }}>
-                                                            <p style={{ fontSize: 11, color: "#059669", fontWeight: 600 }}>
+                                                        <div style={{ marginBottom: 10, padding: "8px 12px", background: "var(--adm-success-tint)", border: "1px solid var(--adm-success)", borderRadius: 8 }}>
+                                                            <p style={{ fontSize: 11, color: "var(--adm-success)", fontWeight: 600 }}>
                                                                 ✓ {v.existingImages.length} existing image(s)
                                                             </p>
                                                             {/* Show existing images as small thumbnails */}
                                                             <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                                                                 {v.existingImages.map((img, ei) => (
-                                                                    <img key={ei} src={img.url} alt="" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #bbf7d0" }} />
+                                                                    <img key={ei} src={img.url} alt="" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid var(--adm-success)" }} />
                                                                 ))}
                                                             </div>
-                                                            <p style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>Neeche se naye upload karo replace karne ke liye</p>
+                                                            <p style={{ fontSize: 10, color: "var(--adm-text-secondary)", marginTop: 4 }}>Neeche se naye upload karo replace karne ke liye</p>
                                                         </div>
                                                     )}
 
                                                     {/* Row 4: Variant images */}
                                                     <div>
-                                                        <p style={{ fontSize: 11, fontWeight: 600, color: "#64748b", marginBottom: 8 }}>
+                                                        <p style={{ fontSize: 11, fontWeight: 600, color: "var(--adm-neutral)", marginBottom: 8 }}>
                                                             {v.previews.length > 0 ? "New Images (will replace existing):" : "Upload Images for this color:"}
                                                         </p>
                                                         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
                                                             {v.previews.map((src, pi) => (
                                                                 <div key={pi} className="pf-slot">
                                                                     <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                                                                    {pi === 0 && <span className="pf-img-badge">MAIN</span>}
+                                                                    {pi === 0 && (
+                                                                        <span style={{ position: "absolute", bottom: 6, left: 6 }}>
+                                                                            <Badge tone="primary">MAIN</Badge>
+                                                                        </span>
+                                                                    )}
                                                                     <button type="button" className="pf-img-del" onClick={() => removeVariantImage(v.id, pi)}>✕</button>
                                                                 </div>
                                                             ))}
                                                             {v.previews.length < 4 && (
                                                                 <label className="pf-drop">
                                                                     <span style={{ fontSize: 22 }}>📷</span>
-                                                                    <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>Add</span>
+                                                                    <span style={{ fontSize: 12, color: "var(--adm-neutral)", fontWeight: 600 }}>Add</span>
                                                                     <input type="file" multiple accept="image/*" onChange={e => handleVariantImages(v.id, e)} style={{ display: "none" }} />
                                                                 </label>
                                                             )}
@@ -940,10 +943,10 @@ const AdminEditProduct = () => {
                                                 </div>
                                             ))}
 
-                                            <button type="button" onClick={addVariant}
-                                                style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center", padding: "10px 16px", border: "2px dashed #c7d2fe", borderRadius: 12, background: "none", cursor: "pointer", color: "#6366f1", fontWeight: 700, fontSize: 13, fontFamily: "inherit" }}>
+                                            <Button type="button" variant="ghost" onClick={addVariant}
+                                                style={{ border: "2px dashed var(--adm-primary)", borderRadius: 12, color: "var(--adm-primary)", justifyContent: "center", padding: "10px 16px" }}>
                                                 + Add Color Variant
-                                            </button>
+                                            </Button>
                                         </div>
                                     )}
                                 </div>
@@ -953,29 +956,28 @@ const AdminEditProduct = () => {
                             {tab === "details" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                                     <SL>Product Details & Specifications</SL>
-                                    <Field label="Product Highlights" hint="key specs shown on product page">
+                                    <FormField label={LBL("Product Highlights", { hint: "key specs shown on product page" })}>
                                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                             {hls.map((h, i) => (
                                                 <div key={i} className="pf-hl-row">
-                                                    <select value={h.key} onChange={e => updateHL(i, "key", e.target.value)}
-                                                        className="pf-inp pf-sel" style={{ flex: "0 0 150px", padding: "9px 32px 9px 10px" }}>
+                                                    <Select value={h.key} onChange={e => updateHL(i, "key", e.target.value)}
+                                                        style={{ flex: "0 0 150px" }}>
                                                         <option value="">Select key</option>
                                                         {(hlTemplate.length ? hlTemplate.map(t => t.title) : HIGHLIGHT_KEYS)
                                                             .map(k => <option key={k} value={k}>{k}</option>)}
-                                                    </select>
-                                                    <input value={h.value} onChange={e => updateHL(i, "value", e.target.value)} placeholder="Value…" className="pf-inp" style={{ flex: 1 }} />
+                                                    </Select>
+                                                    <Input value={h.value} onChange={e => updateHL(i, "value", e.target.value)} placeholder="Value…" style={{ flex: 1 }} />
                                                     {hls.length > 1 && <button type="button" onClick={() => removeHL(i)} className="pf-hl-rm">✕</button>}
                                                 </div>
                                             ))}
-                                            <button type="button" onClick={addHL}
-                                                style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#6366f1", background: "none", border: "none", cursor: "pointer", padding: "3px 0" }}>
+                                            <Button type="button" variant="ghost" size="sm" onClick={addHL} style={{ alignSelf: "flex-start" }}>
                                                 + Add Highlight
-                                            </button>
+                                            </Button>
                                         </div>
-                                    </Field>
+                                    </FormField>
                                     <div className="g2">
-                                        <Field label="Weight"><input name="weight" value={form.weight} onChange={hc} placeholder="e.g. 250g" className="pf-inp" /></Field>
-                                        <Field label="Country of Origin"><input name="origin" value={form.origin} onChange={hc} placeholder="e.g. India" className="pf-inp" /></Field>
+                                        <FormField label={LBL("Weight", { hint: "for shipping calc" })}><Input name="weight" value={form.weight} onChange={hc} placeholder="e.g. 250g" /></FormField>
+                                        <FormField label="Country of Origin"><Input name="origin" value={form.origin} onChange={hc} placeholder="e.g. India" /></FormField>
                                     </div>
                                 </div>
                             )}
@@ -988,14 +990,18 @@ const AdminEditProduct = () => {
                                     {/* Current images */}
                                     {curImgs.length > 0 && newPreviews.length === 0 && (
                                         <div>
-                                            <p style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 10 }}>
-                                                Current Images <span style={{ color: "#94a3b8", fontWeight: 400 }}>— naya upload karo replace karne ke liye</span>
+                                            <p style={{ fontSize: 12, fontWeight: 600, color: "var(--adm-text-secondary)", marginBottom: 10 }}>
+                                                Current Images <span style={{ color: "var(--adm-muted)", fontWeight: 400 }}>— naya upload karo replace karne ke liye</span>
                                             </p>
                                             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
                                                 {curImgs.map((img, i) => (
                                                     <div key={i} className="pf-slot">
                                                         <img src={img.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                                                        {i === 0 && <span className="pf-img-badge">MAIN</span>}
+                                                        {i === 0 && (
+                                                            <span style={{ position: "absolute", bottom: 6, left: 6 }}>
+                                                                <Badge tone="primary">MAIN</Badge>
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 ))}
                                             </div>
@@ -1003,14 +1009,14 @@ const AdminEditProduct = () => {
                                     )}
 
                                     <div>
-                                        <p style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 10 }}>
+                                        <p style={{ fontSize: 12, fontWeight: 600, color: "var(--adm-text-secondary)", marginBottom: 10 }}>
                                             {newPreviews.length > 0 ? "New Images (will replace current)" : "Replace Images"}
                                         </p>
                                         {newPreviews.length === 0 ? (
                                             <label className="pf-drop" style={{ aspectRatio: "auto", height: 110 }}>
                                                 <span style={{ fontSize: 22 }}>🖼️</span>
-                                                <span style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}>Click to upload new images</span>
-                                                <span style={{ fontSize: 10, color: "#94a3b8" }}>PNG · JPG · WEBP · Max 5MB</span>
+                                                <span style={{ fontSize: 13, color: "var(--adm-neutral)", fontWeight: 600 }}>Click to upload new images</span>
+                                                <span style={{ fontSize: 10, color: "var(--adm-muted)" }}>PNG · JPG · WEBP · Max 5MB</span>
                                                 <input type="file" multiple accept="image/*" onChange={handleNewImgs} style={{ display: "none" }} />
                                             </label>
                                         ) : (
@@ -1018,7 +1024,11 @@ const AdminEditProduct = () => {
                                                 {newPreviews.map((src, i) => (
                                                     <div key={i} className="pf-slot">
                                                         <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                                                        {i === 0 && <span className="pf-img-badge">MAIN</span>}
+                                                        {i === 0 && (
+                                                            <span style={{ position: "absolute", bottom: 6, left: 6 }}>
+                                                                <Badge tone="primary">MAIN</Badge>
+                                                            </span>
+                                                        )}
                                                         <button type="button" className="pf-img-del" onClick={() => removeNewImg(i)}>✕</button>
                                                     </div>
                                                 ))}
@@ -1040,21 +1050,21 @@ const AdminEditProduct = () => {
                                     <SL>Cancellation, Return & Replacement Policy</SL>
                                     <div className="g3">
                                         {[["isCancellable", "Cancellable"], ["isReturnable", "Returnable"], ["isReplaceable", "Replaceable"]].map(([field, label]) => (
-                                            <label key={field} style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 14px", borderRadius: 11, cursor: "pointer", fontSize: 13, fontWeight: 700, background: form[field] ? "#f0fdf4" : "#fef2f2", border: `1.5px solid ${form[field] ? "#bbf7d0" : "#fecaca"}`, transition: "all .15s" }}>
+                                            <label key={field} style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 14px", borderRadius: 11, cursor: "pointer", fontSize: 13, fontWeight: 700, background: form[field] ? "var(--adm-success-tint)" : "var(--adm-danger-tint)", border: `1.5px solid ${form[field] ? "var(--adm-success)" : "var(--adm-danger)"}`, transition: "all .15s" }}>
                                                 <input type="checkbox" name={field} checked={form[field]} onChange={e => setForm(p => ({ ...p, [field]: e.target.checked }))} />
                                                 {label}
                                             </label>
                                         ))}
                                     </div>
                                     <div className="g3">
-                                        <Field label="Cancel Window (hrs)"><input name="cancelWindow" value={form.cancelWindow} onChange={hc} type="number" min="0" max="72" className="pf-inp" /></Field>
-                                        <Field label="Return Window (days)"><input name="returnWindow" value={form.returnWindow} onChange={hc} type="number" min="0" max="30" className="pf-inp" /></Field>
-                                        <Field label="Replacement Window (days)"><input name="replacementWindow" value={form.replacementWindow} onChange={hc} type="number" min="0" max="30" className="pf-inp" /></Field>
+                                        <FormField label="Cancel Window (hrs)"><Input name="cancelWindow" value={form.cancelWindow} onChange={hc} type="number" min="0" max="72" /></FormField>
+                                        <FormField label="Return Window (days)"><Input name="returnWindow" value={form.returnWindow} onChange={hc} type="number" min="0" max="30" /></FormField>
+                                        <FormField label="Replacement Window (days)"><Input name="replacementWindow" value={form.replacementWindow} onChange={hc} type="number" min="0" max="30" /></FormField>
                                     </div>
                                     {!form.isReturnable && (
-                                        <Field label="Non-Returnable Reason">
-                                            <input name="nonReturnableReason" value={form.nonReturnableReason} onChange={hc} placeholder="e.g. Hygiene product" className="pf-inp" />
-                                        </Field>
+                                        <FormField label="Non-Returnable Reason">
+                                            <Input name="nonReturnableReason" value={form.nonReturnableReason} onChange={hc} placeholder="e.g. Hygiene product" />
+                                        </FormField>
                                     )}
                                 </div>
                             )}
@@ -1063,24 +1073,24 @@ const AdminEditProduct = () => {
                             {tab === "seo" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SL>SEO & Shipping</SL>
-                                    <Field label="Meta Title" hint="~60 chars">
-                                        <input name="metaTitle" value={form.metaTitle} onChange={hc} placeholder="Buy Premium Silk Kurta | Urbexon" className="pf-inp" />
-                                        {form.metaTitle && <p style={{ fontSize: 10, marginTop: 2, color: form.metaTitle.length > 60 ? "#dc2626" : "#94a3b8" }}>{form.metaTitle.length}/60 chars</p>}
-                                    </Field>
-                                    <Field label="Meta Description" hint="~160 chars">
-                                        <textarea name="metaDesc" value={form.metaDesc} onChange={hc} placeholder="Brief description…" rows={3} className="pf-inp" style={{ resize: "none", lineHeight: 1.6 }} />
-                                        {form.metaDesc && <p style={{ fontSize: 10, marginTop: 2, color: form.metaDesc.length > 160 ? "#dc2626" : "#94a3b8" }}>{form.metaDesc.length}/160 chars</p>}
-                                    </Field>
+                                    <FormField label={LBL("Meta Title", { hint: "~60 chars" })}>
+                                        <Input name="metaTitle" value={form.metaTitle} onChange={hc} placeholder="Buy Premium Silk Kurta | Urbexon" />
+                                        {form.metaTitle && <p style={{ fontSize: 10, marginTop: 2, color: form.metaTitle.length > 60 ? "var(--adm-danger)" : "var(--adm-muted)" }}>{form.metaTitle.length}/60 chars</p>}
+                                    </FormField>
+                                    <FormField label={LBL("Meta Description", { hint: "~160 chars" })}>
+                                        <textarea name="metaDesc" value={form.metaDesc} onChange={hc} placeholder="Brief description…" rows={3} className="adm-field-input" style={{ resize: "none", lineHeight: 1.6, width: "100%" }} />
+                                        {form.metaDesc && <p style={{ fontSize: 10, marginTop: 2, color: form.metaDesc.length > 160 ? "var(--adm-danger)" : "var(--adm-muted)" }}>{form.metaDesc.length}/160 chars</p>}
+                                    </FormField>
                                     <div className="g2">
-                                        <Field label="Return Policy">
-                                            <select name="returnPolicy" value={form.returnPolicy} onChange={hc} className="pf-inp pf-sel">
+                                        <FormField label="Return Policy">
+                                            <Select name="returnPolicy" value={form.returnPolicy} onChange={hc}>
                                                 <option value="0">No Returns</option>
                                                 <option value="7">7 Days</option>
                                                 <option value="15">15 Days</option>
                                                 <option value="30">30 Days</option>
-                                            </select>
-                                        </Field>
-                                        <Field label="Shipping Info"><input name="shippingInfo" value={form.shippingInfo} onChange={hc} placeholder="Ships in 2–3 business days" className="pf-inp" /></Field>
+                                            </Select>
+                                        </FormField>
+                                        <FormField label="Shipping Info"><Input name="shippingInfo" value={form.shippingInfo} onChange={hc} placeholder="Ships in 2–3 business days" /></FormField>
                                     </div>
                                 </div>
                             )}
@@ -1089,12 +1099,12 @@ const AdminEditProduct = () => {
                             {tab === "quick" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SL>Quick Commerce Settings (Urbexon Hour)</SL>
-                                    <div style={{ padding: "12px 14px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10 }}>
-                                        <p style={{ fontSize: 11, color: "#92400e", fontWeight: 600 }}>⚡ Urbexon Hour fast-delivery product settings</p>
+                                    <div style={{ padding: "12px 14px", background: "var(--adm-warning-tint)", border: "1px solid var(--adm-warning)", borderRadius: 10 }}>
+                                        <p style={{ fontSize: 11, color: "var(--adm-warning)", fontWeight: 600 }}>⚡ Urbexon Hour fast-delivery product settings</p>
                                     </div>
                                     <div className="g2">
-                                        <Field label="Prep Time (minutes)"><input name="prepTimeMinutes" value={form.prepTimeMinutes} onChange={hc} type="number" min="1" max="120" placeholder="10" className="pf-inp" /></Field>
-                                        <Field label="Max Order Qty"><input name="maxOrderQty" value={form.maxOrderQty} onChange={hc} type="number" min="1" max="100" placeholder="10" className="pf-inp" /></Field>
+                                        <FormField label="Prep Time (minutes)"><Input name="prepTimeMinutes" value={form.prepTimeMinutes} onChange={hc} type="number" min="1" max="120" placeholder="10" /></FormField>
+                                        <FormField label="Max Order Qty"><Input name="maxOrderQty" value={form.maxOrderQty} onChange={hc} type="number" min="1" max="100" placeholder="10" /></FormField>
                                     </div>
                                 </div>
                             )}
@@ -1102,31 +1112,33 @@ const AdminEditProduct = () => {
                         </div>
 
                         {topErr && (
-                            <div className="pf-errbanner" style={{ marginTop: 8 }}>
-                                <p style={{ fontWeight: 700, marginBottom: Object.keys(fErrs).length ? 6 : 0 }}>⚠ {topErr}</p>
+                            <div style={{ margin: "8px 22px 16px" }}>
+                                <ErrorState message={topErr} />
                                 {Object.keys(fErrs).length > 0 && (
-                                    <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11, lineHeight: 1.8 }}>
-                                        {Object.entries(fErrs).map(([f, m]) => <li key={f}><strong>{f}</strong>: {m}</li>)}
+                                    <ul style={{ margin: "8px 0 0", paddingLeft: 16, fontSize: 11, lineHeight: 1.8, color: "var(--adm-text-secondary)" }}>
+                                        {Object.entries(fErrs).map(([f, m]) => <li key={f}><strong style={{ color: "var(--adm-text-primary)" }}>{f}</strong>: {m}</li>)}
                                     </ul>
                                 )}
                             </div>
                         )}
 
                         <div className="pf-actions">
-                            <button type="button" className="pf-btn-nav" disabled={tabIdx <= 0} onClick={() => setTab(sections[tabIdx - 1])}>←</button>
-                            <button type="button" className="pf-btn-nav" disabled={tabIdx >= sections.length - 1} onClick={() => setTab(sections[tabIdx + 1])}>→</button>
-                            <button type="button" className="pf-btn-ghost" onClick={() => navigate("/admin/products")}>Cancel</button>
-                            <button type="submit" disabled={saving} className="pf-btn-submit">
-                                {saving ? <><div className="pf-spin" /> Updating…</> : <>✓ Update Product</>}
-                            </button>
+                            <Button type="button" variant="secondary" size="sm" disabled={tabIdx <= 0} onClick={() => setTab(sections[tabIdx - 1])} style={{ flexShrink: 0 }}>←</Button>
+                            <Button type="button" variant="secondary" size="sm" disabled={tabIdx >= sections.length - 1} onClick={() => setTab(sections[tabIdx + 1])} style={{ flexShrink: 0 }}>→</Button>
+                            <Button type="button" variant="secondary" onClick={() => navigate("/admin/products")} style={{ flex: 1 }}>Cancel</Button>
+                            <span className="pf-submit-wrap">
+                                <Button type="submit" variant="success" loading={saving}>
+                                    {saving ? "Updating…" : "✓ Update Product"}
+                                </Button>
+                            </span>
                         </div>
-                    </div>
+                    </Card>
                 </form>
 
                 {/* Progress dots */}
                 <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 14 }}>
                     {sections.map(sid => (
-                        <div key={sid} style={{ width: sid === tab ? 20 : 6, height: 6, borderRadius: 3, background: tabHasErr(sid) ? "#ef4444" : sid === tab ? tc.color : "#e2e8f0", transition: "all .25s" }} />
+                        <div key={sid} style={{ width: sid === tab ? 20 : 6, height: 6, borderRadius: 3, background: tabHasErr(sid) ? "var(--adm-danger)" : sid === tab ? tc.color : "var(--adm-border)", transition: "all .25s" }} />
                     ))}
                 </div>
             </div>

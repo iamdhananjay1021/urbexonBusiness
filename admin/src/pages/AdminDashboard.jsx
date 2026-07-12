@@ -21,44 +21,7 @@ import {
     FiArrowUpRight, FiArrowDownRight, FiAlertCircle,
     FiInbox, FiChevronDown,
 } from "react-icons/fi";
-
-/* ─── Design tokens ─── */
-const C = {
-    blue: "#2563eb",
-    blueBg: "#eff6ff",
-    blueMid: "#dbeafe",
-    text: "#1e293b",
-    sub: "#334155",
-    muted: "#475569",
-    hint: "#94a3b8",
-    border: "#e2e8f0",
-    borderLight: "#f1f5f9",
-    bg: "#f0f4ff",
-    pageBg: "#f8fafc",
-    white: "#ffffff",
-    green: "#10b981",
-    greenBg: "#f0fdf4",
-    amber: "#f59e0b",
-    amberBg: "#fffbeb",
-    red: "#ef4444",
-    redBg: "#fef2f2",
-    violet: "#8b5cf6",
-    violetBg: "#f5f3ff",
-    orange: "#f97316",
-    orangeBg: "#fff7ed",
-    sky: "#0ea5e9",
-    skyBg: "#f0f9ff",
-};
-
-const STATUS_CFG = {
-    PLACED: { label: "Placed", color: C.amber, bg: C.amberBg },
-    CONFIRMED: { label: "Confirmed", color: C.blue, bg: C.blueBg },
-    PACKED: { label: "Packed", color: C.violet, bg: C.violetBg },
-    SHIPPED: { label: "Shipped", color: C.sky, bg: C.skyBg },
-    OUT_FOR_DELIVERY: { label: "Out for Delivery", color: C.orange, bg: C.orangeBg },
-    DELIVERED: { label: "Delivered", color: C.green, bg: C.greenBg },
-    CANCELLED: { label: "Cancelled", color: C.red, bg: C.redBg },
-};
+import { Skeleton, StatusBadge, EmptyState } from "../components/ui";
 
 /* ─── Helpers ─── */
 const fmt = (n) => Number(n || 0).toLocaleString("en-IN");
@@ -68,11 +31,6 @@ const fmtRev = (v) => {
     if (v >= 1000) return `₹${(v / 1000).toFixed(0)}k`;
     return `₹${v}`;
 };
-
-/* ─── Skeleton ─── */
-const Sk = ({ h = 18, w = "100%", r = 6 }) => (
-    <div style={{ height: h, width: w, background: "#e9edf5", borderRadius: r, animation: "skpulse 1.5s ease-in-out infinite" }} />
-);
 
 /* ─── Collapsible Section ─── */
 const SECTION_KEY = "db_sections_v1";
@@ -112,27 +70,27 @@ const Section = ({ id, title, subtitle, icon: Icon, iconColor, iconBg, children,
         <div style={{ marginBottom: 16, animation: `fadeUp 0.45s ease both`, animationDelay: `${delay}ms` }}>
             <button onClick={toggle} className="db-section-header" style={{
                 display: "flex", alignItems: "center", gap: 10, width: "100%",
-                padding: "12px 16px", background: C.white, border: `1px solid ${C.border}`,
+                padding: "12px 16px", background: "var(--adm-surface)", border: `1px solid var(--adm-border)`,
                 borderRadius: open ? "12px 12px 0 0" : 12, cursor: "pointer",
                 fontFamily: "inherit", transition: "border-radius .25s",
             }}>
                 {Icon && (
-                    <div style={{ width: 32, height: 32, borderRadius: 8, background: iconBg || C.blueBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <Icon size={15} color={iconColor || C.blue} />
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: iconBg || "var(--adm-primary-tint)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <Icon size={15} color={iconColor || "var(--adm-primary)"} />
                     </div>
                 )}
                 <div style={{ flex: 1, textAlign: "left" }}>
-                    <p style={{ fontSize: 14, fontWeight: 700, color: C.text, margin: 0 }}>{title}</p>
-                    {subtitle && <p style={{ fontSize: 11, color: C.hint, margin: "2px 0 0" }}>{subtitle}</p>}
+                    <p style={{ fontSize: 14, fontWeight: 700, color: "var(--adm-text-primary)", margin: 0 }}>{title}</p>
+                    {subtitle && <p style={{ fontSize: 11, color: "var(--adm-muted)", margin: "2px 0 0" }}>{subtitle}</p>}
                 </div>
                 {extra && <div style={{ marginRight: 8 }}>{extra}</div>}
-                <FiChevronDown size={16} color={C.muted} style={{
+                <FiChevronDown size={16} color={"var(--adm-text-secondary)"} style={{
                     transition: "transform .25s ease", transform: open ? "rotate(180deg)" : "rotate(0deg)", flexShrink: 0,
                 }} />
             </button>
             <div ref={bodyRef} style={{
                 height, overflow: "hidden", transition: "height .3s ease",
-                border: open ? `1px solid ${C.border}` : `1px solid transparent`,
+                border: open ? `1px solid var(--adm-border)` : `1px solid transparent`,
                 borderTop: "none", borderRadius: "0 0 12px 12px",
                 background: "transparent",
             }}>
@@ -148,10 +106,10 @@ const Section = ({ id, title, subtitle, icon: Icon, iconColor, iconBg, children,
 const ChartTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
     return (
-        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", boxShadow: "0 8px 24px rgba(0,0,0,0.10)", fontSize: 12 }}>
-            <p style={{ fontWeight: 700, color: C.text, margin: "0 0 4px" }}>{label}</p>
-            <p style={{ color: C.blue, margin: 0, fontWeight: 700 }}>₹{fmt(payload[0]?.value)}</p>
-            {payload[1] && <p style={{ color: C.green, margin: "2px 0 0", fontWeight: 600 }}>{fmt(payload[1]?.value)} orders</p>}
+        <div style={{ background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 10, padding: "10px 14px", boxShadow: "0 8px 24px rgba(0,0,0,0.10)", fontSize: 12 }}>
+            <p style={{ fontWeight: 700, color: "var(--adm-text-primary)", margin: "0 0 4px" }}>{label}</p>
+            <p style={{ color: "var(--adm-primary)", margin: 0, fontWeight: 700 }}>₹{fmt(payload[0]?.value)}</p>
+            {payload[1] && <p style={{ color: "var(--adm-success)", margin: "2px 0 0", fontWeight: 600 }}>{fmt(payload[1]?.value)} orders</p>}
         </div>
     );
 };
@@ -159,7 +117,7 @@ const ChartTooltip = ({ active, payload, label }) => {
 /* ─── Stat Card ─── */
 const StatCard = ({ icon: Icon, label, value, change, positive, accent, accentBg, loading, delay = 0 }) => (
     <div style={{
-        background: C.white, border: `1px solid ${C.border}`, borderRadius: 14,
+        background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 14,
         padding: "20px", flex: "1 1 calc(50% - 6px)", minWidth: "calc(50% - 6px)",
         animation: `fadeUp 0.45s ease both`, animationDelay: `${delay}ms`,
         transition: "box-shadow .2s, transform .2s",
@@ -169,26 +127,26 @@ const StatCard = ({ icon: Icon, label, value, change, positive, accent, accentBg
     >
         {loading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <Sk h={13} w="55%" /><Sk h={30} w="70%" /><Sk h={12} w="45%" />
+                <Skeleton height={13} width="55%" /><Skeleton height={30} width="70%" /><Skeleton height={12} width="45%" />
             </div>
         ) : (
             <>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
-                    <p style={{ fontSize: 13, color: C.muted, fontWeight: 500, margin: 0, lineHeight: 1.4 }}>{label}</p>
+                    <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", fontWeight: 500, margin: 0, lineHeight: 1.4 }}>{label}</p>
                     <div style={{ width: 38, height: 38, borderRadius: 10, background: accentBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                         <Icon size={17} color={accent} />
                     </div>
                 </div>
-                <p style={{ fontSize: 28, fontWeight: 800, color: C.text, margin: "0 0 10px", letterSpacing: "-0.5px", lineHeight: 1 }}>
+                <p style={{ fontSize: 28, fontWeight: 800, color: "var(--adm-text-primary)", margin: "0 0 10px", letterSpacing: "-0.5px", lineHeight: 1 }}>
                     {value ?? "—"}
                 </p>
                 {change !== undefined && change !== null ? (
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                         {positive
-                            ? <FiArrowUpRight size={13} color={C.green} />
-                            : <FiArrowDownRight size={13} color={C.red} />}
-                        <span style={{ fontSize: 12, fontWeight: 700, color: positive ? C.green : C.red }}>{Math.abs(change)}%</span>
-                        <span style={{ fontSize: 12, color: C.hint }}>vs last month</span>
+                            ? <FiArrowUpRight size={13} color={"var(--adm-success)"} />
+                            : <FiArrowDownRight size={13} color={"var(--adm-danger)"} />}
+                        <span style={{ fontSize: 12, fontWeight: 700, color: positive ? "var(--adm-success)" : "var(--adm-danger)" }}>{Math.abs(change)}%</span>
+                        <span style={{ fontSize: 12, color: "var(--adm-muted)" }}>vs last month</span>
                     </div>
                 ) : (
                     <div style={{ height: 18 }} />
@@ -206,6 +164,11 @@ const AdminDashboard = () => {
     const [recentOrders, setRecentOrders] = useState([]);
     const [chartData, setChartData] = useState([]);
     const [topProducts, setTopProducts] = useState([]);
+    // BUG FIX: backend/controllers/admin/dashboardController.js has always
+    // computed a full order-status breakdown via $group — this page only
+    // ever reduced it down to a single "pendingOrders" number and threw
+    // the rest away. Nothing rendered the full distribution anywhere.
+    const [statusBreakdown, setStatusBreakdown] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [adminName, setAdminName] = useState("Admin");
@@ -230,6 +193,11 @@ const AdminDashboard = () => {
             const statusMap = {};
             (dash.ordersByStatus || []).forEach(o => { statusMap[o._id] = o.count; });
             const pendingOrders = (statusMap.PLACED || 0) + (statusMap.CONFIRMED || 0);
+            setStatusBreakdown(
+                (dash.ordersByStatus || [])
+                    .map((o) => ({ status: o._id, count: o.count }))
+                    .sort((a, b) => b.count - a.count)
+            );
 
             setAdminName(
                 (() => { try { const a = JSON.parse(localStorage.getItem("adminAuth")); return a?.user?.name || "Admin"; } catch { return "Admin"; } })()
@@ -305,13 +273,13 @@ const AdminDashboard = () => {
     const processedChart = chartData;
 
     return (
-        <div style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", color: C.text, width: "100%", minWidth: 0, background: C.pageBg, minHeight: "100vh", padding: "0 0 40px" }}>
+        <div style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", color: "var(--adm-text-primary)", width: "100%", minWidth: 0, background: "var(--adm-bg)", minHeight: "100vh", padding: "0 0 40px" }}>
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
                 @keyframes skpulse { 0%,100%{opacity:1} 50%{opacity:.45} }
                 @keyframes fadeUp  { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
-                .db-row-hover:hover { background: #f8faff !important; cursor: pointer; }
-                .db-prod-row:hover  { background: #f8faff !important; }
+                .db-row-hover:hover { background: var(--adm-surface-alt) !important; cursor: pointer; }
+                .db-prod-row:hover  { background: var(--adm-surface-alt) !important; }
                 .db-period-btn      { border: none; font-family: inherit; cursor: pointer; transition: all .15s; }
                 .db-stat-grid       { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
                 .db-sec-grid        { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -326,124 +294,124 @@ const AdminDashboard = () => {
                     .db-stat-grid .stat-card { flex: 1 1 calc(50% - 6px) !important; min-width: calc(50% - 6px) !important; }
                 }
                 .db-section-header { outline: none; }
-                .db-section-header:hover { background: ${C.bg} !important; }
+                .db-section-header:hover { background: var(--adm-bg) !important; }
                 .db-section-header:active { transform: scale(0.995); }
             `}</style>
 
             {/* ── Header ── */}
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24, gap: 12, flexWrap: "wrap", animation: "fadeUp 0.3s ease both" }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, margin: 0, letterSpacing: "-0.3px" }}>Dashboard Overview</h1>
-                    <p style={{ fontSize: 13, color: C.hint, margin: "4px 0 0" }}>
-                        Welcome back, <span style={{ color: C.blue, fontWeight: 700 }}>{adminName}!</span>{" "}Here's your store at a glance.
+                    <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--adm-text-primary)", margin: 0, letterSpacing: "-0.3px" }}>Dashboard Overview</h1>
+                    <p style={{ fontSize: 13, color: "var(--adm-muted)", margin: "4px 0 0" }}>
+                        Welcome back, <span style={{ color: "var(--adm-primary)", fontWeight: 700 }}>{adminName}!</span>{" "}Here's your store at a glance.
                     </p>
                 </div>
                 <button onClick={handleRefresh} disabled={refreshing || loading}
-                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 18px", background: C.white, border: `1px solid ${C.border}`, borderRadius: 9, color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: (refreshing || loading) ? 0.55 : 1, flexShrink: 0, transition: "opacity .2s" }}>
+                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 18px", background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 9, color: "var(--adm-text-secondary)", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: (refreshing || loading) ? 0.55 : 1, flexShrink: 0, transition: "opacity .2s" }}>
                     <FiRefreshCw size={13} style={{ animation: refreshing ? "skpulse 0.7s linear infinite" : "none" }} />
                     {refreshing ? "Refreshing…" : "Refresh"}
                 </button>
             </div>
 
             {/* ── Primary stat cards ── */}
-            <Section id="stats" title="Key Metrics" subtitle="Revenue, orders, customers & conversion" icon={FiTrendingUp} iconColor={C.blue} iconBg={C.blueBg} delay={60}>
+            <Section id="stats" title="Key Metrics" subtitle="Revenue, orders, customers & conversion" icon={FiTrendingUp} iconColor={"var(--adm-primary)"} iconBg={"var(--adm-primary-tint)"} delay={60}>
                 <div className="db-stat-grid">
                     <StatCard
                         icon={FiDollarSign} label="Total Revenue"
                         value={stats?.revenue != null ? `₹${fmt(stats.revenue)}` : null}
                         change={stats?.revenueChange} positive={stats?.revenueChange >= 0}
-                        accent={C.green} accentBg={C.greenBg} loading={loading} delay={60}
+                        accent={"var(--adm-success)"} accentBg={"var(--adm-success-tint)"} loading={loading} delay={60}
                     />
                     <StatCard
                         icon={FiShoppingBag} label="Total Orders"
                         value={stats?.totalOrders != null ? fmt(stats.totalOrders) : null}
                         change={stats?.ordersChange} positive={stats?.ordersChange >= 0}
-                        accent={C.blue} accentBg={C.blueBg} loading={loading} delay={100}
+                        accent={"var(--adm-primary)"} accentBg={"var(--adm-primary-tint)"} loading={loading} delay={100}
                     />
                     <StatCard
                         icon={FiUsers} label="Total Customers"
                         value={stats?.totalCustomers != null ? fmt(stats.totalCustomers) : null}
                         change={stats?.customersChange} positive={stats?.customersChange >= 0}
-                        accent={C.violet} accentBg={C.violetBg} loading={loading} delay={140}
+                        accent={"#8b5cf6"} accentBg={"#f5f3ff"} loading={loading} delay={140}
                     />
                     <StatCard
                         icon={FiTrendingUp} label="Conversion Rate"
                         value={stats?.conversionRate != null ? `${Number(stats.conversionRate).toFixed(2)}%` : null}
                         change={stats?.conversionChange} positive={stats?.conversionChange >= 0}
-                        accent={C.orange} accentBg={C.orangeBg} loading={loading} delay={180}
+                        accent={"var(--adm-warning)"} accentBg={"var(--adm-warning-tint)"} loading={loading} delay={180}
                     />
                 </div>
             </Section>
 
             {/* ── Secondary cards ── */}
-            <Section id="secondary" title="Store Overview" subtitle="Products, pending orders & vendors" icon={FiPackage} iconColor={C.violet} iconBg={C.violetBg} delay={200}>
+            <Section id="secondary" title="Store Overview" subtitle="Products, pending orders & vendors" icon={FiPackage} iconColor={"#8b5cf6"} iconBg={"#f5f3ff"} delay={200}>
                 <div className="db-sec-grid">
                     {/* Total Products */}
-                    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px", flex: 1, minWidth: 180 }}>
+                    <div style={{ background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 14, padding: "20px", flex: 1, minWidth: 180 }}>
                         {loading ? (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><Sk h={13} w="50%" /><Sk h={30} w="40%" /><Sk h={12} w="60%" /></div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><Skeleton height={13} width="50%" /><Skeleton height={30} width="40%" /><Skeleton height={12} width="60%" /></div>
                         ) : (
                             <>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: C.violetBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                        <FiPackage size={16} color={C.violet} />
+                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f5f3ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                        <FiPackage size={16} color={"#8b5cf6"} />
                                     </div>
-                                    <p style={{ fontSize: 13, color: C.muted, fontWeight: 500, margin: 0 }}>Total Products</p>
+                                    <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", fontWeight: 500, margin: 0 }}>Total Products</p>
                                 </div>
-                                <p style={{ fontSize: 30, fontWeight: 800, color: C.text, margin: "0 0 8px", letterSpacing: "-0.5px" }}>
+                                <p style={{ fontSize: 30, fontWeight: 800, color: "var(--adm-text-primary)", margin: "0 0 8px", letterSpacing: "-0.5px" }}>
                                     {stats?.totalProducts != null ? fmt(stats.totalProducts) : "—"}
                                 </p>
                                 {stats?.productsAdded != null
-                                    ? <p style={{ fontSize: 12, color: C.green, fontWeight: 700, margin: 0 }}>↑ {stats.productsAdded} added this month</p>
-                                    : <p style={{ fontSize: 12, color: C.hint, margin: 0 }}>Active listings</p>
+                                    ? <p style={{ fontSize: 12, color: "var(--adm-success)", fontWeight: 700, margin: 0 }}>↑ {stats.productsAdded} added this month</p>
+                                    : <p style={{ fontSize: 12, color: "var(--adm-muted)", margin: 0 }}>Active listings</p>
                                 }
                             </>
                         )}
                     </div>
 
                     {/* Pending Orders */}
-                    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px", flex: 1, minWidth: 180 }}>
+                    <div style={{ background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 14, padding: "20px", flex: 1, minWidth: 180 }}>
                         {loading ? (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><Sk h={13} w="50%" /><Sk h={30} w="40%" /><Sk h={12} w="60%" /></div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><Skeleton height={13} width="50%" /><Skeleton height={30} width="40%" /><Skeleton height={12} width="60%" /></div>
                         ) : (
                             <>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: C.amberBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                        <FiClock size={16} color={C.amber} />
+                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--adm-warning-tint)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                        <FiClock size={16} color={"var(--adm-warning)"} />
                                     </div>
-                                    <p style={{ fontSize: 13, color: C.muted, fontWeight: 500, margin: 0 }}>Pending Orders</p>
+                                    <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", fontWeight: 500, margin: 0 }}>Pending Orders</p>
                                 </div>
-                                <p style={{ fontSize: 30, fontWeight: 800, color: C.text, margin: "0 0 8px", letterSpacing: "-0.5px" }}>
+                                <p style={{ fontSize: 30, fontWeight: 800, color: "var(--adm-text-primary)", margin: "0 0 8px", letterSpacing: "-0.5px" }}>
                                     {stats?.pendingOrders != null ? fmt(stats.pendingOrders) : "—"}
                                 </p>
                                 {stats?.pendingOrders > 0
-                                    ? <p style={{ fontSize: 12, color: C.red, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 4 }}>
+                                    ? <p style={{ fontSize: 12, color: "var(--adm-danger)", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 4 }}>
                                         <FiAlertCircle size={11} /> Needs attention
                                     </p>
-                                    : <p style={{ fontSize: 12, color: C.green, fontWeight: 700, margin: 0 }}>✓ All clear</p>
+                                    : <p style={{ fontSize: 12, color: "var(--adm-success)", fontWeight: 700, margin: 0 }}>✓ All clear</p>
                                 }
                             </>
                         )}
                     </div>
 
                     {/* Active Vendors */}
-                    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px", flex: 1, minWidth: 180 }}>
+                    <div style={{ background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 14, padding: "20px", flex: 1, minWidth: 180 }}>
                         {loading ? (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><Sk h={13} w="50%" /><Sk h={30} w="40%" /><Sk h={12} w="60%" /></div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><Skeleton height={13} width="50%" /><Skeleton height={30} width="40%" /><Skeleton height={12} width="60%" /></div>
                         ) : (
                             <>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: C.greenBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                        <FiGrid size={16} color={C.green} />
+                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--adm-success-tint)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                        <FiGrid size={16} color={"var(--adm-success)"} />
                                     </div>
-                                    <p style={{ fontSize: 13, color: C.muted, fontWeight: 500, margin: 0 }}>Active Vendors</p>
+                                    <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", fontWeight: 500, margin: 0 }}>Active Vendors</p>
                                 </div>
-                                <p style={{ fontSize: 30, fontWeight: 800, color: C.text, margin: "0 0 8px", letterSpacing: "-0.5px" }}>
+                                <p style={{ fontSize: 30, fontWeight: 800, color: "var(--adm-text-primary)", margin: "0 0 8px", letterSpacing: "-0.5px" }}>
                                     {stats?.activeVendors != null ? fmt(stats.activeVendors) : "—"}
                                 </p>
                                 {stats?.newVendorsWeek != null
-                                    ? <p style={{ fontSize: 12, color: C.amber, fontWeight: 700, margin: 0 }}>{stats.newVendorsWeek}</p>
-                                    : <p style={{ fontSize: 12, color: C.hint, margin: 0 }}>Partner vendors</p>
+                                    ? <p style={{ fontSize: 12, color: "var(--adm-warning)", fontWeight: 700, margin: 0 }}>{stats.newVendorsWeek}</p>
+                                    : <p style={{ fontSize: 12, color: "var(--adm-muted)", margin: 0 }}>Partner vendors</p>
                                 }
                             </>
                         )}
@@ -452,20 +420,20 @@ const AdminDashboard = () => {
             </Section>
 
             {/* ── Chart + Top Products ── */}
-            <Section id="analytics" title="Sales Analytics" subtitle="Revenue trend & top performing products" icon={FiDollarSign} iconColor={C.green} iconBg={C.greenBg} delay={300}>
+            <Section id="analytics" title="Sales Analytics" subtitle="Revenue trend & top performing products" icon={FiDollarSign} iconColor={"var(--adm-success)"} iconBg={"var(--adm-success-tint)"} delay={300}>
                 <div className="db-chart-grid" style={{ gap: 16, marginBottom: 0, alignItems: "start" }}>
 
                     {/* Sales Chart */}
-                    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 20px 16px", minWidth: 0 }}>
+                    <div style={{ background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 14, padding: "20px 20px 16px", minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
                             <div>
-                                <h2 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: 0 }}>Sales Overview</h2>
-                                <p style={{ fontSize: 12, color: C.hint, margin: "3px 0 0" }}>Revenue trend — Last 30 days</p>
+                                <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--adm-text-primary)", margin: 0 }}>Sales Overview</h2>
+                                <p style={{ fontSize: 12, color: "var(--adm-muted)", margin: "3px 0 0" }}>Revenue trend — Last 30 days</p>
                             </div>
                         </div>
 
-                        {loading ? <Sk h={230} /> : processedChart.length === 0 ? (
-                            <div style={{ height: 230, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: C.hint }}>
+                        {loading ? <Skeleton height={230} /> : processedChart.length === 0 ? (
+                            <div style={{ height: 230, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--adm-muted)" }}>
                                 <FiInbox size={32} style={{ marginBottom: 10, opacity: 0.4 }} />
                                 <p style={{ fontSize: 13, margin: 0 }}>No order data available yet</p>
                             </div>
@@ -474,61 +442,61 @@ const AdminDashboard = () => {
                                 <AreaChart data={processedChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                                     <defs>
                                         <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor={C.blue} stopOpacity={0.18} />
-                                            <stop offset="95%" stopColor={C.blue} stopOpacity={0} />
+                                            <stop offset="5%" stopColor={"var(--adm-primary)"} stopOpacity={0.18} />
+                                            <stop offset="95%" stopColor={"var(--adm-primary)"} stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke={C.borderLight} />
-                                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: C.hint }} axisLine={false} tickLine={false} />
-                                    <YAxis tick={{ fontSize: 11, fill: C.hint }} axisLine={false} tickLine={false} tickFormatter={fmtRev} width={52} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke={"var(--adm-border-soft)"} />
+                                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: "var(--adm-muted)" }} axisLine={false} tickLine={false} />
+                                    <YAxis tick={{ fontSize: 11, fill: "var(--adm-muted)" }} axisLine={false} tickLine={false} tickFormatter={fmtRev} width={52} />
                                     <Tooltip content={<ChartTooltip />} />
-                                    <Area type="monotone" dataKey="revenue" stroke={C.blue} strokeWidth={2.5} fill="url(#revGrad)" dot={false} activeDot={{ r: 5, fill: C.blue, strokeWidth: 0 }} />
+                                    <Area type="monotone" dataKey="revenue" stroke={"var(--adm-primary)"} strokeWidth={2.5} fill="url(#revGrad)" dot={false} activeDot={{ r: 5, fill: "var(--adm-primary)", strokeWidth: 0 }} />
                                 </AreaChart>
                             </ResponsiveContainer>
                         )}
                     </div>
 
                     {/* Top Selling Products */}
-                    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden" }}>
-                        <div style={{ padding: "16px 18px 12px", borderBottom: `1px solid ${C.borderLight}` }}>
-                            <h2 style={{ fontSize: 15, fontWeight: 700, color: C.text, margin: 0 }}>Top Selling Products</h2>
-                            <p style={{ fontSize: 12, color: C.hint, margin: "2px 0 0" }}>Best performers by sales count</p>
+                    <div style={{ background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 14, overflow: "hidden" }}>
+                        <div style={{ padding: "16px 18px 12px", borderBottom: `1px solid var(--adm-border-soft)` }}>
+                            <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--adm-text-primary)", margin: 0 }}>Top Selling Products</h2>
+                            <p style={{ fontSize: 12, color: "var(--adm-muted)", margin: "2px 0 0" }}>Best performers by sales count</p>
                         </div>
 
                         {loading ? (
                             <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
                                 {[0, 1, 2, 3, 4].map(i => (
                                     <div key={i} style={{ display: "flex", gap: 10 }}>
-                                        <Sk h={30} w={30} r={8} />
+                                        <Skeleton height={30} width={30} radius={8} />
                                         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-                                            <Sk h={12} w="70%" /><Sk h={10} w="40%" />
+                                            <Skeleton height={12} width="70%" /><Skeleton height={10} width="40%" />
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         ) : topProducts.length === 0 ? (
-                            <div style={{ padding: "40px 20px", textAlign: "center", color: C.hint }}>
+                            <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--adm-muted)" }}>
                                 <FiPackage size={28} style={{ marginBottom: 8, opacity: 0.3 }} />
                                 <p style={{ fontSize: 13, margin: 0 }}>No product data yet</p>
                             </div>
                         ) : topProducts.map((p, i) => (
                             <div key={i} className="db-prod-row"
-                                style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderBottom: i < topProducts.length - 1 ? `1px solid ${C.borderLight}` : "none", transition: "background .12s" }}>
-                                <div style={{ width: 28, height: 28, borderRadius: 8, background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: C.blue, flexShrink: 0 }}>
+                                style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderBottom: i < topProducts.length - 1 ? `1px solid var(--adm-border-soft)` : "none", transition: "background .12s" }}>
+                                <div style={{ width: 28, height: 28, borderRadius: 8, background: "var(--adm-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "var(--adm-primary)", flexShrink: 0 }}>
                                     {p.rank}
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <p style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</p>
-                                    <p style={{ fontSize: 11, color: C.hint, margin: "2px 0 0" }}>{p.cat}</p>
+                                    <p style={{ fontSize: 13, fontWeight: 600, color: "var(--adm-text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</p>
+                                    <p style={{ fontSize: 11, color: "var(--adm-muted)", margin: "2px 0 0" }}>{p.cat}</p>
                                 </div>
                                 <div style={{ textAlign: "right", flexShrink: 0 }}>
-                                    <p style={{ fontSize: 13, fontWeight: 700, color: C.text, margin: 0 }}>₹{fmt(p.price)}</p>
+                                    <p style={{ fontSize: 13, fontWeight: 700, color: "var(--adm-text-primary)", margin: 0 }}>₹{fmt(p.price)}</p>
                                     <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end", marginTop: 3 }}>
-                                        <span style={{ fontSize: 10, color: C.hint }}>{fmt(p.sales)} sold</span>
+                                        <span style={{ fontSize: 10, color: "var(--adm-muted)" }}>{fmt(p.sales)} sold</span>
                                         <span style={{
                                             fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 5,
-                                            color: p.stock > 20 ? C.green : p.stock > 5 ? C.amber : C.red,
-                                            background: p.stock > 20 ? C.greenBg : p.stock > 5 ? C.amberBg : C.redBg,
+                                            color: p.stock > 20 ? "var(--adm-success)" : p.stock > 5 ? "var(--adm-warning)" : "var(--adm-danger)",
+                                            background: p.stock > 20 ? "var(--adm-success-tint)" : p.stock > 5 ? "var(--adm-warning-tint)" : "var(--adm-danger-tint)",
                                         }}>
                                             {p.stock} left
                                         </span>
@@ -538,60 +506,99 @@ const AdminDashboard = () => {
                         ))}
                     </div>
                 </div>
+
+                {/* Order Status Breakdown — the full ordersByStatus aggregation
+                    the backend has always computed, previously discarded
+                    down to a single "pendingOrders" number with nothing
+                    else ever rendered anywhere. */}
+                <div style={{ background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 14, padding: "18px 20px", marginTop: 16 }}>
+                    <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--adm-text-primary)", margin: "0 0 3px" }}>Order Status Breakdown</h2>
+                    <p style={{ fontSize: 12, color: "var(--adm-muted)", margin: "0 0 14px" }}>All-time distribution across every order status</p>
+                    {loading ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            {[0, 1, 2, 3].map((i) => <Skeleton key={i} height={14} />)}
+                        </div>
+                    ) : statusBreakdown.length === 0 ? (
+                        <div style={{ padding: "20px 0", textAlign: "center", color: "var(--adm-muted)" }}>
+                            <p style={{ fontSize: 13, margin: 0 }}>No orders yet</p>
+                        </div>
+                    ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            {(() => {
+                                const total = statusBreakdown.reduce((sum, s) => sum + s.count, 0) || 1;
+                                const STATUS_COLOR = {
+                                    DELIVERED: "var(--adm-success)", CANCELLED: "var(--adm-danger)", PLACED: "var(--adm-warning)",
+                                    CONFIRMED: "var(--adm-primary)", PACKED: "var(--adm-primary)", READY_FOR_PICKUP: "var(--adm-warning)",
+                                    SHIPPED: "var(--adm-primary)", OUT_FOR_DELIVERY: "var(--adm-warning)",
+                                };
+                                return statusBreakdown.map(({ status, count }) => {
+                                    const pct = Math.round((count / total) * 100);
+                                    const color = STATUS_COLOR[status] || "var(--adm-muted)";
+                                    return (
+                                        <div key={status} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--adm-text-secondary)", width: 150, flexShrink: 0, textTransform: "capitalize" }}>
+                                                {status.toLowerCase().replace(/_/g, " ")}
+                                            </span>
+                                            <div style={{ flex: 1, height: 8, background: "var(--adm-border-soft)", borderRadius: 4, overflow: "hidden" }}>
+                                                <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.3s ease" }} />
+                                            </div>
+                                            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--adm-text-primary)", width: 70, textAlign: "right", flexShrink: 0 }}>
+                                                {fmt(count)} <span style={{ color: "var(--adm-muted)", fontWeight: 500 }}>({pct}%)</span>
+                                            </span>
+                                        </div>
+                                    );
+                                });
+                            })()}
+                        </div>
+                    )}
+                </div>
             </Section>
 
             {/* ── Recent Orders ── */}
-            <Section id="orders" title="Recent Orders" subtitle="Latest customer orders from your store" icon={FiShoppingBag} iconColor={C.amber} iconBg={C.amberBg} delay={380}
-                extra={<Link to="/admin/orders" style={{ fontSize: 12, fontWeight: 700, color: C.blue, textDecoration: "none", display: "flex", alignItems: "center", gap: 4, padding: "6px 12px", background: C.blueBg, border: `1px solid ${C.blueMid}`, borderRadius: 8 }} onClick={e => e.stopPropagation()}>View All →</Link>}
+            <Section id="orders" title="Recent Orders" subtitle="Latest customer orders from your store" icon={FiShoppingBag} iconColor={"var(--adm-warning)"} iconBg={"var(--adm-warning-tint)"} delay={380}
+                extra={<Link to="/admin/orders" style={{ fontSize: 12, fontWeight: 700, color: "var(--adm-primary)", textDecoration: "none", display: "flex", alignItems: "center", gap: 4, padding: "6px 12px", background: "var(--adm-primary-tint)", border: `1px solid #dbeafe`, borderRadius: 8 }} onClick={e => e.stopPropagation()}>View All →</Link>}
             >
-                <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden" }}>
+                <div style={{ background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 14, overflow: "hidden" }}>
 
                     {/* Table header */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1.8fr 0.9fr 1.1fr 0.9fr", padding: "10px 20px", background: C.bg, borderBottom: `1px solid ${C.border}` }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1.8fr 0.9fr 1.1fr 0.9fr", padding: "10px 20px", background: "var(--adm-bg)", borderBottom: `1px solid var(--adm-border)` }}>
                         {["ORDER ID", "CUSTOMER", "PRODUCT", "AMOUNT", "STATUS", "DATE"].map(h => (
-                            <span key={h} style={{ fontSize: 10, fontWeight: 800, color: C.hint, letterSpacing: "0.08em", textTransform: "uppercase" }}>{h}</span>
+                            <span key={h} style={{ fontSize: 10, fontWeight: 800, color: "var(--adm-muted)", letterSpacing: "0.08em", textTransform: "uppercase" }}>{h}</span>
                         ))}
                     </div>
 
                     {loading ? (
                         <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
-                            {[0, 1, 2, 3, 4].map(i => <Sk key={i} h={34} />)}
+                            {[0, 1, 2, 3, 4].map(i => <Skeleton key={i} height={34} />)}
                         </div>
                     ) : recentOrders.length === 0 ? (
-                        <div style={{ padding: "48px 20px", textAlign: "center", color: C.hint }}>
-                            <FiShoppingBag size={32} style={{ marginBottom: 10, opacity: 0.3 }} />
-                            <p style={{ fontSize: 14, margin: "0 0 4px", fontWeight: 600, color: C.muted }}>No orders yet</p>
-                            <p style={{ fontSize: 13, margin: 0 }}>Orders will appear here once customers start placing them.</p>
-                        </div>
+                        <EmptyState icon={FiShoppingBag} title="No orders yet" description="Orders will appear here once customers start placing them." />
                     ) : recentOrders.map((order, i) => {
-                        const cfg = STATUS_CFG[order.orderStatus] || STATUS_CFG.PLACED;
                         return (
                             <div key={order._id} onClick={() => navigate("/admin/orders")}
                                 style={{
                                     display: "grid",
                                     gridTemplateColumns: "1.2fr 1fr 1.8fr 0.9fr 1.1fr 0.9fr",
                                     padding: "14px 20px",
-                                    borderBottom: i < recentOrders.length - 1 ? `1px solid ${C.borderLight}` : "none",
+                                    borderBottom: i < recentOrders.length - 1 ? `1px solid var(--adm-border-soft)` : "none",
                                     alignItems: "center",
                                     cursor: "pointer",
                                     transition: "background .15s",
                                 }}
-                                onMouseEnter={e => { e.currentTarget.style.background = C.bg; }}
+                                onMouseEnter={e => { e.currentTarget.style.background = "var(--adm-bg)"; }}
                                 onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
                             >
-                                <span style={{ fontSize: 13, fontWeight: 700, color: C.blue }}>#{order._id.slice(-6).toUpperCase()}</span>
-                                <span style={{ fontSize: 13, color: C.sub, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{order.customerName || "—"}</span>
-                                <span style={{ fontSize: 13, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 12 }}>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--adm-primary)" }}>#{order._id.slice(-6).toUpperCase()}</span>
+                                <span style={{ fontSize: 13, color: "var(--adm-text-secondary)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{order.customerName || "—"}</span>
+                                <span style={{ fontSize: 13, color: "var(--adm-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 12 }}>
                                     {order.items?.[0]?.name || "—"}
-                                    {order.items?.length > 1 && <span style={{ color: C.hint, fontSize: 11 }}> +{order.items.length - 1}</span>}
+                                    {order.items?.length > 1 && <span style={{ color: "var(--adm-muted)", fontSize: 11 }}> +{order.items.length - 1}</span>}
                                 </span>
-                                <span style={{ fontSize: 13, fontWeight: 800, color: C.text }}>₹{fmt(order.totalAmount)}</span>
+                                <span style={{ fontSize: 13, fontWeight: 800, color: "var(--adm-text-primary)" }}>₹{fmt(order.totalAmount)}</span>
                                 <span>
-                                    <span style={{ fontSize: 11, fontWeight: 700, color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}28`, padding: "3px 10px", borderRadius: 99, whiteSpace: "nowrap" }}>
-                                        {cfg.label}
-                                    </span>
+                                    <StatusBadge status={order.orderStatus} />
                                 </span>
-                                <span style={{ fontSize: 12, color: C.hint }}>
+                                <span style={{ fontSize: 12, color: "var(--adm-muted)" }}>
                                     {order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}
                                 </span>
                             </div>
@@ -601,7 +608,7 @@ const AdminDashboard = () => {
             </Section>
 
             {/* ── Quick Actions ── */}
-            <Section id="quick-actions" title="Quick Actions" subtitle="Jump to key sections" icon={FiGrid} iconColor={C.violet} iconBg={C.violetBg} delay={300}>
+            <Section id="quick-actions" title="Quick Actions" subtitle="Jump to key sections" icon={FiGrid} iconColor={"#8b5cf6"} iconBg={"#f5f3ff"} delay={300}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, padding: "0 16px 16px" }}>
                     {[
                         { to: "map", icon: "🗺️", label: "Live Map", desc: "Users, orders & riders", bg: "linear-gradient(135deg, #2563eb, #3b82f6)" },
@@ -611,11 +618,11 @@ const AdminDashboard = () => {
                     ].map((a) => (
                         <Link key={a.to} to={a.to} style={{
                             textDecoration: "none", display: "flex", alignItems: "center", gap: 12,
-                            padding: "14px 16px", borderRadius: 12, background: C.white,
-                            border: `1px solid ${C.border}`, transition: "all 0.15s",
+                            padding: "14px 16px", borderRadius: 12, background: "var(--adm-surface)",
+                            border: `1px solid var(--adm-border)`, transition: "all 0.15s",
                         }}
-                            onMouseEnter={e => { e.currentTarget.style.borderColor = C.blue; e.currentTarget.style.boxShadow = "0 2px 8px rgba(37,99,235,0.1)"; }}
-                            onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.boxShadow = "none"; }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--adm-primary)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(37,99,235,0.1)"; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--adm-border)"; e.currentTarget.style.boxShadow = "none"; }}
                         >
                             <div style={{
                                 width: 40, height: 40, borderRadius: 10, background: a.bg,
@@ -623,8 +630,8 @@ const AdminDashboard = () => {
                                 fontSize: 18, flexShrink: 0,
                             }}>{a.icon}</div>
                             <div>
-                                <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{a.label}</div>
-                                <div style={{ fontSize: 11, color: C.hint }}>{a.desc}</div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--adm-text-primary)" }}>{a.label}</div>
+                                <div style={{ fontSize: 11, color: "var(--adm-muted)" }}>{a.desc}</div>
                             </div>
                         </Link>
                     ))}

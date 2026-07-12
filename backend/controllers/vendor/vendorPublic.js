@@ -8,6 +8,7 @@
 import Vendor from "../../models/vendorModels/Vendor.js";
 import Product from "../../models/Product.js";
 import Subscription from "../../models/vendorModels/Subscription.js";
+import { haversineKm } from "../../services/geoEngine.js";
 
 // Base filter for publicly visible vendors (approved + subscription active)
 const ACTIVE_VENDOR_BASE = {
@@ -167,7 +168,7 @@ export const getNearbyVendors = async (req, res) => {
             const vObj = v.toObject ? v.toObject() : v;
             if (hasGeo) {
                 const [vLng, vLat] = v.location?.coordinates || [0, 0];
-                if (vLat && vLng) vObj.distanceKm = haversine(lat, lng, vLat, vLng);
+                if (vLat && vLng) vObj.distanceKm = Math.round(haversineKm(lat, lng, vLat, vLng) * 10) / 10;
             }
             return vObj;
         });
@@ -178,12 +179,3 @@ export const getNearbyVendors = async (req, res) => {
         res.status(500).json({ success: false, message: "Failed to fetch nearby vendors" });
     }
 };
-
-function haversine(lat1, lon1, lat2, lon2) {
-    const R = 6371;
-    const toRad = (d) => (d * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-    return +(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1);
-}

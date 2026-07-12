@@ -10,38 +10,7 @@ import { G, fmt } from "../utils/theme";
 import DeliveryMap from "../components/DeliveryMap";
 import { startAlert, stopAlert, playNotification } from "../utils/notificationSound";
 import useFcm from "../hooks/useFcm";
-
-/* ── GPS tracking — watchPosition realtime + 15s fallback ── */
-const useLocationTracking = (activeOrderId) => {
-  const [pos, setPos] = useState(null);
-  useEffect(() => {
-    if (!activeOrderId || !navigator.geolocation) { setPos(null); return; }
-    // BUG FIX: same fix as ActiveOrders.jsx's identical duplicated hook —
-    // send the GPS fix's own timestamp so the backend can reject an older
-    // fix even if its HTTP request arrives last.
-    const sendLocation = (lat, lng, timestamp) => {
-      setPos({ lat, lng });
-      api.patch("/delivery/location", { orderId: activeOrderId, lat, lng, timestamp }).catch(() => { });
-    };
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude, pos.timestamp),
-      () => { },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
-    );
-    const fallbackTimer = setInterval(() => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude, pos.timestamp),
-        () => { },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
-      );
-    }, 15000);
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-      clearInterval(fallbackTimer);
-    };
-  }, [activeOrderId]);
-  return pos;
-};
+import { useLocationTracking } from "../hooks/useLocationTracking";
 
 const Dashboard = () => {
   const { rider, logout } = useAuth();
@@ -58,7 +27,11 @@ const Dashboard = () => {
   const wsRef = useRef(null);
 
   const activeOrder = orders.find(o => o.orderStatus === "OUT_FOR_DELIVERY");
-  const riderPos = useLocationTracking(activeOrder?._id);
+  // BUG FIX: this used to track only when there was an active order —
+  // the exact bug ActiveOrders.jsx's copy had already been fixed for
+  // (Zepto/Swiggy-style riders report location continuously while
+  // ONLINE, not just mid-delivery). Now both pages share one hook.
+  const riderPos = useLocationTracking(isOnline, activeOrder?._id);
 
   const load = useCallback(async () => {
     try {

@@ -17,7 +17,16 @@ const OTP_EXPIRY_MS = 10 * 60 * 1000;
 const RESET_EXPIRY_MS = 15 * 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 const BCRYPT_ROUNDS = 10;
-const JWT_EXPIRY = "15m";
+// BUG FIX: was 15m. With `protect` now actually enforcing tokenVersion
+// (see authMiddleware.js), logout-all-devices/password-change/block all
+// take effect immediately regardless of how long an access token has left
+// to live — so there's no longer a security reason to keep this window
+// short. 15m meant every tab, on every reload, had a good chance of
+// starting with an already-expired token, leaning entirely on the
+// refresh-token round trip (and every edge case in it — cookie path,
+// CORS, clock skew) just to load a page. 1h gives real headroom while
+// the 30-day refresh token cookie still re-issues it long before then.
+const JWT_EXPIRY = "1h";
 // BUG FIX: was 7 days — any user (customer, vendor, delivery, or admin;
 // this refresh mechanism is shared via authenticateByRole/issueTokens for
 // all roles) whose refresh-token cookie outlived 7 days without a fresh
@@ -42,6 +51,27 @@ const generateToken = (user) =>
 
 const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
 
+// BUG FIX (production readiness): the refreshToken cookie had no `domain`
+// attribute, so it defaulted to the exact host that set it. Urbexon runs
+// customer/vendor/admin/delivery on separate subdomains (see the *_URL env
+// vars used below in the password-reset builders) — without a shared
+// `domain`, the cookie set by the API is invisible to requests initiated
+// from those other subdomains in any deployment where the API itself isn't
+// on the exact same host the cookie was issued from. Also switched
+// `sameSite` from "strict" to "lax": "strict" blocks the cookie on more
+// cross-subdomain/cross-site request patterns than this multi-panel setup
+// can afford, while "lax" still blocks true cross-site (CSRF-style) sends.
+// Both are env-driven so local dev (single host, no COOKIE_DOMAIN set)
+// behaves exactly as before.
+const REFRESH_COOKIE_OPTIONS = (expires) => ({
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+    expires,
+    path: "/api/auth/refresh",
+});
+
 const issueTokens = async (res, user) => {
     const accessToken = generateToken(user);
     const refreshToken = crypto.randomBytes(64).toString("hex");
@@ -50,13 +80,7 @@ const issueTokens = async (res, user) => {
     user.refreshTokenExpires = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
     await user.save({ validateBeforeSave: false });
 
-    res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        expires: user.refreshTokenExpires,
-        path: "/api/auth/refresh",
-    });
+    res.cookie("refreshToken", refreshToken, REFRESH_COOKIE_OPTIONS(user.refreshTokenExpires));
 
     return accessToken;
 };
@@ -739,10 +763,13 @@ export const logout = asyncHandler(async (req, res) => {
             await user.save({ validateBeforeSave: false });
         }
     }
+    // Must match the same domain/sameSite/path the cookie was set with, or
+    // browsers won't recognize it as the same cookie to clear.
     res.clearCookie("refreshToken", {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        sameSite: "lax",
+        ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
         path: "/api/auth/refresh",
     });
     res.json({ success: true, message: "Logged out successfully" });

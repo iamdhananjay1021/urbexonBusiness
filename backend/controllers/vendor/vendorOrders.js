@@ -7,12 +7,14 @@
 import Order from "../../models/Order.js";
 import Product from "../../models/Product.js";
 import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
-import Vendor from "../../models/vendorModels/Vendor.js";
-import { Settlement } from "../../models/vendorModels/Settlement.js";
-import { restoreStock } from "../../services/pricing.js";
+import { restoreStock, unmarkCouponUsed } from "../../services/pricing.js";
 import { sendNotification as sendToUser } from "../../utils/notificationQueue.js";
 import { publishToUser } from "../../utils/realtimeHub.js";
 import { startAssignment, cancelAssignment } from "../../services/assignmentEngine.js";
+import { applyOrderTransition, buildTimelineEntry, notifyOrderStakeholders } from "../../services/orderEngine.js";
+import { sendWhatsAppMessage, isWhatsAppConfigured } from "../../services/whatsappService.js";
+import { settleVendorForOrder } from "../../services/settlementEngine.js";
+import { refundOrderPayment } from "../../services/refundEngine.js";
 
 const STATUS_GROUPS = {
     pending: ["PLACED", "CONFIRMED"],
@@ -133,47 +135,13 @@ const getVendorTransitions = (order) => {
  *   MongoDB guarantees only ONE insert wins; subsequent calls are no-ops.
  *   Vendor $inc stats only run when settlement is newly created (upsertedCount > 0).
  */
-const ensureVendorSettlement = async ({ order, vendorId, vendorProductIds }) => {
-    const vendorProductIdSet = new Set(vendorProductIds.map(String));
-    const vendorItems = (order.items || []).filter((item) => vendorProductIdSet.has(String(item.productId)));
-    const orderAmount = vendorItems.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.qty || item.quantity || 0)), 0);
-    if (!orderAmount) return;
-
-    const vendor = await Vendor.findById(vendorId).select("commissionRate").lean();
-    const commissionRate = vendor?.commissionRate ?? 18;
-    const commissionAmount = Math.round((orderAmount * commissionRate) / 100);
-    const vendorEarning = Math.max(0, orderAmount - commissionAmount);
-
-    // ✅ Atomic upsert — safe against race conditions from vendor + admin both marking DELIVERED
-    const result = await Settlement.updateOne(
-        { orderId: order._id },   // unique index on orderId prevents duplicates
-        {
-            $setOnInsert: {
-                vendorId,
-                orderId: order._id,
-                orderAmount,
-                commissionRate,
-                commissionAmount,
-                deliveryCharge: 0,
-                platformFee: 0,
-                vendorEarning,
-                status: "pending",
-            },
-        },
-        { upsert: true }
-    );
-
-    // Only increment vendor stats if we ACTUALLY created the settlement (not a duplicate)
-    if (result.upsertedCount > 0) {
-        await Vendor.findByIdAndUpdate(vendorId, {
-            $inc: {
-                pendingSettlement: vendorEarning,
-                totalRevenue: orderAmount,
-                totalOrders: 1,
-            },
-        }).catch(() => { });
-    }
-};
+// Delegates to the shared settlementEngine.js — this used to be a second,
+// independently-hand-written copy of the exact same commission calculation
+// that also lives in orderController.js's admin updateOrderStatus. Both
+// call sites (plus deliveryController.markDelivered, which never had this
+// at all) now go through one implementation.
+const ensureVendorSettlement = ({ order, vendorId, vendorProductIds }) =>
+    settleVendorForOrder({ order, vendorId, vendorProductIds });
 
 const buildVendorScopedOrder = (order, vendorProductIdSet) => {
     const normalizedOrder = normalizeVendorFacingOrder(order);
@@ -425,9 +393,17 @@ export const updateOrderStatus = async (req, res) => {
 
         const prevStatus = order.orderStatus;
         const legacyAssignedRiderId = isVendorSelfDelivery(order) ? order.delivery?.assignedTo : null;
-        order.orderStatus = status;
 
-        // Update statusTimeline
+        // Build the write as an explicit $set instead of mutating the
+        // in-memory document + order.save() — a plain save() here isn't
+        // conditioned on orderStatus still being `prevStatus` at write
+        // time, so two concurrent requests (vendor double-tap, or vendor +
+        // admin racing) could both pass the transition check above and
+        // both save, the second silently overwriting the first's OTP/
+        // delivery-status side effects. applyOrderTransition below
+        // conditions the write atomically on orderStatus:prevStatus.
+        const setFields = {};
+
         const tMap = {
             CONFIRMED: "confirmedAt",
             PACKED: "packedAt",
@@ -436,53 +412,60 @@ export const updateOrderStatus = async (req, res) => {
             DELIVERED: "deliveredAt",
             CANCELLED: "cancelledAt",
         };
-        if (tMap[status]) {
-            const existing = order.statusTimeline?.toObject ? order.statusTimeline.toObject() : { ...order.statusTimeline };
-            order.statusTimeline = { ...existing, [tMap[status]]: new Date() };
-            order.markModified("statusTimeline");
-        }
+        if (tMap[status]) setFields[`statusTimeline.${tMap[status]}`] = new Date();
 
-        if (status === "CONFIRMED" || status === "PACKED") {
-            order.delivery.status = "PENDING";
-        }
-
-        if (status === "READY_FOR_PICKUP") {
-            // ✅ Mark delivery pending — assignment engine will pick it up
-            order.delivery.status = "PENDING";
+        if (status === "CONFIRMED" || status === "PACKED" || status === "READY_FOR_PICKUP") {
+            setFields["delivery.status"] = "PENDING";
         }
 
         if (status === "OUT_FOR_DELIVERY") {
-            const otpCode = String(Math.floor(1000 + Math.random() * 9000));
-            order.deliveryOtp = order.deliveryOtp || {};
-            order.delivery.status = "OUT_FOR_DELIVERY";
-            order.delivery.assignedTo = null;
-            order.delivery.riderName = "";
-            order.delivery.riderPhone = "";
-            order.delivery.assignedAt = null;
-            order.deliveryOtp.code = otpCode;
-            order.deliveryOtp.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-            order.deliveryOtp.verified = false;
+            setFields["delivery.status"] = "OUT_FOR_DELIVERY";
+            setFields["delivery.assignedTo"] = null;
+            setFields["delivery.riderName"] = "";
+            setFields["delivery.riderPhone"] = "";
+            setFields["delivery.assignedAt"] = null;
+            setFields["deliveryOtp.code"] = String(Math.floor(1000 + Math.random() * 9000));
+            setFields["deliveryOtp.expiresAt"] = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            setFields["deliveryOtp.verified"] = false;
         }
 
         if (status === "DELIVERED") {
-            order.deliveryOtp = order.deliveryOtp || {};
-            order.delivery.status = "DELIVERED";
-            order.delivery.assignedTo = null;
-            order.delivery.riderName = "";
-            order.delivery.riderPhone = "";
-            order.delivery.assignedAt = null;
-            order.deliveryOtp.verified = true;
+            setFields["delivery.status"] = "DELIVERED";
+            setFields["delivery.assignedTo"] = null;
+            setFields["delivery.riderName"] = "";
+            setFields["delivery.riderPhone"] = "";
+            setFields["delivery.assignedAt"] = null;
+            setFields["deliveryOtp.verified"] = true;
             if (order.payment?.method === "COD") {
-                order.payment.status = "PAID";
-                order.payment.paidAt = new Date();
+                setFields["payment.status"] = "PAID";
+                setFields["payment.paidAt"] = new Date();
             }
         }
 
         if (status === "CANCELLED") {
-            order.delivery.status = "CANCELLED";
+            setFields["delivery.status"] = "CANCELLED";
         }
 
-        await order.save();
+        const updatedOrder = await applyOrderTransition({
+            orderId: order._id,
+            fromStatuses: [prevStatus],
+            toStatus: status,
+            setFields,
+            timelineEntry: buildTimelineEntry({
+                status,
+                actorId: req.vendor?.userId || req.vendor?._id,
+                role: "vendor",
+                source: "vendor_panel",
+                reason: rawBody?.reason || "",
+            }),
+        });
+        if (!updatedOrder) {
+            return res.status(409).json({ success: false, message: "Order status changed concurrently — please refresh and try again" });
+        }
+        order.orderStatus = updatedOrder.orderStatus;
+        order.delivery = updatedOrder.delivery;
+        order.deliveryOtp = updatedOrder.deliveryOtp;
+        order.payment = updatedOrder.payment;
 
         // Free rider slot if vendor-self was delivering
         if (legacyAssignedRiderId) {
@@ -496,6 +479,12 @@ export const updateOrderStatus = async (req, res) => {
         // Restore stock + cancel assignment on cancel
         if (status === "CANCELLED") {
             await restoreStock(order.items);
+            if (order.coupon?.code) {
+                await unmarkCouponUsed({ couponCode: order.coupon.code, userId: order.user }).catch(() => { });
+            }
+            // Vendor-initiated cancel previously never triggered a refund —
+            // a PAID Razorpay order stayed "PAID" with no refund started.
+            await refundOrderPayment(order, { reason: "Cancelled by vendor" }).catch(() => { });
             if (order.delivery?.assignedTo) {
                 Order.updateOne({ _id: order._id }, { $set: { "delivery.status": "CANCELLED" } }).catch(() => { });
             }
@@ -539,6 +528,31 @@ export const updateOrderStatus = async (req, res) => {
                 at: new Date().toISOString(),
                 ...(status === "OUT_FOR_DELIVERY" ? { otp: order.deliveryOtp?.code } : {}),
             });
+        }
+
+        // BUG FIX: this vendor-driven status change (CONFIRMED/PACKED/
+        // READY_FOR_PICKUP/OUT_FOR_DELIVERY/DELIVERED/CANCELLED) used to
+        // reach ONLY the customer via the ad-hoc calls above — admin had no
+        // live visibility into vendor accept/pack/ship actions at all.
+        // skipCustomer:true since the customer already got the richer
+        // message above (which, for OUT_FOR_DELIVERY, carries the delivery
+        // OTP that must never reach admin).
+        notifyOrderStakeholders(order, "vendor_status_update", {
+            status,
+            deliveryStatus: order.delivery?.status,
+        }, { skipCustomer: true }).catch((err) => console.warn("[updateOrderStatus] stakeholder notify failed:", err.message));
+
+        // WhatsApp: Order Accepted / Out For Delivery / Delivered to the
+        // customer. Architecture-ready but a genuine no-op while
+        // WHATSAPP_PROVIDER=console (default) — see whatsappService.js.
+        const WA_MESSAGES = {
+            CONFIRMED: "Your order has been accepted and is being prepared!",
+            OUT_FOR_DELIVERY: "Your order is out for delivery!",
+            DELIVERED: "Your order has been delivered. Enjoy!",
+        };
+        if (isWhatsAppConfigured() && order.phone && WA_MESSAGES[status]) {
+            sendWhatsAppMessage({ to: order.phone, message: WA_MESSAGES[status] })
+                .catch((err) => console.warn("[updateOrderStatus] WhatsApp failed:", err.message));
         }
 
         res.json({ success: true, order: normalizeVendorFacingOrder(order.toObject()), message: "Order status updated" });

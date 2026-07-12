@@ -13,6 +13,8 @@ import Order from "../../models/Order.js";
 import Product from "../../models/Product.js";
 import User from "../../models/User.js";
 import Vendor from "../../models/vendorModels/Vendor.js";
+import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
+import Pincode from "../../models/vendorModels/Pincode.js";
 import { getCache, setCache, delCacheByPrefix } from "../../utils/Cache.js";
 
 // [FIX-DB3] Safe cache helpers — never crash on cache failure
@@ -215,6 +217,71 @@ export const getMapData = async (req, res) => {
                 .lean(),
         ]);
 
+        // ── Geo analytics: live users/vendors/riders + orders-by-pincode ──
+        // Additive to the existing map payload — no existing field renamed
+        // or removed, so current consumers of this endpoint are unaffected.
+        const [
+            ordersByPincodeAgg,
+            activeVendorsCount,
+            activeRidersCount,
+            activePincodes,
+            vendorGeoDocs,
+            riderGeoDocs,
+        ] = await Promise.all([
+            Order.aggregate([
+                { $match: { pincode: { $exists: true, $ne: "" }, createdAt: { $gte: since } } },
+                { $group: { _id: "$pincode", count: { $sum: 1 }, revenue: { $sum: "$totalAmount" } } },
+                { $sort: { count: -1 } },
+                { $limit: 200 },
+            ]),
+            Vendor.countDocuments({
+                status: "approved", isOpen: true, acceptingOrders: true, isDeleted: false,
+                "subscription.isActive": true, "subscription.expiryDate": { $gt: new Date() },
+            }),
+            DeliveryBoy.countDocuments({ status: "approved", isOnline: true }),
+            Pincode.find({ status: "active" }).select("code area city").lean(),
+            Vendor.find({ status: "approved", isOpen: true, isDeleted: false, "location.coordinates": { $exists: true, $ne: [] } })
+                .select("location").limit(1000).lean(),
+            DeliveryBoy.find({ status: "approved", "geoLocation.coordinates": { $exists: true, $ne: [] } })
+                .select("geoLocation isOnline").limit(1000).lean(),
+        ]);
+
+        const pincodeStatsByCode = {};
+        ordersByPincodeAgg.forEach((row) => {
+            pincodeStatsByCode[row._id] = { pincode: row._id, count: row.count, revenue: row.revenue || 0 };
+        });
+        const pincodeMeta = {};
+        activePincodes.forEach((p) => { pincodeMeta[p.code] = { area: p.area || "", city: p.city || "" }; });
+
+        const ordersByPincode = Object.values(pincodeStatsByCode)
+            .map((row) => ({ ...row, ...(pincodeMeta[row.pincode] || {}) }))
+            .sort((a, b) => b.count - a.count);
+        const topAreas = ordersByPincode.slice(0, 10);
+        // Active/serviceable pincodes with zero orders in the window — a
+        // launched area nobody is actually ordering from.
+        const inactiveAreas = activePincodes
+            .filter((p) => !pincodeStatsByCode[p.code])
+            .map((p) => ({ pincode: p.code, area: p.area || "", city: p.city || "", count: 0 }));
+
+        // Same 0.5°-grid clustering already used for order density, applied
+        // to vendor/rider coordinates so the map can render density layers
+        // with one consistent grid across all three.
+        const gridCluster = (docs, getCoords) => {
+            const clusters = {};
+            docs.forEach((doc) => {
+                const coords = getCoords(doc);
+                if (!coords || coords.length !== 2) return;
+                const [lng, lat] = coords;
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+                const key = `${Math.round(lat * 2) / 2},${Math.round(lng * 2) / 2}`;
+                if (!clusters[key]) clusters[key] = { lat: Math.round(lat * 2) / 2, lng: Math.round(lng * 2) / 2, count: 0 };
+                clusters[key].count++;
+            });
+            return Object.values(clusters);
+        };
+        const vendorDensity = gridCluster(vendorGeoDocs, (v) => v.location?.coordinates);
+        const riderDensity = gridCluster(riderGeoDocs.filter((r) => r.isOnline), (r) => r.geoLocation?.coordinates);
+
         const ordersByCity = {};
         orderLocations.forEach((o) => {
             const key = `${Math.round(o.latitude * 100) / 100},${Math.round(o.longitude * 100) / 100}`;
@@ -341,6 +408,18 @@ export const getMapData = async (req, res) => {
             totalUsers: userLocations.length,
             totalOrders: orderLocations.length,
             totalActiveDeliveries: activeDeliveries.length,
+
+            // ── Geo Engine analytics (additive) ──
+            ordersByPincode,
+            topAreas,
+            inactiveAreas,
+            vendorDensity,
+            riderDensity,
+            liveCounts: {
+                currentUsers: userLocations.length,
+                currentVendors: activeVendorsCount,
+                currentRiders: activeRidersCount,
+            },
         };
 
         // [FIX-DB2] Cache map data

@@ -19,45 +19,16 @@ import { G, fmt, fmtDate } from "../utils/theme";
 import DeliveryMap from "../components/DeliveryMap";
 import { startAlert, stopAlert, playNotification } from "../utils/notificationSound";
 import useFcm from "../hooks/useFcm";
+import { useLocationTracking } from "../hooks/useLocationTracking";
 
-/* ── GPS tracking — watchPosition for real-time + 15s fallback ── */
-const useLocationTracking = (activeOrderId) => {
-  const [pos, setPos] = useState(null);
-  useEffect(() => {
-    if (!activeOrderId || !navigator.geolocation) { setPos(null); return; }
-
-    // BUG FIX: watchPosition and the 15s fallback both call this
-    // independently — sending the GPS fix's own timestamp lets the backend
-    // reject whichever one turns out to be older, regardless of which HTTP
-    // request happens to arrive at the server last (previously caused the
-    // rider marker to visibly jump backward on the customer's map).
-    const sendLocation = (lat, lng, timestamp) => {
-      setPos({ lat, lng });
-      api.patch("/delivery/location", { orderId: activeOrderId, lat, lng, timestamp }).catch(() => { });
-    };
-
-    // Use watchPosition for real-time updates
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude, pos.timestamp),
-      () => { },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
-    );
-
-    // Fallback: force an update every 15s even if no movement detected
-    const fallbackTimer = setInterval(() => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude, pos.timestamp),
-        () => { },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
-      );
-    }, 15000);
-
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-      clearInterval(fallbackTimer);
-    };
-  }, [activeOrderId]);
-  return pos;
+// Haversine, meters — used below for the live "distance to target" display.
+const distanceMeters = (lat1, lng1, lat2, lng2) => {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
 const STATUS_BADGE = {
@@ -91,8 +62,14 @@ const ActiveOrders = () => {
   const countdownRef = useRef(null);
   const wsRef = useRef(null);
 
-  const activeOrder = orders.find(o => o.orderStatus === "OUT_FOR_DELIVERY");
-  const riderPos = useLocationTracking(activeOrder?._id);
+  // BUG FIX: only matched OUT_FOR_DELIVERY — meaning no map/tracking existed
+  // at all for ASSIGNED/ARRIVING_VENDOR (before pickup). A rider can only
+  // ever have one non-delivered assigned order at a time (MAX_ACTIVE_ORDERS
+  // = 1 server-side), so "assigned to me and not yet delivered" is the
+  // correct definition of "my current active order" across its whole
+  // lifecycle, not just its last leg.
+  const activeOrder = orders.find(o => !!o.delivery?.assignedTo && o.orderStatus !== "DELIVERED");
+  const riderPos = useLocationTracking(isOnline, activeOrder?._id);
 
   /* ── FCM ── */
   useFcm({
@@ -447,23 +424,44 @@ const ActiveOrders = () => {
                       </div>
                     </div>
 
-                    {/* Live Map (for active delivery order) */}
-                    {tab === "active" && riderPos && order._id === activeOrder?._id && (
-                      <div style={{ borderRadius: 8, overflow: "hidden", marginTop: 12, border: `1px solid ${G.border}` }}>
-                        <DeliveryMap
-                          myLat={riderPos.lat}
-                          myLng={riderPos.lng}
-                          destLat={order.latitude || order.deliveryAddress?.lat}
-                          destLng={order.longitude || order.deliveryAddress?.lng}
-                          destLabel={order.address || "Customer"}
-                          height={180}
-                        />
-                        <div style={{ padding: "6px 12px", fontSize: 10, color: G.textSub, background: "#f9fafb", display: "flex", justifyContent: "space-between" }}>
-                          <span>📍 Live Tracking Active</span>
-                          <span style={{ color: "#059669", fontWeight: 700 }}>● GPS ON</span>
+                    {/* Live Map — BUG FIX: used to only render once
+                        OUT_FOR_DELIVERY, so there was no map at all for
+                        "Heading to Store"/just-assigned. Shows for the
+                        whole active lifecycle now, with the vendor's
+                        location plotted too (previously never sent to the
+                        frontend at all) so the rider has something to
+                        navigate by before pickup, not just after. */}
+                    {tab === "active" && riderPos && order._id === activeOrder?._id && (() => {
+                      const notYetPickedUp = ["PENDING", "SEARCHING_RIDER", "ASSIGNED", "ARRIVING_VENDOR"].includes(order.delivery?.status);
+                      const leg = notYetPickedUp ? "TO_VENDOR" : "TO_CUSTOMER";
+                      const tLat = leg === "TO_VENDOR" ? order.vendorLat : (order.latitude || order.deliveryAddress?.lat);
+                      const tLng = leg === "TO_VENDOR" ? order.vendorLng : (order.longitude || order.deliveryAddress?.lng);
+                      const liveDistanceKm = tLat != null && tLng != null
+                        ? Math.round((distanceMeters(riderPos.lat, riderPos.lng, tLat, tLng) / 1000) * 10) / 10
+                        : null;
+                      return (
+                        <div style={{ borderRadius: 8, overflow: "hidden", marginTop: 12, border: `1px solid ${G.border}` }}>
+                          <DeliveryMap
+                            riderLat={riderPos.lat}
+                            riderLng={riderPos.lng}
+                            destLat={order.latitude || order.deliveryAddress?.lat}
+                            destLng={order.longitude || order.deliveryAddress?.lng}
+                            destLabel={order.address || "Customer"}
+                            vendorLat={order.vendorLat}
+                            vendorLng={order.vendorLng}
+                            vendorLabel={order.vendorName || "Pickup Point"}
+                            leg={leg}
+                            distanceKm={liveDistanceKm}
+                            status={order.delivery?.status}
+                            height={180}
+                          />
+                          <div style={{ padding: "6px 12px", fontSize: 10, color: G.textSub, background: "#f9fafb", display: "flex", justifyContent: "space-between" }}>
+                            <span>📍 Live Tracking Active</span>
+                            <span style={{ color: "#059669", fontWeight: 700 }}>● GPS ON</span>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Delivery Status Flow */}
                     {tab === "active" && order.delivery?.status && (
@@ -521,10 +519,21 @@ const ActiveOrders = () => {
                       </a>
                     )}
 
+                    {/* BUG FIX: this card previously only had "Accept" — a
+                        rider who didn't want a given order (too far, bad
+                        route, etc.) had no way to say so outside the
+                        ephemeral live-countdown offer banner, which only
+                        appears for SOME orders. Skip is available on every
+                        available-order card now, same as Zepto/Swiggy. */}
                     {tab === "available" && (
-                      <button onClick={() => doAction(order._id, "accept")} disabled={isWorking} style={{ flex: 1, padding: "10px 18px", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", background: G.navy, color: G.brand, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: isWorking ? 0.6 : 1 }}>
-                        🏍️ {isWorking ? "Accepting…" : "Accept Order"}
-                      </button>
+                      <>
+                        <button onClick={() => doAction(order._id, "accept")} disabled={isWorking} style={{ flex: 1, padding: "10px 18px", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", background: G.navy, color: G.brand, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: isWorking ? 0.6 : 1 }}>
+                          🏍️ {isWorking ? "Accepting…" : "Accept Order"}
+                        </button>
+                        <button onClick={() => doAction(order._id, "reject")} disabled={isWorking} style={{ padding: "10px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", background: "rgba(239,68,68,.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,.3)", opacity: isWorking ? 0.6 : 1 }}>
+                          ⏭ Skip
+                        </button>
+                      </>
                     )}
 
                     {tab === "active" && order.delivery?.status === "ASSIGNED" && (

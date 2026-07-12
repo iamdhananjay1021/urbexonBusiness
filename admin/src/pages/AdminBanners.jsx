@@ -3,16 +3,19 @@ import { useNavigate, Link } from "react-router-dom";
 import { fetchAllBanners, deleteBanner, updateBanner } from "../api/bannerApi";
 import {
     FiPlus, FiEdit2, FiTrash2, FiImage, FiArrowLeft,
-    FiLink, FiFilter, FiSearch, FiX, FiEye, FiEyeOff
+    FiLink, FiFilter, FiX, FiEye, FiEyeOff
 } from "react-icons/fi";
+import {
+    Button, Badge, Card, Skeleton, EmptyState, Modal, SearchBar,
+} from "../components/ui";
 
-const TYPE_CFG = {
-    ecommerce: { bg: "#eff6ff", color: "#2563eb", border: "#bfdbfe", label: "🛒 Ecommerce" },
-    urbexon_hour: { bg: "#faf5ff", color: "#7c3aed", border: "#ddd6fe", label: "⚡ UH" },
+const TYPE_LABEL = {
+    ecommerce: { label: "🛒 Ecommerce", tone: "info" },
+    urbexon_hour: { label: "⚡ UH", tone: "primary" },
 };
-const PLACE_CFG = {
-    hero: { bg: "#fefce8", color: "#a16207", border: "#fef08a", label: "Hero" },
-    mid: { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0", label: "Mid" },
+const PLACE_LABEL = {
+    hero: { label: "Hero", tone: "warning" },
+    mid: { label: "Mid", tone: "success" },
 };
 
 const fmtDate = (d) =>
@@ -21,54 +24,41 @@ const fmtDate = (d) =>
 const getScheduleStatus = (b) => {
     if (!b.startDate && !b.endDate) return null;
     const now = new Date();
-    if (b.startDate && new Date(b.startDate) > now)
-        return { label: "Scheduled", color: "#d97706", bg: "#fffbeb", dot: "#f59e0b" };
-    if (b.endDate && new Date(b.endDate) < now)
-        return { label: "Expired", color: "#dc2626", bg: "#fef2f2", dot: "#ef4444" };
-    return { label: "Live", color: "#16a34a", bg: "#f0fdf4", dot: "#22c55e" };
+    if (b.startDate && new Date(b.startDate) > now) return { label: "Scheduled", tone: "warning" };
+    if (b.endDate && new Date(b.endDate) < now) return { label: "Expired", tone: "danger" };
+    return { label: "Live", tone: "success" };
 };
 
 const SkeletonCard = () => (
-    <div style={{
-        background: "#fff", borderRadius: 16, padding: "18px 16px",
-        border: "1px solid #f1f5f9", display: "flex", flexDirection: "column", gap: 12,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.04)"
-    }}>
-        {[80, "70%", "50%", "40%"].map((w, i) => (
-            <div key={i} style={{
-                height: i === 0 ? 60 : 14, width: w, borderRadius: 8,
-                background: "linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%)",
-                backgroundSize: "400% 100%", animation: "shimmer 1.6s infinite linear"
-            }} />
-        ))}
-    </div>
+    <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <Skeleton height={60} />
+        <Skeleton height={14} width="70%" />
+        <Skeleton height={14} width="50%" />
+        <Skeleton height={14} width="40%" />
+    </Card>
 );
 
-const StatCard = ({ icon, value, label, accent }) => (
-    <div style={{
-        background: "#fff", borderRadius: 14, padding: "14px 16px",
-        border: "1px solid #f1f5f9", boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-        display: "flex", alignItems: "center", gap: 12
-    }}>
+const StatCard = ({ icon, value, label, tone }) => (
+    <Card style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{
-            width: 40, height: 40, borderRadius: 11,
-            background: accent + "18",
+            width: 40, height: 40, borderRadius: "var(--adm-radius-md)",
+            background: `var(--adm-${tone}-tint)`,
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 18, flexShrink: 0
         }}>{icon}</div>
         <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", lineHeight: 1 }}>{value}</div>
-            <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, marginTop: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--adm-text-primary)", lineHeight: 1 }}>{value}</div>
+            <div style={{ fontSize: 10, color: "var(--adm-muted)", fontWeight: 700, marginTop: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
         </div>
-    </div>
+    </Card>
 );
 
-const FilterPill = ({ active, onClick, children, activeColor = "#2563eb" }) => (
+const FilterPill = ({ active, onClick, children }) => (
     <button onClick={onClick} style={{
-        padding: "5px 12px", borderRadius: 20,
-        border: `1.5px solid ${active ? activeColor : "#e5e7eb"}`,
-        background: active ? activeColor : "#fff",
-        color: active ? "#fff" : "#64748b",
+        padding: "5px 12px", borderRadius: "var(--adm-radius-full)",
+        border: active ? "1.5px solid var(--adm-primary)" : "1.5px solid var(--adm-border)",
+        background: active ? "var(--adm-primary-tint)" : "var(--adm-surface)",
+        color: active ? "var(--adm-primary)" : "var(--adm-text-secondary)",
         fontSize: 12, fontWeight: 600, cursor: "pointer",
         transition: "all 0.18s", whiteSpace: "nowrap", flexShrink: 0
     }}>{children}</button>
@@ -84,6 +74,7 @@ const AdminBanners = () => {
     const [filterType, setFilterType] = useState("all");
     const [filterPlace, setFilterPlace] = useState("all");
     const [search, setSearch] = useState("");
+    const [pendingDelete, setPendingDelete] = useState(null);
 
     const showToast = useCallback((type, msg) => {
         setToast({ type, msg });
@@ -119,15 +110,16 @@ const AdminBanners = () => {
         uh: banners.filter((b) => b.type === "urbexon_hour").length,
     }), [banners]);
 
-    const handleDelete = async (id) => {
-        if (!window.confirm("Delete this banner permanently?")) return;
+    const handleDelete = async () => {
+        if (!pendingDelete) return;
+        const id = pendingDelete._id;
         setDeletingId(id);
         try {
             await deleteBanner(id);
             setBanners((prev) => prev.filter((b) => b._id !== id));
             showToast("success", "Banner deleted");
         } catch { showToast("error", "Delete failed – try again"); }
-        finally { setDeletingId(null); }
+        finally { setDeletingId(null); setPendingDelete(null); }
     };
 
     const handleToggle = async (banner) => {
@@ -144,20 +136,14 @@ const AdminBanners = () => {
     const hasFilters = filterType !== "all" || filterPlace !== "all" || !!search.trim();
 
     return (
-        <div style={{ fontFamily: "'DM Sans','Segoe UI',sans-serif", background: "#f8fafc", minHeight: "100vh", padding: "12px" }}>
-
+        <div style={{ fontFamily: "var(--adm-font-sans)", background: "var(--adm-bg)", minHeight: "100vh", padding: "12px" }}>
             <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
-                @keyframes shimmer  { 0%{background-position:-400% 0} 100%{background-position:400% 0} }
-                @keyframes toast-in { from{opacity:0;transform:translateY(-16px)} to{opacity:1;transform:translateY(0)} }
-                @keyframes fade-in  { from{opacity:0;transform:translateY(6px)}  to{opacity:1;transform:translateY(0)} }
                 * { box-sizing: border-box; }
                 .bn-card { transition: box-shadow 0.2s, transform 0.2s; }
-                .bn-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,0.1) !important; transform: translateY(-2px); }
+                .bn-card:hover { box-shadow: var(--adm-shadow-md) !important; transform: translateY(-2px); }
                 .bn-btn { transition: opacity 0.15s, transform 0.15s; border: none; }
                 .bn-btn:hover:not(:disabled) { opacity: 0.82; transform: scale(1.07); }
                 .bn-btn:disabled { cursor: not-allowed; }
-                .bn-search:focus { outline: none; border-color: #93c5fd !important; box-shadow: 0 0 0 3px rgba(147,197,253,0.28) !important; }
 
                 /* Horizontal scroll for filter row — no overflow clip */
                 .filter-row {
@@ -214,19 +200,36 @@ const AdminBanners = () => {
                 }
             `}</style>
 
+            {/* ── Delete confirmation ─────────────────────────────── */}
+            <Modal
+                open={!!pendingDelete}
+                onClose={() => setPendingDelete(null)}
+                title="Delete this banner?"
+                width={360}
+                footer={(
+                    <>
+                        <Button variant="secondary" onClick={() => setPendingDelete(null)} disabled={!!deletingId}>Cancel</Button>
+                        <Button variant="danger" icon={FiTrash2} loading={!!deletingId} onClick={handleDelete}>Delete</Button>
+                    </>
+                )}
+            >
+                <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", lineHeight: 1.55, margin: 0 }}>
+                    This can't be undone. "{pendingDelete?.title || "Untitled"}" will be permanently removed.
+                </p>
+            </Modal>
+
             {/* ── Toast ─────────────────────────────────────────── */}
             {toast && (
                 <div style={{
                     position: "fixed", top: 12, left: 12, right: 12, zIndex: 9999,
-                    background: toast.type === "success" ? "#f0fdf4" : "#fff1f2",
-                    border: `1.5px solid ${toast.type === "success" ? "#86efac" : "#fca5a5"}`,
-                    color: toast.type === "success" ? "#15803d" : "#be123c",
-                    padding: "12px 16px", borderRadius: 13, fontSize: 13, fontWeight: 600,
-                    boxShadow: "0 6px 20px rgba(0,0,0,0.12)", animation: "toast-in 0.28s ease",
+                    background: toast.type === "success" ? "var(--adm-success-tint)" : "var(--adm-danger-tint)",
+                    border: `1.5px solid var(--adm-${toast.type === "success" ? "success" : "danger"})`,
+                    color: `var(--adm-${toast.type === "success" ? "success" : "danger"})`,
+                    padding: "12px 16px", borderRadius: "var(--adm-radius-lg)", fontSize: 13, fontWeight: 600,
+                    boxShadow: "var(--adm-shadow-md)",
                     display: "flex", alignItems: "center", gap: 10,
                     maxWidth: 480, margin: "0 auto"
                 }}>
-                    <span>{toast.type === "success" ? "✅" : "⚠️"}</span>
                     <span style={{ flex: 1 }}>{toast.msg}</span>
                     <button onClick={() => setToast(null)} className="bn-btn" style={{ background: "none", cursor: "pointer", color: "inherit", opacity: 0.5, padding: 0, flexShrink: 0 }}>
                         <FiX size={14} />
@@ -235,31 +238,17 @@ const AdminBanners = () => {
             )}
 
             {/* ── Header card ───────────────────────────────────── */}
-            <div style={{
-                background: "#fff", borderRadius: 18, padding: "16px",
-                border: "1px solid #f1f5f9", boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
-                marginBottom: 14, animation: "fade-in 0.3s ease"
-            }}>
+            <Card style={{ marginBottom: 14 }}>
                 {/* Title row */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
 
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                        <button
-                            onClick={() => navigate("/admin")}
-                            className="bn-btn"
-                            style={{
-                                display: "flex", alignItems: "center", gap: 5, padding: "8px 12px",
-                                background: "#f8fafc", border: "1.5px solid #e5e7eb", borderRadius: 10,
-                                color: "#475569", fontSize: 13, fontWeight: 600, cursor: "pointer", flexShrink: 0
-                            }}
-                        >
-                            <FiArrowLeft size={14} /> Back
-                        </button>
+                        <Button variant="secondary" size="sm" icon={FiArrowLeft} onClick={() => navigate("/admin")}>Back</Button>
                         <div style={{ minWidth: 0 }}>
-                            <h1 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: 0, letterSpacing: "-0.4px" }}>
+                            <h1 style={{ fontSize: 20, fontWeight: 800, color: "var(--adm-text-primary)", margin: 0, letterSpacing: "-0.4px" }}>
                                 Banner Studio
                             </h1>
-                            <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 1, fontWeight: 500 }}>
+                            <p style={{ fontSize: 12, color: "var(--adm-muted)", marginTop: 1, fontWeight: 500 }}>
                                 {counts.total} banners · {counts.active} active
                             </p>
                         </div>
@@ -270,9 +259,9 @@ const AdminBanners = () => {
                         className="bn-btn"
                         style={{
                             display: "inline-flex", alignItems: "center", gap: 7,
-                            padding: "9px 16px", background: "#2563eb", color: "#fff",
-                            borderRadius: 11, fontSize: 13, fontWeight: 700, textDecoration: "none",
-                            boxShadow: "0 3px 10px rgba(37,99,235,0.35)", flexShrink: 0
+                            padding: "9px 16px", background: "var(--adm-primary)", color: "var(--adm-text-on-accent)",
+                            borderRadius: "var(--adm-radius-md)", fontSize: 13, fontWeight: 700, textDecoration: "none",
+                            boxShadow: "var(--adm-shadow-sm)", flexShrink: 0
                         }}
                     >
                         <FiPlus size={15} strokeWidth={2.5} /> Create
@@ -280,62 +269,45 @@ const AdminBanners = () => {
                 </div>
 
                 {/* Search */}
-                <div style={{ position: "relative", marginTop: 12 }}>
-                    <FiSearch size={14} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", pointerEvents: "none" }} />
-                    <input
-                        className="bn-search"
-                        placeholder="Search banners…"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        style={{
-                            width: "100%", padding: "10px 36px 10px 38px",
-                            border: "1.5px solid #e5e7eb", borderRadius: 11,
-                            fontSize: 13, background: "#f8fafc", color: "#0f172a",
-                            transition: "all 0.18s"
-                        }}
-                    />
-                    {search && (
-                        <button onClick={() => setSearch("")} className="bn-btn" style={{ position: "absolute", right: 11, top: "50%", transform: "translateY(-50%)", background: "none", cursor: "pointer", color: "#94a3b8", padding: 2 }}>
-                            <FiX size={13} />
-                        </button>
-                    )}
+                <div style={{ marginTop: 12 }}>
+                    <SearchBar value={search} onChange={setSearch} placeholder="Search banners…" />
                 </div>
 
                 {/* Filters – single horizontally scrollable row */}
                 <div className="filter-row" style={{ marginTop: 10 }}>
-                    <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.05em", flexShrink: 0 }}>TYPE</span>
+                    <span style={{ fontSize: 10, color: "var(--adm-muted)", fontWeight: 700, letterSpacing: "0.05em", flexShrink: 0 }}>TYPE</span>
                     <FilterPill active={filterType === "all"} onClick={() => setFilterType("all")}>All</FilterPill>
-                    {Object.entries(TYPE_CFG).map(([k, v]) => (
-                        <FilterPill key={k} active={filterType === k} onClick={() => setFilterType(filterType === k ? "all" : k)} activeColor={v.color}>
+                    {Object.entries(TYPE_LABEL).map(([k, v]) => (
+                        <FilterPill key={k} active={filterType === k} onClick={() => setFilterType(filterType === k ? "all" : k)}>
                             {v.label}
                         </FilterPill>
                     ))}
-                    <span style={{ width: 1, height: 16, background: "#e5e7eb", flexShrink: 0 }} />
-                    <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: "0.05em", flexShrink: 0 }}>PLACE</span>
+                    <span style={{ width: 1, height: 16, background: "var(--adm-border)", flexShrink: 0 }} />
+                    <span style={{ fontSize: 10, color: "var(--adm-muted)", fontWeight: 700, letterSpacing: "0.05em", flexShrink: 0 }}>PLACE</span>
                     <FilterPill active={filterPlace === "all"} onClick={() => setFilterPlace("all")}>All</FilterPill>
-                    {Object.entries(PLACE_CFG).map(([k, v]) => (
-                        <FilterPill key={k} active={filterPlace === k} onClick={() => setFilterPlace(filterPlace === k ? "all" : k)} activeColor={v.color}>
+                    {Object.entries(PLACE_LABEL).map(([k, v]) => (
+                        <FilterPill key={k} active={filterPlace === k} onClick={() => setFilterPlace(filterPlace === k ? "all" : k)}>
                             {v.label}
                         </FilterPill>
                     ))}
                     {hasFilters && (
                         <button onClick={clearFilters} style={{
                             display: "flex", alignItems: "center", gap: 4, padding: "5px 10px",
-                            borderRadius: 20, border: "1.5px solid #fca5a5",
-                            background: "#fff1f2", color: "#be123c", fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0
+                            borderRadius: "var(--adm-radius-full)", border: "1.5px solid var(--adm-danger)",
+                            background: "var(--adm-danger-tint)", color: "var(--adm-danger)", fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0
                         }}>
                             <FiX size={10} /> Clear
                         </button>
                     )}
                 </div>
-            </div>
+            </Card>
 
             {/* ── Stats ─────────────────────────────────────────── */}
-            <div className="stat-grid" style={{ animation: "fade-in 0.35s ease" }}>
-                <StatCard icon="📊" value={counts.total} label="Total" accent="#2563eb" />
-                <StatCard icon="🟢" value={counts.active} label="Active" accent="#16a34a" />
-                <StatCard icon="🛒" value={counts.ecom} label="Ecommerce" accent="#2563eb" />
-                <StatCard icon="⚡" value={counts.uh} label="UH" accent="#7c3aed" />
+            <div className="stat-grid">
+                <StatCard icon="📊" value={counts.total} label="Total" tone="primary" />
+                <StatCard icon="🟢" value={counts.active} label="Active" tone="success" />
+                <StatCard icon="🛒" value={counts.ecom} label="Ecommerce" tone="info" />
+                <StatCard icon="⚡" value={counts.uh} label="UH" tone="primary" />
             </div>
 
             {/* ── Skeletons ─────────────────────────────────────── */}
@@ -347,83 +319,62 @@ const AdminBanners = () => {
 
             {/* ── Empty state ───────────────────────────────────── */}
             {!loading && filtered.length === 0 && (
-                <div style={{
-                    background: "#fff", borderRadius: 18, padding: "60px 24px",
-                    border: "1px solid #f1f5f9", textAlign: "center", animation: "fade-in 0.3s ease"
-                }}>
-                    {hasFilters
-                        ? <FiFilter size={40} style={{ color: "#cbd5e1", marginBottom: 14 }} />
-                        : <FiImage size={40} style={{ color: "#cbd5e1", marginBottom: 14 }} />}
-                    <h2 style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", margin: "0 0 8px" }}>
-                        {hasFilters ? "No matching banners" : "No banners yet"}
-                    </h2>
-                    <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 22, maxWidth: 280, marginLeft: "auto", marginRight: "auto" }}>
-                        {hasFilters ? "Try clearing your filters." : "Create your first banner to get started."}
-                    </p>
-                    {hasFilters ? (
-                        <button onClick={clearFilters} style={{ padding: "10px 22px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 11, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                            Clear Filters
-                        </button>
-                    ) : (
-                        <Link to="/admin/banners/new" style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 22px", background: "#2563eb", color: "#fff", borderRadius: 11, fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
-                            <FiPlus size={15} /> Create Banner
-                        </Link>
-                    )}
-                </div>
+                <Card style={{ textAlign: "center" }}>
+                    <EmptyState
+                        icon={hasFilters ? FiFilter : FiImage}
+                        title={hasFilters ? "No matching banners" : "No banners yet"}
+                        description={hasFilters ? "Try clearing your filters." : "Create your first banner to get started."}
+                        action={hasFilters ? (
+                            <Button variant="primary" onClick={clearFilters}>Clear Filters</Button>
+                        ) : (
+                            <Link to="/admin/banners/new" style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 22px", background: "var(--adm-primary)", color: "var(--adm-text-on-accent)", borderRadius: "var(--adm-radius-md)", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
+                                <FiPlus size={15} /> Create Banner
+                            </Link>
+                        )}
+                    />
+                </Card>
             )}
 
             {/* ── Banner list ───────────────────────────────────── */}
             {!loading && filtered.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, animation: "fade-in 0.35s ease" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {filtered.map((banner, idx) => {
-                        const tc = TYPE_CFG[banner.type] || TYPE_CFG.ecommerce;
-                        const pc = PLACE_CFG[banner.placement] || PLACE_CFG.hero;
+                        const tc = TYPE_LABEL[banner.type] || TYPE_LABEL.ecommerce;
+                        const pc = PLACE_LABEL[banner.placement] || PLACE_LABEL.hero;
                         const sched = getScheduleStatus(banner);
 
                         /* Shared action buttons — rendered in both desktop+mobile rows */
                         const ActionButtons = () => (
                             <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                                 <button className="bn-btn" onClick={() => handleToggle(banner)} title={banner.isActive ? "Deactivate" : "Activate"}
-                                    style={{ width: 36, height: 36, borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: banner.isActive ? "#d97706" : "#16a34a", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    style={{ width: 36, height: 36, borderRadius: "var(--adm-radius-sm)", border: "1.5px solid var(--adm-border)", background: "var(--adm-surface)", color: banner.isActive ? "var(--adm-warning)" : "var(--adm-success)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                                     {banner.isActive ? <FiEyeOff size={15} strokeWidth={2} /> : <FiEye size={15} strokeWidth={2} />}
                                 </button>
                                 <Link to={`/admin/banners/${banner._id}/edit`} className="bn-btn" title="Edit"
-                                    style={{ width: 36, height: 36, borderRadius: 9, border: "1.5px solid #bfdbfe", background: "#eff6ff", color: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
+                                    style={{ width: 36, height: 36, borderRadius: "var(--adm-radius-sm)", border: "1.5px solid color-mix(in srgb, var(--adm-primary) 30%, transparent)", background: "var(--adm-primary-tint)", color: "var(--adm-primary)", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
                                     <FiEdit2 size={14} strokeWidth={2} />
                                 </Link>
-                                <button className="bn-btn" onClick={() => handleDelete(banner._id)} disabled={deletingId === banner._id} title="Delete"
-                                    style={{ width: 36, height: 36, borderRadius: 9, border: "1.5px solid #fca5a5", background: "#fff1f2", color: "#dc2626", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: deletingId === banner._id ? 0.5 : 1 }}>
+                                <button className="bn-btn" onClick={() => setPendingDelete(banner)} disabled={deletingId === banner._id} title="Delete"
+                                    style={{ width: 36, height: 36, borderRadius: "var(--adm-radius-sm)", border: "1.5px solid color-mix(in srgb, var(--adm-danger) 30%, transparent)", background: "var(--adm-danger-tint)", color: "var(--adm-danger)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: deletingId === banner._id ? 0.5 : 1 }}>
                                     <FiTrash2 size={14} strokeWidth={2} />
                                 </button>
                             </div>
                         );
 
                         const StatusPill = () => (
-                            <span style={{
-                                display: "inline-flex", alignItems: "center", gap: 5,
-                                padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-                                background: banner.isActive ? "#f0fdf4" : "#f8fafc",
-                                color: banner.isActive ? "#15803d" : "#64748b",
-                                border: banner.isActive ? "1.5px solid #86efac" : "1.5px solid #e5e7eb",
-                                whiteSpace: "nowrap", flexShrink: 0
-                            }}>
-                                <span style={{ width: 6, height: 6, borderRadius: "50%", background: banner.isActive ? "#22c55e" : "#cbd5e1" }} />
+                            <Badge tone={banner.isActive ? "success" : "neutral"} dot>
                                 {banner.isActive ? "Live" : "Draft"}
-                            </span>
+                            </Badge>
                         );
 
                         return (
-                            <div key={banner._id} className="bn-card" style={{
-                                background: "#fff", borderRadius: 16, padding: "14px",
-                                border: "1px solid #f1f5f9", boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                                position: "relative"
-                            }}>
+                            <Card key={banner._id} className="bn-card" style={{ position: "relative" }}>
                                 {/* Order badge */}
                                 <div style={{
                                     position: "absolute", top: 10, right: 10,
-                                    fontSize: 10, fontWeight: 700, color: "#94a3b8",
-                                    background: "#f8fafc", border: "1px solid #e5e7eb",
-                                    borderRadius: 6, padding: "2px 7px", zIndex: 1
+                                    fontSize: 10, fontWeight: 700, color: "var(--adm-muted)",
+                                    background: "var(--adm-surface-alt)", border: "1px solid var(--adm-border)",
+                                    borderRadius: "var(--adm-radius-sm)", padding: "2px 7px", zIndex: 1
                                 }}>
                                     #{banner.order ?? idx + 1}
                                 </div>
@@ -434,51 +385,42 @@ const AdminBanners = () => {
                                     <div className="bn-top-row">
                                         {/* Thumb */}
                                         <div className="bn-thumb" style={{
-                                            width: 100, height: 62, borderRadius: 10, overflow: "hidden",
-                                            background: "#f8fafc", border: "1px solid #f1f5f9", flexShrink: 0
+                                            width: 100, height: 62, borderRadius: "var(--adm-radius-md)", overflow: "hidden",
+                                            background: "var(--adm-surface-alt)", border: "1px solid var(--adm-border-soft)", flexShrink: 0
                                         }}>
                                             {banner.image?.url ? (
                                                 <img src={banner.image.url} alt={banner.title || "Banner"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                                             ) : (
                                                 <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                                    <FiImage size={20} color="#cbd5e1" />
+                                                    <FiImage size={20} color="var(--adm-border)" />
                                                 </div>
                                             )}
                                         </div>
 
                                         {/* Meta */}
                                         <div className="bn-meta" style={{ flex: 1, minWidth: 0, paddingRight: 30 }}>
-                                            <h3 style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", margin: "0 0 3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                                {banner.title || <span style={{ color: "#94a3b8", fontStyle: "italic", fontWeight: 500 }}>Untitled</span>}
+                                            <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--adm-text-primary)", margin: "0 0 3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                {banner.title || <span style={{ color: "var(--adm-muted)", fontStyle: "italic", fontWeight: 500 }}>Untitled</span>}
                                             </h3>
                                             {banner.subtitle && (
-                                                <p className="bn-subtitle" style={{ fontSize: 12, color: "#64748b", margin: "0 0 8px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                <p className="bn-subtitle" style={{ fontSize: 12, color: "var(--adm-text-secondary)", margin: "0 0 8px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                                     {banner.subtitle}
                                                 </p>
                                             )}
                                             {/* Badges */}
                                             <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                                                <span style={{ background: tc.bg, color: tc.color, border: `1px solid ${tc.border}`, padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700 }}>
-                                                    {tc.label}
-                                                </span>
-                                                <span style={{ background: pc.bg, color: pc.color, border: `1px solid ${pc.border}`, padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700 }}>
-                                                    {pc.label}
-                                                </span>
+                                                <Badge tone={tc.tone}>{tc.label}</Badge>
+                                                <Badge tone={pc.tone}>{pc.label}</Badge>
                                                 {banner.link && (
-                                                    <span style={{ background: "#f8fafc", color: "#64748b", border: "1px solid #e5e7eb", padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                                    <Badge tone="neutral">
                                                         <FiLink size={9} />
                                                         {banner.linkType === "external" ? "Ext" : banner.linkType === "product" ? "Prod" : banner.linkType === "category" ? "Cat" : "Route"}
-                                                    </span>
+                                                    </Badge>
                                                 )}
-                                                {sched && (
-                                                    <span style={{ background: sched.bg, color: sched.color, border: `1px solid ${sched.dot}44`, padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                                                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: sched.dot, display: "inline-block" }} />
-                                                        {sched.label}
-                                                    </span>
-                                                )}
+                                                {sched && <Badge tone={sched.tone} dot>{sched.label}</Badge>}
                                             </div>
                                             {(banner.startDate || banner.endDate) && (
-                                                <p style={{ fontSize: 10, color: "#94a3b8", margin: "6px 0 0", fontWeight: 500 }}>
+                                                <p style={{ fontSize: 10, color: "var(--adm-muted)", margin: "6px 0 0", fontWeight: 500 }}>
                                                     📅 {fmtDate(banner.startDate)} → {fmtDate(banner.endDate)}
                                                 </p>
                                             )}
@@ -498,7 +440,7 @@ const AdminBanners = () => {
                                     </div>
 
                                 </div>
-                            </div>
+                            </Card>
                         );
                     })}
                 </div>

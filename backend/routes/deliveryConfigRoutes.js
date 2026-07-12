@@ -15,6 +15,7 @@ import { calculateShippingRate } from "../utils/Shiprocketservice.js";
 import Pincode from "../models/vendorModels/Pincode.js";
 import DeliveryConfigModel from "../models/DeliveryConfig.js";
 import Vendor from "../models/vendorModels/Vendor.js";
+import { haversineKm, calculateETA, isPlausibleIndiaLatLng } from "../services/geoEngine.js";
 
 const router = Router();
 
@@ -32,7 +33,7 @@ router.get("/delivery-config/public", getPublicDeliveryConfig);
 */
 router.post("/delivery/estimate", async (req, res) => {
     try {
-        const { pincode, weight = 500, paymentMethod = "ONLINE", productType = "ecommerce" } = req.body;
+        const { pincode, weight = 500, paymentMethod = "ONLINE", productType = "ecommerce", lat, lng } = req.body;
 
         if (!pincode || !/^\d{6}$/.test(String(pincode).trim())) {
             return res.status(400).json({ success: false, message: "Valid 6-digit pincode required" });
@@ -66,14 +67,40 @@ router.post("/delivery/estimate", async (req, res) => {
                 status: "approved",
                 isOpen: true,
                 isDeleted: false
-            }).select("_id").lean();
+            }).select("_id location preparationTime deliveryMode").lean();
+
+            // Dynamic ETA via the shared Geo Engine when the client also
+            // sends GPS — same formula used at checkout, so this "before you
+            // even open the pincode" estimate never drifts from the real
+            // one. Falls back to the static 45–120 range (unchanged
+            // behavior) when GPS isn't provided or no vendor has coordinates.
+            let etaMinMinutes = 45, etaMaxMinutes = 120;
+            if (isPlausibleIndiaLatLng(lat, lng) && activeVendors.length) {
+                let nearestKm = Infinity, nearestVendor = null;
+                for (const v of activeVendors) {
+                    const coords = v.location?.coordinates;
+                    if (!coords || coords.length !== 2) continue;
+                    const d = haversineKm(Number(lat), Number(lng), coords[1], coords[0]);
+                    if (d < nearestKm) { nearestKm = d; nearestVendor = v; }
+                }
+                if (nearestVendor) {
+                    const eta = calculateETA({
+                        distanceKm: nearestKm,
+                        preparationTimeMin: nearestVendor.preparationTime ?? config.defaultPrepTimeMin,
+                        avgSpeedKmph: config.avgRiderSpeedKmph,
+                        deliveryMode: nearestVendor.deliveryMode === "self" ? "self" : "platform",
+                    });
+                    if (eta) { etaMinMinutes = eta.etaMinMinutes; etaMaxMinutes = eta.etaMaxMinutes; }
+                }
+            }
+
             return res.json({
                 success: true,
                 available: true,
                 deliveryType: "urbexon_hour",
                 etaText: config.uhEtaText || "45–120 mins",
-                etaMinMinutes: 45,
-                etaMaxMinutes: 120,
+                etaMinMinutes,
+                etaMaxMinutes,
                 area: pincodeDoc.area || "",
                 city: pincodeDoc.city || "",
                 vendorCount: activeVendors.length,

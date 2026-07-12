@@ -29,6 +29,16 @@ const safeDelPrefix = async (prefix) => {
 // Escape regex chars
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// Coordinates admin enters end up in the same geo index the resolveNearestPincode
+// endpoint trusts blindly — a fat-fingered lat/lng here would silently corrupt
+// GPS resolution for every user near it, so validate the same as client input.
+const isValidLngLatPair = (coordinates) => {
+    if (!Array.isArray(coordinates) || coordinates.length !== 2) return false;
+    const [lng, lat] = coordinates.map(Number);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return false;
+    return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+};
+
 /* ── PUBLIC: Check pincode ─────────────────────────────────────────── */
 export const checkPincode = async (req, res) => {
     try {
@@ -101,26 +111,48 @@ export const checkPincode = async (req, res) => {
    sane radius. If no admin-configured pincode is close enough, the
    caller falls back to whatever the reverse geocoder said — this only
    ever CORRECTS a mismatch, never blocks a result. ── */
-const NEAREST_PINCODE_MAX_KM = 8; // beyond this, don't override the geocoder's guess
+const DEFAULT_MAX_KM = 8; // fallback radius when a pincode has no deliveryRadiusKm set — pincode areas aren't circular, a registered center point can legitimately be several km from its boundary
+const OUTER_SEARCH_KM = 50; // absolute cap — a fix this far from every known pincode never matches
 
 export const resolveNearestPincode = async (req, res) => {
     try {
         const lat = Number(req.query.lat);
         const lng = Number(req.query.lng);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        if (
+            !Number.isFinite(lat) || !Number.isFinite(lng) ||
+            lat < -90 || lat > 90 || lng < -180 || lng > 180
+        ) {
             return res.status(400).json({ success: false, message: "Valid lat/lng required" });
         }
+        // Security: reject coordinates far outside India's landmass outright —
+        // never trust raw frontend coordinates blindly (spoofed/garbage GPS fixes).
+        if (lat < 6 || lat > 38 || lng < 68 || lng > 98) {
+            return res.json({ success: true, found: false });
+        }
 
-        const nearest = await Pincode.findOne({
-            location: {
-                $near: {
-                    $geometry: { type: "Point", coordinates: [lng, lat] },
-                    $maxDistance: NEAREST_PINCODE_MAX_KM * 1000,
+        // Use $geoNear (not a linear scan) so distance is computed by Mongo itself;
+        // each pincode's OWN deliveryRadiusKm decides the acceptance threshold,
+        // not a single global constant.
+        const [nearest] = await Pincode.aggregate([
+            {
+                $geoNear: {
+                    near: { type: "Point", coordinates: [lng, lat] },
+                    distanceField: "distanceMeters",
+                    maxDistance: OUTER_SEARCH_KM * 1000,
+                    spherical: true,
+                    query: { status: { $ne: "blocked" } },
                 },
             },
-        }).select("code area city state status").lean();
+            { $limit: 1 },
+            { $project: { code: 1, area: 1, city: 1, state: 1, status: 1, deliveryRadiusKm: 1, distanceMeters: 1 } },
+        ]);
 
         if (!nearest) {
+            return res.json({ success: true, found: false });
+        }
+
+        const allowedKm = Number(nearest.deliveryRadiusKm) > 0 ? Number(nearest.deliveryRadiusKm) : DEFAULT_MAX_KM;
+        if (nearest.distanceMeters > allowedKm * 1000) {
             return res.json({ success: true, found: false });
         }
 
@@ -132,6 +164,7 @@ export const resolveNearestPincode = async (req, res) => {
             city: nearest.city || "",
             state: nearest.state || "",
             status: nearest.status,
+            distanceKm: Math.round((nearest.distanceMeters / 1000) * 10) / 10,
         });
     } catch (err) {
         console.error("[resolveNearestPincode]", err);
@@ -248,7 +281,7 @@ export const getAllPincodes = async (req, res) => {
 /* ── ADMIN: Create pincode ─────────────────────────────────────────── */
 export const createPincode = async (req, res) => {
     try {
-        const { code, status, area, city, district, state, priority, expectedLaunchDate, location } = req.body;
+        const { code, status, area, city, district, state, priority, expectedLaunchDate, location, deliveryRadiusKm } = req.body;
         if (!code || !/^\d{6}$/.test(code)) {
             return res.status(400).json({ success: false, message: "Valid 6-digit pincode is required" });
         }
@@ -263,13 +296,17 @@ export const createPincode = async (req, res) => {
             priority: Number(priority) || 0,
             expectedLaunchDate: expectedLaunchDate ? new Date(expectedLaunchDate) : null,
         };
+        if (deliveryRadiusKm !== undefined && Number.isFinite(Number(deliveryRadiusKm))) {
+            insertData.deliveryRadiusKm = Math.min(25, Math.max(1, Number(deliveryRadiusKm)));
+        }
 
         // FIX: Extract location if provided, format correctly for MongoDB 2dsphere index
-        if (location && Array.isArray(location.coordinates) && location.coordinates.length === 2 && location.coordinates[0] !== null) {
-            insertData.location = {
-                type: "Point",
-                coordinates: [Number(location.coordinates[0]), Number(location.coordinates[1])]
-            };
+        if (location && Array.isArray(location.coordinates) && location.coordinates[0] !== null) {
+            const coords = [Number(location.coordinates[0]), Number(location.coordinates[1])];
+            if (!isValidLngLatPair(coords)) {
+                return res.status(400).json({ success: false, message: "Invalid coordinates — longitude must be -180..180 and latitude -90..90" });
+            }
+            insertData.location = { type: "Point", coordinates: coords };
         }
 
         // [FIX-PM4] Atomic upsert with $setOnInsert (preserved — prevents race on concurrent admin creates)
@@ -305,13 +342,18 @@ export const updatePincode = async (req, res) => {
         const fields = ["status", "area", "city", "district", "state", "priority", "expectedLaunchDate", "note"];
         fields.forEach((f) => { if (req.body[f] !== undefined) pincode[f] = req.body[f]; });
 
+        if (req.body.deliveryRadiusKm !== undefined && Number.isFinite(Number(req.body.deliveryRadiusKm))) {
+            pincode.deliveryRadiusKm = Math.min(25, Math.max(1, Number(req.body.deliveryRadiusKm)));
+        }
+
         // FIX: Support updating location properly
         if (req.body.location !== undefined) {
-            if (req.body.location && Array.isArray(req.body.location.coordinates) && req.body.location.coordinates.length === 2 && req.body.location.coordinates[0] !== null) {
-                pincode.location = {
-                    type: "Point",
-                    coordinates: [Number(req.body.location.coordinates[0]), Number(req.body.location.coordinates[1])]
-                };
+            if (req.body.location && Array.isArray(req.body.location.coordinates) && req.body.location.coordinates[0] !== null) {
+                const coords = [Number(req.body.location.coordinates[0]), Number(req.body.location.coordinates[1])];
+                if (!isValidLngLatPair(coords)) {
+                    return res.status(400).json({ success: false, message: "Invalid coordinates — longitude must be -180..180 and latitude -90..90" });
+                }
+                pincode.location = { type: "Point", coordinates: coords };
             } else {
                 pincode.location = undefined;
             }

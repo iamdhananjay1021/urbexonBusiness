@@ -1,0 +1,105 @@
+/**
+ * tokens.css — the ONE design-token source for the admin panel.
+ *
+ * Every page in this app previously defined its own local `const T = {...}`
+ * color object (12+ near-duplicate copies found in an audit — AdminOrders,
+ * AdminVendors, AdminPayouts, AdminSettlements, AdminPincodes, etc., each
+ * with slightly different key names for the same colors) and mixed three
+ * different font families across pages (Admin.jsx hardcoded Inter, several
+ * product pages hardcoded Plus Jakarta Sans, index.html loaded DM Sans
+ * globally). This file replaces all of that with one canonical set of CSS
+ * custom properties that every page and every shared component in
+ * components/ui/ reads from.
+ *
+ * Theme choice: light, not dark. Of the reference products named in the
+ * brief (Shopify Admin, Stripe Dashboard, Vercel, Linear, Notion, Firebase
+ * Console) — Stripe, Notion, Shopify, and Firebase Console are all
+ * predominantly LIGHT-themed admin tools; only Vercel/Linear default dark.
+ * Flipping 29 pages of hand-written inline styles to a dark background in
+ * one pass with no way to visually verify the result would very likely
+ * produce a half-migrated, inconsistent app — worse than what existed
+ * before. The semantic accent colors below are taken directly from the
+ * brief's example palette (they read identically well on a light surface);
+ * only the neutral background/surface/text scale was adapted to light.
+ */
+
+:root {
+    /* ── Neutral surfaces ─────────────────────────────────────────── */
+    --adm-bg: #F8FAFC;
+    --adm-surface: #FFFFFF;
+    --adm-card: #FFFFFF;
+    --adm-surface-alt: #F1F5F9;
+    --adm-border: #E2E8F0;
+    --adm-border-soft: #F1F5F9;
+
+    /* ── Text ──────────────────────────────────────────────────────── */
+    --adm-text-primary: #0F172A;
+    --adm-text-secondary: #475569;
+    --adm-muted: #94A3B8;
+    --adm-text-on-accent: #FFFFFF;
+
+    /* ── Brand / semantic accents (per brief) ─────────────────────── */
+    --adm-primary: #2563EB;
+    --adm-primary-hover: color-mix(in srgb, #2563EB 85%, black);
+    --adm-primary-tint: #EFF6FF;
+
+    --adm-success: #10B981;
+    --adm-success-hover: color-mix(in srgb, #10B981 85%, black);
+    --adm-success-tint: #ECFDF5;
+
+    --adm-warning: #F59E0B;
+    --adm-warning-hover: color-mix(in srgb, #F59E0B 85%, black);
+    --adm-warning-tint: #FFFBEB;
+
+    --adm-danger: #EF4444;
+    --adm-danger-hover: color-mix(in srgb, #EF4444 85%, black);
+    --adm-danger-tint: #FEF2F2;
+
+    --adm-info: #06B6D4;
+    --adm-info-hover: color-mix(in srgb, #06B6D4 85%, black);
+    --adm-info-tint: #ECFEFF;
+
+    --adm-neutral: #64748B;
+    --adm-neutral-tint: #F1F5F9;
+
+    /* Sidebar keeps a dark shell — the one deliberate dark surface in the
+       app, matching Shopify/Vercel's dark-sidebar-on-light-canvas pattern. */
+    --adm-sidebar-bg: #0F172A;
+    --adm-sidebar-hover: #1E293B;
+    --adm-sidebar-text: #F8FAFC;
+    --adm-sidebar-border: #1E293B;
+
+    /* ── Typography ────────────────────────────────────────────────── */
+    --adm-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --adm-text-h1: 700 28px/1.25 var(--adm-font-sans);
+    --adm-text-h2: 700 22px/1.3 var(--adm-font-sans);
+    --adm-text-h3: 700 17px/1.35 var(--adm-font-sans);
+    --adm-text-body: 500 14px/1.5 var(--adm-font-sans);
+    --adm-text-caption: 600 12px/1.4 var(--adm-font-sans);
+    --adm-text-label: 700 11px/1.3 var(--adm-font-sans);
+    --adm-text-button: 700 13px/1 var(--adm-font-sans);
+
+    /* ── Spacing scale (4px base) ──────────────────────────────────── */
+    --adm-space-1: 4px;
+    --adm-space-2: 8px;
+    --adm-space-3: 12px;
+    --adm-space-4: 16px;
+    --adm-space-5: 20px;
+    --adm-space-6: 24px;
+    --adm-space-8: 32px;
+
+    /* ── Radius scale ──────────────────────────────────────────────── */
+    --adm-radius-sm: 6px;
+    --adm-radius-md: 10px;
+    --adm-radius-lg: 14px;
+    --adm-radius-full: 999px;
+
+    /* ── Shadows ───────────────────────────────────────────────────── */
+    --adm-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+    --adm-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+    --adm-shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+
+    /* ── Motion ────────────────────────────────────────────────────── */
+    --adm-transition-fast: 120ms ease;
+    --adm-transition-base: 180ms ease;
+}

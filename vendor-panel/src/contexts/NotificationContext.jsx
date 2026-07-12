@@ -6,6 +6,7 @@ import {
     useRef,
     useCallback,
 } from "react";
+import api from "../api/axios";
 
 const NotificationContext = createContext(null);
 
@@ -17,6 +18,15 @@ export const NotificationProvider = ({ children }) => {
     const reconnectRef = useRef(null);
     const pingRef = useRef(null);
     const backoffRef = useRef(5000);
+    // Live-tracking needs the raw message stream (rider_location events)
+    // and a way to send join_room — this context already owns the app's
+    // one WebSocket connection, so extend it rather than opening a second
+    // socket just for the tracking map.
+    const [lastMessage, setLastMessage] = useState(null);
+    // Exposed so useLiveTracking can re-join the order room on reconnect
+    // (room membership is wiped server-side on disconnect and is not
+    // auto-restored — the client must re-send join_room every time).
+    const [connected, setConnected] = useState(false);
 
     const playSoundRef = useRef(() => {
         try {
@@ -51,10 +61,34 @@ export const NotificationProvider = ({ children }) => {
         setTimeout(() => setToast(null), 5000);
     }, []);
 
+    // BUG FIX: this used to only flip local React state — the unread badge
+    // reset to 0 on every page refresh even though PlatformNotification was
+    // persisting everything server-side the whole time (notificationEngine.js
+    // has written to it for a while now; nothing ever read it back for
+    // vendors). Now hydrates from /vendor/notifications on mount and
+    // persists mark-all-read to the same store.
+    useEffect(() => {
+        api.get("/vendor/notifications?limit=30")
+            .then(({ data }) => {
+                const persisted = (data?.notifications || []).map((n) => ({
+                    _id: n._id,
+                    title: n.title,
+                    body: n.message,
+                    type: n.type || "info",
+                    data: n.meta || {},
+                    read: !!n.read,
+                    createdAt: n.createdAt,
+                }));
+                setNotifications((prev) => (prev.length ? prev : persisted));
+            })
+            .catch(() => { /* non-fatal — badge just starts empty this session */ });
+    }, []);
+
     const markAllRead = useCallback(() => {
         setNotifications((prev) =>
             prev.map((n) => ({ ...n, read: true }))
         );
+        api.put("/vendor/notifications/read-all").catch(() => { });
     }, []);
 
     const unreadCount = notifications.filter((n) => !n.read).length;
@@ -92,6 +126,7 @@ export const NotificationProvider = ({ children }) => {
                     console.log("[Vendor WS] Connected to:", wsBase);
                     backoffRef.current = 3000;
                     retries = 0;
+                    setConnected(true);
                     pingRef.current = setInterval(() => {
                         if (ws.readyState === WebSocket.OPEN) {
                             ws.send(JSON.stringify({ type: "ping" }));
@@ -102,6 +137,7 @@ export const NotificationProvider = ({ children }) => {
                 ws.onmessage = (event) => {
                     try {
                         const msg = JSON.parse(event.data);
+                        setLastMessage(msg);
 
                         if (msg.type === "new_order") {
                             playSoundRef.current();
@@ -150,6 +186,7 @@ export const NotificationProvider = ({ children }) => {
 
                 ws.onclose = () => {
                     clearInterval(pingRef.current);
+                    setConnected(false);
                     if (retries < MAX_RETRIES) {
                         retries++;
                         const delay = backoffRef.current;
@@ -186,6 +223,12 @@ export const NotificationProvider = ({ children }) => {
         };
     }, [addNotification]);
 
+    const sendWs = useCallback((type, payload = {}) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type, ...payload }));
+        }
+    }, []);
+
     return (
         <NotificationContext.Provider
             value={{
@@ -194,6 +237,9 @@ export const NotificationProvider = ({ children }) => {
                 unreadCount,
                 addNotification,
                 markAllRead,
+                lastMessage,
+                sendWs,
+                connected,
             }}
         >
             {children}

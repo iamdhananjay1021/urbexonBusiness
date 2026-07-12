@@ -16,6 +16,7 @@
  */
 import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
 import Order from "../../models/Order.js";
+import Vendor from "../../models/vendorModels/Vendor.js";
 import { uploadToCloudinary } from "../../config/cloudinary.js";
 import { sendNotification as sendToUser } from "../../utils/notificationQueue.js";
 import { sendEmailBackground } from "../../utils/emailService.js";
@@ -24,6 +25,10 @@ import { DELIVERY_CONFIG } from "../../config/deliveryConfig.js";
 import { getRedis, isRedisUp } from "../../config/redis.js";
 import { handleRiderAccept, handleRiderReject, handleRiderCancel, MAX_ACTIVE_ORDERS } from "../../services/assignmentEngine.js";
 import { sendOrderStatusPush } from "../../services/fcmService.js";
+import { haversineKm, isPlausibleIndiaLatLng, isPlausibleMovement } from "../../services/geoEngine.js";
+import { applyOrderTransition, buildTimelineEntry, notifyOrderStakeholders } from "../../services/orderEngine.js";
+import { settleAllVendorsForOrder } from "../../services/settlementEngine.js";
+import { sendWhatsAppMessage, isWhatsAppConfigured } from "../../services/whatsappService.js";
 
 const genOtp = () => String(Math.floor(1000 + Math.random() * 9000));
 const DELIVERY_EARNING_BASE = 25;
@@ -34,15 +39,6 @@ const DELIVERY_EARNING_MAX = 120;
 const calcDeliveryEarning = (distanceKm = 0) => {
     const earning = DELIVERY_EARNING_BASE + (distanceKm * DELIVERY_EARNING_PER_KM);
     return Math.min(Math.max(Math.round(earning), DELIVERY_EARNING_MIN), DELIVERY_EARNING_MAX);
-};
-
-const haversineKm = (lat1, lng1, lat2, lng2) => {
-    const toRad = d => (d * Math.PI) / 180;
-    const R = 6371;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
 // ── POST /api/delivery/register ──────────────────────────
@@ -184,11 +180,33 @@ export const getDeliveryOrders = async (req, res) => {
         }
 
         // ✅ FIXED: My active orders — removed LOCAL_RIDER filter
-        const myOrders = await Order.find({
+        const myOrdersRaw = await Order.find({
             orderMode: "URBEXON_HOUR",
             "delivery.assignedTo": db._id,
             orderStatus: { $in: ["READY_FOR_PICKUP", "OUT_FOR_DELIVERY", "DELIVERED"] },
         }).sort({ createdAt: -1 }).limit(30).lean();
+
+        // BUG FIX: the rider had no way to see the vendor's location at all
+        // (order documents don't carry it) — the delivery-panel map could
+        // only ever show the customer's address, never the pickup point, so
+        // "Heading to Store" had nothing to navigate by. Attach each order's
+        // vendor coordinates/name here so the frontend can render both.
+        const vendorIds = [...new Set(myOrdersRaw.map((o) => o.vendorId?.toString()).filter(Boolean))];
+        const vendorsById = {};
+        if (vendorIds.length > 0) {
+            const vendors = await Vendor.find({ _id: { $in: vendorIds } }).select("shopName location address").lean();
+            vendors.forEach((v) => { vendorsById[v._id.toString()] = v; });
+        }
+        const myOrders = myOrdersRaw.map((o) => {
+            const vendor = o.vendorId ? vendorsById[o.vendorId.toString()] : null;
+            const coords = vendor?.location?.coordinates;
+            return {
+                ...o,
+                vendorName: vendor?.shopName || "",
+                vendorLat: coords?.length === 2 ? coords[1] : null,
+                vendorLng: coords?.length === 2 ? coords[0] : null,
+            };
+        });
 
         const stats = {
             todayDeliveries: db.todayDeliveries || 0,
@@ -238,13 +256,10 @@ export const acceptOrder = async (req, res) => {
             },
         });
 
-        if (order.user) {
-            sendToUser(String(order.user), "order_status", {
-                orderId: order._id, status: "RIDER_ASSIGNED",
-                riderName: db.name, riderPhone: db.phone,
-                message: `Rider ${db.name} accepted your order. Will pick up soon!`,
-            });
-        }
+        // BUG FIX: this used to send its own ad-hoc customer notification
+        // here — now redundant (and a duplicate-notification bug) since
+        // handleRiderAccept() already notifies customer + vendor + rider
+        // once, centrally, via notifyOrderStakeholders().
 
         res.json({ success: true, order, message: "Order accepted" });
 
@@ -278,15 +293,36 @@ export const pickupOrder = async (req, res) => {
 
         // ✅ BUG4 FIX: delivery.status must match orderStatus (OUT_FOR_DELIVERY, not PICKED_UP)
         // "PICKED_UP" is an internal event — admin dashboard checks delivery.status for display
-        order.orderStatus = "OUT_FOR_DELIVERY";
-        order.delivery.pickedUpAt = new Date();
-        order.delivery.status = "OUT_FOR_DELIVERY";  // ✅ FIXED: was "PICKED_UP" — caused wrong status in admin
-        const existing = order.statusTimeline?.toObject ? order.statusTimeline.toObject() : { ...order.statusTimeline };
-        order.statusTimeline = { ...existing, outForDeliveryAt: new Date() };
-        order.markModified("statusTimeline");
-        order.timeline = order.timeline || [];
-        order.timeline.push({ status: "PICKED_UP", timestamp: new Date(), note: `Picked up by ${db.name}` });
-        await order.save();
+        //
+        // Atomic + auditable: conditions the write on orderStatus still
+        // being READY_FOR_PICKUP at write time — a double-tap pickup
+        // button (or a retried request after a slow response) previously
+        // raced a plain findById→save(), letting duplicate timeline
+        // entries and pickedUpAt overwrites through.
+        const updated = await applyOrderTransition({
+            orderId: order._id,
+            fromStatuses: ["READY_FOR_PICKUP"],
+            toStatus: "OUT_FOR_DELIVERY",
+            setFields: {
+                "delivery.pickedUpAt": new Date(),
+                "delivery.status": "OUT_FOR_DELIVERY", // ✅ FIXED: was "PICKED_UP" — caused wrong status in admin
+                "statusTimeline.outForDeliveryAt": new Date(),
+            },
+            timelineEntry: buildTimelineEntry({
+                status: "PICKED_UP",
+                actorId: req.user._id,
+                role: "delivery",
+                source: "delivery_panel",
+                note: `Picked up by ${db.name}`,
+            }),
+        });
+        if (!updated) {
+            return res.status(409).json({ success: false, message: "Order status changed concurrently — please refresh and try again" });
+        }
+        order.orderStatus = updated.orderStatus;
+        order.delivery = updated.delivery;
+        order.statusTimeline = updated.statusTimeline;
+        order.deliveryOtp = updated.deliveryOtp;
 
         // ✅ BUG1 FIX: Send OTP to customer in pickup notification
         // Customer needs OTP to verify delivery at doorstep
@@ -302,6 +338,21 @@ export const pickupOrder = async (req, res) => {
                 // ✅ FIXED: OTP now included so customer can see it without refreshing
                 otp: otpForCustomer,
             });
+        }
+
+        // Vendor + admin need to see "picked up / out for delivery" too —
+        // skipCustomer:true since the customer already got the richer
+        // message above (with their delivery OTP, which must never reach
+        // vendor/admin).
+        notifyOrderStakeholders(order, "picked_up", {
+            status: "OUT_FOR_DELIVERY",
+            deliveryStatus: "OUT_FOR_DELIVERY",
+            riderName: db.name,
+        }, { skipCustomer: true }).catch((err) => console.warn("[pickupOrder] stakeholder notify failed:", err.message));
+
+        if (isWhatsAppConfigured() && order.phone) {
+            sendWhatsAppMessage({ to: order.phone, message: `Your order is out for delivery with ${db.name}!` })
+                .catch((err) => console.warn("[pickupOrder] WhatsApp failed:", err.message));
         }
 
         res.json({ success: true, message: "Order picked up and out for delivery", order: order.toObject() });
@@ -361,11 +412,13 @@ export const markDelivered = async (req, res) => {
                     }),
                 },
                 $push: {
-                    timeline: {
+                    timeline: buildTimelineEntry({
                         status: "DELIVERED",
-                        timestamp: new Date(),
+                        actorId: req.user._id,
+                        role: "delivery",
+                        source: "delivery_panel",
                         note: `OTP verified, delivered by ${db.name}`,
-                    },
+                    }),
                 },
             },
             { new: true }
@@ -374,6 +427,14 @@ export const markDelivered = async (req, res) => {
         if (!updated) {
             return res.status(400).json({ success: false, message: "Order already delivered or invalid state" });
         }
+
+        // GAP FIX: this is the ONLY one of three delivery-completion paths
+        // (admin force-update, vendor self-delivery, rider markDelivered)
+        // that never created a vendor Settlement — a LOCAL_RIDER-delivered
+        // Urbexon Hour order was silently never paid out to its vendor.
+        settleAllVendorsForOrder(updated).catch((err) =>
+            console.error("[Settlement] Auto-create failed:", updated._id, err.message)
+        );
 
         const distanceKm = order.delivery?.distanceKm || 0;
         const earning = calcDeliveryEarning(distanceKm);
@@ -396,11 +457,18 @@ export const markDelivered = async (req, res) => {
             { $set: { activeOrders: 0 } }
         );
 
-        if (order.user) {
-            sendToUser(String(order.user), "order_status", {
-                orderId: order._id, status: "DELIVERED",
-                message: "Your order has been delivered! Enjoy!",
-            });
+        // Customer + vendor + admin all need to know the order is done —
+        // no sensitive OTP in this payload, so one consolidated call
+        // covers everyone (was customer-only sendToUser before).
+        notifyOrderStakeholders(updated, "delivered", {
+            status: "DELIVERED",
+            deliveryStatus: "DELIVERED",
+            message: "Your order has been delivered! Enjoy!",
+        }).catch((err) => console.warn("[markDelivered] stakeholder notify failed:", err.message));
+
+        if (isWhatsAppConfigured() && updated.phone) {
+            sendWhatsAppMessage({ to: updated.phone, message: "Your order has been delivered. Enjoy!" })
+                .catch((err) => console.warn("[markDelivered] WhatsApp failed:", err.message));
         }
 
         res.json({ success: true, message: "Order delivered successfully", earning });
@@ -420,6 +488,12 @@ export const updateRiderLocation = async (req, res) => {
         const numLng = Number(lng);
         const gpsTimestamp = Number.isFinite(Number(timestamp)) ? Number(timestamp) : null;
 
+        // Security: never trust frontend coordinates blindly — reject
+        // out-of-range/impossible values outright (spoofed or garbage fixes).
+        if (!isPlausibleIndiaLatLng(numLat, numLng)) {
+            return res.status(400).json({ success: false, message: "Invalid coordinates" });
+        }
+
         // BUG FIX: the delivery-panel runs a real-time `watchPosition` AND a
         // 15s-interval `getCurrentPosition` fallback simultaneously, each
         // independently PATCHing this endpoint — since this used to write
@@ -431,10 +505,24 @@ export const updateRiderLocation = async (req, res) => {
         // own GPS timestamp is at least as new as whatever's already
         // stored — a client not sending `timestamp` at all keeps the old
         // always-accept behavior (backward compatible).
+        //
+        // Fetched unconditionally (not just when gpsTimestamp is present)
+        // because the live-tracking speed/heading calc below also needs
+        // this previous fix, regardless of whether staleness/anti-spoof
+        // checks apply to this particular request.
+        const existing = await DeliveryBoy.findOne({ userId: req.user._id })
+            .select("location.gpsTimestamp location.lat location.lng")
+            .lean();
+
         if (gpsTimestamp !== null) {
-            const existing = await DeliveryBoy.findOne({ userId: req.user._id }).select("location.gpsTimestamp").lean();
             if (existing?.location?.gpsTimestamp && gpsTimestamp < existing.location.gpsTimestamp) {
                 return res.json({ success: true, ignored: true, reason: "stale_fix" });
+            }
+            // Security: reject a fix that implies teleporting faster than any
+            // real vehicle could travel — a spoofed/garbage GPS jump that
+            // still happens to be inside India's bounding box.
+            if (!isPlausibleMovement(existing?.location?.lat, existing?.location?.lng, existing?.location?.gpsTimestamp, numLat, numLng, gpsTimestamp)) {
+                return res.json({ success: true, ignored: true, reason: "implausible_jump" });
             }
         }
 
@@ -466,9 +554,29 @@ export const updateRiderLocation = async (req, res) => {
 
             const order = await Order.findById(orderId).select("user").lean();
             if (order?.user) {
+                // BUG FIX: this push used to carry ONLY raw lat/lng — no
+                // leg/distanceKm/etaText/speed/heading — even though this
+                // REST-PATCH path (not a WS message) is the ONLY way any
+                // frontend actually reports rider GPS (confirmed: the
+                // delivery-panel never sends a `rider:location:update` WS
+                // message). That meant the map's distance/ETA/leg overlay
+                // only ever updated via the 15s polling fallback, never via
+                // the "live" WS push — exactly backwards from the
+                // WS-primary/polling-fallback design intent. Computing the
+                // same full tracking payload here as the poll endpoint
+                // closes that gap; speedKmph/headingDeg are new fields
+                // (derived from this fix vs. the previous one).
+                const { computeLiveTrackingInfo } = await import("../../services/liveTrackingEngine.js");
+                const tracking = await computeLiveTrackingInfo(
+                    orderId, numLat, numLng,
+                    existing?.location || null,
+                    gpsTimestamp
+                ).catch(() => null);
+
                 sendToUser(String(order.user), "rider_location", {
                     orderId, lat: numLat, lng: numLng, riderName: db.name,
                     riderPhone: db.phone, at: new Date().toISOString(),
+                    ...(tracking || {}),
                 });
             }
         }
@@ -605,15 +713,30 @@ const isLocationStale = (updatedAt) => {
 export const getRiderLocationForOrder = async (req, res) => {
     try {
         const Order = (await import("../../models/Order.js")).default;
-        const order = await Order.findById(req.params.id).select("delivery user").lean();
+        const order = await Order.findById(req.params.id).select("delivery user vendorId").lean();
         if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
         const isOwner = String(order.user) === String(req.user._id);
         const isAdmin = ["admin", "owner"].includes(req.user.role);
-        if (!isOwner && !isAdmin) return res.status(403).json({ success: false, message: "Not authorized" });
+        // SECURITY GAP FIX: the vendor fulfilling this order had no read
+        // access to its own rider's location at all — only the customer
+        // and admin were ever checked, even though vendor-panel's new live
+        // map needs exactly this endpoint as its polling fallback.
+        let isVendor = false;
+        if (!isOwner && !isAdmin && order.vendorId && req.user.role === "vendor") {
+            const Vendor = (await import("../../models/vendorModels/Vendor.js")).default;
+            const vendor = await Vendor.findById(order.vendorId).select("userId").lean();
+            isVendor = !!vendor && String(vendor.userId) === String(req.user._id);
+        }
+        if (!isOwner && !isAdmin && !isVendor) return res.status(403).json({ success: false, message: "Not authorized" });
 
         if (!order.delivery?.assignedTo)
             return res.json({ success: true, available: false, message: "No rider assigned yet" });
+
+        const { computeLiveTrackingInfo } = await import("../../services/liveTrackingEngine.js");
+        const withLiveInfo = async (lat, lng) => {
+            try { return await computeLiveTrackingInfo(req.params.id, lat, lng); } catch { return null; }
+        };
 
         if (isRedisUp()) {
             const redis = getRedis();
@@ -622,6 +745,7 @@ export const getRiderLocationForOrder = async (req, res) => {
                 if (cached) {
                     const loc = JSON.parse(cached);
                     const rider = await DeliveryBoy.findById(order.delivery.assignedTo).select("name phone isOnline").lean();
+                    const liveInfo = await withLiveInfo(loc.lat, loc.lng);
                     return res.json({
                         success: true, available: true, stale: isLocationStale(loc.updatedAt), source: "redis",
                         rider: {
@@ -630,6 +754,7 @@ export const getRiderLocationForOrder = async (req, res) => {
                             isOnline: rider?.isOnline ?? true,
                             lat: loc.lat, lng: loc.lng, updatedAt: loc.updatedAt,
                         },
+                        ...(liveInfo || {}),
                     });
                 }
             } catch { /* fall through */ }
@@ -640,6 +765,7 @@ export const getRiderLocationForOrder = async (req, res) => {
         if (!rider) return res.json({ success: true, available: false });
 
         const hasCoords = !!(rider.location?.lat && rider.location?.lng);
+        const liveInfo = hasCoords ? await withLiveInfo(rider.location.lat, rider.location.lng) : null;
         res.json({
             success: true,
             available: hasCoords,
@@ -650,6 +776,7 @@ export const getRiderLocationForOrder = async (req, res) => {
                 lat: rider.location?.lat || null, lng: rider.location?.lng || null,
                 updatedAt: rider.location?.updatedAt || null,
             },
+            ...(liveInfo || {}),
         });
     } catch (err) {
         res.status(500).json({ success: false, message: "Failed to fetch rider location" });
@@ -747,17 +874,18 @@ export const updateDeliveryStatus = async (req, res) => {
         order.timeline.push({ status, timestamp: new Date(), note: `${status} by ${db.name}` });
         await order.save();
 
-        if (order.user) {
-            const messages = {
-                ARRIVING_VENDOR: "Rider is heading to the store to pick up your order.",
-            };
-            sendToUser(String(order.user), "order_status", {
-                orderId: order._id, status,
-                riderName: db.name, riderPhone: db.phone,
-                message: messages[status] || `Delivery status: ${status}`,
-                deliveryStatus: status,
-            });
-        }
+        // Vendor wants to know their rider is en route to pick up too
+        // ("Vendor sees rider + pickup status" per the live-tracking spec) —
+        // was customer-only before.
+        const messages = {
+            ARRIVING_VENDOR: "Rider is heading to the store to pick up your order.",
+        };
+        notifyOrderStakeholders(order, "delivery_status_update", {
+            status: order.orderStatus,
+            deliveryStatus: status,
+            riderName: db.name,
+            message: messages[status] || `Delivery status: ${status}`,
+        }).catch((err) => console.warn("[updateDeliveryStatus] stakeholder notify failed:", err.message));
 
         res.json({ success: true, message: `Status updated to ${status}` });
     } catch (err) {

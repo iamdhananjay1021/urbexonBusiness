@@ -203,6 +203,27 @@ export const markCouponUsed = async (couponId, userId) => {
 };
 
 /**
+ * Rollback a coupon's usage on order cancellation. No counterpart to this
+ * existed anywhere in the codebase before — a cancelled order permanently
+ * burned the customer's one-time coupon use and the coupon's global
+ * usedCount. Atomic and safe to call even if the coupon was never actually
+ * marked used for this user (no-op in that case).
+ */
+export const unmarkCouponUsed = async ({ couponId, couponCode, userId }) => {
+    if (!userId || (!couponId && !couponCode)) return;
+    // Order.coupon only stores the code snapshot, not the coupon's _id, so
+    // this accepts either — most callers (cancellation) only have the code.
+    const filter = couponId
+        ? { _id: couponId, "usedBy.userId": userId }
+        : { code: String(couponCode).toUpperCase(), "usedBy.userId": userId };
+    const result = await Coupon.findOneAndUpdate(
+        filter,
+        { $inc: { usedCount: -1 }, $pull: { usedBy: { userId } } }
+    );
+    if (!result) console.warn(`[CouponUsed] Could not unmark coupon ${couponId || couponCode} for user ${userId} (not found or already unmarked)`);
+};
+
+/**
  * [FIX-D1] Normalize an incoming distanceKm value.
  * Returns:
  *   - `known`: the real, storable distance value → Number or null (null = genuinely unknown)
@@ -228,18 +249,23 @@ export const calculateOrderPricing = async (frontendItems, paymentMethod, option
     const deliveryType = options.deliveryType || DELIVERY_TYPES.ECOMMERCE_STANDARD;
 
     // [FIX-D1] known = what we store/display (null when genuinely unknown)
-    //          forCalc = safe number for charge/provider/eta math
+    //          forCalc = safe number for charge/provider math
     const { known: distanceKm, forCalc: distanceKmForCalc } = resolveDistanceKm(options.distanceKm);
 
-    const deliveryCharge = calcDeliveryCharge(itemsTotal, paymentMethod, { deliveryType, distanceKm: distanceKmForCalc });
-
-    // Fetch fresh on every order (not cached) so a vendor flipping their
-    // delivery-mode toggle takes effect immediately on their next order.
-    let vendorDeliveryMode;
+    // Fetch the vendor ONCE — reused for charge override, ETA (prep time +
+    // delivery mode), and provider routing, instead of three separate
+    // queries for the same document across this function. Fetched fresh
+    // on every order (not cached) so a vendor flipping delivery-mode/prep
+    // time/charge overrides takes effect immediately on their next order.
+    let vendor = null;
     if (deliveryType === DELIVERY_TYPES.URBEXON_HOUR && options.vendorId) {
-        const vendor = await Vendor.findById(options.vendorId).select("deliveryMode").lean();
-        vendorDeliveryMode = vendor?.deliveryMode;
+        vendor = await Vendor.findById(options.vendorId)
+            .select("deliveryMode preparationTime deliveryChargePerKm freeDeliveryAbove")
+            .lean();
     }
+    const vendorDeliveryMode = vendor?.deliveryMode;
+
+    const deliveryCharge = calcDeliveryCharge(itemsTotal, paymentMethod, { deliveryType, distanceKm: distanceKmForCalc, vendor });
 
     // Coupon
     const orderType = deliveryType === DELIVERY_TYPES.URBEXON_HOUR ? "urbexon_hour" : "ecommerce";
@@ -267,7 +293,15 @@ export const calculateOrderPricing = async (frontendItems, paymentMethod, option
         // Callers (orderController.js → Order model → frontend) must treat
         // null distinctly from 0 for correct "—" vs "0.0 km" rendering.
         distanceKm,
-        deliveryETA: getDeliveryETA({ pincode: options.pincode, paymentMethod, deliveryType }),
+        // distanceKm (the nullable "known" value, not distanceKmForCalc) so
+        // an order with genuinely-unknown distance keeps the static ETA
+        // text instead of computing an ETA against a fake 0km.
+        deliveryETA: getDeliveryETA({
+            deliveryType,
+            distanceKm,
+            preparationTimeMin: vendor?.preparationTime,
+            vendorDeliveryMode,
+        }),
         deliveryProvider: getDeliveryProvider({ deliveryType, distanceKm: distanceKmForCalc, vendorDeliveryMode }),
     };
 };

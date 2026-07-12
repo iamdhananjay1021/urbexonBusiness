@@ -52,12 +52,34 @@ const validateDeliveryConfig = (body) => {
         }
     }
 
-    const positiveFields = ["uhMaxRadiusKm", "uhVendorSelfRadiusKm"];
+    const positiveFields = [
+        "uhMaxRadiusKm", "uhVendorSelfRadiusKm",
+        "avgRiderSpeedKmph", "minVendorRadiusKm", "maxVendorRadiusKm", "defaultVendorRadiusKm",
+    ];
     for (const f of positiveFields) {
         if (body[f] !== undefined) {
             const v = Number(body[f]);
             if (isNaN(v) || v <= 0) errors.push(`${f} must be > 0`);
         }
+    }
+
+    if (body.defaultPrepTimeMin !== undefined) {
+        const v = Number(body.defaultPrepTimeMin);
+        if (isNaN(v) || v < 0) errors.push("defaultPrepTimeMin must be >= 0");
+    }
+
+    // Vendor radius bounds must stay internally consistent AND never exceed
+    // the platform's absolute hard safety ceiling (10km) — admin can only
+    // ever tighten this window, never widen it past that hard limit.
+    const HARD_MAX_RADIUS_KM = 10;
+    const minR = body.minVendorRadiusKm !== undefined ? Number(body.minVendorRadiusKm) : undefined;
+    const maxR = body.maxVendorRadiusKm !== undefined ? Number(body.maxVendorRadiusKm) : undefined;
+    const defR = body.defaultVendorRadiusKm !== undefined ? Number(body.defaultVendorRadiusKm) : undefined;
+    if (maxR !== undefined && maxR > HARD_MAX_RADIUS_KM) errors.push(`maxVendorRadiusKm cannot exceed the platform hard limit of ${HARD_MAX_RADIUS_KM}km`);
+    if (minR !== undefined && maxR !== undefined && minR > maxR) errors.push("minVendorRadiusKm cannot exceed maxVendorRadiusKm");
+    if (defR !== undefined) {
+        if (minR !== undefined && defR < minR) errors.push("defaultVendorRadiusKm cannot be below minVendorRadiusKm");
+        if (maxR !== undefined && defR > maxR) errors.push("defaultVendorRadiusKm cannot exceed maxVendorRadiusKm");
     }
 
     if (body.shopLat !== undefined) {
@@ -104,6 +126,8 @@ export const updateDeliveryConfig = async (req, res) => {
             "shopLat", "shopLng", "shopPincode",
             "codAvailablePanIndia", "returnDays",
             "shiprocketPickupLocation",
+            "avgRiderSpeedKmph", "defaultPrepTimeMin",
+            "minVendorRadiusKm", "maxVendorRadiusKm", "defaultVendorRadiusKm",
         ];
 
         const updates = {};
@@ -162,6 +186,11 @@ export const getPublicDeliveryConfig = async (_req, res) => {
             etaUrbexonHour: config.etaUrbexonHour,
             codAvailablePanIndia: config.codAvailablePanIndia,
             returnDays: config.returnDays,
+            avgRiderSpeedKmph: config.avgRiderSpeedKmph,
+            defaultPrepTimeMin: config.defaultPrepTimeMin,
+            minVendorRadiusKm: config.minVendorRadiusKm,
+            maxVendorRadiusKm: config.maxVendorRadiusKm,
+            defaultVendorRadiusKm: config.defaultVendorRadiusKm,
         };
 
         await safeSetCache(PUBLIC_CACHE_KEY, publicData, CONFIG_TTL);

@@ -1,10 +1,13 @@
 /**
  * OrderDetail.jsx - Vendor Order Detail View
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { FiArrowLeft, FiPackage, FiUser, FiMapPin, FiClock, FiTruck } from "react-icons/fi";
+import LiveTrackingMap from "../components/LiveTrackingMap";
+import { useLiveTracking } from "../hooks/useLiveTracking";
+import { useNotifications } from "../contexts/NotificationContext";
 
 const STATUS_CFG = {
     PLACED: { bg: "#fef3c7", c: "#92400e", l: "Pending" },
@@ -28,6 +31,28 @@ const OrderDetail = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [deliveryOtp, setDeliveryOtp] = useState("");
+
+    // BUG FIX: vendor-panel had no live-tracking capability at all — not
+    // even leaflet/react-leaflet installed. Reuses the app's ONE existing
+    // WebSocket connection (NotificationContext's socket) instead of
+    // opening a second one just for this map.
+    const { lastMessage, sendWs, connected } = useNotifications();
+    const isRiderAssigned = !!order?.delivery?.assignedTo && !["DELIVERED", "CANCELLED"].includes(order?.orderStatus);
+    const joinRoom = useCallback(() => {
+        if (id) sendWs("join_room", { room: `order:${id}` });
+    }, [sendWs, id]);
+    const fetchLocation = useCallback(async () => {
+        const { data } = await api.get(`/delivery/orders/${id}/rider-location`);
+        return data;
+    }, [id]);
+    const tracking = useLiveTracking({
+        orderId: id,
+        enabled: isRiderAssigned,
+        wsMessage: lastMessage,
+        joinRoom,
+        fetchLocation,
+        connected,
+    });
 
     const loadOrder = async () => {
         try {
@@ -172,6 +197,33 @@ const OrderDetail = () => {
                         <div><span style={{ color: "#9ca3af" }}>Mode: </span><strong>{selfDelivery ? "Vendor Self Delivery" : riderDelivery ? "Delivery Partner" : "Standard Delivery"}</strong></div>
                         {order.delivery.riderName && <div><span style={{ color: "#9ca3af" }}>Rider: </span><strong>{order.delivery.riderName}</strong></div>}
                     </div>
+
+                    {/* Live map — previously this card was text-only, no
+                        location/map of any kind. */}
+                    {isRiderAssigned && tracking.riderPos && (
+                        <div style={{ marginTop: 14, borderRadius: 10, overflow: "hidden", border: "1px solid #f1f5f9" }}>
+                            <LiveTrackingMap
+                                riderLat={tracking.riderPos[0]}
+                                riderLng={tracking.riderPos[1]}
+                                riderName={tracking.riderName || order.delivery?.riderName || "Delivery Partner"}
+                                vendorLat={tracking.vendorPos?.[0]}
+                                vendorLng={tracking.vendorPos?.[1]}
+                                vendorLabel="Your Shop"
+                                destLat={order.latitude}
+                                destLng={order.longitude}
+                                destLabel={order.address || "Customer"}
+                                leg={tracking.leg}
+                                distanceKm={tracking.distanceKm}
+                                etaText={tracking.etaText}
+                                speedKmph={tracking.speedKmph}
+                                headingDeg={tracking.headingDeg}
+                                status={order.delivery?.status}
+                                stale={tracking.stale}
+                                lastUpdated={tracking.lastUpdated}
+                                height={200}
+                            />
+                        </div>
+                    )}
                 </div>
             )}
 

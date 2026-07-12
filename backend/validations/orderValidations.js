@@ -53,6 +53,7 @@ import Pincode from "../models/vendorModels/Pincode.js";
 import Coupon from "../models/Coupon.js";
 import Vendor from "../models/vendorModels/Vendor.js";
 import { DELIVERY_CONFIG, DELIVERY_TYPES } from "../config/deliveryConfig.js";
+import { haversineKm } from "../services/geoEngine.js";
 
 /* ─────────────────────────────────────────────────────────────
    HELPER: Detect order channel from items (DB lookup)
@@ -337,9 +338,32 @@ export const validateDeliveryServiceability = async (
         throw new Error("Urbexon Hour delivery is currently unavailable");
 
     const vendor = await Vendor.findById(vendorId)
-        .select("location deliveryRadius servicePincodes")
+        .select("location deliveryRadius servicePincodes status isOpen acceptingOrders subscription deliveryMode preparationTime")
         .lean();
     if (!vendor) throw new Error("Vendor not found.");
+
+    // ── Vendor Status → Store Open/Closed → Subscription gate ──
+    // Vendor-discovery listings (Vendor.findActiveForPincode / findNearby)
+    // already filter on these same fields, but a vendor can flip
+    // approved→suspended or open→closed in the gap between a customer
+    // browsing and checking out — nothing previously re-verified any of
+    // this at order time, so re-check the identical "is this vendor truly
+    // live" gate here too, before any distance/pincode math runs.
+    if (vendor.status !== "approved") {
+        throw new Error("This vendor is currently unavailable.");
+    }
+    if (vendor.isOpen === false) {
+        throw new Error("This vendor is closed right now. Please try again later.");
+    }
+    if (vendor.acceptingOrders === false) {
+        throw new Error("This vendor is not accepting orders right now.");
+    }
+    const subscriptionActive =
+        vendor.subscription?.isActive &&
+        (!vendor.subscription?.expiryDate || new Date(vendor.subscription.expiryDate) > new Date());
+    if (!subscriptionActive) {
+        throw new Error("This vendor is temporarily unavailable.");
+    }
 
     const hasValidCoords =
         vendor.location?.coordinates?.length === 2 &&
@@ -408,19 +432,7 @@ export const validateDeliveryServiceability = async (
         HARD_MAX_RADIUS_KM
     );
 
-    const toRad = (d) => (d * Math.PI) / 180;
-    const R = 6371;
-    const dLat = toRad(orderLat - shopLat);
-    const dLon = toRad(orderLng - shopLng);
-    const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(shopLat)) *
-        Math.cos(toRad(orderLat)) *
-        Math.sin(dLon / 2) ** 2;
-    const realDistanceKm =
-        Math.round(
-            R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10
-        ) / 10;
+    const realDistanceKm = Math.round(haversineKm(shopLat, shopLng, orderLat, orderLng) * 10) / 10;
 
     if (realDistanceKm > maxRadius) {
         throw new Error(

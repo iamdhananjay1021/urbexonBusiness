@@ -109,6 +109,24 @@ const userSchema = new mongoose.Schema(
             savedAt: { type: Date, default: null },
         },
 
+        // ── Push notification token (web/FCM) — no client registration flow
+        // exists yet to populate this; the field is additive schema support
+        // so notificationEngine.js can send push the moment one does. ──
+        fcmToken: { type: String, default: null },
+
+        // ── Notification channel preferences — all default to "on" so
+        // existing users see zero behavior change until they explicitly
+        // opt out of something. ──
+        notificationPreferences: {
+            sound: { type: Boolean, default: true },
+            muted: { type: Boolean, default: false },
+            push: { type: Boolean, default: true },
+            email: { type: Boolean, default: true },
+            sms: { type: Boolean, default: true },
+            marketing: { type: Boolean, default: true },
+            transactional: { type: Boolean, default: true },
+        },
+
         // ── Password Reset ──
         passwordResetToken: { type: String, default: undefined, select: false },
         passwordResetExpires: { type: Date, default: undefined, select: false },

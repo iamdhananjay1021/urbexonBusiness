@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check controllers/shiprocketController.js)",
+      "Bash(node --check controllers/couponController.js)",
+      "Bash(node --check routes/couponRoutes.js)",
+      "Bash(grep -n \"createdAt\" ../../client/src/contexts/AuthContext.jsx ../controllers/authController.js 2>/dev/null | head -10)",
+      "Read(//c/Ecommerce/client/src/contexts/**)"
+    ]
+  }
+}

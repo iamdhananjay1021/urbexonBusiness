@@ -49,28 +49,23 @@ const saveStoredAuth = (token, user = null) => {
 };
 
 /* -----------------------------
- * Request Interceptor
- * ----------------------------- */
-
-api.interceptors.request.use(
-    (config) => {
-        const auth = getStoredAuth();
-
-        if (auth?.token) {
-            config.headers.Authorization = `Bearer ${auth.token}`;
-        }
-
-        return config;
-    },
-    (error) => Promise.reject(error)
-);
-
-/* -----------------------------
  * Refresh Queue
  * ----------------------------- */
 
 let refreshPromise = null;
 
+// BUG FIX: this used to send the (by-definition expired/expiring) access
+// token as `Authorization: Bearer <token>` on the refresh call. The backend
+// refresh controller never reads that header at all — it authenticates the
+// refresh purely off the httpOnly `refreshToken` cookie — so the header was
+// dead weight at best. At worst, if `/api/auth/refresh` is ever wrapped in
+// the same `protect` middleware used for normal routes, that middleware
+// would try to jwt.verify() this expired token BEFORE the request reaches
+// the refresh controller, reject it with 401 "Token expired", and the
+// refresh endpoint could never succeed once a token actually expired — a
+// chicken-and-egg trap identical in shape to bugs already fixed elsewhere
+// in this codebase. Refresh now relies solely on the cookie (withCredentials
+// already sends it), matching what the backend actually authenticates with.
 const performRefresh = async () => {
     const auth = getStoredAuth();
 
@@ -84,9 +79,6 @@ const performRefresh = async () => {
         {
             timeout: 10000,
             withCredentials: true,
-            headers: {
-                Authorization: `Bearer ${auth.token}`,
-            },
         }
     );
 
@@ -102,6 +94,77 @@ const performRefresh = async () => {
 
     return data.token;
 };
+
+const getOrStartRefresh = () => {
+    if (!refreshPromise) {
+        refreshPromise = performRefresh().finally(() => {
+            refreshPromise = null;
+        });
+    }
+    return refreshPromise;
+};
+
+/* -----------------------------
+ * JWT helpers (local decode only — no server round-trip)
+ * ----------------------------- */
+
+// Access tokens are short-lived server-side — any tab left open past that,
+// or reopened after a while, starts with an already-expired token. Decoding
+// locally lets the request interceptor refresh PROACTIVELY instead of every
+// on-mount request (profile, wishlist checks, unread-count, etc.) firing,
+// failing with 401, and only THEN refreshing — which is exactly the flood
+// of "jwt expired" 401s seen on first page load.
+//
+// BUG FIX: buffer was 10s. On first page load, several components fire
+// their own request in the same tick (profile, cart, wishlist, unread
+// count, notifications...) — with only a 10s window, a token sitting at
+// e.g. 8s-to-live still looks "not expiring soon," so all of those requests
+// go out on a token that then expires mid-flight (network latency + any
+// client/server clock skew), and each comes back with a genuine 401 that
+// only THEN triggers the reactive refresh path — visible to the user as a
+// burst of failed requests before things settle. 60s gives real headroom
+// for that whole first-load burst to be caught proactively instead.
+const isExpiredOrExpiringSoon = (token, bufferSeconds = 60) => {
+    try {
+        const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+        if (!payload?.exp) return false; // no exp claim — nothing we can check locally
+        return Date.now() >= (payload.exp * 1000) - bufferSeconds * 1000;
+    } catch {
+        return false; // malformed token — let the server reject it as usual
+    }
+};
+
+/* -----------------------------
+ * Request Interceptor
+ * ----------------------------- */
+
+api.interceptors.request.use(
+    async (config) => {
+        // The refresh call itself must never try to refresh-before-sending —
+        // that would recurse forever.
+        if (config.url?.includes("/auth/refresh")) return config;
+
+        let auth = getStoredAuth();
+
+        if (auth?.token && isExpiredOrExpiringSoon(auth.token)) {
+            try {
+                const freshToken = await getOrStartRefresh();
+                auth = { ...auth, token: freshToken };
+            } catch {
+                // Refresh failed proactively — fall through with the stale
+                // token; the response interceptor's reactive 401 handling
+                // below is still there as a fallback (no regression).
+            }
+        }
+
+        if (auth?.token) {
+            config.headers.Authorization = `Bearer ${auth.token}`;
+        }
+
+        return config;
+    },
+    (error) => Promise.reject(error)
+);
 
 
 /* -----------------------------
@@ -159,13 +222,7 @@ api.interceptors.response.use(
             originalRequest._retry = true;
 
             try {
-                if (!refreshPromise) {
-                    refreshPromise = performRefresh().finally(() => {
-                        refreshPromise = null;
-                    });
-                }
-
-                const freshToken = await refreshPromise;
+                const freshToken = await getOrStartRefresh();
 
                 originalRequest.headers = {
                     ...originalRequest.headers,

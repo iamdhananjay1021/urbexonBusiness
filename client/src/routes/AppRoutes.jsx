@@ -42,6 +42,7 @@ const UHCart = lazy(() => import("../pages/UHCart"));
 const UHCheckout = lazy(() => import("../pages/UHCheckout"));
 const UHProductDetail = lazy(() => import("../pages/UHProductDetail"));
 const Wishlist = lazy(() => import("../pages/Wishlist"));
+const Coupons = lazy(() => import("../pages/Coupons"));
 const BecomeVendor = lazy(() => import("../pages/BecomeVendor"));
 const BecomeDelivery = lazy(() => import("../pages/BecomeDelivery"));
 const VendorStore = lazy(() => import("../pages/VendorStore"));
@@ -127,6 +128,7 @@ const AppRoutes = () => (
           <Route path="/order-success/:id" element={<RequireAuth><OrderSuccess /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
           <Route path="/wishlist" element={<RequireAuth><Wishlist /></RequireAuth>} />
+          <Route path="/coupons" element={<RequireAuth><Coupons /></RequireAuth>} />
         </Route>
 
         {/* Catch-all 404 */}

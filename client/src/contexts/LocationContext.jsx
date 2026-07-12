@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { resolveNearestPincode } from "../api/pincodeApi";
 
 const LocationContext = createContext(null);
 const STORAGE_KEY = "ux_location_v5";
@@ -376,6 +377,22 @@ export const LocationProvider = ({ children }) => {
                     // ──── Success: Reverse geocode ────
                     try {
                         const parsed = await reverseGeocode(latitude, longitude);
+
+                        // ──── Backend is the single source of truth for the final pincode ────
+                        // Nominatim/Google's postal_code is patchy near pincode boundaries
+                        // (a genuinely-224122 GPS fix can come back tagged something else).
+                        // Cross-check against our own serviceable-pincode geo index and prefer
+                        // it when a close-enough match exists — this only ever CORRECTS the
+                        // reverse geocoder's guess, never blocks the result on failure.
+                        try {
+                            const { data: nearest } = await resolveNearestPincode(latitude, longitude);
+                            if (nearest?.success && nearest.found && nearest.code) {
+                                parsed.pincode = nearest.code;
+                                parsed.fullLabel = parsed.label ? `${parsed.label}, ${nearest.code}` : `Pincode: ${nearest.code}`;
+                            }
+                        } catch (nearestErr) {
+                            console.warn("resolveNearestPincode failed, using reverse geocoder pincode:", nearestErr);
+                        }
 
                         const locationPayload = {
                             lat: latitude,

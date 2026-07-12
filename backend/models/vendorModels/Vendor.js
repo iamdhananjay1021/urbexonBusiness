@@ -148,6 +148,19 @@ const vendorSchema = new mongoose.Schema(
         maxOrderAmount: { type: Number, default: 0 },
         preparationTime: { type: Number, default: 30 }, // minutes
 
+        // ── Push notification token — additive; no client registration
+        // flow exists yet, ready for notificationEngine.js to use once one does. ──
+        fcmToken: { type: String, default: null },
+        notificationPreferences: {
+            sound: { type: Boolean, default: true },
+            muted: { type: Boolean, default: false },
+            push: { type: Boolean, default: true },
+            email: { type: Boolean, default: true },
+            sms: { type: Boolean, default: true },
+            marketing: { type: Boolean, default: true },
+            transactional: { type: Boolean, default: true },
+        },
+
         // ── Stats (denormalized for speed) ───────────────────
         totalOrders: { type: Number, default: 0 },
         totalRevenue: { type: Number, default: 0 },

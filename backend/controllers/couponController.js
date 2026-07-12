@@ -62,6 +62,33 @@ export const validateCoupon = async (req, res) => {
     }
 };
 
+// GET /api/coupons/active  (customer — browsable list of coupons they can still use)
+export const getActiveCoupons = async (req, res) => {
+    try {
+        const now = new Date();
+        const coupons = await Coupon.find({
+            isActive: true,
+            $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+        })
+            .sort({ createdAt: -1 })
+            .select("code description discountType discountValue maxDiscount minOrderValue applicableTo expiresAt usageLimit usedCount usedBy")
+            .lean();
+
+        // Same eligibility rules as validateCoupon (usage limit, already-used-by-this-user)
+        // filtered out here so the list only ever shows coupons the customer can actually apply —
+        // no dead codes shown just to click and get an error at checkout.
+        const eligible = coupons
+            .filter((c) => c.usageLimit === null || c.usedCount < c.usageLimit)
+            .filter((c) => !c.usedBy?.some((u) => u.userId?.toString() === req.user._id.toString()))
+            .map(({ usedBy, usedCount, usageLimit, ...safe }) => safe);
+
+        res.json({ success: true, coupons: eligible });
+    } catch (err) {
+        console.error("[getActiveCoupons]", err);
+        res.status(500).json({ success: false, message: "Failed to load coupons" });
+    }
+};
+
 // ─── ADMIN CRUD ───────────────────────────────────────────
 
 // GET /api/coupons/admin
@@ -115,20 +142,29 @@ export const adminCreateCoupon = async (req, res) => {
 // PUT /api/coupons/admin/:id
 export const adminUpdateCoupon = async (req, res) => {
     try {
-        // Whitelist allowed fields — never allow usedCount/usedBy overwrite
         const allowed = ["code", "description", "discountType", "discountValue", "maxDiscount", "minOrderValue", "usageLimit", "applicableTo", "expiresAt", "isActive"];
         const updates = {};
         for (const key of allowed) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];
         }
         if (updates.code) updates.code = String(updates.code).trim().toUpperCase();
-        if (updates.discountType === "PERCENT" && Number(updates.discountValue) > 100) {
+
+        // Fetch existing coupon first so we validate against the *effective*
+        // discountType/discountValue after this update, not just whatever
+        // fields happened to be in the request body.
+        const existing = await Coupon.findById(req.params.id);
+        if (!existing) return res.status(404).json({ success: false, message: "Coupon not found" });
+
+        const effectiveType = updates.discountType ?? existing.discountType;
+        const effectiveValue = updates.discountValue !== undefined ? Number(updates.discountValue) : existing.discountValue;
+        if (effectiveType === "PERCENT" && effectiveValue > 100) {
             return res.status(400).json({ success: false, message: "Percentage discount cannot exceed 100%" });
         }
+
         const coupon = await Coupon.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
-        if (!coupon) return res.status(404).json({ success: false, message: "Coupon not found" });
         res.json({ success: true, coupon });
     } catch (err) {
+        if (err.code === 11000) return res.status(400).json({ success: false, message: "Coupon code already exists" });
         res.status(500).json({ success: false, message: "Failed to update" });
     }
 };

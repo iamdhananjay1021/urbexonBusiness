@@ -2,12 +2,36 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/adminApi";
 import {
-    FaPlus, FaSync, FaEdit, FaTrash, FaSearch,
-    FaBoxOpen, FaBoxes, FaChevronLeft, FaChevronRight, FaLink,
+    FaPlus, FaSync, FaEdit, FaTrash,
+    FaBoxOpen, FaBoxes,
 } from "react-icons/fa";
+import {
+    Button, Badge, Card, Table, Pagination, SearchBar,
+    EmptyState, ErrorState, Skeleton,
+} from "../components/ui";
 
 const PAGE_SIZE = 10;
 
+const COLUMNS = [
+    { key: "idx", label: "#", width: 32 },
+    { key: "img", label: "Img", width: 44 },
+    { key: "product", label: "Product" },
+    { key: "category", label: "Category", width: 130 },
+    { key: "price", label: "Price", width: 90 },
+    { key: "stock", label: "Stock", width: 130 },
+    { key: "actions", label: "Actions", width: 90 },
+];
+
+/* ═══════════════════════════════════════════════════
+   STYLES
+   Key fix: the desktop table now lives inside a
+   horizontally-scrolling wrapper with an enforced
+   min-width, so on tablet-width screens (641–1024px)
+   the columns no longer get crushed/broken — they
+   scroll instead. The mobile-card breakpoint was also
+   raised from 640px to 768px so tablets get the roomier
+   card layout rather than a squeezed table.
+═══════════════════════════════════════════════════ */
 const STYLES = `
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
@@ -17,56 +41,49 @@ const STYLES = `
 
     @keyframes adm-spin  { to{transform:rotate(360deg)} }
     @keyframes row-in    { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
-    @keyframes slide-in  { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes slide-in  { from{opacity:0;transform:translate(-50%,-10px)} to{opacity:1;transform:translate(-50%,0)} }
     @keyframes card-in   { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-
-    .uk-prod-row {
-        animation: row-in 0.18s ease both;
-        transition: background 0.12s;
-    }
-    .uk-prod-row:hover { background: #f8faff !important; }
 
     .uk-prod-card {
         animation: card-in 0.2s ease both;
         transition: box-shadow 0.15s, transform 0.15s;
     }
     .uk-prod-card:hover {
-        box-shadow: 0 4px 20px rgba(37,99,235,0.1) !important;
+        box-shadow: var(--adm-shadow-md) !important;
         transform: translateY(-1px);
     }
 
     .uk-img-wrap { overflow: hidden; }
     .uk-img-wrap img { transition: transform 0.3s ease; }
-    .uk-prod-row:hover .uk-img-wrap img,
     .uk-prod-card:hover .uk-img-wrap img { transform: scale(1.15); }
+    tr:hover .uk-img-wrap img { transform: scale(1.15); }
 
     .uk-action-btn { transition: all 0.15s ease; }
     .uk-action-btn:hover { opacity: 0.85; transform: scale(1.06); }
-
-    .uk-search-input:focus {
-        outline: none;
-        border-color: #2563eb !important;
-        box-shadow: 0 0 0 3px rgba(37,99,235,0.1) !important;
-    }
 
     .uk-stat-card {
         transition: box-shadow 0.15s, transform 0.15s;
     }
     .uk-stat-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 16px rgba(0,0,0,0.08) !important;
+        box-shadow: var(--adm-shadow-md) !important;
     }
 
-    .uk-refresh-btn:hover {
-        background: #eff6ff !important;
-        border-color: #93c5fd !important;
-        color: #2563eb !important;
+    /* ── Table scroll wrapper — prevents column crushing ── */
+    .uk-table-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border-radius: var(--adm-radius-lg, 14px);
+        scrollbar-width: thin;
     }
-    .uk-page-btn:hover:not(:disabled) {
-        background: #eff6ff !important;
-        border-color: #93c5fd !important;
-        color: #2563eb !important;
-    }
+    .uk-table-scroll table { min-width: 760px; width: 100%; }
+    .uk-table-scroll::-webkit-scrollbar { height: 6px; }
+    .uk-table-scroll::-webkit-scrollbar-thumb { background: var(--adm-border); border-radius: 999px; }
+    /* more breathing room per row + let the product name show in full */
+    .uk-table-scroll td, .uk-table-scroll th { padding: 16px 14px !important; vertical-align: middle; }
+    .uk-table-scroll td:first-child, .uk-table-scroll th:first-child { padding-left: 18px !important; }
+
+    .uk-color-dots { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 
     /* ── Responsive ── */
     .uk-stats-grid {
@@ -75,23 +92,15 @@ const STYLES = `
         gap: 12px;
         margin-bottom: 20px;
     }
-    .uk-table-header { display: grid; }
-    .uk-table-row    { display: grid; }
+    .uk-desktop-list { display: block; }
     .uk-mobile-cards { display: none; }
 
-    @media (max-width: 900px) {
-        .uk-stats-grid {
-            grid-template-columns: repeat(2, 1fr);
-        }
+    @media (max-width: 1024px) {
+        .uk-stats-grid { grid-template-columns: repeat(2, 1fr); }
     }
 
-    @media (max-width: 640px) {
-        .uk-stats-grid {
-            grid-template-columns: repeat(2, 1fr);
-            gap: 8px;
-        }
-        .uk-table-header { display: none !important; }
-        .uk-table-row    { display: none !important; }
+    @media (max-width: 768px) {
+        .uk-desktop-list { display: none !important; }
         .uk-mobile-cards { display: block !important; }
         .uk-header-row {
             flex-direction: column !important;
@@ -107,6 +116,16 @@ const STYLES = `
             flex: 1;
             justify-content: center;
         }
+    }
+
+    @media (max-width: 640px) {
+        .uk-stats-grid { gap: 8px; }
+        .uk-stat-icon { width: 26px !important; height: 26px !important; font-size: 12px !important; }
+        .uk-stat-value { font-size: 19px !important; }
+    }
+
+    @media (max-width: 380px) {
+        .uk-stats-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
     }
 `;
 
@@ -222,52 +241,40 @@ const AdminProducts = () => {
 
     const stockInfo = (product) => {
         const n = Number(product.stock ?? 0);
-        if (!product.inStock) return { label: "Out of Stock", color: "#ef4444", bg: "#fef2f2", border: "#fecaca" };
-        if (n <= 5) return { label: `${n} left`, color: "#d97706", bg: "#fffbeb", border: "#fde68a" };
-        return { label: `${n} left`, color: "#059669", bg: "#f0fdf4", border: "#bbf7d0" };
-    };
-
-    const getPageNumbers = () => {
-        if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
-        if (currentPage <= 3) return [1, 2, 3, 4, "…", totalPages];
-        if (currentPage >= totalPages - 2) return [1, "…", totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
-        return [1, "…", currentPage - 1, currentPage, currentPage + 1, "…", totalPages];
+        if (!product.inStock) return { label: "Out of Stock", tone: "danger" };
+        if (n <= 5) return { label: `${n} left`, tone: "warning" };
+        return { label: `${n} left`, tone: "success" };
     };
 
     // ── Loading ──
     if (loading) return (
-        <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <style>{`@keyframes adm-spin{to{transform:rotate(360deg)}}`}</style>
-            <div style={{ textAlign: "center" }}>
-                <div style={{
-                    width: 40, height: 40,
-                    border: "3px solid #dbeafe",
-                    borderTopColor: "#2563eb",
-                    borderRadius: "50%",
-                    animation: "adm-spin 0.8s linear infinite",
-                    margin: "0 auto 14px",
-                }} />
-                <p style={{ color: "#94a3b8", fontSize: 13, fontFamily: "sans-serif" }}>Loading products...</p>
+        <div className="adm-wrap" style={{ minHeight: "100vh", background: "var(--adm-bg)", padding: "24px 16px 60px" }}>
+            <style>{STYLES}</style>
+            <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, gap: 12 }}>
+                    <div>
+                        <Skeleton width={140} height={26} />
+                        <div style={{ marginTop: 8 }}><Skeleton width={200} height={13} /></div>
+                    </div>
+                    <Skeleton width={160} height={38} radius={9} />
+                </div>
+                <div className="uk-stats-grid">
+                    {[1, 2, 3, 4].map(i => <Skeleton key={i} height={84} radius={12} />)}
+                </div>
+                <div style={{ marginBottom: 16 }}><Skeleton height={46} radius={10} /></div>
+                <div className="uk-table-scroll">
+                    <Table columns={COLUMNS} rows={[]} loading skeletonRows={6} />
+                </div>
             </div>
         </div>
     );
 
     // ── Error ──
     if (error) return (
-        <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 16px" }}>
-            <div style={{
-                textAlign: "center", background: "#fff",
-                border: "1px solid #fee2e2", borderRadius: 16,
-                padding: "36px 32px", boxShadow: "0 4px 24px rgba(0,0,0,0.07)",
-                width: "100%", maxWidth: 360,
-            }}>
-                <p style={{ fontSize: 32, marginBottom: 8 }}>⚠️</p>
-                <p style={{ color: "#1e293b", fontWeight: 700, marginBottom: 16, fontSize: 15 }}>{error}</p>
-                <button onClick={fetchProducts} style={{
-                    padding: "9px 24px", background: "#2563eb", color: "#fff",
-                    border: "none", borderRadius: 8, fontWeight: 700, fontSize: 14,
-                    cursor: "pointer", width: "100%",
-                }}>Retry</button>
+        <div className="adm-wrap" style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 16px", background: "var(--adm-bg)" }}>
+            <style>{STYLES}</style>
+            <div style={{ width: "100%", maxWidth: 360 }}>
+                <ErrorState message={error} onRetry={fetchProducts} />
             </div>
         </div>
     );
@@ -276,7 +283,7 @@ const AdminProducts = () => {
         const isES = editingStockId === product._id;
         const si = stockInfo(product);
         if (isES) return (
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
                 <input
                     type="number" min="0"
                     value={stockInput}
@@ -288,39 +295,30 @@ const AdminProducts = () => {
                     autoFocus
                     style={{
                         width: 56, padding: "5px 8px",
-                        background: "#fff", border: "2px solid #2563eb",
-                        borderRadius: 7, color: "#1e293b",
+                        background: "var(--adm-surface)", border: "2px solid var(--adm-primary)",
+                        borderRadius: 7, color: "var(--adm-text-primary)",
                         fontSize: 13, fontWeight: 700,
                         outline: "none", fontFamily: "inherit",
-                        boxShadow: "0 0 0 3px rgba(37,99,235,0.1)",
+                        boxShadow: "0 0 0 3px var(--adm-primary-tint)",
                     }}
                 />
-                <button onClick={() => handleStockSave(product)} disabled={savingStockId === product._id}
-                    style={{ padding: "5px 9px", borderRadius: 6, background: "#2563eb", color: "#fff", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                    {savingStockId === product._id ? "…" : "✓"}
-                </button>
-                <button onClick={() => setEditingStockId(null)}
-                    style={{ padding: "5px 8px", borderRadius: 6, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#64748b", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                <Button variant="primary" size="sm" onClick={() => handleStockSave(product)} loading={savingStockId === product._id}>
+                    ✓
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setEditingStockId(null)}>
                     ✕
-                </button>
+                </Button>
             </div>
         );
         return (
             <button
                 onClick={() => { setEditingStockId(product._id); setStockInput(String(product.stock ?? 0)); }}
-                style={{
-                    display: "inline-flex", alignItems: "center", gap: 5,
-                    padding: "4px 10px", borderRadius: 20,
-                    border: `1px solid ${si.border}`,
-                    background: si.bg, color: si.color,
-                    fontSize: 11, fontWeight: 700,
-                    cursor: "pointer", fontFamily: "inherit",
-                    transition: "opacity 0.15s",
-                    whiteSpace: "nowrap",
-                }}
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit" }}
             >
-                <FaBoxes size={8} /> {si.label}
-                <span style={{ fontSize: 9, opacity: 0.5 }}>✎</span>
+                <Badge tone={si.tone}>
+                    <FaBoxes size={8} /> {si.label}
+                    <span style={{ fontSize: 9, opacity: 0.5 }}>✎</span>
+                </Badge>
             </button>
         );
     };
@@ -333,29 +331,23 @@ const AdminProducts = () => {
                     style={{
                         width: 32, height: 32, borderRadius: 8,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        background: "#eef2ff", border: "1px solid #e0e7ff", color: "#6366f1",
-                        textDecoration: "none",
+                        background: "var(--adm-primary-tint)", border: "1px solid var(--adm-primary-tint)", color: "var(--adm-primary)",
+                        textDecoration: "none", flexShrink: 0,
                     }}>
                     <FaEdit size={12} />
                 </Link>
                 {isIC ? (
                     <div style={{ display: "flex", gap: 3 }}>
-                        <button onClick={() => deleteHandler(product._id)}
-                            style={{ padding: "5px 10px", borderRadius: 7, background: "#ef4444", color: "#fff", border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                            Yes
-                        </button>
-                        <button onClick={() => setConfirmId(null)}
-                            style={{ padding: "5px 9px", borderRadius: 7, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#64748b", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                            No
-                        </button>
+                        <Button variant="danger" size="sm" onClick={() => deleteHandler(product._id)}>Yes</Button>
+                        <Button variant="secondary" size="sm" onClick={() => setConfirmId(null)}>No</Button>
                     </div>
                 ) : (
                     <button onClick={() => setConfirmId(product._id)} className="uk-action-btn"
                         style={{
                             width: 32, height: 32, borderRadius: 8,
                             display: "flex", alignItems: "center", justifyContent: "center",
-                            background: "#fef2f2", border: "1px solid #fecaca", color: "#ef4444",
-                            cursor: "pointer",
+                            background: "var(--adm-danger-tint)", border: "1px solid var(--adm-danger-tint)", color: "var(--adm-danger)",
+                            cursor: "pointer", flexShrink: 0,
                         }}>
                         <FaTrash size={12} />
                     </button>
@@ -364,20 +356,88 @@ const AdminProducts = () => {
         );
     };
 
+    // 🐛 FIX: `s + p.price` had no fallback — a single product with a
+    // missing/undefined price turned the whole sum into NaN, so "Avg Price"
+    // silently showed "₹NaN" instead of just ignoring that one product.
+    const validPrices = products.map(p => Number(p.price) || 0);
+    const avgPrice = validPrices.length
+        ? Math.round(validPrices.reduce((s, v) => s + v, 0) / validPrices.length)
+        : 0;
+
+    const STATS = [
+        { label: "Total", value: products.length, tone: "primary", icon: "📦", filter: null },
+        { label: "In Stock", value: products.filter(p => p.inStock).length, tone: "success", icon: "✅", filter: "inStock" },
+        { label: "Out of Stock", value: products.filter(p => !p.inStock).length, tone: "danger", icon: "❌", filter: "oos" },
+        { label: "Avg Price", value: `₹${avgPrice.toLocaleString("en-IN")}`, tone: "info", icon: "💰", filter: "avg" },
+    ];
+
+    const renderProductRow = (product, idx) => {
+        const img = product.images?.[0]?.url || product.image?.url || product.image || null;
+        return (
+            <tr key={product._id} style={{ opacity: deletingId === product._id ? 0.4 : 1 }}>
+                <td style={{ color: "var(--adm-muted)", fontWeight: 700 }}>{pageStart + idx + 1}</td>
+                <td>
+                    <div className="uk-img-wrap" style={{
+                        width: 38, height: 38,
+                        background: "var(--adm-surface-alt)", border: "1px solid var(--adm-border)",
+                        borderRadius: 8, overflow: "hidden",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        flexShrink: 0,
+                    }}>
+                        {img
+                            ? <img src={img} alt={product.name} loading="lazy" decoding="async"
+                                style={{ width: "100%", height: "100%", objectFit: "contain", padding: 3 }} />
+                            : <FaBoxOpen size={13} style={{ color: "var(--adm-border)" }} />
+                        }
+                    </div>
+                </td>
+                <td style={{ minWidth: 0 }}>
+                    {/* full name, no truncation — wraps onto a second line instead of cutting off */}
+                    <p style={{
+                        fontWeight: 700, fontSize: 13.5, lineHeight: 1.4,
+                        color: "var(--adm-text-primary)", margin: 0,
+                        whiteSpace: "normal", wordBreak: "break-word",
+                        maxWidth: 320,
+                    }} title={product.slug ? `/${product.slug}` : undefined}>
+                        {product.name}
+                    </p>
+                    {!product.slug && (
+                        <span style={{ fontSize: 10, color: "var(--adm-warning)", marginTop: 3, display: "block" }}>⚠ no slug</span>
+                    )}
+                    {product.colorVariants && product.colorVariants.length > 0 && (
+                        <div className="uk-color-dots" style={{ marginTop: 6 }}>
+                            {product.colorVariants.map((c, i) => (
+                                <div key={i} title={c.name} style={{ width: 12, height: 12, borderRadius: "50%", background: c.hex || "#ccc", border: "1px solid var(--adm-border)" }} />
+                            ))}
+                        </div>
+                    )}
+                </td>
+                <td>
+                    <Badge tone="warning">{formatCat(product.category)}</Badge>
+                </td>
+                <td style={{ fontWeight: 800, color: "var(--adm-primary)", whiteSpace: "nowrap" }}>
+                    ₹{Number(product.price || 0).toLocaleString("en-IN")}
+                </td>
+                <td><StockCell product={product} /></td>
+                <td style={{ textAlign: "right" }}><ActionBtns product={product} /></td>
+            </tr>
+        );
+    };
+
     // ── Main ──
     return (
-        <div className="adm-wrap" style={{ minHeight: "100vh", background: "#f0f4ff", padding: "24px 16px 60px" }}>
+        <div className="adm-wrap" style={{ minHeight: "100vh", background: "var(--adm-bg)", padding: "24px 16px 60px" }}>
             <style>{STYLES}</style>
 
             {/* Toast */}
             {toast && (
                 <div style={{
-                    position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)",
+                    position: "fixed", top: 16, left: "50%",
                     zIndex: 9999, display: "flex", alignItems: "center", gap: 8,
                     padding: "10px 20px", borderRadius: 10,
-                    background: toast.type === "success" ? "#059669" : "#ef4444",
-                    color: "#fff", fontWeight: 700, fontSize: 13,
-                    boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+                    background: toast.type === "success" ? "var(--adm-success)" : "var(--adm-danger)",
+                    color: "var(--adm-text-on-accent)", fontWeight: 700, fontSize: 13,
+                    boxShadow: "var(--adm-shadow-lg)",
                     whiteSpace: "nowrap", animation: "slide-in 0.2s ease",
                     maxWidth: "90vw",
                 }}>
@@ -394,42 +454,24 @@ const AdminProducts = () => {
                     marginBottom: 24, flexWrap: "wrap", gap: 12,
                 }}>
                     <div>
+                        <p style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--adm-primary)", margin: "0 0 4px" }}>
+                            Catalog
+                        </p>
                         <h1 style={{
                             fontWeight: 800, fontSize: 24,
-                            color: "#0f172a", margin: 0,
+                            color: "var(--adm-text-primary)", margin: 0,
                             letterSpacing: "-0.03em",
                         }}>Products</h1>
-                        <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 3 }}>
+                        <p style={{ fontSize: 12, color: "var(--adm-muted)", marginTop: 3 }}>
                             {products.length} total · {filtered.length} showing
                             {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
                         </p>
                     </div>
                     <div className="uk-header-btns" style={{ display: "flex", gap: 8 }}>
-                        <button
-                            onClick={refreshProducts}
-                            disabled={refreshing}
-                            className="uk-refresh-btn"
-                            style={{
-                                display: "flex", alignItems: "center", gap: 6,
-                                padding: "9px 15px", borderRadius: 9,
-                                background: "#fff", border: "1px solid #e2e8f0",
-                                color: "#64748b", fontSize: 13, fontWeight: 600,
-                                cursor: "pointer", fontFamily: "inherit",
-                                transition: "all 0.15s",
-                            }}
-                        >
-                            <FaSync size={10} style={{ animation: refreshing ? "adm-spin 0.8s linear infinite" : "none" }} />
+                        <Button variant="secondary" icon={FaSync} loading={refreshing} onClick={refreshProducts}>
                             Refresh
-                        </button>
-                        <Link to="/admin/products/new" style={{
-                            display: "flex", alignItems: "center", gap: 6,
-                            padding: "9px 18px", borderRadius: 9,
-                            background: "#2563eb", color: "#fff",
-                            fontWeight: 700, fontSize: 13,
-                            textDecoration: "none",
-                            boxShadow: "0 3px 10px rgba(37,99,235,0.35)",
-                            transition: "all 0.15s",
-                        }}>
+                        </Button>
+                        <Link to="/admin/products/new" className="adm-btn adm-btn-primary adm-btn-md">
                             <FaPlus size={10} /> Add Product
                         </Link>
                     </div>
@@ -437,329 +479,114 @@ const AdminProducts = () => {
 
                 {/* Stats */}
                 <div className="uk-stats-grid">
-                    {[
-                        { label: "Total", value: products.length, color: "#2563eb", bg: "#eff6ff", icon: "📦", border: "#bfdbfe", filter: null },
-                        { label: "In Stock", value: products.filter(p => p.inStock).length, color: "#059669", bg: "#f0fdf4", icon: "✅", border: "#bbf7d0", filter: "inStock" },
-                        { label: "Out of Stock", value: products.filter(p => !p.inStock).length, color: "#ef4444", bg: "#fef2f2", icon: "❌", border: "#fecaca", filter: "oos" },
-                        {
-                            label: "Avg Price",
-                            value: `₹${products.length
-                                ? Math.round(products.reduce((s, p) => s + p.price, 0) / products.length).toLocaleString("en-IN")
-                                : 0}`,
-                            color: "#7c3aed", bg: "#f5f3ff", icon: "💰", border: "#ddd6fe", filter: "avg",
-                        },
-                    ].map(({ label, value, color, bg, icon, border, filter }) => (
-                        <div key={label} className="uk-stat-card" onClick={() => {
-                            if (filter === "avg") return;
-                            setStatsFilter(prev => prev === filter ? null : filter);
-                            setCurrentPage(1);
-                        }} style={{
-                            background: statsFilter === filter ? bg : "#fff",
-                            border: `1.5px solid ${statsFilter === filter ? color : border}`,
-                            borderRadius: 12,
-                            padding: "14px 16px",
-                            boxShadow: statsFilter === filter ? `0 2px 12px ${color}22` : "0 1px 4px rgba(0,0,0,0.04)",
-                            cursor: filter !== "avg" ? "pointer" : "default",
-                            transition: "all 0.2s",
-                        }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                                <p style={{ fontSize: 10, color: statsFilter === filter ? color : "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", margin: 0 }}>
-                                    {label}
-                                    {statsFilter === filter && filter !== null && <span style={{ marginLeft: 4, fontSize: 10 }}>✕</span>}
-                                </p>
-                                <div style={{
-                                    width: 30, height: 30, borderRadius: 8,
-                                    background: bg,
-                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                    fontSize: 14,
-                                }}>
-                                    {icon}
+                    {STATS.map(({ label, value, tone, icon, filter }) => {
+                        const active = statsFilter === filter;
+                        return (
+                            <Card
+                                key={label}
+                                className="uk-stat-card"
+                                style={{
+                                    cursor: filter !== "avg" ? "pointer" : "default",
+                                    padding: "14px 16px",
+                                    borderColor: active ? `var(--adm-${tone})` : undefined,
+                                    background: active ? `var(--adm-${tone}-tint)` : undefined,
+                                }}
+                            >
+                                <div
+                                    onClick={() => {
+                                        if (filter === "avg") return;
+                                        setStatsFilter(prev => prev === filter ? null : filter);
+                                        setCurrentPage(1);
+                                    }}
+                                >
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                                        <p style={{ fontSize: 10, color: active ? `var(--adm-${tone})` : "var(--adm-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", margin: 0 }}>
+                                            {label}
+                                            {active && filter !== null && <span style={{ marginLeft: 4, fontSize: 10 }}>✕</span>}
+                                        </p>
+                                        <div className="uk-stat-icon" style={{
+                                            width: 30, height: 30, borderRadius: 8,
+                                            background: `var(--adm-${tone}-tint)`,
+                                            display: "flex", alignItems: "center", justifyContent: "center",
+                                            fontSize: 14, flexShrink: 0,
+                                        }}>
+                                            {icon}
+                                        </div>
+                                    </div>
+                                    <p className="uk-stat-value" style={{ fontWeight: 800, fontSize: 22, color: `var(--adm-${tone})`, margin: 0, letterSpacing: "-0.02em" }}>
+                                        {value}
+                                    </p>
                                 </div>
-                            </div>
-                            <p style={{ fontWeight: 800, fontSize: 22, color, margin: 0, letterSpacing: "-0.02em" }}>
-                                {value}
-                            </p>
-                        </div>
-                    ))}
+                            </Card>
+                        );
+                    })}
                 </div>
 
                 {/* Search */}
-                <div style={{ position: "relative", marginBottom: 16 }}>
-                    <FaSearch size={12} style={{
-                        position: "absolute", left: 14, top: "50%",
-                        transform: "translateY(-50%)",
-                        color: "#94a3b8", pointerEvents: "none",
-                    }} />
-                    <input
-                        type="text"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        placeholder="Search by name or category..."
-                        className="uk-search-input"
-                        style={{
-                            width: "100%",
-                            paddingLeft: 38, paddingRight: search ? 38 : 14,
-                            paddingTop: 11, paddingBottom: 11,
-                            background: "#fff",
-                            border: "1px solid #e2e8f0",
-                            borderRadius: 10,
-                            color: "#1e293b", fontSize: 13,
-                            fontFamily: "inherit",
-                            boxSizing: "border-box",
-                            transition: "border-color 0.15s, box-shadow 0.15s",
-                        }}
-                    />
-                    {search && (
-                        <button onClick={() => setSearch("")} style={{
-                            position: "absolute", right: 12, top: "50%",
-                            transform: "translateY(-50%)",
-                            background: "none", border: "none",
-                            color: "#94a3b8", cursor: "pointer", fontSize: 15, lineHeight: 1,
-                        }}>✕</button>
-                    )}
+                <div style={{ marginBottom: 16 }}>
+                    <SearchBar value={search} onChange={setSearch} placeholder="Search by name or category..." />
                 </div>
 
                 {/* Empty */}
                 {filtered.length === 0 ? (
-                    <div style={{
-                        background: "#fff", border: "1px dashed #cbd5e1",
-                        borderRadius: 14, padding: "56px 20px", textAlign: "center",
-                    }}>
-                        <FaBoxOpen size={36} style={{ color: "#cbd5e1", display: "block", margin: "0 auto 14px" }} />
-                        <p style={{ fontWeight: 700, color: "#94a3b8", fontSize: 15 }}>
-                            {search ? `No results for "${search}"` : "No products yet"}
-                        </p>
-                        {!search && (
-                            <Link to="/admin/products/new" style={{
-                                display: "inline-flex", alignItems: "center", gap: 6,
-                                marginTop: 16, padding: "9px 20px", borderRadius: 9,
-                                background: "#2563eb", color: "#fff",
-                                fontWeight: 700, fontSize: 13, textDecoration: "none",
-                            }}>
+                    <EmptyState
+                        icon={FaBoxOpen}
+                        title={search ? `No results for "${search}"` : "No products yet"}
+                        description={!search ? "Add your first product to get started." : undefined}
+                        action={!search && (
+                            <Link to="/admin/products/new" className="adm-btn adm-btn-primary adm-btn-md">
                                 <FaPlus size={10} /> Add First Product
                             </Link>
                         )}
-                    </div>
+                    />
                 ) : (
                     <>
-                        {/* ── DESKTOP TABLE ── */}
-                        <div style={{
-                            background: "#fff",
-                            border: "1px solid #e2e8f0",
-                            borderRadius: 14,
-                            overflow: "hidden",
-                            boxShadow: "0 1px 6px rgba(0,0,0,0.05)",
-                        }}>
-                            {/* Table Header */}
-                            <div className="uk-table-header" style={{
-                                gridTemplateColumns: "32px 44px 1fr 130px 85px 130px 90px",
-                                gap: 10, padding: "11px 18px",
-                                background: "#f8fafc",
-                                borderBottom: "1px solid #e2e8f0",
-                                fontSize: 10, fontWeight: 800,
-                                color: "#94a3b8",
-                                letterSpacing: "0.09em",
-                                textTransform: "uppercase",
-                            }}>
-                                <div>#</div>
-                                <div>Img</div>
-                                <div>Product</div>
-                                <div>Category</div>
-                                <div>Price</div>
-                                <div>Stock</div>
-                                <div style={{ textAlign: "right" }}>Actions</div>
+                        {/* ── DESKTOP / TABLET TABLE (scrolls horizontally instead of breaking) ── */}
+                        <div className="uk-desktop-list">
+                            <div className="uk-table-scroll">
+                                <Table columns={COLUMNS} rows={paginated} renderRow={renderProductRow} />
                             </div>
 
-                            {/* Table Rows */}
-                            {paginated.map((product, idx) => {
-                                const img = product.images?.[0]?.url || product.image?.url || product.image || null;
-
-                                return (
-                                    <div
-                                        key={product._id}
-                                        className="uk-prod-row uk-table-row"
-                                        style={{
-                                            gridTemplateColumns: "32px 44px 1fr 130px 85px 130px 90px",
-                                            gap: 10, padding: "12px 18px",
-                                            alignItems: "center",
-                                            borderBottom: "1px solid #f1f5f9",
-                                            background: "#fff",
-                                            opacity: deletingId === product._id ? 0.4 : 1,
-                                            transition: "opacity 0.2s",
-                                        }}
-                                    >
-                                        <div style={{ fontSize: 11, color: "#cbd5e1", fontWeight: 700 }}>
-                                            {pageStart + idx + 1}
-                                        </div>
-
-                                        <div className="uk-img-wrap" style={{
-                                            width: 38, height: 38,
-                                            background: "#f8fafc", border: "1px solid #e2e8f0",
-                                            borderRadius: 8, overflow: "hidden",
-                                            display: "flex", alignItems: "center", justifyContent: "center",
-                                            flexShrink: 0,
-                                        }}>
-                                            {img
-                                                ? <img src={img} alt={product.name} loading="lazy" decoding="async"
-                                                    style={{ width: "100%", height: "100%", objectFit: "contain", padding: 3 }} />
-                                                : <FaBoxOpen size={13} style={{ color: "#cbd5e1" }} />
-                                            }
-                                        </div>
-
-                                        <div style={{ minWidth: 0 }}>
-                                            <p style={{
-                                                fontWeight: 700, fontSize: 13,
-                                                color: "#1e293b", margin: 0,
-                                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                            }}>
-                                                {product.name}
-                                            </p>
-                                            {product.slug ? (
-                                                <div style={{
-                                                    display: "inline-flex", alignItems: "center", gap: 3,
-                                                    marginTop: 3, fontSize: 10, color: "#6366f1",
-                                                    background: "#eef2ff", border: "1px solid #e0e7ff",
-                                                    padding: "2px 7px", borderRadius: 4,
-                                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                                    maxWidth: "100%",
-                                                }}>
-                                                    <FaLink size={7} /> {product.slug}
-                                                </div>
-                                            ) : (
-                                                <span style={{ fontSize: 10, color: "#f59e0b", marginTop: 3, display: "block" }}>⚠ no slug</span>
-                                            )}
-                                            {/* 🔥 COLOR DOTS FOR DESKTOP */}
-                                            {product.colorVariants && product.colorVariants.length > 0 && (
-                                                <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
-                                                    {product.colorVariants.map((c, i) => (
-                                                        <div key={i} title={c.name} style={{ width: 12, height: 12, borderRadius: "50%", background: c.hex || "#ccc", border: "1px solid #e2e8f0" }} />
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div>
-                                            <span style={{
-                                                background: "#fefce8", border: "1px solid #fde68a",
-                                                color: "#92400e", fontSize: 10, fontWeight: 700,
-                                                padding: "3px 9px", borderRadius: 20, whiteSpace: "nowrap",
-                                            }}>
-                                                {formatCat(product.category)}
-                                            </span>
-                                        </div>
-
-                                        <div style={{ fontWeight: 800, fontSize: 13, color: "#2563eb" }}>
-                                            ₹{Number(product.price || 0).toLocaleString("en-IN")}
-                                        </div>
-
-                                        <StockCell product={product} />
-                                        <ActionBtns product={product} />
-                                    </div>
-                                );
-                            })}
-
-                            {/* Pagination */}
                             <div style={{
                                 display: "flex", alignItems: "center",
                                 justifyContent: "space-between",
-                                padding: "12px 18px",
-                                background: "#f8fafc",
-                                borderTop: "1px solid #e2e8f0",
+                                padding: "12px 4px",
                                 flexWrap: "wrap", gap: 10,
                             }}>
-                                <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>
+                                <p style={{ fontSize: 12, color: "var(--adm-muted)", margin: 0 }}>
                                     Showing{" "}
-                                    <b style={{ color: "#475569" }}>{pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, filtered.length)}</b>
+                                    <b style={{ color: "var(--adm-text-secondary)" }}>{pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, filtered.length)}</b>
                                     {" "}of{" "}
-                                    <b style={{ color: "#475569" }}>{filtered.length}</b>
+                                    <b style={{ color: "var(--adm-text-secondary)" }}>{filtered.length}</b>
                                 </p>
-                                {totalPages > 1 && (
-                                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                        <button
-                                            onClick={() => setCurrentPage(p => p - 1)}
-                                            disabled={currentPage === 1}
-                                            className="uk-page-btn"
-                                            style={{
-                                                width: 32, height: 32, borderRadius: 8,
-                                                background: "#fff", border: "1px solid #e2e8f0",
-                                                color: "#64748b", cursor: "pointer",
-                                                display: "flex", alignItems: "center", justifyContent: "center",
-                                                opacity: currentPage === 1 ? 0.35 : 1,
-                                                transition: "all 0.15s",
-                                            }}>
-                                            <FaChevronLeft size={9} />
-                                        </button>
-                                        {getPageNumbers().map((pg, i) =>
-                                            pg === "…" ? (
-                                                <span key={`e-${i}`} style={{ padding: "0 4px", color: "#cbd5e1", fontSize: 13 }}>…</span>
-                                            ) : (
-                                                <button key={pg} onClick={() => setCurrentPage(pg)}
-                                                    style={{
-                                                        width: 32, height: 32, borderRadius: 8,
-                                                        background: currentPage === pg ? "#2563eb" : "#fff",
-                                                        border: currentPage === pg ? "1px solid #2563eb" : "1px solid #e2e8f0",
-                                                        color: currentPage === pg ? "#fff" : "#475569",
-                                                        fontSize: 12, fontWeight: 700,
-                                                        cursor: "pointer", fontFamily: "inherit",
-                                                        transition: "all 0.15s",
-                                                    }}>
-                                                    {pg}
-                                                </button>
-                                            )
-                                        )}
-                                        <button
-                                            onClick={() => setCurrentPage(p => p + 1)}
-                                            disabled={currentPage === totalPages}
-                                            className="uk-page-btn"
-                                            style={{
-                                                width: 32, height: 32, borderRadius: 8,
-                                                background: "#fff", border: "1px solid #e2e8f0",
-                                                color: "#64748b", cursor: "pointer",
-                                                display: "flex", alignItems: "center", justifyContent: "center",
-                                                opacity: currentPage === totalPages ? 0.35 : 1,
-                                                transition: "all 0.15s",
-                                            }}>
-                                            <FaChevronRight size={9} />
-                                        </button>
-                                    </div>
-                                )}
+                                <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                             </div>
                         </div>
 
-                        {/* ── MOBILE CARDS ── */}
-                        <div className="uk-mobile-cards" style={{ display: "none" }}>
+                        {/* ── MOBILE / TABLET CARDS ── */}
+                        <div className="uk-mobile-cards">
                             {paginated.map((product, idx) => {
                                 const img = product.images?.[0]?.url || product.image?.url || product.image || null;
-                                const si = stockInfo(product);
 
                                 return (
-                                    <div
+                                    <Card
                                         key={product._id}
                                         className="uk-prod-card"
-                                        style={{
-                                            background: "#fff",
-                                            border: "1px solid #e2e8f0",
-                                            borderRadius: 14,
-                                            padding: "14px",
-                                            marginBottom: 10,
-                                            boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-                                            opacity: deletingId === product._id ? 0.4 : 1,
-                                            animationDelay: `${idx * 0.04}s`,
-                                        }}
+                                        style={{ padding: 14, marginBottom: 10, opacity: deletingId === product._id ? 0.4 : 1, animationDelay: `${idx * 0.04}s` }}
                                     >
                                         {/* Card Top Row — clickable to navigate */}
                                         <Link to={`/admin/products/${product._id}/edit`} style={{ textDecoration: "none", color: "inherit", display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 12 }}>
                                             {/* Image */}
                                             <div className="uk-img-wrap" style={{
                                                 width: 56, height: 56, flexShrink: 0,
-                                                background: "#f8fafc", border: "1px solid #e2e8f0",
+                                                background: "var(--adm-surface-alt)", border: "1px solid var(--adm-border)",
                                                 borderRadius: 10, overflow: "hidden",
                                                 display: "flex", alignItems: "center", justifyContent: "center",
                                             }}>
                                                 {img
                                                     ? <img src={img} alt={product.name} loading="lazy"
                                                         style={{ width: "100%", height: "100%", objectFit: "contain", padding: 4 }} />
-                                                    : <FaBoxOpen size={18} style={{ color: "#cbd5e1" }} />
+                                                    : <FaBoxOpen size={18} style={{ color: "var(--adm-border)" }} />
                                                 }
                                             </div>
 
@@ -767,36 +594,22 @@ const AdminProducts = () => {
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <p style={{
                                                     fontWeight: 700, fontSize: 14,
-                                                    color: "#0f172a", margin: "0 0 4px",
+                                                    color: "var(--adm-text-primary)", margin: "0 0 4px",
                                                     lineHeight: 1.3,
+                                                    overflow: "hidden", textOverflow: "ellipsis",
+                                                    display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
                                                 }}>
                                                     {product.name}
                                                 </p>
                                                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
-                                                    <span style={{
-                                                        background: "#fefce8", border: "1px solid #fde68a",
-                                                        color: "#92400e", fontSize: 10, fontWeight: 700,
-                                                        padding: "2px 8px", borderRadius: 20,
-                                                    }}>
-                                                        {formatCat(product.category)}
-                                                    </span>
-                                                    {product.slug && (
-                                                        <div style={{
-                                                            display: "inline-flex", alignItems: "center", gap: 3,
-                                                            fontSize: 10, color: "#6366f1",
-                                                            background: "#eef2ff", border: "1px solid #e0e7ff",
-                                                            padding: "2px 7px", borderRadius: 4,
-                                                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                                            maxWidth: 140,
-                                                        }}>
-                                                            <FaLink size={7} /> {product.slug}
-                                                        </div>
+                                                    <Badge tone="warning">{formatCat(product.category)}</Badge>
+                                                    {!product.slug && (
+                                                        <span style={{ fontSize: 10, color: "var(--adm-warning)" }}>⚠ no slug</span>
                                                     )}
-                                                    {/* 🔥 COLOR DOTS FOR MOBILE */}
                                                     {product.colorVariants && product.colorVariants.length > 0 && (
-                                                        <div style={{ display: "flex", gap: 3, alignItems: "center", marginLeft: 4 }}>
-                                                            {product.colorVariants.map((c, idx) => (
-                                                                <div key={idx} title={c.name} style={{ width: 10, height: 10, borderRadius: "50%", background: c.hex || "#ccc", border: "1px solid #e2e8f0" }} />
+                                                        <div className="uk-color-dots" style={{ marginLeft: 4 }}>
+                                                            {product.colorVariants.map((c, i) => (
+                                                                <div key={i} title={c.name} style={{ width: 10, height: 10, borderRadius: "50%", background: c.hex || "#ccc", border: "1px solid var(--adm-border)" }} />
                                                             ))}
                                                         </div>
                                                     )}
@@ -804,7 +617,7 @@ const AdminProducts = () => {
                                             </div>
 
                                             {/* Price */}
-                                            <div style={{ fontWeight: 800, fontSize: 15, color: "#2563eb", flexShrink: 0 }}>
+                                            <div style={{ fontWeight: 800, fontSize: 15, color: "var(--adm-primary)", flexShrink: 0, whiteSpace: "nowrap" }}>
                                                 ₹{Number(product.price || 0).toLocaleString("en-IN")}
                                             </div>
                                         </Link>
@@ -814,12 +627,13 @@ const AdminProducts = () => {
                                             display: "flex", alignItems: "center",
                                             justifyContent: "space-between",
                                             paddingTop: 10,
-                                            borderTop: "1px solid #f1f5f9",
+                                            borderTop: "1px solid var(--adm-border-soft)",
+                                            flexWrap: "wrap", gap: 8,
                                         }}>
                                             <StockCell product={product} />
                                             <ActionBtns product={product} />
                                         </div>
-                                    </div>
+                                    </Card>
                                 );
                             })}
 
@@ -828,41 +642,14 @@ const AdminProducts = () => {
                                 <div style={{
                                     display: "flex", alignItems: "center",
                                     justifyContent: "space-between",
-                                    padding: "12px 4px",
+                                    padding: "12px 4px", flexWrap: "wrap", gap: 10,
                                 }}>
-                                    <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>
-                                        <b style={{ color: "#475569" }}>{pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, filtered.length)}</b>
+                                    <p style={{ fontSize: 12, color: "var(--adm-muted)", margin: 0 }}>
+                                        <b style={{ color: "var(--adm-text-secondary)" }}>{pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, filtered.length)}</b>
                                         {" "}of{" "}
-                                        <b style={{ color: "#475569" }}>{filtered.length}</b>
+                                        <b style={{ color: "var(--adm-text-secondary)" }}>{filtered.length}</b>
                                     </p>
-                                    <div style={{ display: "flex", gap: 6 }}>
-                                        <button
-                                            onClick={() => setCurrentPage(p => p - 1)}
-                                            disabled={currentPage === 1}
-                                            style={{
-                                                padding: "7px 14px", borderRadius: 8,
-                                                background: "#fff", border: "1px solid #e2e8f0",
-                                                color: "#64748b", cursor: "pointer",
-                                                fontWeight: 600, fontSize: 12,
-                                                opacity: currentPage === 1 ? 0.35 : 1,
-                                                display: "flex", alignItems: "center", gap: 5,
-                                            }}>
-                                            <FaChevronLeft size={9} /> Prev
-                                        </button>
-                                        <button
-                                            onClick={() => setCurrentPage(p => p + 1)}
-                                            disabled={currentPage === totalPages}
-                                            style={{
-                                                padding: "7px 14px", borderRadius: 8,
-                                                background: "#fff", border: "1px solid #e2e8f0",
-                                                color: "#64748b", cursor: "pointer",
-                                                fontWeight: 600, fontSize: 12,
-                                                opacity: currentPage === totalPages ? 0.35 : 1,
-                                                display: "flex", alignItems: "center", gap: 5,
-                                            }}>
-                                            Next <FaChevronRight size={9} />
-                                        </button>
-                                    </div>
+                                    <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                                 </div>
                             )}
                         </div>

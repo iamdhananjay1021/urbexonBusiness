@@ -1,39 +1,3 @@
-/**
- * Profile.jsx — v3.3 Production
- * Matches Figma: Profile Picture, Basic Info, Shop Status, Shop Details, Business Address
- *
- * FIXES (v3.3) — full backend connectivity audit:
- * - ✅ Shop-Open toggle now calls the dedicated PATCH /vendor/toggle-shop
- *   endpoint instead of PUT /vendor/me. `isOpen` wasn't in updateMyProfile's
- *   whitelist before (now fixed there too, but toggle-shop is the purpose
- *   built, simpler endpoint for a pure flip and doesn't need a request body).
- * - ✅ "Website" field now actually persists — it was being sent every save
- *   but silently dropped (missing from both the Vendor schema and the
- *   backend whitelist; both fixed in Vendor.js / venderProfile.js).
- * - ✅ NEW: "WhatsApp Number" field — the field was already sent on every
- *   save() and already supported end-to-end on the backend, but there was
- *   no input for it anywhere in the UI, so vendors could never actually
- *   set it.
- * - ✅ NEW: "Accepting New Orders" toggle — backend field `acceptingOrders`
- *   already existed and was already whitelisted, but had zero UI control.
- *   This is an important operational switch (temporarily pause new orders
- *   without going fully "closed") that was completely inaccessible.
- * - ✅ NEW: "Delivery Mode" select (Self / Platform / Both) — backend field
- *   already existed and was already whitelisted, no UI control existed.
- * - ✅ NEW: "Delivery Radius (km)" field — backend field existed but was
- *   previously only reachable via the separate PUT /vendor/settings route;
- *   now also included in PUT /vendor/me so it saves through this same form.
- *
- * FIXES (v3.2):
- * - ✅ CRITICAL: Field, ReadOnlyInput, Input, Card, and StatusBadge were all
- *   defined INSIDE the Profile component's function body, so every keystroke
- *   re-render created new function references and React remounted the
- *   underlying <input> DOM node — losing focus after every character. Moved
- *   to module-level (outside Profile) so references stay stable.
- *
- * FIX (v3.1): Added a "Delivery Zone" card with a Serviceable Pincodes tag
- * input, wired into save() via `servicePincodes`.
- */
 import { useState, useEffect, useRef } from "react";
 import api from "../api/axios";
 import {
@@ -48,7 +12,32 @@ import {
   FiMessageCircle,
   FiTruck,
   FiPauseCircle,
+  FiUser,
+  FiShoppingBag,
+  FiNavigation,
+  FiHome,
+  FiHash,
 } from "react-icons/fi";
+
+/* ═══════════════════════════════════════════════════
+   DESIGN TOKENS
+   Kept in one place so the palette stays consistent
+   everywhere it's used below.
+═══════════════════════════════════════════════════ */
+const T = {
+  brand: "#7c3aed",
+  brandDeep: "#4f46e5",
+  ink: "#111827",
+  sub: "#6b7280",
+  faint: "#9ca3af",
+  border: "#efeaf9",
+  pageBg: "#f6f4fc",
+  cardShadow: "0 1px 3px rgba(28,17,52,0.05), 0 1px 2px rgba(28,17,52,0.04)",
+  success: "#16a34a",
+  successBg: "#ecfdf3",
+  danger: "#dc2626",
+  dangerBg: "#fef2f2",
+};
 
 /* ═══════════════════════════════════════════════════
    MODULE-LEVEL SUB-COMPONENTS
@@ -88,29 +77,29 @@ const PincodeTagInput = ({ tags, onChange }) => {
           onKeyDown={handleKeyDown}
           placeholder="Type a 6-digit pincode and press Enter"
           style={{
-            flex: 1, padding: "10px 12px",
-            border: "1.5px solid #e5e7eb", borderRadius: 10,
-            fontSize: 13, color: "#111827", outline: "none",
-            fontFamily: "inherit", boxSizing: "border-box",
+            flex: 1, padding: "11px 14px",
+            border: `1.5px solid ${T.border}`, borderRadius: 12,
+            fontSize: 13, color: T.ink, outline: "none",
+            fontFamily: "inherit", boxSizing: "border-box", background: "#fbfaff",
           }}
-          onFocus={(e) => (e.target.style.borderColor = "#7c3aed")}
-          onBlur={(e) => (e.target.style.borderColor = "#e5e7eb")}
+          onFocus={(e) => (e.target.style.borderColor = T.brand)}
+          onBlur={(e) => (e.target.style.borderColor = T.border)}
         />
         <button
           type="button"
           onClick={addTag}
           style={{
-            padding: "10px 16px", border: "none", borderRadius: 10,
-            background: "#f3f4f6", color: "#374151", fontSize: 13, fontWeight: 700,
+            padding: "11px 18px", border: "none", borderRadius: 12,
+            background: T.ink, color: "#fff", fontSize: 13, fontWeight: 700,
             cursor: "pointer", whiteSpace: "nowrap",
           }}
         >
           Add
         </button>
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
         {tags.length === 0 && (
-          <span style={{ fontSize: 12, color: "#9ca3af" }}>
+          <span style={{ fontSize: 12, color: T.faint }}>
             No serviceable pincodes added yet. Urbexon Hour products won't be shown to any customer until you add at least one.
           </span>
         )}
@@ -119,18 +108,18 @@ const PincodeTagInput = ({ tags, onChange }) => {
             key={tag}
             style={{
               display: "inline-flex", alignItems: "center", gap: 6,
-              background: "#ede9fe", color: "#5b21b6",
+              background: "#f3edfe", color: "#5b21b6",
               fontSize: 12, fontWeight: 700,
-              padding: "5px 10px", borderRadius: 20,
+              padding: "6px 10px 6px 12px", borderRadius: 20,
             }}
           >
             {tag}
             <button
               type="button"
               onClick={() => removeTag(tag)}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "#7c3aed", display: "flex" }}
+              style={{ background: "rgba(124,58,237,0.12)", border: "none", borderRadius: "50%", width: 16, height: 16, cursor: "pointer", color: T.brand, display: "flex", alignItems: "center", justifyContent: "center" }}
             >
-              <FiX size={12} />
+              <FiX size={10} />
             </button>
           </span>
         ))}
@@ -140,9 +129,9 @@ const PincodeTagInput = ({ tags, onChange }) => {
 };
 
 const STATUS_CFG = {
-  approved: { label: "Verified", bg: "#d1fae5", c: "#065f46", icon: FiCheckCircle },
-  pending: { label: "Pending", bg: "#fef3c7", c: "#92400e", icon: FiClock },
-  rejected: { label: "Rejected", bg: "#fee2e2", c: "#b91c1c", icon: FiXCircle },
+  approved: { label: "Verified", bg: T.successBg, c: T.success, icon: FiCheckCircle },
+  pending: { label: "Pending", bg: "#fff7e6", c: "#b45309", icon: FiClock },
+  rejected: { label: "Rejected", bg: T.dangerBg, c: T.danger, icon: FiXCircle },
 };
 
 const StatusBadge = ({ status }) => {
@@ -152,7 +141,7 @@ const StatusBadge = ({ status }) => {
       display: "inline-flex", alignItems: "center", gap: 5,
       background: cfg.bg, color: cfg.c,
       fontSize: 12, fontWeight: 700,
-      padding: "4px 10px", borderRadius: 20,
+      padding: "5px 11px", borderRadius: 20,
     }}>
       <cfg.icon size={12} />
       {cfg.label}
@@ -162,34 +151,32 @@ const StatusBadge = ({ status }) => {
 
 const Field = ({ label, hint, children }) => (
   <div>
-    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 7 }}>
       {label}
     </label>
     {children}
-    {hint && <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>{hint}</p>}
+    {hint && <p style={{ fontSize: 11, color: T.faint, marginTop: 5, lineHeight: 1.5 }}>{hint}</p>}
   </div>
 );
 
 const ReadOnlyInput = ({ value }) => (
-  <div style={{ position: "relative" }}>
-    <input
-      type="text"
-      value={value || ""}
-      readOnly
-      style={{
-        width: "100%", padding: "10px 12px",
-        border: "1.5px solid #f3f4f6", borderRadius: 10,
-        fontSize: 13, color: "#6b7280", outline: "none",
-        fontFamily: "inherit", boxSizing: "border-box",
-        background: "#f9fafb", cursor: "not-allowed",
-      }}
-    />
-  </div>
+  <input
+    type="text"
+    value={value || ""}
+    readOnly
+    style={{
+      width: "100%", padding: "11px 14px",
+      border: `1.5px solid ${T.border}`, borderRadius: 12,
+      fontSize: 13, color: T.sub, outline: "none",
+      fontFamily: "inherit", boxSizing: "border-box",
+      background: "#faf9fd", cursor: "not-allowed",
+    }}
+  />
 );
 
 const Input = ({ value, onChange, placeholder, type = "text", icon: Icon, min, max }) => (
   <div style={{ position: "relative" }}>
-    {Icon && <Icon size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />}
+    {Icon && <Icon size={14} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: T.faint }} />}
     <input
       type={type}
       value={value ?? ""}
@@ -198,32 +185,35 @@ const Input = ({ value, onChange, placeholder, type = "text", icon: Icon, min, m
       min={min}
       max={max}
       style={{
-        width: "100%", padding: Icon ? "10px 12px 10px 34px" : "10px 12px",
-        border: "1.5px solid #e5e7eb", borderRadius: 10,
-        fontSize: 13, color: "#111827", outline: "none",
+        width: "100%", padding: Icon ? "11px 14px 11px 36px" : "11px 14px",
+        border: `1.5px solid ${T.border}`, borderRadius: 12,
+        fontSize: 13, color: T.ink, outline: "none",
         fontFamily: "inherit", boxSizing: "border-box",
-        transition: "border-color 0.2s",
+        transition: "border-color 0.2s", background: "#fbfaff",
       }}
-      onFocus={e => e.target.style.borderColor = "#7c3aed"}
-      onBlur={e => e.target.style.borderColor = "#e5e7eb"}
+      onFocus={e => e.target.style.borderColor = T.brand}
+      onBlur={e => e.target.style.borderColor = T.border}
     />
   </div>
 );
 
-const Card = ({ title, children }) => (
+const Card = ({ title, icon: Icon, children }) => (
   <div style={{
-    background: "#fff", borderRadius: 16,
-    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+    background: "#fff", borderRadius: 18,
+    boxShadow: T.cardShadow, border: `1px solid ${T.border}`,
     padding: 24, marginBottom: 16,
   }}>
-    <h3 style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 20, paddingBottom: 12, borderBottom: "1px solid #f3f4f6" }}>
-      {title}
-    </h3>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20, paddingBottom: 14, borderBottom: `1px solid ${T.border}` }}>
+      {Icon && <Icon size={13} color={T.brand} />}
+      <h3 style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase", color: "#5b21b6", margin: 0 }}>
+        {title}
+      </h3>
+    </div>
     {children}
   </div>
 );
 
-// Small reusable on/off switch used for both "Shop Open" and "Accepting Orders"
+// Small reusable on/off switch used for "Shop Open" and "Accepting Orders"
 const Toggle = ({ checked, onChange, disabled }) => (
   <div
     role="switch"
@@ -233,7 +223,7 @@ const Toggle = ({ checked, onChange, disabled }) => (
     onKeyDown={(e) => { if (!disabled && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onChange(); } }}
     style={{
       width: 44, height: 24, borderRadius: 12,
-      background: checked ? "#7c3aed" : "#e5e7eb",
+      background: checked ? T.brand : "#e5e7eb",
       position: "relative", cursor: disabled ? "not-allowed" : "pointer",
       opacity: disabled ? 0.6 : 1,
       transition: "background 0.2s",
@@ -247,6 +237,29 @@ const Toggle = ({ checked, onChange, disabled }) => (
       transition: "left 0.2s",
       boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
     }} />
+  </div>
+);
+
+// A single row inside the "Shop Status" card — icon, label + description, control
+const StatusRow = ({ icon: Icon, label, desc, control, last }) => (
+  <div style={{
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+    padding: "14px 0",
+    borderBottom: last ? "none" : `1px solid ${T.border}`,
+  }}>
+    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+      <div style={{
+        width: 32, height: 32, borderRadius: 10, background: "#f3edfe",
+        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1,
+      }}>
+        <Icon size={14} color={T.brand} />
+      </div>
+      <div>
+        <div style={{ fontSize: 13, color: T.ink, fontWeight: 700 }}>{label}</div>
+        {desc && <div style={{ fontSize: 11, color: T.faint, marginTop: 2, maxWidth: 320, lineHeight: 1.5 }}>{desc}</div>}
+      </div>
+    </div>
+    {control}
   </div>
 );
 
@@ -376,273 +389,339 @@ const Profile = () => {
 
   if (loading) return (
     <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 400 }}>
-      <div style={{ width: 36, height: 36, border: "3px solid #e5e7eb", borderTopColor: "#7c3aed", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
+      <div style={{ width: 36, height: 36, border: "3px solid #ece7fb", borderTopColor: T.brand, borderRadius: "50%", animation: "spin .8s linear infinite" }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 
   if (!vendor) return (
-    <div style={{ textAlign: "center", padding: 60, color: "#9ca3af" }}>Profile not found</div>
+    <div style={{ textAlign: "center", padding: 60, color: T.faint }}>Profile not found</div>
   );
 
   const initials = (vendor.ownerName || vendor.shopName || "V").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const ringColor = vendor.isOpen ? "#34d399" : "#6b7280";
 
   return (
-    <div style={{ maxWidth: 900 }}>
+    <div style={{ maxWidth: 900, margin: "0 auto", background: T.pageBg, paddingBottom: 32 }}>
       <style>{`
-        .profile-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 16px; }
+        .profile-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; margin-bottom: 16px; align-items: start; }
         .address-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
         .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .stat-chip-row { display: flex; gap: 10px; flex-wrap: wrap; }
         @media (max-width: 768px) {
           .profile-grid { grid-template-columns: 1fr !important; }
           .address-grid { grid-template-columns: 1fr !important; }
           .info-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#111827", margin: 0 }}>Profile</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", marginTop: 3 }}>Manage your vendor profile and shop information</p>
-      </div>
 
-      {msg.text && (
+      {/* ── HERO ─────────────────────────────────────── */}
+      <div style={{
+        position: "relative", borderRadius: 24, overflow: "hidden",
+        background: "linear-gradient(155deg, #1c1730 0%, #2f1f52 55%, #4c2d8f 100%)",
+        padding: "36px 28px 56px",
+      }}>
+        {/* dot-grid texture */}
         <div style={{
-          background: msg.type === "success" ? "#f0fdf4" : "#fef2f2",
-          border: `1px solid ${msg.type === "success" ? "#bbf7d0" : "#fecaca"}`,
-          color: msg.type === "success" ? "#065f46" : "#b91c1c",
-          padding: "12px 16px", borderRadius: 10, marginBottom: 16,
-          fontSize: 13, fontWeight: 600,
-        }}>{msg.text}</div>
-      )}
+          position: "absolute", inset: 0,
+          backgroundImage: "radial-gradient(rgba(255,255,255,0.10) 1px, transparent 1px)",
+          backgroundSize: "18px 18px", pointerEvents: "none",
+        }} />
+        <div style={{
+          position: "absolute", top: -60, right: -60, width: 220, height: 220, borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(167,139,250,0.35), transparent 70%)", pointerEvents: "none",
+        }} />
 
-      <div className="profile-grid">
-        {/* Profile Picture */}
-        <Card title="Profile Picture">
-          <div style={{ textAlign: "center" }}>
-            <div style={{ position: "relative", display: "inline-block", marginBottom: 12 }}>
+        <div style={{ position: "relative", textAlign: "center" }}>
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <div style={{
+              width: 108, height: 108, borderRadius: "50%",
+              padding: 3, background: `conic-gradient(${ringColor}, ${ringColor})`,
+              margin: "0 auto",
+            }}>
               <div style={{
-                width: 100, height: 100, borderRadius: "50%",
-                background: vendor.documents?.ownerPhoto
-                  ? `url(${vendor.documents.ownerPhoto}) center/cover`
-                  : "linear-gradient(135deg, #7c3aed, #4f46e5)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 32, fontWeight: 800, color: "#fff",
-                margin: "0 auto",
+                width: "100%", height: "100%", borderRadius: "50%", padding: 3, background: "#1c1730",
               }}>
-                {!vendor.documents?.ownerPhoto && initials}
+                <div style={{
+                  width: "100%", height: "100%", borderRadius: "50%",
+                  background: vendor.documents?.ownerPhoto
+                    ? `url(${vendor.documents.ownerPhoto}) center/cover`
+                    : "linear-gradient(135deg, #7c3aed, #4f46e5)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 30, fontWeight: 800, color: "#fff",
+                }}>
+                  {!vendor.documents?.ownerPhoto && initials}
+                </div>
               </div>
-              <button onClick={() => fileRef.current?.click()} style={{
-                position: "absolute", bottom: 2, right: 2,
-                width: 30, height: 30, borderRadius: "50%",
-                background: "#fff", border: "2px solid #e5e7eb",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer",
-              }}>
-                <FiCamera size={13} color="#374151" />
-              </button>
-              <input ref={fileRef} type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: "none" }} />
             </div>
-            <div style={{ fontSize: 11, color: "#9ca3af" }}>JPG, PNG or GIF. Max 2MB</div>
+            <button onClick={() => fileRef.current?.click()} style={{
+              position: "absolute", bottom: 2, right: 2,
+              width: 30, height: 30, borderRadius: "50%",
+              background: "#fff", border: "2px solid #1c1730",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer",
+            }}>
+              <FiCamera size={13} color="#374151" />
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: "none" }} />
           </div>
-        </Card>
 
-        {/* Basic Info */}
-        <Card title="Basic Information">
-          <div className="info-grid">
-            <Field label="Vendor Name">
-              <ReadOnlyInput value={vendor.ownerName} />
-            </Field>
-            <Field label="Shop Name">
-              <ReadOnlyInput value={vendor.shopName} />
-            </Field>
-            <Field label="Email">
-              <ReadOnlyInput value={vendor.email} />
-            </Field>
-            <Field label="Phone">
-              <ReadOnlyInput value={vendor.phone} />
-            </Field>
-            <Field label="WhatsApp Number">
-              <Input
-                value={vendor.whatsapp || ""}
-                onChange={v => set("whatsapp", v)}
-                placeholder="10-digit WhatsApp number"
-                icon={FiMessageCircle}
-              />
-            </Field>
-            <div style={{ fontSize: 11, color: "#9ca3af", alignSelf: "end" }}>
-              Contact support to update name, email, or phone
-            </div>
+          <h1 style={{ fontSize: 21, fontWeight: 800, color: "#fff", margin: "16px 0 2px", letterSpacing: "-0.01em" }}>
+            {vendor.shopName || "Your Shop"}
+          </h1>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", margin: 0 }}>{vendor.ownerName}</p>
+
+          <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 5,
+              background: "rgba(255,255,255,0.1)", color: "#fff",
+              fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 20,
+              border: "1px solid rgba(255,255,255,0.14)",
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: vendor.isOpen ? "#34d399" : "#9ca3af" }} />
+              {vendor.isOpen ? "Shop Open" : "Shop Closed"}
+            </span>
+            {vendor.status === "approved" && (
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 5,
+                background: "rgba(52,211,153,0.16)", color: "#6ee7b7",
+                fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 20,
+                border: "1px solid rgba(52,211,153,0.25)",
+              }}>
+                <FiCheckCircle size={11} /> Verified Vendor
+              </span>
+            )}
           </div>
-        </Card>
+        </div>
       </div>
 
-      <div className="profile-grid">
-        {/* Shop Status */}
-        <Card title="Shop Status">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #f3f4f6" }}>
-            <div>
-              <div style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>Shop Open</div>
-              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Customers can see &amp; browse your shop</div>
-            </div>
-            <Toggle checked={!!vendor.isOpen} onChange={toggleShopStatus} disabled={togglingStatus} />
-          </div>
+      {/* ── QUICK STATS — overlaps the hero, real data not decoration ── */}
+      <div style={{
+        position: "relative", margin: "-32px 16px 20px", zIndex: 2,
+        background: "#fff", borderRadius: 18, boxShadow: "0 8px 24px rgba(28,17,52,0.14)",
+        padding: "16px 20px", display: "flex", justifyContent: "space-around", gap: 8, flexWrap: "wrap",
+      }}>
+        <div style={{ textAlign: "center", padding: "0 8px" }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: T.ink }}>{(vendor.servicePincodes || []).length}</div>
+          <div style={{ fontSize: 10.5, color: T.faint, fontWeight: 600, marginTop: 2 }}>Pincodes Served</div>
+        </div>
+        <div style={{ width: 1, background: T.border }} />
+        <div style={{ textAlign: "center", padding: "0 8px" }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: T.ink }}>{vendor.deliveryRadius ?? 5} km</div>
+          <div style={{ fontSize: 10.5, color: T.faint, fontWeight: 600, marginTop: 2 }}>Delivery Radius</div>
+        </div>
+        <div style={{ width: 1, background: T.border }} />
+        <div style={{ textAlign: "center", padding: "0 8px" }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: T.ink, textTransform: "capitalize" }}>{vendor.deliveryMode || "both"}</div>
+          <div style={{ fontSize: 10.5, color: T.faint, fontWeight: 600, marginTop: 2 }}>Delivery Mode</div>
+        </div>
+      </div>
 
-          {/* ✅ NEW: Accepting New Orders — distinct from isOpen. Shop can be
-              visible/open but temporarily paused for new incoming orders. */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #f3f4f6" }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <FiPauseCircle size={13} color="#7c3aed" />
-                <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>Accepting New Orders</span>
-              </div>
-              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Turn off to pause new orders without closing your shop</div>
-            </div>
-            <Toggle checked={!!vendor.acceptingOrders} onChange={toggleAcceptingOrders} disabled={togglingOrders} />
-          </div>
+      <div style={{ padding: "0 16px" }}>
+        {msg.text && (
+          <div style={{
+            background: msg.type === "success" ? T.successBg : T.dangerBg,
+            border: `1px solid ${msg.type === "success" ? "#bbf7d0" : "#fecaca"}`,
+            color: msg.type === "success" ? "#065f46" : "#b91c1c",
+            padding: "12px 16px", borderRadius: 12, marginBottom: 16,
+            fontSize: 13, fontWeight: 600,
+          }}>{msg.text}</div>
+        )}
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 13, color: "#374151" }}>Verified Vendor</span>
-            <StatusBadge status={vendor.status} />
-          </div>
+        {/* ── Shop Status ── */}
+        <Card title="Shop Status" icon={FiCheckCircle}>
+          <StatusRow
+            icon={FiShoppingBag}
+            label="Shop Open"
+            desc="Customers can see & browse your shop"
+            control={<Toggle checked={!!vendor.isOpen} onChange={toggleShopStatus} disabled={togglingStatus} />}
+          />
+          <StatusRow
+            icon={FiPauseCircle}
+            label="Accepting New Orders"
+            desc="Turn off to pause new orders without closing your shop"
+            control={<Toggle checked={!!vendor.acceptingOrders} onChange={toggleAcceptingOrders} disabled={togglingOrders} />}
+          />
+          <StatusRow
+            icon={FiCheckCircle}
+            label="Verification"
+            last
+            control={<StatusBadge status={vendor.status} />}
+          />
         </Card>
 
-        {/* Shop Details */}
-        <Card title="Shop Details">
-          <div style={{ marginBottom: 16 }}>
-            <Field label="Shop Description">
-              <textarea
-                value={vendor.shopDescription || ""}
-                onChange={e => set("shopDescription", e.target.value)}
-                placeholder="Tell customers about your shop..."
-                rows={3}
-                style={{
-                  width: "100%", padding: "10px 12px",
-                  border: "1.5px solid #e5e7eb", borderRadius: 10,
-                  fontSize: 13, color: "#111827", outline: "none",
-                  fontFamily: "inherit", resize: "vertical", boxSizing: "border-box",
-                }}
-                onFocus={e => e.target.style.borderColor = "#7c3aed"}
-                onBlur={e => e.target.style.borderColor = "#e5e7eb"}
-              />
-            </Field>
-          </div>
+        <div className="profile-grid">
+          {/* Account Info */}
+          <Card title="Account Info" icon={FiUser}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <Field label="Vendor Name">
+                <ReadOnlyInput value={vendor.ownerName} />
+              </Field>
+              <Field label="Shop Name">
+                <ReadOnlyInput value={vendor.shopName} />
+              </Field>
+              <Field label="Email">
+                <ReadOnlyInput value={vendor.email} />
+              </Field>
+              <Field label="Phone">
+                <ReadOnlyInput value={vendor.phone} />
+              </Field>
+              <div style={{ fontSize: 11, color: T.faint, lineHeight: 1.5 }}>
+                Contact support to update name, email, or phone
+              </div>
+            </div>
+          </Card>
+
+          {/* Shop Details */}
+          <Card title="Shop Details" icon={FiShoppingBag}>
+            <div style={{ marginBottom: 16 }}>
+              <Field label="Shop Description">
+                <textarea
+                  value={vendor.shopDescription || ""}
+                  onChange={e => set("shopDescription", e.target.value)}
+                  placeholder="Tell customers about your shop..."
+                  rows={3}
+                  style={{
+                    width: "100%", padding: "11px 14px",
+                    border: `1.5px solid ${T.border}`, borderRadius: 12,
+                    fontSize: 13, color: T.ink, outline: "none",
+                    fontFamily: "inherit", resize: "vertical", boxSizing: "border-box",
+                    background: "#fbfaff",
+                  }}
+                  onFocus={e => e.target.style.borderColor = T.brand}
+                  onBlur={e => e.target.style.borderColor = T.border}
+                />
+              </Field>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <Field label="WhatsApp Number">
+                <Input
+                  value={vendor.whatsapp || ""}
+                  onChange={v => set("whatsapp", v)}
+                  placeholder="10-digit WhatsApp number"
+                  icon={FiMessageCircle}
+                />
+              </Field>
+              <div className="info-grid">
+                <Field label="Category">
+                  <select
+                    value={vendor.shopCategory || ""}
+                    onChange={e => set("shopCategory", e.target.value)}
+                    style={{
+                      width: "100%", padding: "11px 14px",
+                      border: `1.5px solid ${T.border}`, borderRadius: 12,
+                      fontSize: 13, color: T.ink, outline: "none",
+                      fontFamily: "inherit", background: "#fbfaff", cursor: "pointer",
+                    }}
+                  >
+                    <option value="">Select category</option>
+                    {categoryList.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </Field>
+                <Field label="Website">
+                  <Input
+                    value={vendor.website || ""}
+                    onChange={v => set("website", v)}
+                    placeholder="https://example.com"
+                    icon={FiGlobe}
+                  />
+                </Field>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* Delivery Settings */}
+        <Card title="Delivery Settings" icon={FiTruck}>
           <div className="info-grid">
-            <Field label="Category">
+            <Field label="Delivery Mode">
               <select
-                value={vendor.shopCategory || ""}
-                onChange={e => set("shopCategory", e.target.value)}
+                value={vendor.deliveryMode || "both"}
+                onChange={e => set("deliveryMode", e.target.value)}
                 style={{
-                  width: "100%", padding: "10px 12px",
-                  border: "1.5px solid #e5e7eb", borderRadius: 10,
-                  fontSize: 13, color: "#111827", outline: "none",
-                  fontFamily: "inherit", background: "#fff", cursor: "pointer",
+                  width: "100%", padding: "11px 14px",
+                  border: `1.5px solid ${T.border}`, borderRadius: 12,
+                  fontSize: 13, color: T.ink, outline: "none",
+                  fontFamily: "inherit", background: "#fbfaff", cursor: "pointer",
                 }}
               >
-                <option value="">Select category</option>
-                {categoryList.map(c => <option key={c} value={c}>{c}</option>)}
+                {DELIVERY_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
             </Field>
-            <Field label="Website">
+            <Field label="Delivery Radius (km)" hint="Urbexon Hour never delivers beyond 10km, regardless of this setting.">
               <Input
-                value={vendor.website || ""}
-                onChange={v => set("website", v)}
-                placeholder="https://example.com"
-                icon={FiGlobe}
+                type="number"
+                min={1}
+                max={10}
+                value={vendor.deliveryRadius ?? 5}
+                onChange={v => set("deliveryRadius", v)}
+                placeholder="5"
+                icon={FiNavigation}
               />
             </Field>
           </div>
         </Card>
-      </div>
 
-      {/* ✅ NEW: Delivery Settings — deliveryMode + deliveryRadius both
-          already existed on the backend model and were already whitelisted
-          (deliveryMode) or route-supported (deliveryRadius), but had no UI
-          anywhere in the app. */}
-      <Card title="Delivery Settings">
-        <div className="info-grid">
-          <Field label="Delivery Mode">
-            <select
-              value={vendor.deliveryMode || "both"}
-              onChange={e => set("deliveryMode", e.target.value)}
-              style={{
-                width: "100%", padding: "10px 12px",
-                border: "1.5px solid #e5e7eb", borderRadius: 10,
-                fontSize: 13, color: "#111827", outline: "none",
-                fontFamily: "inherit", background: "#fff", cursor: "pointer",
-              }}
-            >
-              {DELIVERY_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-            </select>
-          </Field>
-          <Field label="Delivery Radius (km)" hint="Urbexon Hour never delivers beyond 10km, regardless of this setting.">
-            <Input
-              type="number"
-              min={1}
-              max={10}
-              value={vendor.deliveryRadius ?? 5}
-              onChange={v => set("deliveryRadius", v)}
-              placeholder="5"
-              icon={FiTruck}
+        {/* Business Address */}
+        <Card title="Business Address" icon={FiHome}>
+          <div style={{ marginBottom: 16 }}>
+            <Field label="Street Address">
+              <Input
+                value={vendor.address?.line1 || ""}
+                onChange={v => setAddr("line1", v)}
+                placeholder="123 Business Street"
+              />
+            </Field>
+          </div>
+          <div className="address-grid">
+            <Field label="City">
+              <Input value={vendor.address?.city} onChange={v => setAddr("city", v)} placeholder="Mumbai" />
+            </Field>
+            <Field label="State">
+              <Input value={vendor.address?.state} onChange={v => setAddr("state", v)} placeholder="Maharashtra" />
+            </Field>
+            <Field label="PIN Code">
+              <Input value={vendor.address?.pincode} onChange={v => setAddr("pincode", v)} placeholder="400001" />
+            </Field>
+          </div>
+        </Card>
+
+        {/* Delivery Zone / Serviceable Pincodes — this is what actually
+            controls which pincodes see this vendor's Urbexon Hour products. */}
+        <Card title="Delivery Zone" icon={FiMapPin}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, background: "#f8f6fe", padding: "10px 12px", borderRadius: 10 }}>
+            <FiHash size={14} color={T.brand} style={{ marginTop: 1, flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: T.sub, lineHeight: 1.5 }}>
+              Only customers checking these exact pincodes on Urbexon Hour will see your products. Business Address PIN Code above is just for your shop's address — it is NOT used for delivery matching.
+            </span>
+          </div>
+          <Field label="Serviceable Pincodes">
+            <PincodeTagInput
+              tags={vendor.servicePincodes || []}
+              onChange={(tags) => set("servicePincodes", tags)}
             />
           </Field>
-        </div>
-      </Card>
+        </Card>
 
-      {/* Business Address */}
-      <Card title="Business Address">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginBottom: 16 }}>
-          <Field label="Street Address">
-            <Input
-              value={vendor.address?.line1 || ""}
-              onChange={v => setAddr("line1", v)}
-              placeholder="123 Business Street"
-            />
-          </Field>
-        </div>
-        <div className="address-grid">
-          <Field label="City">
-            <Input value={vendor.address?.city} onChange={v => setAddr("city", v)} placeholder="Mumbai" />
-          </Field>
-          <Field label="State">
-            <Input value={vendor.address?.state} onChange={v => setAddr("state", v)} placeholder="Maharashtra" />
-          </Field>
-          <Field label="PIN Code">
-            <Input value={vendor.address?.pincode} onChange={v => setAddr("pincode", v)} placeholder="400001" />
-          </Field>
-        </div>
-      </Card>
-
-      {/* Delivery Zone / Serviceable Pincodes — this is what actually
-          controls which pincodes see this vendor's Urbexon Hour products. */}
-      <Card title="Delivery Zone">
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-          <FiMapPin size={14} color="#7c3aed" />
-          <span style={{ fontSize: 12, color: "#6b7280" }}>
-            Only customers checking these exact pincodes on Urbexon Hour will see your products. Business Address PIN Code above is just for your shop's address — it is NOT used for delivery matching.
-          </span>
-        </div>
-        <Field label="Serviceable Pincodes">
-          <PincodeTagInput
-            tags={vendor.servicePincodes || []}
-            onChange={(tags) => set("servicePincodes", tags)}
-          />
-        </Field>
-      </Card>
-
-      {/* Save Button */}
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button onClick={save} disabled={saving} style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "12px 24px",
-          background: "linear-gradient(135deg, #7c3aed, #4f46e5)",
-          color: "#fff", border: "none", borderRadius: 12,
-          fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer",
-          opacity: saving ? 0.7 : 1, transition: "all 0.2s",
+        {/* Save Button — sticky so it's always reachable on long forms */}
+        <div style={{
+          position: "sticky", bottom: 16, display: "flex", justifyContent: "flex-end",
+          marginTop: 8,
         }}>
-          <FiSave size={15} />
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
+          <button onClick={save} disabled={saving} style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "13px 26px",
+            background: "linear-gradient(135deg, #7c3aed, #4f46e5)",
+            color: "#fff", border: "none", borderRadius: 14,
+            fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer",
+            opacity: saving ? 0.7 : 1, transition: "all 0.2s",
+            boxShadow: "0 8px 20px rgba(124,58,237,0.35)",
+          }}>
+            <FiSave size={15} />
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
       </div>
-
     </div>
   );
 };

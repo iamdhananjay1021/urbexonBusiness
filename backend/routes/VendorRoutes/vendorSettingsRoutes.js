@@ -5,6 +5,7 @@ import Vendor from "../../models/vendorModels/Vendor.js";
 import Pincode from "../../models/vendorModels/Pincode.js";
 import { delCacheByPrefix } from "../../utils/Cache.js";
 import { HARD_MAX_RADIUS_KM } from "../../validations/orderValidations.js";
+import { DELIVERY_CONFIG } from "../../config/deliveryConfig.js";
 import slugify from "slugify";
 
 const router = express.Router();
@@ -49,7 +50,11 @@ router.put("/settings", async (req, res) => {
         // used everywhere else instead of trusting raw client input.
         if (deliveryRadius !== undefined) {
             const num = Number(deliveryRadius);
-            if (Number.isFinite(num)) vendor.deliveryRadius = Math.min(Math.max(num, 1), HARD_MAX_RADIUS_KM);
+            if (Number.isFinite(num)) {
+                const adminMax = Math.min(DELIVERY_CONFIG.URBEXON_HOUR.MAX_VENDOR_RADIUS_KM, HARD_MAX_RADIUS_KM);
+                const adminMin = Math.min(DELIVERY_CONFIG.URBEXON_HOUR.MIN_VENDOR_RADIUS_KM, adminMax);
+                vendor.deliveryRadius = Math.min(Math.max(num, adminMin), adminMax);
+            }
         }
         // BUG FIX: servicePincodes was assigned as-is with no existence check
         // against the real Pincode collection — a vendor could "serve" a

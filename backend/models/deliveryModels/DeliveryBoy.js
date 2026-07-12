@@ -50,6 +50,15 @@ const deliveryBoySchema = new mongoose.Schema(
 
         // ── FCM push notifications ──
         fcmToken: { type: String, default: null },
+        notificationPreferences: {
+            sound: { type: Boolean, default: true },
+            muted: { type: Boolean, default: false },
+            push: { type: Boolean, default: true },
+            email: { type: Boolean, default: true },
+            sms: { type: Boolean, default: true },
+            marketing: { type: Boolean, default: true },
+            transactional: { type: Boolean, default: true },
+        },
 
         // ── Active orders count (for assignment engine) ──
         activeOrders: { type: Number, default: 0 },

@@ -21,6 +21,9 @@ import { kickoffNewOrder } from "../services/orderKickoff.js";
 import { DELIVERY_CONFIG } from "../config/deliveryConfig.js";
 import { createShiprocketOrder } from "../utils/Shiprocketservice.js";
 import { validateOrderParams } from "../validations/orderValidations.js";
+import { getCache, setCache } from "../utils/Cache.js";
+import { notifyOrderStakeholders } from "../services/orderEngine.js";
+import { createNotification } from "./admin/notificationController.js";
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -258,7 +261,9 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
         const invoiceNumber = await generateInvoiceNumber();
 
         // ✅ Step 5: Create order with server-calculated prices
-        const order = await Order.create({
+        let order;
+        try {
+            order = await Order.create({
             user: req.user._id,
             invoiceNumber,
             items: formattedItems,
@@ -302,7 +307,34 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
                 meta: { itemsTotal, deliveryCharge },
                 at: new Date(),
             }],
-        });
+            });
+        } catch (createErr) {
+            // RACE FIX: the idempotency check above (Order.findOne by
+            // razorpayPaymentId) is read-then-write — two near-simultaneous
+            // verify calls for the same payment could both pass that check
+            // before either Order.create() commits. The unique index on
+            // payment.razorpayPaymentId then makes the SECOND create()
+            // throw E11000 — previously uncaught, falling into the generic
+            // 500 handler and telling the second caller "order creation
+            // failed" even though payment was already captured and an
+            // order DOES exist. Detect the duplicate-key case specifically
+            // and return the order that actually won the race instead.
+            if (createErr?.code === 11000) {
+                const winner = await Order.findOne({ "payment.razorpayPaymentId": razorpay_payment_id }).lean();
+                if (winner) {
+                    return res.json({
+                        success: true,
+                        orderId: winner._id,
+                        invoiceNumber: winner.invoiceNumber,
+                        orderStatus: winner.orderStatus,
+                        refund: winner.refund || null,
+                        message: "Order already created for this payment",
+                        duplicate: true,
+                    });
+                }
+            }
+            throw createErr;
+        }
 
         // ✅ Step 6: Deduct stock
         try {
@@ -485,6 +517,24 @@ export const razorpayWebhook = async (req, res) => {
         const paymentEntity = payload.payload?.payment?.entity;
         const refundEntity = payload.payload?.refund?.entity;
 
+        // SECURITY/IDEMPOTENCY: Razorpay redelivers webhook events (documented
+        // behavior) and this handler had no dedup — a redelivered event was
+        // "idempotent by accident" only because $set writes are harmless to
+        // repeat. Guard explicitly by event+entity so a future case that
+        // ISN'T naturally idempotent (e.g. appending to a log array) can't
+        // silently double-apply.
+        const entityId = paymentEntity?.id || refundEntity?.id;
+        if (entityId) {
+            const dedupKey = `webhook:razorpay:${event}:${entityId}`;
+            try {
+                const alreadyProcessed = await getCache(dedupKey);
+                if (alreadyProcessed) {
+                    return res.json({ received: true, duplicate: true });
+                }
+                await setCache(dedupKey, true, 86400); // 24h — well beyond any realistic redelivery window
+            } catch { /* cache unavailable — fall through and process as before (non-fatal) */ }
+        }
+
         switch (event) {
             case "payment.failed":
                 await Order.findOneAndUpdate(
@@ -549,6 +599,25 @@ export const requestRefund = async (req, res) => {
             /[<>&"']/g,
             (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" })[c]
         );
+
+        // BUG FIX: this used to ONLY send an email — unlike requestReturn/
+        // requestReplacement, it never even persisted an admin notification
+        // (no createNotification call at all), let alone a live push. Admin
+        // had zero in-app visibility into refund requests until now.
+        notifyOrderStakeholders(order, "refund_requested", {
+            status: order.orderStatus,
+            message: `${safeName} requested a refund of ₹${order.totalAmount}.`,
+        }).catch((err) => console.warn("[requestRefund] stakeholder notify failed:", err.message));
+
+        createNotification({
+            type: "order",
+            title: `Refund Requested #${order._id.toString().slice(-6).toUpperCase()}`,
+            message: `${safeName} requested a refund of ₹${order.totalAmount}`,
+            icon: "alert",
+            link: "/admin/refund-return",
+            meta: { orderId: order._id },
+        });
+
         sendEmail({
             to: process.env.ADMIN_EMAIL,
             subject: `💰 Refund Request #${order._id.toString().slice(-6).toUpperCase()} — ₹${order.totalAmount}`,

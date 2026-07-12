@@ -40,6 +40,8 @@ import {
 import {
     autoAssignDeliveryBoys,
     updateDeliveryStatus,
+    updateDeliveryBoyAvailability,
+    alertStaleAssignedOrders,
 } from './deliveryJobs.js';
 
 import {
@@ -159,6 +161,18 @@ const JOBS = [
         schedule: '*/10 * * * *', // Every 10 minutes (reduced from 2min)
         handler: updateDeliveryStatus,
         enabled: true,
+    },
+    {
+        name: 'Auto-Offline Inactive Delivery Boys',
+        schedule: '*/10 * * * *', // Every 10 minutes
+        handler: updateDeliveryBoyAvailability,
+        enabled: true, // was defined but never scheduled — dead code until now
+    },
+    {
+        name: 'Alert Stale Assigned Orders',
+        schedule: '*/10 * * * *', // Every 10 minutes
+        handler: alertStaleAssignedOrders,
+        enabled: true, // safe, read-only replacement for the disabled "Update Delivery Status" job
     },
     {
         name: 'Check New Deal Alerts',

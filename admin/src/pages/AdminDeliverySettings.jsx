@@ -5,58 +5,44 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../api/adminApi";
 import {
-    FaTruck, FaSave, FaUndo, FaCog, FaMapMarkerAlt,
-    FaRupeeSign, FaBolt, FaClock, FaShieldAlt, FaToggleOn, FaToggleOff,
+    FaTruck, FaSave, FaUndo, FaMapMarkerAlt,
+    FaRupeeSign, FaBolt, FaClock, FaShieldAlt, FaToggleOn, FaToggleOff, FaTachometerAlt,
 } from "react-icons/fa";
-
-const SECTION_STYLE = {
-    background: "#fff",
-    borderRadius: 12,
-    border: "1px solid #e5e7eb",
-    padding: "24px",
-    marginBottom: 20,
-};
-
-const LABEL_STYLE = {
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#374151",
-    marginBottom: 6,
-    display: "block",
-};
-
-const INPUT_STYLE = {
-    width: "100%",
-    padding: "10px 12px",
-    border: "1.5px solid #e5e7eb",
-    borderRadius: 8,
-    fontSize: 14,
-    fontFamily: "inherit",
-    color: "#1f2937",
-    transition: "border-color .15s",
-    outline: "none",
-};
+import { Button, Card, ErrorState, Skeleton, FormField, Input } from "../components/ui";
 
 const GRID = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 };
 
 const Field = ({ label, value, onChange, type = "text", suffix, disabled }) => (
-    <div>
-        <label style={LABEL_STYLE}>{label}</label>
+    <FormField label={label}>
         <div style={{ position: "relative" }}>
-            <input
+            <Input
                 type={type}
                 value={value}
                 onChange={(e) => onChange(type === "number" ? Number(e.target.value) : e.target.value)}
-                style={{ ...INPUT_STYLE, opacity: disabled ? 0.5 : 1 }}
                 disabled={disabled}
+                style={{ opacity: disabled ? 0.5 : 1, paddingRight: suffix ? 36 : undefined, width: "100%", boxSizing: "border-box" }}
             />
             {suffix && (
-                <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "#9ca3af" }}>
+                <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "var(--adm-muted)" }}>
                     {suffix}
                 </span>
             )}
         </div>
-    </div>
+    </FormField>
+);
+
+const SectionCard = ({ icon: Icon, iconColor, title, subtitle, action, children }) => (
+    <Card style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Icon size={14} color={iconColor} />
+                <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--adm-text-primary)", margin: 0 }}>{title}</h2>
+            </div>
+            {action}
+        </div>
+        {subtitle && <p style={{ fontSize: 12, color: "var(--adm-text-secondary)", marginBottom: 14, marginTop: -10 }}>{subtitle}</p>}
+        {children}
+    </Card>
 );
 
 export default function AdminDeliverySettings() {
@@ -107,15 +93,22 @@ export default function AdminDeliverySettings() {
     const hasChanges = JSON.stringify(config) !== JSON.stringify(original);
 
     if (loading) return (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}>
-            <div style={{ width: 32, height: 32, border: "3px solid #e5e7eb", borderTopColor: "#6366f1", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
-            <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
+            <Skeleton height={32} width={220} style={{ marginBottom: 20 }} />
+            {[1, 2, 3].map(i => (
+                <Card key={i} style={{ marginBottom: 20 }}>
+                    <Skeleton height={18} width={200} style={{ marginBottom: 18 }} />
+                    <div style={GRID}>
+                        {[1, 2, 3, 4].map(j => <Skeleton key={j} height={40} />)}
+                    </div>
+                </Card>
+            ))}
         </div>
     );
 
     if (!config) return (
-        <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>
-            Failed to load delivery settings
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px" }}>
+            <ErrorState message="Failed to load delivery settings" onRetry={fetchConfig} />
         </div>
     );
 
@@ -125,10 +118,9 @@ export default function AdminDeliverySettings() {
             {toast && (
                 <div style={{
                     position: "fixed", top: 20, right: 20, zIndex: 9999,
-                    padding: "12px 20px", borderRadius: 8, fontSize: 14, fontWeight: 600,
-                    color: "#fff", boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                    background: toast.type === "success" ? "#10b981" : "#ef4444",
-                    animation: "adm-fadeIn .2s",
+                    padding: "12px 20px", borderRadius: "var(--adm-radius-md)", fontSize: 14, fontWeight: 600,
+                    color: "var(--adm-text-on-accent)", boxShadow: "var(--adm-shadow-md)",
+                    background: toast.type === "success" ? "var(--adm-success)" : "var(--adm-danger)",
                 }}>
                     {toast.msg}
                 </div>
@@ -137,53 +129,45 @@ export default function AdminDeliverySettings() {
             {/* Header */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ width: 42, height: 42, borderRadius: 10, background: "linear-gradient(135deg, #6366f1, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <FaTruck size={18} color="#fff" />
+                    <div style={{ width: 42, height: 42, borderRadius: "var(--adm-radius-md)", background: "linear-gradient(135deg, var(--adm-primary), var(--adm-primary-hover))", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <FaTruck size={18} color="var(--adm-text-on-accent)" />
                     </div>
                     <div>
-                        <h1 style={{ fontSize: 20, fontWeight: 700, color: "#1e293b", margin: 0 }}>Delivery Settings</h1>
-                        <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>Manage delivery charges, ETAs, and policies</p>
+                        <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--adm-text-primary)", margin: 0 }}>Delivery Settings</h1>
+                        <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", margin: 0 }}>Manage delivery charges, ETAs, and policies</p>
                     </div>
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
-                    <button onClick={handleReset} disabled={!hasChanges}
-                        style={{ padding: "10px 18px", border: "1.5px solid #e5e7eb", borderRadius: 8, background: "#fff", fontSize: 13, fontWeight: 600, color: "#6b7280", cursor: hasChanges ? "pointer" : "default", opacity: hasChanges ? 1 : 0.4, display: "flex", alignItems: "center", gap: 6 }}>
-                        <FaUndo size={12} /> Reset
-                    </button>
-                    <button onClick={handleSave} disabled={saving || !hasChanges}
-                        style={{ padding: "10px 22px", border: "none", borderRadius: 8, background: hasChanges ? "#6366f1" : "#d1d5db", fontSize: 13, fontWeight: 700, color: "#fff", cursor: hasChanges ? "pointer" : "default", display: "flex", alignItems: "center", gap: 6 }}>
-                        <FaSave size={12} /> {saving ? "Saving..." : "Save Changes"}
-                    </button>
+                    <Button variant="secondary" icon={FaUndo} disabled={!hasChanges} onClick={handleReset}>Reset</Button>
+                    <Button variant="primary" icon={FaSave} loading={saving} disabled={!hasChanges} onClick={handleSave}>
+                        {saving ? "Saving..." : "Save Changes"}
+                    </Button>
                 </div>
             </div>
 
             {/* ── Section: Ecommerce Charges ── */}
-            <div style={SECTION_STYLE}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-                    <FaRupeeSign size={14} color="#6366f1" />
-                    <h2 style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", margin: 0 }}>Ecommerce Delivery Charges</h2>
-                </div>
+            <SectionCard icon={FaRupeeSign} iconColor="var(--adm-primary)" title="Ecommerce Delivery Charges">
                 <div style={GRID}>
                     <Field label="Free Delivery Threshold" type="number" value={config.freeDeliveryThreshold} onChange={v => set("freeDeliveryThreshold", v)} suffix="₹" />
                     <Field label="Online Delivery Charge" type="number" value={config.onlineDeliveryCharge} onChange={v => set("onlineDeliveryCharge", v)} suffix="₹" />
                     <Field label="COD Charge" type="number" value={config.codCharge} onChange={v => set("codCharge", v)} suffix="₹" />
                     <Field label="Platform Fee" type="number" value={config.platformFee} onChange={v => set("platformFee", v)} suffix="₹" />
                 </div>
-            </div>
+            </SectionCard>
 
             {/* ── Section: Urbexon Hour ── */}
-            <div style={SECTION_STYLE}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <FaBolt size={14} color="#7c3aed" />
-                        <h2 style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", margin: 0 }}>Urbexon Hour (Express)</h2>
-                    </div>
-                    <button onClick={() => set("uhEnabled", !config.uhEnabled)}
-                        style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: config.uhEnabled ? "#10b981" : "#ef4444" }}>
-                        {config.uhEnabled ? <FaToggleOn size={22} /> : <FaToggleOff size={22} />}
+            <SectionCard
+                icon={FaBolt} iconColor="var(--adm-info)" title="Urbexon Hour (Express)"
+                action={(
+                    <Button
+                        variant="ghost" size="sm" icon={config.uhEnabled ? FaToggleOn : FaToggleOff}
+                        onClick={() => set("uhEnabled", !config.uhEnabled)}
+                        style={{ color: config.uhEnabled ? "var(--adm-success)" : "var(--adm-danger)" }}
+                    >
                         {config.uhEnabled ? "Enabled" : "Disabled"}
-                    </button>
-                </div>
+                    </Button>
+                )}
+            >
                 <div style={GRID}>
                     <Field label="Max Radius" type="number" value={config.uhMaxRadiusKm} onChange={v => set("uhMaxRadiusKm", v)} suffix="km" disabled={!config.uhEnabled} />
                     <Field label="Vendor Self-Delivery Radius" type="number" value={config.uhVendorSelfRadiusKm} onChange={v => set("uhVendorSelfRadiusKm", v)} suffix="km" disabled={!config.uhEnabled} />
@@ -192,73 +176,72 @@ export default function AdminDeliverySettings() {
                     <Field label="Max Charge Cap" type="number" value={config.uhMaxCharge} onChange={v => set("uhMaxCharge", v)} suffix="₹" disabled={!config.uhEnabled} />
                     <Field label="UH ETA Display Text" value={config.uhEtaText} onChange={v => set("uhEtaText", v)} disabled={!config.uhEnabled} />
                 </div>
-            </div>
+            </SectionCard>
+
+            {/* ── Section: Geo Engine (dynamic ETA + vendor radius bounds) ── */}
+            <SectionCard
+                icon={FaTachometerAlt} iconColor="var(--adm-info)" title="Geo Engine — ETA & Vendor Radius"
+                subtitle="Drives the dynamic ETA shown at checkout (prep time + distance ÷ rider speed) and the min/max radius a vendor is allowed to set for themselves. Vendor radius bounds can never exceed the platform's absolute 10km safety ceiling, no matter what is entered here."
+            >
+                <div style={GRID}>
+                    <Field label="Avg Rider Speed" type="number" value={config.avgRiderSpeedKmph ?? 20} onChange={v => set("avgRiderSpeedKmph", v)} suffix="km/h" />
+                    <Field label="Default Prep Time" type="number" value={config.defaultPrepTimeMin ?? 15} onChange={v => set("defaultPrepTimeMin", v)} suffix="min" />
+                    <Field label="Min Vendor Radius" type="number" value={config.minVendorRadiusKm ?? 1} onChange={v => set("minVendorRadiusKm", v)} suffix="km" />
+                    <Field label="Max Vendor Radius" type="number" value={config.maxVendorRadiusKm ?? 10} onChange={v => set("maxVendorRadiusKm", v)} suffix="km" />
+                    <Field label="Default Vendor Radius" type="number" value={config.defaultVendorRadiusKm ?? 5} onChange={v => set("defaultVendorRadiusKm", v)} suffix="km" />
+                </div>
+            </SectionCard>
 
             {/* ── Section: ETA Text ── */}
-            <div style={SECTION_STYLE}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-                    <FaClock size={14} color="#f59e0b" />
-                    <h2 style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", margin: 0 }}>Delivery ETA Display</h2>
-                </div>
-                <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 14 }}>
-                    These are displayed on product pages and order confirmations
-                </p>
+            <SectionCard
+                icon={FaClock} iconColor="var(--adm-warning)" title="Delivery ETA Display"
+                subtitle="These are displayed on product pages and order confirmations"
+            >
                 <div style={GRID}>
                     <Field label="Ecommerce Standard" value={config.etaEcommerceStandard} onChange={v => set("etaEcommerceStandard", v)} />
                     <Field label="Online Local" value={config.etaOnlineLocal} onChange={v => set("etaOnlineLocal", v)} />
                     <Field label="Online National" value={config.etaOnlineNational} onChange={v => set("etaOnlineNational", v)} />
                     <Field label="Urbexon Hour" value={config.etaUrbexonHour} onChange={v => set("etaUrbexonHour", v)} />
                 </div>
-            </div>
+            </SectionCard>
 
             {/* ── Section: Shop Location ── */}
-            <div style={SECTION_STYLE}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-                    <FaMapMarkerAlt size={14} color="#ef4444" />
-                    <h2 style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", margin: 0 }}>Shop / Pickup Location</h2>
-                </div>
+            <SectionCard icon={FaMapMarkerAlt} iconColor="var(--adm-danger)" title="Shop / Pickup Location">
                 <div style={GRID}>
                     <Field label="Latitude" type="number" value={config.shopLat} onChange={v => set("shopLat", v)} />
                     <Field label="Longitude" type="number" value={config.shopLng} onChange={v => set("shopLng", v)} />
                     <Field label="Shop Pincode" value={config.shopPincode} onChange={v => set("shopPincode", v)} />
                     <Field label="Shiprocket Pickup Location" value={config.shiprocketPickupLocation} onChange={v => set("shiprocketPickupLocation", v)} />
                 </div>
-            </div>
+            </SectionCard>
 
             {/* ── Section: Policies ── */}
-            <div style={SECTION_STYLE}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-                    <FaShieldAlt size={14} color="#10b981" />
-                    <h2 style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", margin: 0 }}>Policies</h2>
-                </div>
+            <SectionCard icon={FaShieldAlt} iconColor="var(--adm-success)" title="Policies">
                 <div style={GRID}>
-                    <div>
-                        <label style={LABEL_STYLE}>COD Available PAN India</label>
-                        <button onClick={() => set("codAvailablePanIndia", !config.codAvailablePanIndia)}
-                            style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "1.5px solid #e5e7eb", borderRadius: 8, padding: "10px 16px", cursor: "pointer", fontSize: 14, fontWeight: 600, color: config.codAvailablePanIndia ? "#10b981" : "#ef4444", width: "100%" }}>
-                            {config.codAvailablePanIndia ? <FaToggleOn size={20} /> : <FaToggleOff size={20} />}
+                    <FormField label="COD Available PAN India">
+                        <Button
+                            variant="secondary" icon={config.codAvailablePanIndia ? FaToggleOn : FaToggleOff}
+                            onClick={() => set("codAvailablePanIndia", !config.codAvailablePanIndia)}
+                            style={{ width: "100%", color: config.codAvailablePanIndia ? "var(--adm-success)" : "var(--adm-danger)" }}
+                        >
                             {config.codAvailablePanIndia ? "Yes" : "No"}
-                        </button>
-                    </div>
+                        </Button>
+                    </FormField>
                     <Field label="Return Policy Days" type="number" value={config.returnDays} onChange={v => set("returnDays", v)} suffix="days" />
                 </div>
-            </div>
+            </SectionCard>
 
             {/* Sticky save bar on mobile */}
             {hasChanges && (
                 <div style={{
                     position: "fixed", bottom: 0, left: 0, right: 0, padding: "12px 16px",
-                    background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex",
+                    background: "var(--adm-surface)", borderTop: "1px solid var(--adm-border)", display: "flex",
                     justifyContent: "flex-end", gap: 10, zIndex: 100,
                 }}>
-                    <button onClick={handleReset}
-                        style={{ padding: "10px 18px", border: "1.5px solid #e5e7eb", borderRadius: 8, background: "#fff", fontSize: 13, fontWeight: 600, color: "#6b7280", cursor: "pointer" }}>
-                        Reset
-                    </button>
-                    <button onClick={handleSave} disabled={saving}
-                        style={{ padding: "10px 22px", border: "none", borderRadius: 8, background: "#6366f1", fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer" }}>
+                    <Button variant="secondary" onClick={handleReset}>Reset</Button>
+                    <Button variant="primary" loading={saving} onClick={handleSave}>
                         {saving ? "Saving..." : "Save Changes"}
-                    </button>
+                    </Button>
                 </div>
             )}
         </div>

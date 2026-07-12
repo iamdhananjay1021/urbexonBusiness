@@ -85,5 +85,16 @@ export default function useAdminWs(onMessage) {
         };
     }, [connect]);
 
-    return { connected };
+    // BUG FIX: this hook had no way to SEND anything (e.g. "join_room" for
+    // a specific order's live-tracking room) — admins were auto-joined only
+    // to the shared "admins" room, so a per-order tracking view had no WS
+    // path at all and was 100% dependent on polling, unlike client/vendor-
+    // panel/delivery-panel which can all join order-specific rooms.
+    const send = useCallback((type, payload = {}) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type, ...payload }));
+        }
+    }, []);
+
+    return { connected, send };
 }

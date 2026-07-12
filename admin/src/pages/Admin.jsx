@@ -1,43 +1,50 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useAdminAuth } from "../auth/AdminAuthContext";
-import useAdminWs from "../hooks/useAdminWs";
+import { AdminWsProvider, useAdminWsContext } from "../contexts/AdminWsContext";
 import api from "../api/adminApi";
 import {
     FaThLarge, FaBox, FaClipboardList,
     FaSignOutAlt, FaBars, FaTimes, FaChevronRight, FaPlusCircle,
     FaImage, FaTags, FaStore, FaMapMarkerAlt, FaMoneyBillWave, FaUndoAlt, FaTruck,
     FaUsers, FaTicketAlt, FaBell, FaCheck, FaShoppingCart, FaExclamationTriangle, FaInfoCircle,
-    FaGlobeAsia, FaCog,
+    FaGlobeAsia, FaCog, FaWallet, FaPercentage,
 } from "react-icons/fa";
 
 /* ─── Pages that need zero padding (manage their own layout) ─── */
 const FULLBLEED_ROUTES = ["refunds", "settlements", "payouts", "pincodes", "local-delivery", "map", "delivery-settings"];
 
+/* FIX: previously `--admshell-text`, `--admshell-text-main` and
+   `--admshell-border` were declared here but never referenced anywhere
+   in the stylesheet — dead tokens. Replaced with tokens that are
+   actually used everywhere the dark sidebar/notification-panel needs a
+   text color, instead of the same hex values (#0f172a / #64748b)
+   being retyped by hand in a dozen different places. */
+/* FIX: sidebar used to be hardcoded near-black (#0f172a) regardless of
+   the rest of the app's theme. Sidebar tokens now point at the same
+   --adm-* variables the Orders page (and everything else) already uses,
+   so the sidebar is light and consistent instead of a black slab. */
 const ADMIN_STYLES = `
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-
     :root {
-        --adm-bg:           #f4f6fb;
-        --adm-sidebar:      #0f172a;
-        --adm-sidebar-hover:#1e293b;
-        --adm-border:       #1e293b;
-        --adm-blue:         #3b82f6;
-        --adm-blue-dim:     rgba(59,130,246,0.12);
-        --adm-blue-light:   rgba(59,130,246,0.08);
-        --adm-text:         #f8fafc;
-        --adm-text-main:    #1e293b;
-        --adm-muted:        #94a3b8;
-        --adm-faint:        #64748b;
-        --adm-red:          #ef4444;
-        --adm-topbar:       #ffffff;
-        --adm-shadow:       0 1px 3px rgba(0,0,0,0.06);
-        --sidebar-w:        250px;
-        --topbar-h:         60px;
+        --admshell-bg:            var(--adm-bg);
+        --admshell-sidebar:       var(--adm-surface);
+        --admshell-sidebar-hover: var(--adm-surface-alt);
+        --admshell-sidebar-text:  var(--adm-text-primary);
+        --admshell-sidebar-muted: var(--adm-muted);
+        --admshell-blue:          var(--adm-primary);
+        --admshell-blue-dim:      rgba(59,130,246,0.12);
+        --admshell-blue-light:    rgba(59,130,246,0.08);
+        --admshell-red:           var(--adm-danger);
+        --admshell-topbar:        var(--adm-surface);
+        --admshell-topbar-text:   var(--adm-text-primary);
+        --admshell-topbar-muted:  var(--adm-muted);
+        --admshell-shadow:        0 1px 3px rgba(0,0,0,0.06);
+        --admshell-sidebar-w:     250px;
+        --admshell-topbar-h:      60px;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--adm-bg); }
+    body { background: var(--admshell-bg); }
 
     .adm-root {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -45,7 +52,7 @@ const ADMIN_STYLES = `
 
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--adm-text-secondary); border-radius: 4px; }
 
     @keyframes adm-slideIn {
         from { transform: translateX(-100%); opacity: 0; }
@@ -64,7 +71,7 @@ const ADMIN_STYLES = `
         text-decoration: none;
         font-size: 13px;
         font-weight: 500;
-        color: var(--adm-muted);
+        color: var(--admshell-sidebar-muted);
         border-radius: 10px;
         border: none;
         transition: all 0.18s ease;
@@ -73,14 +80,14 @@ const ADMIN_STYLES = `
         position: relative;
     }
     .adm-nav-link:hover {
-        color: #e2e8f0;
-        background: var(--adm-sidebar-hover);
+        color: var(--admshell-sidebar-text);
+        background: var(--admshell-sidebar-hover);
     }
     .adm-nav-link.active {
-        color: #ffffff;
-        background: linear-gradient(135deg, rgba(59,130,246,0.2), rgba(59,130,246,0.08));
+        color: var(--admshell-blue);
+        background: linear-gradient(135deg, rgba(59,130,246,0.14), rgba(59,130,246,0.05));
         font-weight: 600;
-        box-shadow: inset 3px 0 0 var(--adm-blue);
+        box-shadow: inset 3px 0 0 var(--admshell-blue);
     }
     .adm-nav-icon {
         width: 30px; height: 30px;
@@ -91,18 +98,18 @@ const ADMIN_STYLES = `
     }
     .adm-nav-link.active .adm-nav-icon {
         background: rgba(59,130,246,0.18);
-        color: var(--adm-blue);
+        color: var(--admshell-blue);
     }
     .adm-nav-link:not(.active) .adm-nav-icon {
-        color: var(--adm-faint);
+        color: var(--admshell-sidebar-muted);
     }
     .adm-nav-link:hover:not(.active) .adm-nav-icon {
-        color: #cbd5e1;
+        color: var(--admshell-sidebar-text);
     }
     .adm-nav-section-label {
         font-size: 10px;
         font-weight: 700;
-        color: #475569;
+        color: var(--admshell-sidebar-muted);
         letter-spacing: 0.14em;
         padding: 14px 14px 6px;
         text-transform: uppercase;
@@ -115,7 +122,7 @@ const ADMIN_STYLES = `
         border-radius: 10px;
         border: 1px solid rgba(239,68,68,0.2);
         background: rgba(239,68,68,0.08);
-        color: #f87171;
+        color: var(--adm-danger);
         font-family: inherit;
         font-size: 13px; font-weight: 600;
         cursor: pointer;
@@ -123,40 +130,24 @@ const ADMIN_STYLES = `
     }
     .adm-logout-btn:hover {
         background: rgba(239,68,68,0.15);
-        color: #fca5a5;
+        color: var(--adm-danger-hover);
         border-color: rgba(239,68,68,0.35);
-    }
-    .adm-top-search {
-        display: flex; align-items: center; gap: 8px;
-        padding: 8px 16px;
-        background: #f1f5f9;
-        border: 1.5px solid #e2e8f0;
-        border-radius: 10px;
-        color: #94a3b8;
-        font-size: 13px;
-        cursor: pointer;
-        transition: all 0.15s;
-        white-space: nowrap;
-    }
-    .adm-top-search:hover {
-        border-color: #cbd5e1;
-        background: #f8fafc;
     }
     .adm-mobile-btn {
         display: none;
         align-items: center; justify-content: center;
         width: 38px; height: 38px;
-        background: #f1f5f9;
-        border: 1.5px solid #e2e8f0;
+        background: var(--adm-surface-alt);
+        border: 1.5px solid var(--adm-border);
         border-radius: 10px;
-        color: #475569;
+        color: var(--adm-text-secondary);
         cursor: pointer;
         flex-shrink: 0;
         transition: all 0.15s;
     }
     .adm-mobile-btn:hover {
-        background: #e2e8f0;
-        color: #1e293b;
+        background: var(--adm-border);
+        color: var(--adm-text-primary);
     }
 
     @media (max-width: 1023px) {
@@ -165,7 +156,6 @@ const ADMIN_STYLES = `
     }
     @media (max-width: 560px) {
         .adm-topbar-user-info { display: none !important; }
-        .adm-topbar-search { display: none !important; }
     }
 
     @keyframes adm-notifSlide {
@@ -175,8 +165,8 @@ const ADMIN_STYLES = `
     .adm-notif-panel {
         position: absolute; top: calc(100% + 8px); right: 0;
         width: 380px; max-height: 480px;
-        background: #fff; border: 1px solid #e2e8f0;
-        border-radius: 14; box-shadow: 0 16px 48px rgba(0,0,0,0.12);
+        background: var(--adm-surface); border: 1px solid var(--adm-border);
+        box-shadow: 0 16px 48px rgba(0,0,0,0.12);
         z-index: 999; display: flex; flex-direction: column;
         animation: adm-notifSlide 0.15s ease;
         border-radius: 14px;
@@ -190,48 +180,30 @@ const ADMIN_STYLES = `
     }
     .adm-notif-item {
         display: flex; gap: 10px; padding: 12px 16px;
-        border-bottom: 1px solid #f1f5f9;
+        border-bottom: 1px solid var(--adm-surface-alt);
         cursor: pointer; transition: background 0.12s;
     }
-    .adm-notif-item:hover { background: #f8fafc; }
-    .adm-notif-item.unread { background: #eff6ff; }
+    .adm-notif-item:hover { background: var(--adm-bg); }
+    .adm-notif-item.unread { background: var(--adm-primary-tint); }
     .adm-notif-item.unread:hover { background: #dbeafe; }
 `;
 
+/* FIX: brand mark used to be a gradient logo box + "UX" letters — per
+   request, the sidebar no longer shows any avatar/logo graphic, just
+   the text mark. */
 const UXLogoSidebar = () => (
-    <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-        <div style={{
-            width: 38, height: 38, borderRadius: 10,
-            background: "linear-gradient(135deg, #3b82f6, #1d4ed8)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 4px 12px rgba(59,130,246,0.35)",
-            flexShrink: 0,
-        }}>
-            <span style={{ fontWeight: 900, fontSize: 14, color: "#fff", letterSpacing: "-0.04em" }}>UX</span>
-        </div>
-        <div>
-            <div style={{ fontWeight: 800, fontSize: 16, color: "#f8fafc", lineHeight: 1, letterSpacing: "-0.03em" }}>UrbeXon</div>
-            <div style={{ fontSize: 9, color: "#64748b", letterSpacing: "0.16em", fontWeight: 600, marginTop: 4, textTransform: "uppercase" }}>Admin Console</div>
-        </div>
+    <div>
+        <div style={{ fontWeight: 800, fontSize: 16, color: "var(--admshell-sidebar-text)", lineHeight: 1, letterSpacing: "-0.03em" }}>UrbeXon</div>
+        <div style={{ fontSize: 9, color: "var(--admshell-sidebar-muted)", letterSpacing: "0.16em", fontWeight: 600, marginTop: 4, textTransform: "uppercase" }}>Admin Console</div>
     </div>
 );
 
-const TopAvatar = ({ name, size = 34 }) => (
+/* Still used by the topbar user chip — only the sidebar's avatar/logo
+   was removed, per request. */
+const Avatar = ({ name, size = 34 }) => (
     <div style={{
         width: size, height: size, borderRadius: 10,
-        background: "linear-gradient(135deg, #3b82f6, #6366f1)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        color: "#fff", fontWeight: 700, fontSize: size * 0.38, flexShrink: 0,
-        boxShadow: "0 2px 8px rgba(99,102,241,0.25)",
-    }}>
-        {name?.[0]?.toUpperCase() || "A"}
-    </div>
-);
-
-const SidebarAvatar = ({ name, size = 38 }) => (
-    <div style={{
-        width: size, height: size, borderRadius: 10,
-        background: "linear-gradient(135deg, #3b82f6, #6366f1)",
+        background: "linear-gradient(135deg, var(--adm-primary), #6366f1)",
         display: "flex", alignItems: "center", justifyContent: "center",
         color: "#fff", fontWeight: 700, fontSize: size * 0.38, flexShrink: 0,
         boxShadow: "0 2px 8px rgba(59,130,246,0.3)",
@@ -277,9 +249,16 @@ const NAV_SECTIONS = [
         items: [
             { to: "pincodes", icon: FaMapMarkerAlt, label: "Pincodes" },
             { to: "settlements", icon: FaMoneyBillWave, label: "Settlements" },
-            { to: "payouts", icon: FaMoneyBillWave, label: "Payouts" },
+            // FIX: Payouts used to share FaMoneyBillWave with Settlements —
+            // two adjacent nav items with the identical icon are hard to
+            // tell apart at a glance. Gave Payouts its own icon.
+            { to: "payouts", icon: FaWallet, label: "Payouts" },
             { to: "refunds", icon: FaUndoAlt, label: "Refunds" },
-            { to: "coupons", icon: FaTags, label: "Coupons" },
+            // FIX: Coupons used to share FaTags with Categories (a
+            // completely different section) — swapped to FaPercentage so
+            // it reads as "discounts" at a glance instead of duplicating
+            // the Categories icon.
+            { to: "coupons", icon: FaPercentage, label: "Coupons" },
             { to: "local-delivery", icon: FaTruck, label: "Local Delivery" },
             { to: "delivery-settings", icon: FaCog, label: "Delivery Settings" },
             { to: "scheduler", icon: FaCog, label: "Scheduler" },
@@ -288,26 +267,23 @@ const NAV_SECTIONS = [
 ];
 
 const SidebarContent = memo(({ admin, logout, onClose }) => {
-    const roleColor = admin?.role === "owner" ? "#f59e0b" : "#3b82f6";
+    const roleColor = admin?.role === "owner" ? "var(--adm-warning)" : "var(--adm-primary)";
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#0f172a" }}>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--admshell-sidebar)" }}>
             {/* Logo */}
             <div style={{ padding: "20px 18px 16px" }}>
                 <UXLogoSidebar />
             </div>
 
-            {/* User Card */}
-            <div style={{ margin: "0 12px 8px", padding: "12px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <SidebarAvatar name={admin?.name} />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: "#f1f5f9", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {admin?.name || "Admin"}
-                        </div>
-                        <div style={{ fontSize: 11, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
-                            {admin?.email}
-                        </div>
+            {/* User Card — text-only, no avatar/logo graphic */}
+            <div style={{ margin: "0 12px 8px", padding: "12px 14px", background: "var(--adm-bg)", border: "1px solid var(--adm-border)", borderRadius: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: "var(--admshell-sidebar-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {admin?.name || "Admin"}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--admshell-sidebar-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
+                        {admin?.email}
                     </div>
                 </div>
                 <div style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 5, background: `${roleColor}18`, padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 700, color: roleColor, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -318,7 +294,7 @@ const SidebarContent = memo(({ admin, logout, onClose }) => {
 
             {/* Navigation */}
             <div style={{ flex: 1, padding: "4px 10px", overflowY: "auto" }}>
-                {NAV_SECTIONS.map((section, si) => (
+                {NAV_SECTIONS.map((section) => (
                     <div key={section.label}>
                         <div className="adm-nav-section-label">{section.label}</div>
                         <nav>
@@ -329,7 +305,7 @@ const SidebarContent = memo(({ admin, logout, onClose }) => {
                                         <>
                                             <div className="adm-nav-icon"><Icon size={13} /></div>
                                             <span style={{ flex: 1 }}>{label}</span>
-                                            {isActive && <FaChevronRight size={8} style={{ color: "var(--adm-blue)", opacity: 0.5 }} />}
+                                            {isActive && <FaChevronRight size={8} style={{ color: "var(--admshell-blue)", opacity: 0.5 }} />}
                                         </>
                                     )}
                                 </NavLink>
@@ -354,13 +330,13 @@ SidebarContent.displayName = "SidebarContent";
    NOTIFICATION ICON MAP
 ══════════════════════════════════════════ */
 const NOTIF_ICONS = {
-    order: { Icon: FaShoppingCart, color: "#3b82f6", bg: "#eff6ff" },
+    order: { Icon: FaShoppingCart, color: "var(--adm-primary)", bg: "var(--adm-primary-tint)" },
     vendor: { Icon: FaStore, color: "#8b5cf6", bg: "#f5f3ff" },
-    product: { Icon: FaBox, color: "#f59e0b", bg: "#fffbeb" },
-    user: { Icon: FaUsers, color: "#10b981", bg: "#f0fdf4" },
-    alert: { Icon: FaExclamationTriangle, color: "#ef4444", bg: "#fef2f2" },
-    info: { Icon: FaInfoCircle, color: "#64748b", bg: "#f8fafc" },
-    system: { Icon: FaInfoCircle, color: "#64748b", bg: "#f8fafc" },
+    product: { Icon: FaBox, color: "var(--adm-warning)", bg: "var(--adm-warning-tint)" },
+    user: { Icon: FaUsers, color: "var(--adm-success)", bg: "var(--adm-success-tint)" },
+    alert: { Icon: FaExclamationTriangle, color: "var(--adm-danger)", bg: "var(--adm-danger-tint)" },
+    info: { Icon: FaInfoCircle, color: "var(--adm-text-secondary)", bg: "var(--adm-bg)" },
+    system: { Icon: FaInfoCircle, color: "var(--adm-text-secondary)", bg: "var(--adm-bg)" },
 };
 
 const timeAgo = (date) => {
@@ -377,15 +353,15 @@ const timeAgo = (date) => {
 const NotificationDropdown = ({ notifications, unreadCount, loading, onMarkRead, onMarkAllRead, onNavigate }) => (
     <div className="adm-notif-panel">
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 10px", borderBottom: "1px solid #e2e8f0" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 10px", borderBottom: "1px solid var(--adm-border)" }}>
             <div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>Notifications</div>
-                {unreadCount > 0 && <div style={{ fontSize: 11, color: "#64748b", marginTop: 1 }}>{unreadCount} unread</div>}
+                <div style={{ fontSize: 14, fontWeight: 800, color: "var(--admshell-topbar-text)" }}>Notifications</div>
+                {unreadCount > 0 && <div style={{ fontSize: 11, color: "var(--admshell-topbar-muted)", marginTop: 1 }}>{unreadCount} unread</div>}
             </div>
             {unreadCount > 0 && (
                 <button onClick={onMarkAllRead} style={{
                     background: "none", border: "none", cursor: "pointer",
-                    fontSize: 11, fontWeight: 700, color: "#3b82f6",
+                    fontSize: 11, fontWeight: 700, color: "var(--adm-primary)",
                     display: "flex", alignItems: "center", gap: 4,
                 }}>
                     <FaCheck size={9} /> Mark all read
@@ -396,12 +372,12 @@ const NotificationDropdown = ({ notifications, unreadCount, loading, onMarkRead,
         {/* List */}
         <div style={{ flex: 1, overflowY: "auto", maxHeight: 380 }}>
             {loading ? (
-                <div style={{ padding: "40px 16px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading…</div>
+                <div style={{ padding: "40px 16px", textAlign: "center", color: "var(--adm-muted)", fontSize: 13 }}>Loading…</div>
             ) : notifications.length === 0 ? (
                 <div style={{ padding: "48px 16px", textAlign: "center" }}>
-                    <FaBell size={24} style={{ color: "#cbd5e1", marginBottom: 10 }} />
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#64748b" }}>No notifications yet</div>
-                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>You'll be notified about orders, vendors & more</div>
+                    <FaBell size={24} style={{ color: "var(--adm-border)", marginBottom: 10 }} />
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--admshell-topbar-muted)" }}>No notifications yet</div>
+                    <div style={{ fontSize: 12, color: "var(--adm-muted)", marginTop: 4 }}>You'll be notified about orders, vendors & more</div>
                 </div>
             ) : notifications.map(n => {
                 const cfg = NOTIF_ICONS[n.icon] || NOTIF_ICONS[n.type] || NOTIF_ICONS.info;
@@ -415,12 +391,12 @@ const NotificationDropdown = ({ notifications, unreadCount, loading, onMarkRead,
                             <Icon size={13} color={color} />
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: n.isRead ? 500 : 700, color: "#0f172a", lineHeight: 1.3 }}>{n.title}</div>
-                            <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.3, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.message}</div>
-                            <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4, fontWeight: 500 }}>{timeAgo(n.createdAt)}</div>
+                            <div style={{ fontSize: 13, fontWeight: n.isRead ? 500 : 700, color: "var(--admshell-topbar-text)", lineHeight: 1.3 }}>{n.title}</div>
+                            <div style={{ fontSize: 12, color: "var(--admshell-topbar-muted)", lineHeight: 1.3, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.message}</div>
+                            <div style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 4, fontWeight: 500 }}>{timeAgo(n.createdAt)}</div>
                         </div>
                         {!n.isRead && (
-                            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#3b82f6", flexShrink: 0, marginTop: 4 }} />
+                            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--adm-primary)", flexShrink: 0, marginTop: 4 }} />
                         )}
                     </div>
                 );
@@ -432,7 +408,7 @@ const NotificationDropdown = ({ notifications, unreadCount, loading, onMarkRead,
 /* ══════════════════════════════════════════
    MAIN
 ══════════════════════════════════════════ */
-const Admin = () => {
+const AdminShell = () => {
     const { admin, logout } = useAdminAuth();
     const [mobileOpen, setMobileOpen] = useState(false);
     const [notifOpen, setNotifOpen] = useState(false);
@@ -443,7 +419,7 @@ const Admin = () => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    /* Fetch unread count on mount + poll every 30s */
+    /* Fetch unread count on mount + poll every 5 min */
     const fetchUnreadCount = useCallback(async () => {
         try {
             const { data } = await api.get("/admin/notifications/unread");
@@ -459,15 +435,16 @@ const Admin = () => {
         return () => clearInterval(interval);
     }, [fetchUnreadCount]);
 
-    /* Global WebSocket — refresh notifications on any real-time event */
-    const wsHandler = useCallback((msg) => {
-        if (msg.type === "connected" || msg.type === "pong") return;
-        // Refresh unread count on any real-time message
+    /* Global WebSocket — refresh notifications on any real-time event.
+       Consumes the ONE shared connection from AdminWsContext instead of
+       opening its own socket (see contexts/AdminWsContext.jsx). */
+    const { lastMessage } = useAdminWsContext();
+    useEffect(() => {
+        if (!lastMessage || lastMessage.type === "connected" || lastMessage.type === "pong") return;
         fetchUnreadCount();
         // Dispatch event so child pages can react (e.g. AdminLocalDelivery, AdminOrders)
-        window.dispatchEvent(new CustomEvent("admin:ws_message", { detail: msg }));
-    }, [fetchUnreadCount]);
-    const { connected: wsConnected } = useAdminWs(wsHandler);
+        window.dispatchEvent(new CustomEvent("admin:ws_message", { detail: lastMessage }));
+    }, [lastMessage, fetchUnreadCount]);
 
     /* Fetch full list when dropdown opens */
     const fetchNotifications = useCallback(async () => {
@@ -529,14 +506,14 @@ const Admin = () => {
     const closeMobile = () => setMobileOpen(false);
 
     return (
-        <div className="adm-root" style={{ height: "100vh", background: "var(--adm-bg)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div className="adm-root" style={{ height: "100vh", background: "var(--admshell-bg)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <style>{ADMIN_STYLES}</style>
 
             {/* ── TOPBAR ── */}
             <header style={{
-                height: "var(--topbar-h)",
-                background: "var(--adm-topbar)",
-                borderBottom: "1px solid #e2e8f0",
+                height: "var(--admshell-topbar-h)",
+                background: "var(--admshell-topbar)",
+                borderBottom: "1px solid var(--adm-border)",
                 padding: "0 20px",
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 position: "sticky", top: 0, zIndex: 50,
@@ -548,7 +525,7 @@ const Admin = () => {
                         {mobileOpen ? <FaTimes size={13} /> : <FaBars size={13} />}
                     </button>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.03em" }}>{currentLabel}</span>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: "var(--admshell-topbar-text)", letterSpacing: "-0.03em" }}>{currentLabel}</span>
                     </div>
                 </div>
 
@@ -557,20 +534,18 @@ const Admin = () => {
                     <div ref={notifRef} style={{ position: "relative" }}>
                         <button onClick={toggleNotif} style={{
                             width: 38, height: 38, borderRadius: 10,
-                            background: notifOpen ? "#eff6ff" : "#f8fafc",
-                            border: `1.5px solid ${notifOpen ? "#bfdbfe" : "#e2e8f0"}`,
+                            background: notifOpen ? "var(--adm-primary-tint)" : "var(--adm-bg)",
+                            border: `1.5px solid ${notifOpen ? "#bfdbfe" : "var(--adm-border)"}`,
                             display: "flex", alignItems: "center", justifyContent: "center",
-                            color: notifOpen ? "#3b82f6" : "#64748b", cursor: "pointer", position: "relative",
+                            color: notifOpen ? "var(--adm-primary)" : "var(--admshell-topbar-muted)", cursor: "pointer", position: "relative",
                             transition: "all 0.15s",
-                        }}
-                            onMouseEnter={e => { if (!notifOpen) { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.borderColor = "#cbd5e1"; } }}
-                            onMouseLeave={e => { if (!notifOpen) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0"; } }}>
+                        }}>
                             <FaBell size={13} />
                             {unreadCount > 0 && (
                                 <span style={{
                                     position: "absolute", top: 4, right: 4,
                                     minWidth: 16, height: 16, borderRadius: 8,
-                                    background: "#ef4444", border: "2px solid #fff",
+                                    background: "var(--adm-danger)", border: "2px solid var(--adm-surface)",
                                     display: "flex", alignItems: "center", justifyContent: "center",
                                     fontSize: 9, fontWeight: 800, color: "#fff",
                                     padding: "0 4px", lineHeight: 1,
@@ -595,14 +570,14 @@ const Admin = () => {
                     {/* User Chip */}
                     <div className="adm-topbar-user-info" style={{
                         display: "flex", alignItems: "center", gap: 10,
-                        background: "#f8fafc", border: "1.5px solid #e2e8f0",
+                        background: "var(--adm-bg)", border: "1.5px solid var(--adm-border)",
                         borderRadius: 12, padding: "5px 14px 5px 5px",
                         cursor: "default",
                     }}>
-                        <TopAvatar name={admin?.name} size={34} />
+                        <Avatar name={admin?.name} size={34} />
                         <div>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", lineHeight: 1.2 }}>{admin?.name || "Admin"}</div>
-                            <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "capitalize", fontWeight: 500 }}>{admin?.role}</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--admshell-topbar-text)", lineHeight: 1.2 }}>{admin?.name || "Admin"}</div>
+                            <div style={{ fontSize: 10, color: "var(--adm-muted)", textTransform: "capitalize", fontWeight: 500 }}>{admin?.role}</div>
                         </div>
                     </div>
                 </div>
@@ -615,12 +590,12 @@ const Admin = () => {
                 <aside
                     className="adm-desktop-sidebar"
                     style={{
-                        width: "var(--sidebar-w)",
+                        width: "var(--admshell-sidebar-w)",
                         flexShrink: 0,
-                        background: "#0f172a",
-                        height: "calc(100vh - var(--topbar-h))",
+                        background: "var(--admshell-sidebar)",
+                        height: "calc(100vh - var(--admshell-topbar-h))",
                         position: "sticky",
-                        top: "var(--topbar-h)",
+                        top: "var(--admshell-topbar-h)",
                         overflowY: "auto",
                     }}
                 >
@@ -641,7 +616,7 @@ const Admin = () => {
                 {mobileOpen && (
                     <div style={{
                         position: "fixed", left: 0, top: 0, bottom: 0,
-                        width: 270, background: "#0f172a",
+                        width: 270, background: "var(--admshell-sidebar)",
                         zIndex: 45, overflowY: "auto",
                         boxShadow: "8px 0 40px rgba(0,0,0,0.3)",
                         animation: "adm-slideIn 0.2s ease",
@@ -659,7 +634,7 @@ const Admin = () => {
                         flexDirection: "column",
                         overflowY: "auto",
                         overflowX: "hidden",
-                        background: "var(--adm-bg)",
+                        background: "var(--admshell-bg)",
                         padding: isFullBleed ? 0 : "24px",
                     }}
                     className={isFullBleed ? "" : "adm-main-content"}
@@ -670,5 +645,14 @@ const Admin = () => {
         </div>
     );
 };
+
+/* Wraps the shell in the ONE shared admin WebSocket connection — every
+   descendant admin page consumes it via useAdminWsContext() instead of
+   opening its own socket. */
+const Admin = () => (
+    <AdminWsProvider>
+        <AdminShell />
+    </AdminWsProvider>
+);
 
 export default Admin;

@@ -1,6 +1,12 @@
 /**
- * assignmentEngine.js — Zepto-style Smart Order Assignment v2.1
+ * assignmentEngine.js — Zepto-style Smart Order Assignment v2.2
  * ✅ FIXED: Removed LOCAL_RIDER provider hard check — now works for ALL URBEXON_HOUR orders
+ * ✅ FIXED (v2.2): _findNearestRiders scoring block now treats geoLocation's
+ *    [0,0] schema-default sentinel as "no location known" — matching the
+ *    same fix already applied in handleRiderAccept/adminForceAssign. A
+ *    rider who never sent a real GPS fix was getting geoLocation's
+ *    default [0,0] coordinate treated as real, producing a bogus
+ *    "~9264km away" distance in the rider's order-request popup.
  *
  * Flow:
  *  1. Order READY_FOR_PICKUP → startAssignment()
@@ -15,10 +21,27 @@
 
 import DeliveryBoy from "../models/deliveryModels/DeliveryBoy.js";
 import Order from "../models/Order.js";
-import { sendToUser, broadcastToUsers } from "../utils/wsHub.js";
+import { broadcastToAdmins } from "../utils/wsHub.js";
+// FIX (Vendor→Delivery realtime bug): rider-facing WS events
+// (rider:order_request, rider:order_taken, rider:offer_expired,
+// rider:order_assigned) were going through wsHub.sendToUser() directly —
+// raw, one-shot, no retry, no queue. Delivery riders are on mobile
+// (background app kills, network switches between 4G/WiFi, screen-off
+// battery throttling), so this silently dropped the order offer whenever
+// the rider's socket was mid-reconnect at the exact moment of broadcast —
+// no retry, no persistence. sendNotification (aliased here as sendToUser,
+// from notificationQueue.js) wraps the same underlying wsHub call but
+// auto-queues on failed delivery, retries with backoff (2s/5s/15s), and
+// auto-flushes the queue the moment the rider's socket reconnects
+// (flushQueueForUser, already wired into wsHub.js's connection handler).
+// Aliased to `sendToUser` so every existing call site below needs zero
+// changes.
+import { sendNotification as sendToUser } from "../utils/notificationQueue.js";
 import { sendNewOrderPush } from "./fcmService.js";
 import { DELIVERY_CONFIG } from "../config/deliveryConfig.js";
 import { getRedis, isRedisUp } from "../config/redis.js";
+import { haversineKm as _haversineKm } from "./geoEngine.js";
+import { notifyOrderStakeholders } from "./orderEngine.js";
 
 /* ─── Constants ──────────────────────────────────── */
 const ASSIGNMENT_TIMEOUT_MS = 30_000;
@@ -74,7 +97,14 @@ export const startAssignment = async (orderId) => {
         console.log(`[Assignment] Order ${key} already assigned — skipping`);
         return;
     }
-    const allowedStatuses = ["PLACED", "CONFIRMED", "PACKED", "READY_FOR_PICKUP"];
+    // BUG FIX: this used to also allow PLACED/CONFIRMED/PACKED, which let a
+    // premature caller (orderKickoff.js, now removed) broadcast a brand new
+    // order to riders before the vendor had even accepted or packed it —
+    // exactly the "delivery panel gets notified with no vendor accept/pack"
+    // symptom. Assignment must only ever start once the vendor has actually
+    // marked the order ready — this is the single, defense-in-depth gate
+    // regardless of which caller invokes startAssignment.
+    const allowedStatuses = ["READY_FOR_PICKUP"];
     if (!allowedStatuses.includes(order.orderStatus)) {
         console.log(`[Assignment] Order ${key} status is ${order.orderStatus} — must be one of: ${allowedStatuses.join(", ")}`);
         return;
@@ -107,10 +137,14 @@ export const startAssignment = async (orderId) => {
 
     await _setRedisLock(key);
 
-    broadcastToUsers([], "order:status:update", {
-        orderId: key,
+    // BUG FIX: this used to be broadcastToUsers([], ...) — an empty
+    // recipient array that silently notified nobody. Route through the
+    // centralized engine so the customer AND vendor both see "Finding a
+    // rider…" instantly instead of only finding out once one is assigned.
+    notifyOrderStakeholders(order, "delivery_status_update", {
+        status: order.orderStatus,
         deliveryStatus: "SEARCHING_RIDER",
-    });
+    }).catch((err) => console.error(`[Assignment] notifyOrderStakeholders (SEARCHING_RIDER) failed: ${err.message}`));
 
     // 5. Build context + run
     const ctx = {
@@ -159,14 +193,33 @@ export const handleRiderAccept = async (orderId, riderId, riderUserId) => {
     }
 
     // ✅ NEW: distanceKm calculate karo taaki OrderDetails.jsx me "Distance" dikhe
+    //
+    // BUG FIX: geoLocation.coordinates defaults to [0, 0] on the schema (a
+    // rider who has never sent a real GPS fix still "has" this value) — the
+    // `??` fallback here only skips null/undefined, so a rider with
+    // location.lat === null fell through to geoLocation's [0,0] default and
+    // that got treated as a REAL coordinate (Gulf of Guinea). Distance from
+    // anywhere in India to (0,0) is ~9000+ km, which is exactly the bogus
+    // "Order is 9264.6km away" rejection this was producing for any rider
+    // who simply hadn't sent a location update yet. Explicitly treat the
+    // [0,0] sentinel as "no location known", same as null/undefined.
     let distanceKm = null;
     try {
         const orderForDistance = await Order.findById(orderId).select("latitude longitude").lean();
         const orderLat = orderForDistance?.latitude || DELIVERY_CONFIG.SHOP_LAT;
         const orderLng = orderForDistance?.longitude || DELIVERY_CONFIG.SHOP_LNG;
-        const riderLat = rider.location?.lat ?? rider.geoLocation?.coordinates?.[1];
-        const riderLng = rider.location?.lng ?? rider.geoLocation?.coordinates?.[0];
-        if (riderLat != null && riderLng != null) {
+
+        let riderLat = rider.location?.lat;
+        let riderLng = rider.location?.lng;
+        if (riderLat == null || riderLng == null) {
+            const [geoLng, geoLat] = rider.geoLocation?.coordinates || [];
+            if (geoLat != null && geoLng != null && !(geoLat === 0 && geoLng === 0)) {
+                riderLat = geoLat;
+                riderLng = geoLng;
+            }
+        }
+
+        if (riderLat != null && riderLng != null && !(riderLat === 0 && riderLng === 0)) {
             distanceKm = Math.round(_haversineKm(orderLat, orderLng, riderLat, riderLng) * 10) / 10;
         }
     } catch (err) {
@@ -231,21 +284,19 @@ export const handleRiderAccept = async (orderId, riderId, riderUserId) => {
 
     await _clearRedisLock(key);
 
-    if (order.user) {
-        sendToUser(String(order.user), "order_status", {
-            orderId: key,
-            status: order.orderStatus,
-            deliveryStatus: "ASSIGNED",   // ✅ FIXED: matches enum + frontend widget key
-            riderName: rider.name,
-            message: `${rider.name} has been assigned to pick up your order.`,
-        });
-    }
-    broadcastToUsers([], "order:status:update", {
-        orderId: key,
-        deliveryStatus: "ASSIGNED",       // ✅ FIXED
+    // BUG FIX: this used to be a raw sendToUser() to the customer only
+    // (no DB persistence, no vendor) PLUS a broadcastToUsers([], ...) that
+    // notified nobody at all — the vendor never learned a rider had been
+    // assigned. Route through the centralized engine so customer AND
+    // vendor both get it, exactly once, with proper persistence.
+    notifyOrderStakeholders(order, "rider_assigned", {
+        status: order.orderStatus,
+        deliveryStatus: "ASSIGNED",
         riderName: rider.name,
         riderId: String(rider._id),
-    });
+        distanceKm,
+        message: `${rider.name} has been assigned to pick up your order.`,
+    }).catch((err) => console.error(`[Assignment] notifyOrderStakeholders (ASSIGNED) failed: ${err.message}`));
 
     console.log(`[Assignment] ✅ Order ${key} assigned to ${rider.name}`);
     return { success: true, order, rider };
@@ -319,14 +370,14 @@ export const handleRiderCancel = async (orderId, riderId, reason = "") => {
         console.warn(`[Assignment] Failed to decrement activeOrders for rider ${riderId}: ${err.message}`);
     }
 
-    if (order.user) {
-        sendToUser(String(order.user), "order_status", {
-            orderId: key,
-            status: "READY_FOR_PICKUP",
-            deliveryStatus: "SEARCHING_RIDER",
-            message: "We're finding a new delivery partner for your order.",
-        });
-    }
+    // BUG FIX: this used to notify only the customer via a raw sendToUser —
+    // the vendor had no idea their assigned rider dropped the order and a
+    // re-search had started. Route through the centralized engine instead.
+    notifyOrderStakeholders(order, "delivery_status_update", {
+        status: "READY_FOR_PICKUP",
+        deliveryStatus: "SEARCHING_RIDER",
+        message: "We're finding a new delivery partner for your order.",
+    }).catch((err) => console.error(`[Assignment] notifyOrderStakeholders (rider cancel) failed: ${err.message}`));
 
     console.log(`[Assignment] Rider ${riderId} cancelled order ${key}. Reason: ${reason}. Reassigning...`);
 
@@ -372,14 +423,28 @@ export const adminForceAssign = async (orderId, riderId) => {
         return { success: false, message: "Order must be READY_FOR_PICKUP or CONFIRMED before assigning a rider" };
     }
 
-    // ✅ NEW: distanceKm calculate karo (same as handleRiderAccept)
+    // BUG FIX: this used `??`, which only skips null/undefined — a rider
+    // who never sent a real GPS fix still "has" geoLocation.coordinates
+    // defaulting to [0,0] on the schema, so it got treated as a real
+    // coordinate (same [0,0]-sentinel bug already fixed in
+    // handleRiderAccept, but missed here since this is a separate
+    // code path).
     let distanceKm = null;
     try {
         const orderLat = currentOrder.latitude || DELIVERY_CONFIG.SHOP_LAT;
         const orderLng = currentOrder.longitude || DELIVERY_CONFIG.SHOP_LNG;
-        const riderLat = rider.location?.lat ?? rider.geoLocation?.coordinates?.[1];
-        const riderLng = rider.location?.lng ?? rider.geoLocation?.coordinates?.[0];
-        if (riderLat != null && riderLng != null) {
+
+        let riderLat = rider.location?.lat;
+        let riderLng = rider.location?.lng;
+        if (riderLat == null || riderLng == null) {
+            const [geoLng, geoLat] = rider.geoLocation?.coordinates || [];
+            if (geoLat != null && geoLng != null && !(geoLat === 0 && geoLng === 0)) {
+                riderLat = geoLat;
+                riderLng = geoLng;
+            }
+        }
+
+        if (riderLat != null && riderLng != null && !(riderLat === 0 && riderLng === 0)) {
             distanceKm = Math.round(_haversineKm(orderLat, orderLng, riderLat, riderLng) * 10) / 10;
         }
     } catch (err) {
@@ -443,13 +508,17 @@ export const adminForceAssign = async (orderId, riderId) => {
         }).catch(() => { });
     }
 
-    broadcastToUsers([], "order:status:update", {
-        orderId: key,
+    // BUG FIX: was broadcastToUsers([], ...) — notified nobody. Customer
+    // and vendor both need to see the admin-forced assignment instantly.
+    notifyOrderStakeholders(order, "rider_assigned", {
+        status: order.orderStatus,
         deliveryStatus: "ASSIGNED",
         riderName: rider.name,
         riderId: String(rider._id),
+        distanceKm,
         forcedByAdmin: true,
-    });
+        message: `${rider.name} has been assigned to pick up your order.`,
+    }).catch((err) => console.error(`[Assignment] notifyOrderStakeholders (force-assign) failed: ${err.message}`));
 
     console.log(`[Assignment] Admin force-assigned order ${key} to ${rider.name}`);
     return { success: true, order, rider };
@@ -552,7 +621,11 @@ const _runRound = async (ctx) => {
 
     if (candidates.length === 0) {
         console.log(`[Assignment] No riders available — round ${ctx.round}, retrying in ${ROUND_DELAY_MS / 1000}s`);
-        broadcastToUsers([], "assignment:no_riders", {
+        // BUG FIX: was broadcastToUsers([], ...) — notified nobody. This is
+        // an ops-visibility signal (mid-retry, not yet a final failure) so
+        // only admins need to see it — customer/vendor would just be noise
+        // every retry round.
+        broadcastToAdmins("assignment:no_riders", {
             orderId: ctx.orderId,
             round: ctx.round,
             maxRounds: MAX_ROUNDS,
@@ -697,9 +770,30 @@ const _findNearestRiders = async (order) => {
 
     if (riders.length === 0) return [];
 
+    // FIX (distance-display bug): a rider who never sent a real GPS fix
+    // still "has" geoLocation.coordinates defaulting to [0,0] on the
+    // schema — the old `??` fallback only skips null/undefined, so that
+    // [0,0] sentinel got treated as a REAL coordinate (a point off the
+    // West African coast), producing a bogus "~9264km away" distance in
+    // the rider's order-request popup. Mirrors the same [0,0]-sentinel
+    // fix already applied in handleRiderAccept/adminForceAssign — a rider
+    // with no known location gets distance:999 (same "unknown/far"
+    // sentinel used elsewhere in this file) instead of a fabricated
+    // real-looking number.
     const scored = riders.map((r) => {
-        const rLat = r.location?.lat ?? r.geoLocation?.coordinates?.[1];
-        const rLng = r.location?.lng ?? r.geoLocation?.coordinates?.[0];
+        let rLat = r.location?.lat;
+        let rLng = r.location?.lng;
+        if (rLat == null || rLng == null) {
+            const [geoLng, geoLat] = r.geoLocation?.coordinates || [];
+            const hasValidGeo = geoLat != null && geoLng != null && !(geoLat === 0 && geoLng === 0);
+            if (hasValidGeo) {
+                rLat = geoLat;
+                rLng = geoLng;
+            } else {
+                rLat = null;
+                rLng = null;
+            }
+        }
         const dist = rLat != null && rLng != null ? _haversineKm(orderLat, orderLng, rLat, rLng) : 999;
         return { ...r, distance: Math.round(dist * 10) / 10 };
     });
@@ -719,7 +813,7 @@ const _haversineFallback = async (baseQuery, selectFields, orderLat, orderLng, m
         return allOnline.filter((r) => {
             const rLat = r.location?.lat;
             const rLng = r.location?.lng;
-            if (rLat == null || rLng == null) return true;
+            if (rLat == null || rLng == null) return false;
             return _haversineKm(orderLat, orderLng, rLat, rLng) <= maxKm;
         });
     } catch (err) {
@@ -728,32 +822,36 @@ const _haversineFallback = async (baseQuery, selectFields, orderLat, orderLng, m
     }
 };
 
-const _haversineKm = (lat1, lng1, lat2, lng2) => {
-    const R = 6371;
-    const toRad = (d) => (d * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
 
 /* ═══════════════════════════════════════════════════
    PRIVATE: helpers
 ═══════════════════════════════════════════════════ */
 const _markFailed = async (orderId) => {
     console.log(`[Assignment] Max rounds reached for order ${orderId} — marking FAILED`);
+    // BUG FIX: was broadcastToUsers([], ...) — notified nobody, despite the
+    // message literally claiming "Admin notified." Fetch the full order so
+    // both admin (ops intervention) and customer/vendor (their order is
+    // genuinely stuck) can be told, exactly once each.
+    let order = null;
     try {
-        await Order.findByIdAndUpdate(orderId, { "delivery.status": "FAILED" });
+        order = await Order.findByIdAndUpdate(orderId, { "delivery.status": "FAILED" }, { new: true });
     } catch (err) {
         console.error(`[Assignment] Failed to mark order ${orderId} as FAILED: ${err.message}`);
     }
-    broadcastToUsers([], "order:status:update", {
+
+    broadcastToAdmins("order:status:update", {
         orderId,
         deliveryStatus: "FAILED",
-        message: "No delivery partner available. Admin notified.",
+        message: "No delivery partner accepted this order after 3 rounds — manual assignment needed.",
     });
+
+    if (order) {
+        notifyOrderStakeholders(order, "delivery_status_update", {
+            status: order.orderStatus,
+            deliveryStatus: "FAILED",
+            message: "We're having trouble finding a delivery partner. Our team has been notified.",
+        }).catch((err) => console.error(`[Assignment] notifyOrderStakeholders (FAILED) failed: ${err.message}`));
+    }
 };
 
 const _cleanup = async (ctx) => {

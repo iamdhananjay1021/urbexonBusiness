@@ -7,29 +7,15 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useVendors } from "../hooks/useVendors";
 import {
-    FiSearch, FiX, FiRefreshCw, FiCheckCircle, FiXCircle,
-    FiAlertCircle, FiChevronDown, FiLoader, FiShoppingBag,
+    FiCheckCircle, FiXCircle,
+    FiAlertCircle, FiChevronDown, FiShoppingBag,
     FiUser, FiPhone, FiMail, FiMapPin, FiEye, FiTrash2,
     FiPauseCircle, FiPercent,
 } from "react-icons/fi";
-
-/* ── Design tokens (matches AdminOrders) ── */
-const T = {
-    bg: "#f8fafc", white: "#ffffff", surfaceAlt: "#f1f5f9",
-    border: "#e2e8f0", borderLight: "#f1f5f9",
-    blue: "#2563eb", blueBg: "#eff6ff", blueMid: "#dbeafe",
-    text: "#1e293b", sub: "#334155", muted: "#475569", hint: "#94a3b8",
-    green: "#10b981", amber: "#f59e0b", red: "#ef4444",
-    violet: "#8b5cf6", orange: "#f97316",
-};
-
-const STATUS_CONFIG = {
-    pending: { label: "Pending", color: T.amber, bg: "#fef3c7" },
-    under_review: { label: "Under Review", color: T.blue, bg: T.blueBg },
-    approved: { label: "Approved", color: T.green, bg: "#f0fdf4" },
-    rejected: { label: "Rejected", color: T.red, bg: "#fef2f2" },
-    suspended: { label: "Suspended", color: T.violet, bg: "#f5f3ff" },
-};
+import {
+    Button, StatusBadge, Card, EmptyState, ErrorState,
+    Skeleton, Modal, FormField, Input, Select, SearchBar, Pagination,
+} from "../components/ui";
 
 const PAGE_LIMIT = 20;
 
@@ -49,26 +35,17 @@ const Toast = ({ toast }) => {
     return (
         <div style={{
             position: "fixed", top: 20, right: 20, zIndex: 9999,
-            background: isErr ? "#fef2f2" : "#f0fdf4",
-            border: `1px solid ${isErr ? "#fecaca" : "#bbf7d0"}`,
-            color: isErr ? T.red : T.green,
-            padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
-            boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
+            background: isErr ? "var(--adm-danger-tint)" : "var(--adm-success-tint)",
+            border: `1px solid ${isErr ? "var(--adm-danger)" : "var(--adm-success)"}`,
+            color: isErr ? "var(--adm-danger)" : "var(--adm-success)",
+            padding: "10px 16px", borderRadius: "var(--adm-radius-md)", fontSize: 13, fontWeight: 600,
+            boxShadow: "var(--adm-shadow-md)",
             display: "flex", alignItems: "center", gap: 8,
-            maxWidth: 340, animation: "av-fadeUp .2s ease",
+            maxWidth: 340,
         }}>
             {isErr ? <FiAlertCircle size={14} /> : <FiCheckCircle size={14} />}
             {toast.msg}
         </div>
-    );
-};
-
-const StatusBadge = ({ status }) => {
-    const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
-    return (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}30`, padding: "3px 10px", borderRadius: 99 }}>
-            <span style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.color }} />{cfg.label}
-        </span>
     );
 };
 
@@ -79,43 +56,37 @@ const ApproveModal = ({ vendor, onConfirm, onClose, loading }) => {
     const [note, setNote] = useState("");
 
     return (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-            <div style={{ background: T.white, borderRadius: 16, padding: 24, width: "100%", maxWidth: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: T.text, marginBottom: 4 }}>Approve Vendor</h3>
-                <p style={{ fontSize: 13, color: T.hint, marginBottom: 20 }}>{vendor.shopName}</p>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                    <div>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: T.muted, display: "block", marginBottom: 6 }}>Plan</label>
-                        <select value={plan} onChange={e => setPlan(e.target.value)}
-                            style={{ width: "100%", padding: "9px 12px", border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, color: T.text, background: T.white, outline: "none", fontFamily: "inherit" }}>
-                            <option value="starter">Starter</option>
-                            <option value="growth">Growth</option>
-                            <option value="pro">Pro</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: T.muted, display: "block", marginBottom: 6 }}>Commission Rate (%)</label>
-                        <input type="number" value={commission} onChange={e => setCommission(Number(e.target.value))} min={0} max={50}
-                            style={{ width: "100%", padding: "9px 12px", border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, color: T.text, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-                    </div>
-                    <div>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: T.muted, display: "block", marginBottom: 6 }}>Admin Note (optional)</label>
-                        <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="Internal note..."
-                            style={{ width: "100%", padding: "9px 12px", border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, color: T.text, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-                    </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
-                    <button onClick={() => onConfirm({ commissionRate: commission, plan, note })} disabled={loading}
-                        style={{ flex: 1, padding: "10px", background: T.green, color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                        {loading ? <FiLoader size={13} style={{ animation: "av-spin 0.8s linear infinite" }} /> : <FiCheckCircle size={13} />}
+        <Modal
+            open={!!vendor}
+            onClose={onClose}
+            title="Approve Vendor"
+            width={420}
+            footer={(
+                <>
+                    <Button variant="secondary" onClick={onClose} disabled={loading}>Cancel</Button>
+                    <Button variant="success" icon={FiCheckCircle} loading={loading} onClick={() => onConfirm({ commissionRate: commission, plan, note })}>
                         Approve
-                    </button>
-                    <button onClick={onClose} style={{ padding: "10px 18px", background: T.surfaceAlt, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, color: T.muted, cursor: "pointer" }}>Cancel</button>
-                </div>
+                    </Button>
+                </>
+            )}
+        >
+            <p style={{ fontSize: 13, color: "var(--adm-muted)", marginTop: 0, marginBottom: 16 }}>{vendor?.shopName}</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <FormField label="Plan">
+                    <Select value={plan} onChange={e => setPlan(e.target.value)} disabled={loading}>
+                        <option value="starter">Starter</option>
+                        <option value="growth">Growth</option>
+                        <option value="pro">Pro</option>
+                    </Select>
+                </FormField>
+                <FormField label="Commission Rate (%)">
+                    <Input type="number" value={commission} onChange={e => setCommission(Number(e.target.value))} min={0} max={50} disabled={loading} />
+                </FormField>
+                <FormField label="Admin Note (optional)">
+                    <Input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="Internal note..." disabled={loading} />
+                </FormField>
             </div>
-        </div>
+        </Modal>
     );
 };
 
@@ -123,45 +94,54 @@ const ApproveModal = ({ vendor, onConfirm, onClose, loading }) => {
 const RejectModal = ({ vendor, onConfirm, onClose, loading }) => {
     const [reason, setReason] = useState("");
     return (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-            <div style={{ background: T.white, borderRadius: 16, padding: 24, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: T.text, marginBottom: 4 }}>Reject Vendor</h3>
-                <p style={{ fontSize: 13, color: T.hint, marginBottom: 20 }}>{vendor.shopName}</p>
-                <label style={{ fontSize: 12, fontWeight: 600, color: T.muted, display: "block", marginBottom: 6 }}>Reason <span style={{ color: T.red }}>*</span></label>
-                <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason for rejection..." rows={3}
-                    style={{ width: "100%", padding: "9px 12px", border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, color: T.text, outline: "none", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }} />
-                <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-                    <button onClick={() => reason.trim() && onConfirm({ reason })} disabled={loading || !reason.trim()}
-                        style={{ flex: 1, padding: "10px", background: T.red, color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: !reason.trim() ? 0.5 : 1 }}>
-                        {loading ? "..." : "Reject"}
-                    </button>
-                    <button onClick={onClose} style={{ padding: "10px 18px", background: T.surfaceAlt, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, color: T.muted, cursor: "pointer" }}>Cancel</button>
-                </div>
-            </div>
-        </div>
+        <Modal
+            open={!!vendor}
+            onClose={onClose}
+            title="Reject Vendor"
+            width={400}
+            footer={(
+                <>
+                    <Button variant="secondary" onClick={onClose} disabled={loading}>Cancel</Button>
+                    <Button variant="danger" icon={FiXCircle} loading={loading} disabled={!reason.trim()} onClick={() => reason.trim() && onConfirm({ reason })}>
+                        Reject
+                    </Button>
+                </>
+            )}
+        >
+            <p style={{ fontSize: 13, color: "var(--adm-muted)", marginTop: 0, marginBottom: 16 }}>{vendor?.shopName}</p>
+            <FormField label="Reason *">
+                <textarea
+                    value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason for rejection..." rows={3}
+                    className="adm-field-input"
+                    style={{ resize: "vertical", width: "100%", boxSizing: "border-box" }}
+                    disabled={loading}
+                />
+            </FormField>
+        </Modal>
     );
 };
 
 /* ── Commission Modal ── */
 const CommissionModal = ({ vendor, onConfirm, onClose, loading }) => {
-    const [rate, setRate] = useState(vendor.commissionRate || 18);
+    const [rate, setRate] = useState(vendor?.commissionRate || 18);
     return (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-            <div style={{ background: T.white, borderRadius: 16, padding: 24, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: T.text, marginBottom: 4 }}>Update Commission</h3>
-                <p style={{ fontSize: 13, color: T.hint, marginBottom: 20 }}>{vendor.shopName}</p>
-                <label style={{ fontSize: 12, fontWeight: 600, color: T.muted, display: "block", marginBottom: 6 }}>Commission Rate (0–50%)</label>
-                <input type="number" value={rate} onChange={e => setRate(Number(e.target.value))} min={0} max={50}
-                    style={{ width: "100%", padding: "9px 12px", border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, color: T.text, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
-                <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-                    <button onClick={() => onConfirm(rate)} disabled={loading}
-                        style={{ flex: 1, padding: "10px", background: T.blue, color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                        {loading ? "..." : "Update"}
-                    </button>
-                    <button onClick={onClose} style={{ padding: "10px 18px", background: T.surfaceAlt, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, color: T.muted, cursor: "pointer" }}>Cancel</button>
-                </div>
-            </div>
-        </div>
+        <Modal
+            open={!!vendor}
+            onClose={onClose}
+            title="Update Commission"
+            width={360}
+            footer={(
+                <>
+                    <Button variant="secondary" onClick={onClose} disabled={loading}>Cancel</Button>
+                    <Button variant="primary" loading={loading} onClick={() => onConfirm(rate)}>Update</Button>
+                </>
+            )}
+        >
+            <p style={{ fontSize: 13, color: "var(--adm-muted)", marginTop: 0, marginBottom: 16 }}>{vendor?.shopName}</p>
+            <FormField label="Commission Rate (0–50%)">
+                <Input type="number" value={rate} onChange={e => setRate(Number(e.target.value))} min={0} max={50} disabled={loading} />
+            </FormField>
+        </Modal>
     );
 };
 
@@ -195,17 +175,19 @@ const AdminVendors = () => {
         fetchVendors({ page: 1, status, search: searchQuery });
     }, [fetchVendors, searchQuery]);
 
-    const handleSearch = useCallback((e) => {
-        e.preventDefault();
-        setSearchQuery(searchInput);
+    const handleSearchSubmit = useCallback((value) => {
+        setSearchQuery(value);
         setFilterStatus("ALL");
-        fetchVendors({ page: 1, search: searchInput });
-    }, [fetchVendors, searchInput]);
+        fetchVendors({ page: 1, search: value });
+    }, [fetchVendors]);
 
-    const clearSearch = useCallback(() => {
-        setSearchInput(""); setSearchQuery("");
-        fetchVendors({ page: 1, status: filterStatus });
-    }, [fetchVendors, filterStatus]);
+    const handleSearchChange = useCallback((value) => {
+        setSearchInput(value);
+        if (!value && searchQuery) {
+            setSearchQuery("");
+            fetchVendors({ page: 1, status: filterStatus });
+        }
+    }, [fetchVendors, filterStatus, searchQuery]);
 
     const goToPage = useCallback((page) => {
         setExpandedId(null);
@@ -247,126 +229,86 @@ const AdminVendors = () => {
         else showToast("error", res.message);
     }, [deleteVendor, showToast]);
 
-    const getPageNumbers = () => {
-        if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
-        if (currentPage <= 3) return [1, 2, 3, 4, "…", totalPages];
-        if (currentPage >= totalPages - 2) return [1, "…", totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
-        return [1, "…", currentPage - 1, currentPage, currentPage + 1, "…", totalPages];
-    };
-
     const filters = [
         { key: "ALL", label: "All" },
-        { key: "pending", label: "Pending", dot: T.amber },
-        { key: "under_review", label: "Under Review", dot: T.blue },
-        { key: "approved", label: "Approved", dot: T.green },
-        { key: "rejected", label: "Rejected", dot: T.red },
-        { key: "suspended", label: "Suspended", dot: T.violet },
+        { key: "pending", label: "Pending", tone: "warning" },
+        { key: "under_review", label: "Under Review", tone: "info" },
+        { key: "approved", label: "Approved", tone: "success" },
+        { key: "rejected", label: "Rejected", tone: "danger" },
+        { key: "suspended", label: "Suspended", tone: "danger" },
     ];
 
-    if (loading && vendors.length === 0) return (
-        <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ textAlign: "center" }}>
-                <div style={{ width: 36, height: 36, border: `3px solid ${T.blueMid}`, borderTopColor: T.blue, borderRadius: "50%", animation: "av-spin 0.8s linear infinite", margin: "0 auto 12px" }} />
-                <p style={{ color: T.hint, fontSize: 13 }}>Loading vendors...</p>
-            </div>
-            <style>{`@keyframes av-spin{to{transform:rotate(360deg)}} @keyframes av-fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}`}</style>
-        </div>
-    );
-
     return (
-        <div style={{ fontFamily: "'Inter',system-ui,sans-serif", color: T.text }}>
-            <style>{`
-                @keyframes av-spin{to{transform:rotate(360deg)}}
-                @keyframes av-fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-                .av-card{transition:border-color .18s,box-shadow .18s;}
-                .av-card:hover{border-color:#bfdbfe !important;box-shadow:0 2px 12px rgba(37,99,235,0.07) !important;}
-                .av-hdr{cursor:pointer;transition:background .12s;}
-                .av-hdr:hover{background:#f8fafc !important;}
-                .av-row{animation:av-fadeUp .3s ease forwards;}
-                .av-btn:hover{opacity:.85;}
-                button:disabled{cursor:not-allowed;}
-            `}</style>
-
+        <div style={{ fontFamily: "var(--adm-font-sans)", color: "var(--adm-text-primary)", width: "100%", minWidth: 0 }}>
             <Toast toast={toast} />
 
             {/* Modals */}
-            {modal?.type === "approve" && <ApproveModal vendor={modal.vendor} onConfirm={handleApprove} onClose={() => setModal(null)} loading={actionLoading === modal.vendor._id} />}
-            {modal?.type === "reject" && <RejectModal vendor={modal.vendor} onConfirm={handleReject} onClose={() => setModal(null)} loading={actionLoading === modal.vendor._id} />}
-            {modal?.type === "commission" && <CommissionModal vendor={modal.vendor} onConfirm={handleCommission} onClose={() => setModal(null)} loading={actionLoading === modal.vendor._id} />}
+            <ApproveModal vendor={modal?.type === "approve" ? modal.vendor : null} onConfirm={handleApprove} onClose={() => setModal(null)} loading={modal ? actionLoading === modal.vendor._id : false} />
+            <RejectModal vendor={modal?.type === "reject" ? modal.vendor : null} onConfirm={handleReject} onClose={() => setModal(null)} loading={modal ? actionLoading === modal.vendor._id : false} />
+            <CommissionModal vendor={modal?.type === "commission" ? modal.vendor : null} onConfirm={handleCommission} onClose={() => setModal(null)} loading={modal ? actionLoading === modal.vendor._id : false} />
 
             {/* Header */}
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, color: T.text, margin: 0 }}>Vendors</h1>
-                    <p style={{ fontSize: 13, color: T.hint, marginTop: 3 }}>{total} total vendors</p>
+                    <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--adm-text-primary)", margin: 0 }}>Vendors</h1>
+                    <p style={{ fontSize: 13, color: "var(--adm-muted)", marginTop: 3 }}>{total} total vendors</p>
                 </div>
-                <form onSubmit={handleSearch} style={{ display: "flex" }}>
-                    <div style={{ position: "relative" }}>
-                        <FiSearch size={13} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: T.hint, pointerEvents: "none" }} />
-                        <input type="text" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search shop, owner, phone..."
-                            style={{ paddingLeft: 32, paddingRight: 10, paddingTop: 8, paddingBottom: 8, background: T.white, border: `1px solid ${T.border}`, borderRight: "none", borderRadius: "8px 0 0 8px", color: T.text, fontSize: 13, fontFamily: "inherit", outline: "none", width: 220 }} />
-                        {searchQuery && <button type="button" onClick={clearSearch} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: T.hint, cursor: "pointer" }}><FiX size={12} /></button>}
-                    </div>
-                    <button type="submit" style={{ padding: "8px 14px", background: T.blue, border: "none", borderRadius: "0 8px 8px 0", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Search</button>
-                </form>
+                <div style={{ width: 260 }}>
+                    <SearchBar value={searchInput} onChange={handleSearchChange} onSubmit={handleSearchSubmit} placeholder="Search shop, owner, phone…" />
+                </div>
             </div>
 
             {/* Filter Tabs */}
             <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, marginBottom: 20, scrollbarWidth: "none" }}>
-                {filters.map(({ key, label, dot }) => {
+                {filters.map(({ key, label, tone }) => {
                     const active = filterStatus === key;
                     return (
                         <button key={key} onClick={() => handleFilter(key)}
-                            style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", fontSize: 12, fontWeight: 600, border: active ? `1px solid ${T.blue}` : `1px solid ${T.border}`, background: active ? T.blueBg : T.white, color: active ? T.blue : T.muted, cursor: "pointer", fontFamily: "inherit", borderRadius: 8, transition: "all .15s" }}>
-                            {dot && <span style={{ width: 6, height: 6, borderRadius: "50%", background: dot }} />}{label}
+                            style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", fontSize: 12, fontWeight: 600, border: active ? "1px solid var(--adm-primary)" : "1px solid var(--adm-border)", background: active ? "var(--adm-primary-tint)" : "var(--adm-surface)", color: active ? "var(--adm-primary)" : "var(--adm-text-secondary)", cursor: "pointer", fontFamily: "inherit", borderRadius: "var(--adm-radius-md)", transition: "all .15s" }}>
+                            {tone && <span style={{ width: 6, height: 6, borderRadius: "50%", background: `var(--adm-${tone})` }} />}{label}
                         </button>
                     );
                 })}
             </div>
 
-            {error && (
-                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: T.red, padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-                    <FiAlertCircle size={13} />{error}
-                </div>
-            )}
+            {error && <div style={{ marginBottom: 16 }}><ErrorState message={error} onRetry={() => fetchVendors({ page: currentPage, status: filterStatus, search: searchQuery })} /></div>}
 
             {/* Vendor Cards */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {vendors.length === 0 && !loading ? (
-                    <div style={{ background: T.white, border: `1px solid ${T.border}`, borderRadius: 12, padding: "52px 0", textAlign: "center" }}>
-                        <FiShoppingBag size={32} style={{ color: T.hint, marginBottom: 10 }} />
-                        <p style={{ color: T.hint, fontSize: 14, fontWeight: 600 }}>No vendors found</p>
-                    </div>
-                ) : vendors.map((vendor, idx) => {
+                {loading && vendors.length === 0 ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                        <Card key={`sk-${i}`} padded>
+                            <Skeleton height={44} />
+                        </Card>
+                    ))
+                ) : vendors.length === 0 ? (
+                    <EmptyState icon={FiShoppingBag} title="No vendors found" />
+                ) : vendors.map((vendor) => {
                     const isExpanded = expandedId === vendor._id;
                     const isActing = actionLoading === vendor._id;
-                    const cfg = STATUS_CONFIG[vendor.status] || STATUS_CONFIG.pending;
 
                     return (
-                        <div key={vendor._id} className="av-card av-row"
-                            style={{ background: T.white, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.04)", animationDelay: `${idx * 30}ms` }}>
-
+                        <Card key={vendor._id} padded={false}>
                             {/* Row Header */}
-                            <div className="av-hdr" onClick={() => setExpandedId(isExpanded ? null : vendor._id)}
-                                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", flexWrap: "wrap", gap: 10 }}>
+                            <div onClick={() => setExpandedId(isExpanded ? null : vendor._id)}
+                                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", flexWrap: "wrap", gap: 10, cursor: "pointer" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                    <div style={{ width: 3, height: 38, background: cfg.color, borderRadius: 3, flexShrink: 0 }} />
                                     {vendor.shopLogo ? (
-                                        <img src={vendor.shopLogo} alt={vendor.shopName} style={{ width: 40, height: 40, borderRadius: 10, objectFit: "cover", border: `1px solid ${T.border}`, flexShrink: 0 }} />
+                                        <img src={vendor.shopLogo} alt={vendor.shopName} style={{ width: 40, height: 40, borderRadius: 10, objectFit: "cover", border: "1px solid var(--adm-border)", flexShrink: 0 }} />
                                     ) : (
-                                        <div style={{ width: 40, height: 40, background: cfg.bg, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                            <FiShoppingBag size={16} color={cfg.color} />
+                                        <div style={{ width: 40, height: 40, background: "var(--adm-surface-alt)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                            <FiShoppingBag size={16} color="var(--adm-muted)" />
                                         </div>
                                     )}
                                     <div>
-                                        <p style={{ fontWeight: 700, fontSize: 14, color: T.text, margin: 0 }}>{vendor.shopName}</p>
-                                        <p style={{ fontSize: 12, color: T.hint, marginTop: 1 }}>{vendor.ownerName} · {vendor.phone}</p>
+                                        <p style={{ fontWeight: 700, fontSize: 14, color: "var(--adm-text-primary)", margin: 0 }}>{vendor.shopName}</p>
+                                        <p style={{ fontSize: 12, color: "var(--adm-muted)", marginTop: 1 }}>{vendor.ownerName} · {vendor.phone}</p>
                                     </div>
                                 </div>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                     <StatusBadge status={vendor.status} />
-                                    <span style={{ fontSize: 12, fontWeight: 600, color: T.muted }}>{vendor.commissionRate}% comm.</span>
-                                    <div style={{ color: T.hint, transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "none" }}>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--adm-text-secondary)" }}>{vendor.commissionRate}% comm.</span>
+                                    <div style={{ color: "var(--adm-muted)", transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "none" }}>
                                         <FiChevronDown size={16} />
                                     </div>
                                 </div>
@@ -374,7 +316,7 @@ const AdminVendors = () => {
 
                             {/* Expanded Panel */}
                             {isExpanded && (
-                                <div style={{ borderTop: `1px solid ${T.borderLight}`, padding: 20, background: T.bg }}>
+                                <div style={{ borderTop: "1px solid var(--adm-border-soft)", padding: 20, background: "var(--adm-bg)" }}>
 
                                     {/* Info Grid */}
                                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))", gap: 8, marginBottom: 20 }}>
@@ -386,11 +328,11 @@ const AdminVendors = () => {
                                             { icon: FiPercent, label: "Commission", value: `${vendor.commissionRate}%` },
                                             { icon: FiShoppingBag, label: "Category", value: vendor.shopCategory || "—" },
                                         ].map(({ icon: Icon, label, value }) => (
-                                            <div key={label} style={{ background: T.white, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "flex-start", gap: 8 }}>
-                                                <Icon size={13} color={T.hint} style={{ marginTop: 2 }} />
+                                            <div key={label} style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)", borderRadius: "var(--adm-radius-sm)", padding: "10px 14px", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                                                <Icon size={13} color="var(--adm-muted)" style={{ marginTop: 2 }} />
                                                 <div>
-                                                    <div style={{ fontSize: 9, color: T.hint, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
-                                                    <div style={{ fontSize: 13, color: T.sub, fontWeight: 500, marginTop: 1 }}>{value}</div>
+                                                    <div style={{ fontSize: 9, color: "var(--adm-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
+                                                    <div style={{ fontSize: 13, color: "var(--adm-text-secondary)", fontWeight: 500, marginTop: 1 }}>{value}</div>
                                                 </div>
                                             </div>
                                         ))}
@@ -398,19 +340,19 @@ const AdminVendors = () => {
 
                                     {/* Subscription Info */}
                                     {vendor.subscription && (
-                                        <div style={{ background: T.blueBg, border: `1px solid ${T.blueMid}`, borderRadius: 10, padding: "10px 14px", marginBottom: 20, display: "flex", gap: 20, flexWrap: "wrap" }}>
+                                        <div style={{ background: "var(--adm-primary-tint)", border: "1px solid var(--adm-border)", borderRadius: "var(--adm-radius-md)", padding: "10px 14px", marginBottom: 20, display: "flex", gap: 20, flexWrap: "wrap" }}>
                                             <div>
-                                                <p style={{ fontSize: 9, color: T.blue, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>Plan</p>
-                                                <p style={{ fontSize: 13, fontWeight: 700, color: T.blue, textTransform: "capitalize" }}>{vendor.subscription.plan}</p>
+                                                <p style={{ fontSize: 9, color: "var(--adm-primary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>Plan</p>
+                                                <p style={{ fontSize: 13, fontWeight: 700, color: "var(--adm-primary)", textTransform: "capitalize" }}>{vendor.subscription.plan}</p>
                                             </div>
                                             <div>
-                                                <p style={{ fontSize: 9, color: T.blue, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>Active</p>
-                                                <p style={{ fontSize: 13, fontWeight: 700, color: vendor.subscription.isActive ? T.green : T.red }}>{vendor.subscription.isActive ? "Yes" : "No"}</p>
+                                                <p style={{ fontSize: 9, color: "var(--adm-primary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>Active</p>
+                                                <p style={{ fontSize: 13, fontWeight: 700, color: vendor.subscription.isActive ? "var(--adm-success)" : "var(--adm-danger)" }}>{vendor.subscription.isActive ? "Yes" : "No"}</p>
                                             </div>
                                             {vendor.subscription.expiryDate && (
                                                 <div>
-                                                    <p style={{ fontSize: 9, color: T.blue, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>Expires</p>
-                                                    <p style={{ fontSize: 13, fontWeight: 600, color: T.sub }}>{new Date(vendor.subscription.expiryDate).toLocaleDateString("en-IN")}</p>
+                                                    <p style={{ fontSize: 9, color: "var(--adm-primary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>Expires</p>
+                                                    <p style={{ fontSize: 13, fontWeight: 600, color: "var(--adm-text-secondary)" }}>{new Date(vendor.subscription.expiryDate).toLocaleDateString("en-IN")}</p>
                                                 </div>
                                             )}
                                         </div>
@@ -418,71 +360,54 @@ const AdminVendors = () => {
 
                                     {/* Rejection reason */}
                                     {vendor.status === "rejected" && vendor.rejectionReason && (
-                                        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: T.red }}>
-                                            <b>Rejection reason:</b> {vendor.rejectionReason}
+                                        <div style={{ marginBottom: 16 }}>
+                                            <ErrorState message={`Rejection reason: ${vendor.rejectionReason}`} />
                                         </div>
                                     )}
 
                                     {/* Action Buttons */}
                                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                        <button onClick={() => navigate(`/admin/vendors/${vendor._id}`)}
-                                            style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", background: T.white, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, fontWeight: 600, color: T.sub, cursor: "pointer" }}>
-                                            <FiEye size={13} /> View Details
-                                        </button>
+                                        <Button variant="secondary" size="sm" icon={FiEye} onClick={() => navigate(`/admin/vendors/${vendor._id}`)}>
+                                            View Details
+                                        </Button>
 
                                         {vendor.status === "pending" || vendor.status === "under_review" ? (
                                             <>
-                                                <button onClick={() => setModal({ type: "approve", vendor })} disabled={isActing}
-                                                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", background: T.green, color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                                                    {isActing ? <FiLoader size={12} style={{ animation: "av-spin 0.8s linear infinite" }} /> : <FiCheckCircle size={13} />}
+                                                <Button variant="success" size="sm" icon={FiCheckCircle} loading={isActing} onClick={() => setModal({ type: "approve", vendor })}>
                                                     Approve
-                                                </button>
-                                                <button onClick={() => setModal({ type: "reject", vendor })} disabled={isActing}
-                                                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", background: "#fef2f2", border: "1px solid #fecaca", color: T.red, borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                                                    <FiXCircle size={13} /> Reject
-                                                </button>
+                                                </Button>
+                                                <Button variant="danger" size="sm" icon={FiXCircle} disabled={isActing} onClick={() => setModal({ type: "reject", vendor })}>
+                                                    Reject
+                                                </Button>
                                             </>
                                         ) : null}
 
                                         {vendor.status === "approved" && (
-                                            <button onClick={() => handleSuspend(vendor)} disabled={isActing}
-                                                style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", background: "#f5f3ff", border: "1px solid #ddd6fe", color: T.violet, borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                                                {isActing ? <FiLoader size={12} style={{ animation: "av-spin 0.8s linear infinite" }} /> : <FiPauseCircle size={13} />}
+                                            <Button variant="secondary" size="sm" icon={FiPauseCircle} loading={isActing} onClick={() => handleSuspend(vendor)}>
                                                 Suspend
-                                            </button>
+                                            </Button>
                                         )}
 
-                                        <button onClick={() => setModal({ type: "commission", vendor })}
-                                            style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", background: T.blueBg, border: `1px solid ${T.blueMid}`, color: T.blue, borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                                            <FiPercent size={13} /> Commission
-                                        </button>
+                                        <Button variant="secondary" size="sm" icon={FiPercent} onClick={() => setModal({ type: "commission", vendor })}>
+                                            Commission
+                                        </Button>
 
-                                        <button onClick={() => handleDelete(vendor)} disabled={isActing}
-                                            style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", background: T.white, border: `1px solid ${T.border}`, color: T.red, borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", marginLeft: "auto" }}>
-                                            <FiTrash2 size={13} /> Delete
-                                        </button>
+                                        <Button variant="ghost" size="sm" icon={FiTrash2} disabled={isActing} onClick={() => handleDelete(vendor)} style={{ marginLeft: "auto", color: "var(--adm-danger)" }}>
+                                            Delete
+                                        </Button>
                                     </div>
                                 </div>
                             )}
-                        </div>
+                        </Card>
                     );
                 })}
             </div>
 
             {/* Pagination */}
             {totalPages > 1 && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 24, paddingTop: 20, borderTop: `1px solid ${T.border}`, flexWrap: "wrap", gap: 12 }}>
-                    <p style={{ fontSize: 13, color: T.hint }}>Showing <b style={{ color: T.text }}>{(currentPage - 1) * PAGE_LIMIT + 1}–{Math.min(currentPage * PAGE_LIMIT, total)}</b> of <b style={{ color: T.text }}>{total}</b></p>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}
-                            style={{ padding: "6px 12px", background: T.white, border: `1px solid ${T.border}`, borderRadius: 7, color: T.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: currentPage === 1 ? 0.4 : 1 }}>← Prev</button>
-                        {getPageNumbers().map((p, i) => p === "…" ? <span key={`d${i}`} style={{ padding: "0 4px", color: T.hint }}>…</span> : (
-                            <button key={p} onClick={() => goToPage(p)}
-                                style={{ width: 34, height: 34, background: currentPage === p ? T.blue : T.white, border: currentPage === p ? `1px solid ${T.blue}` : `1px solid ${T.border}`, borderRadius: 7, color: currentPage === p ? "#fff" : T.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{p}</button>
-                        ))}
-                        <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages}
-                            style={{ padding: "6px 12px", background: T.white, border: `1px solid ${T.border}`, borderRadius: 7, color: T.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: currentPage === totalPages ? 0.4 : 1 }}>Next →</button>
-                    </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 24, paddingTop: 20, borderTop: "1px solid var(--adm-border)", flexWrap: "wrap", gap: 12 }}>
+                    <p style={{ fontSize: 13, color: "var(--adm-muted)", margin: 0 }}>Showing <b style={{ color: "var(--adm-text-primary)" }}>{(currentPage - 1) * PAGE_LIMIT + 1}–{Math.min(currentPage * PAGE_LIMIT, total)}</b> of <b style={{ color: "var(--adm-text-primary)" }}>{total}</b></p>
+                    <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={goToPage} disabled={loading} />
                 </div>
             )}
         </div>

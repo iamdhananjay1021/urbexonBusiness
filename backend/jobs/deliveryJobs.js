@@ -9,6 +9,7 @@ import Order from '../models/Order.js';
 import DeliveryBoy from '../models/deliveryModels/DeliveryBoy.js';
 import logger from '../utils/logger.js';
 import { startAssignment } from '../services/assignmentEngine.js';
+import { broadcastToAdmins } from '../utils/wsHub.js';
 
 // ══════════════════════════════════════════════════════
 // 1️⃣ FALLBACK: RE-TRIGGER ASSIGNMENT FOR STUCK UH ORDERS
@@ -16,10 +17,18 @@ import { startAssignment } from '../services/assignmentEngine.js';
 export const autoAssignDeliveryBoys = async () => {
     try {
         // UH orders that are READY_FOR_PICKUP with no rider assigned and delivery FAILED/SEARCHING
+        // BUG FIX: was 'delivery.assignedTo': { $exists: false } — the Order
+        // schema defaults delivery.assignedTo to null, so Mongoose persists
+        // that field on every insert and it always "exists" (with value
+        // null). $exists:false can therefore never match a real document,
+        // meaning this entire recovery sweep silently found zero orders,
+        // forever — any order stuck in SEARCHING_RIDER/FAILED after a
+        // backend crash/deploy (which wipes assignmentEngine's in-memory
+        // activeAssignments Map) had NO working recovery path.
         const stuckOrders = await Order.find({
             orderMode: 'URBEXON_HOUR',
             orderStatus: 'READY_FOR_PICKUP',
-            'delivery.assignedTo': { $exists: false },
+            'delivery.assignedTo': null,
             'delivery.provider': 'LOCAL_RIDER',
             'delivery.status': { $in: ['FAILED', 'SEARCHING_RIDER'] },
             updatedAt: { $lt: new Date(Date.now() - 5 * 60 * 1000) }, // Stuck > 5 mins
@@ -61,6 +70,46 @@ export const autoAssignDeliveryBoys = async () => {
 export const updateDeliveryStatus = async () => {
     // NOOP: Disabled for safety
     return { statusUpdates: 0, disabled: true, reason: "Safety guard - manual admin review required" };
+};
+
+// ══════════════════════════════════════════════════════
+// 2️⃣b SAFE REPLACEMENT: ALERT ADMIN ON STALE ASSIGNMENTS
+// ══════════════════════════════════════════════════════
+// Read-only counterpart to the disabled job above — a rider who force-quit
+// or lost connectivity mid-delivery previously left an order stuck ASSIGNED
+// forever with nobody informed (confirmed: no other sweep detects this;
+// the only path to reassignment is the rider's own explicit cancel action).
+// This job NEVER mutates order/rider state — it only tells admin an order
+// needs manual attention, which is exactly what the disabled job's own
+// comment recommended ("add proper alerting first").
+const STALE_ASSIGNED_MS = 25 * 60 * 1000; // no pickup within 25 min of assignment
+export const alertStaleAssignedOrders = async () => {
+    try {
+        const staleOrders = await Order.find({
+            orderMode: 'URBEXON_HOUR',
+            orderStatus: 'READY_FOR_PICKUP',
+            'delivery.status': 'ASSIGNED',
+            'delivery.assignedTo': { $ne: null },
+            'delivery.assignedAt': { $lt: new Date(Date.now() - STALE_ASSIGNED_MS) },
+        }).select('_id delivery.riderName delivery.assignedAt').lean();
+
+        if (staleOrders.length === 0) return { staleOrdersFound: 0 };
+
+        for (const order of staleOrders) {
+            broadcastToAdmins('admin:stale_assignment', {
+                orderId: order._id,
+                riderName: order.delivery?.riderName || '',
+                assignedAt: order.delivery?.assignedAt,
+                message: `Order assigned to ${order.delivery?.riderName || 'a rider'} but not picked up after 25+ minutes — may need manual reassignment.`,
+            });
+        }
+
+        logger.warn(`🚨 ${staleOrders.length} order(s) stuck ASSIGNED past ${STALE_ASSIGNED_MS / 60000}min — admin alerted`);
+        return { staleOrdersFound: staleOrders.length };
+    } catch (err) {
+        logger.error('Alert Stale Assigned Orders Error:', err);
+        throw { message: err.message };
+    }
 };
 
 // ══════════════════════════════════════════════════════

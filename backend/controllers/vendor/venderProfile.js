@@ -22,6 +22,7 @@ import Pincode from "../../models/vendorModels/Pincode.js";
 import { uploadToCloudinary } from "../../config/cloudinary.js";
 import { delCacheByPrefix } from "../../utils/Cache.js";
 import { HARD_MAX_RADIUS_KM } from "../../validations/orderValidations.js";
+import { DELIVERY_CONFIG } from "../../config/deliveryConfig.js";
 
 // GET /api/vendor/me
 export const getMyProfile = async (req, res) => {
@@ -69,12 +70,17 @@ export const updateMyProfile = async (req, res) => {
             if (field === "deliveryRadius") {
                 const num = Number(val);
                 if (!Number.isFinite(num)) return; // skip invalid values instead of crashing
-                // BUG FIX: was clamped to the schema's raw min/max (1-50), but
-                // checkout (validateDeliveryServiceability) never honors more
-                // than HARD_MAX_RADIUS_KM regardless — vendors could set/see
-                // e.g. 30km "saved" here while every order beyond 10km was
-                // silently rejected at checkout with no explanation in the panel.
-                val = Math.min(Math.max(num, 1), HARD_MAX_RADIUS_KM);
+                // BUG FIX (preserved): was clamped to the schema's raw min/max
+                // (1-50), but checkout (validateDeliveryServiceability) never
+                // honors more than HARD_MAX_RADIUS_KM regardless — vendors
+                // could set/see e.g. 30km "saved" here while every order
+                // beyond 10km was silently rejected at checkout with no
+                // explanation in the panel.
+                // Admin can further tighten this window (min/maxVendorRadiusKm)
+                // without ever exceeding the absolute hard safety ceiling.
+                const adminMax = Math.min(DELIVERY_CONFIG.URBEXON_HOUR.MAX_VENDOR_RADIUS_KM, HARD_MAX_RADIUS_KM);
+                const adminMin = Math.min(DELIVERY_CONFIG.URBEXON_HOUR.MIN_VENDOR_RADIUS_KM, adminMax);
+                val = Math.min(Math.max(num, adminMin), adminMax);
             }
 
             vendor[field] = val;

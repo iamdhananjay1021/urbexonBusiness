@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import * as vendorApi from "../api/vendorApi";
-import useAdminWs from "./useAdminWs";
+import { useAdminWsContext } from "../contexts/AdminWsContext";
 
 const PAGE_LIMIT = 20;
 
@@ -96,10 +96,15 @@ export const useVendors = () => {
         }
     }, []);
 
-    // Shared admin WebSocket — same connection AdminOrders / other admin
-    // pages use via useAdminWs (token comes from adminAuth in localStorage,
-    // auto-reconnects on drop).
-    useAdminWs(handleWsMessage);
+    // BUG FIX: this used to call useAdminWs(handleWsMessage) directly — its
+    // own independent socket (a 4th duplicate connection alongside
+    // Admin.jsx's shell, AdminOrders.jsx, and AdminLocalDelivery.jsx, all
+    // making the same "shared connection" claim while each opening their
+    // own). Consumes the real shared connection from AdminWsContext.
+    const { lastMessage: adminWsMessage } = useAdminWsContext();
+    useEffect(() => {
+        if (adminWsMessage) handleWsMessage(adminWsMessage);
+    }, [adminWsMessage, handleWsMessage]);
 
     const approveVendor = useCallback(async (id, payload) => {
         setActionLoading(id);

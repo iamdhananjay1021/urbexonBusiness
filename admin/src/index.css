@@ -1,1 +1,9 @@
 @import "tailwindcss";
+@import "./theme/tokens.css";
+@import "./components/ui/ui.css";
+
+body {
+    font-family: var(--adm-font-sans);
+    background: var(--adm-bg);
+    color: var(--adm-text-primary);
+}

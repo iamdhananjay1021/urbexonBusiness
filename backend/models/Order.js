@@ -283,13 +283,27 @@ const orderSchema = new mongoose.Schema(
             returnRequestedAt: Date,
         },
 
-        // Append-only event log used by delivery flow.
+        // Append-only, fully-auditable event log. Every status transition
+        // through orderEngine.js's applyOrderTransition() pushes one entry
+        // here with who/what/why/where — older entries predating this
+        // (actor/role/source/location/reason all optional) simply have
+        // those fields empty, which is fine since nothing reads them as
+        // required.
         timeline: {
             type: [
                 {
                     status: { type: String, default: "" },
                     timestamp: { type: Date, default: Date.now },
                     note: { type: String, default: "" },
+                    // ── Audit fields (orderEngine.js) ──
+                    actor: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+                    role: { type: String, default: "" }, // customer | vendor | delivery | admin | system
+                    source: { type: String, default: "" }, // api | webhook | assignment_engine | cron | admin_panel
+                    reason: { type: String, default: "" },
+                    location: {
+                        lat: { type: Number, default: null },
+                        lng: { type: Number, default: null },
+                    },
                 },
             ],
             default: [],
@@ -325,6 +339,10 @@ orderSchema.index({ "payment.flagged": 1 });
 orderSchema.index({ "payment.razorpayPaymentId": 1 }, { sparse: true });
 orderSchema.index({ "delivery.assignedTo": 1 }, { sparse: true });
 orderSchema.index({ "delivery.status": 1 });
+// Compound indexes for the queries the Order Engine's transition guard and
+// admin/vendor listing screens filter on together constantly.
+orderSchema.index({ orderMode: 1, orderStatus: 1 });
+orderSchema.index({ orderStatus: 1, "delivery.status": 1 });
 
 /* ─────────────────────────────────────────────
    INVOICE NUMBER GENERATOR

@@ -6,6 +6,7 @@
 import { useState, useCallback, useRef, memo } from "react";
 import { FaHome, FaBriefcase, FaMapMarkerAlt, FaLocationArrow, FaSpinner, FaCheckCircle, FaTimesCircle, FaBookmark } from "react-icons/fa";
 import { verifyPincode } from "../../services/checkoutService";
+import { resolveNearestPincode } from "../../api/pincodeApi";
 
 const LABEL_ICONS = {
     Home: <FaHome size={10} />,
@@ -72,7 +73,17 @@ const AddressForm = memo(({ initial, onSave, onCancel, saving }) => {
                     );
                     const data = await res.json();
                     const addr = data.address || {};
-                    const pin = addr.postcode || "";
+                    let pin = addr.postcode || "";
+
+                    // Backend is the single source of truth for the final pincode —
+                    // Nominatim's postcode is patchy near pincode boundaries (a
+                    // genuinely-224122 GPS fix can come back tagged something else).
+                    // Only ever CORRECTS the guess, never blocks the result on failure.
+                    try {
+                        const { data: nearest } = await resolveNearestPincode(latitude, longitude);
+                        if (nearest?.success && nearest.found && nearest.code) pin = nearest.code;
+                    } catch { /* fall back to reverse-geocoder's postcode */ }
+
                     setForm(f => ({
                         ...f,
                         area: addr.suburb || addr.neighbourhood || addr.road || f.area,
@@ -87,7 +98,7 @@ const AddressForm = memo(({ initial, onSave, onCancel, saving }) => {
                 setGpsLoading(false);
             },
             () => { setGpsMsg("Location permission denied"); setGpsLoading(false); },
-            { timeout: 10000 }
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
     }, [checkPin]);
 

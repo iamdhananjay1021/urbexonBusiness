@@ -6,9 +6,10 @@
  * system components) has changed.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useOrderRealtime } from "../hooks/useOrderRealtime";
+import { useLiveTracking } from "../hooks/useLiveTracking";
 import { useAuth } from "../contexts/AuthContext";
 import { useParams, Link } from "react-router-dom";
 import * as orderApi from "../api/orderApi";
@@ -241,9 +242,9 @@ const OrderDetails = () => {
     const [requestingReplacement, setRequestingReplacement] = useState(false);
     const [replacementError, setReplacementError] = useState("");
     const [downloadingInvoice, setDownloadingInvoice] = useState(false);
-    const [riderLocation, setRiderLocation] = useState(null);
     const [deliveryStatus, setDeliveryStatus] = useState(null);
     const [deliveryOtp, setDeliveryOtp] = useState(null);
+    const [wsMessage, setWsMessage] = useState(null);
 
     /* ── WebSocket ──
        BUG FIX: "order_status_updated"/"order_status" used to be handled
@@ -251,47 +252,62 @@ const OrderDetails = () => {
        both for every status change (orderController.js), so this page
        was calling setOrder twice per transition. useOrderRealtime already
        owns this exclusively (same pattern MyOrders.jsx uses); WS here is
-       now only for the event types SSE doesn't carry at all. */
+       now only for the event types SSE doesn't carry at all.
+
+       BUG FIX 2: the "order_status" event type (distinct from
+       "order_status_updated") was never handled at all. This is the ONLY
+       event deliveryController.js's pickupOrder() sends the delivery OTP
+       through — Order.deliveryOtp.code is `select: false` on the schema,
+       so the initial GET on page load never carries it, and there is no
+       other channel that does. Without this handler, deliveryOtp stayed
+       null forever even once the order reached OUT_FOR_DELIVERY. */
     const { send: wsSend } = useWebSocket(authToken, {
         onMessage: (msg) => {
             const p = msg.payload;
-            if (msg.type === "rider_location" && p?.orderId === id) {
-                setRiderLocation({ lat: p.lat, lng: p.lng, riderName: p.riderName, at: p.at });
-            }
+            if (msg.type === "rider_location" && p?.orderId === id) setWsMessage(msg);
             if (msg.type === "delivery:status_update" && p?.orderId === id) {
                 setDeliveryStatus(p.status);
+            }
+            if (msg.type === "order_status" && p?.orderId === id) {
+                if (p.otp) setDeliveryOtp(p.otp);
+                if (p.status) setOrder(prev => prev ? { ...prev, orderStatus: p.status } : prev);
             }
         },
         onConnect: () => { if (id) wsSend("join_room", { room: `order:${id}` }); },
     });
 
-    /* ── Polling fallback for rider location ──
-       BUG FIX: `riderLocation` used to be in this effect's guard AND
-       dependency array — the moment EITHER the poll itself or a WS
-       `rider_location` message set it once, this effect re-ran, tore down
-       its own interval, and the new run's `|| riderLocation` guard
-       immediately bailed out — permanently disabling the polling fallback
-       for the rest of the delivery. If the WebSocket then silently dropped
-       (network blip, backend restart) with no reconnect in time, the
-       customer's map was left frozen on a stale marker with no mechanism
-       left to refresh it. Polling now runs for the entire OUT_FOR_DELIVERY
-       window regardless of whether WS is also delivering updates — mildly
-       redundant when WS is healthy, but guarantees the map is never
-       permanently stuck. */
-    useEffect(() => {
-        if (order?.orderStatus !== "OUT_FOR_DELIVERY") return;
-        const poll = async () => {
-            try {
-                const { data } = await getRiderLocationForOrder(id);
-                if (data.available && data.rider?.lat) {
-                    setRiderLocation({ lat: data.rider.lat, lng: data.rider.lng, riderName: data.rider.name, at: data.rider.updatedAt, stale: !!data.stale });
-                }
-            } catch { /* silent */ }
-        };
-        poll();
-        const t = setInterval(poll, 15000);
-        return () => clearInterval(t);
-    }, [order?.orderStatus, id]);
+    // BUG FIX: this used to only track rider location once OUT_FOR_DELIVERY
+    // — the rider's location is now tracked continuously from the moment
+    // they accept (delivery-panel reports GPS whenever online, not just
+    // mid-delivery), so there's real data to show during "Heading to
+    // Store" too. Live tracking now runs for the whole assigned window via
+    // the canonical useLiveTracking hook (WS-primary + polling fallback,
+    // same one used by vendor-panel/admin/delivery-panel) instead of this
+    // page's own hand-rolled poll+WS-merge logic.
+    const isRiderAssigned = !!order?.delivery?.assignedTo && !["DELIVERED", "CANCELLED"].includes(order?.orderStatus);
+
+    // BUG FIX: these two were previously passed to useLiveTracking as
+    // inline arrow functions, i.e. a brand-new function reference on every
+    // render. Inside useLiveTracking, `poll` is a useCallback that depends
+    // on `fetchLocation`, and the effect that schedules the 15s interval
+    // depends on `poll` — so a new fetchLocation/joinRoom every render
+    // re-ran that effect and fired `poll()` immediately, every time,
+    // instead of waiting out the interval. Each successful poll updates
+    // state → re-renders this component → creates new fetchLocation/
+    // joinRoom again → repeats. That's what produced 220+ /rider-location
+    // requests firing every ~500-800ms instead of every 15s. Memoizing
+    // these on [id]/[wsSend, id] keeps their identity stable across
+    // renders that don't actually change the order or socket.
+    const joinRoom = useCallback(() => wsSend("join_room", { room: `order:${id}` }), [wsSend, id]);
+    const fetchLocation = useCallback(async () => (await getRiderLocationForOrder(id)).data, [id]);
+
+    const tracking = useLiveTracking({
+        orderId: id,
+        enabled: isRiderAssigned,
+        wsMessage,
+        joinRoom,
+        fetchLocation,
+    });
 
     useOrderRealtime({
         enabled: !!authToken,
@@ -645,33 +661,45 @@ const OrderDetails = () => {
                     </Card>
                 )}
 
-                {/* Live Rider Map */}
-                {riderLocation && order.orderStatus === "OUT_FOR_DELIVERY" && (
+                {/* Live Rider Map — BUG FIX: used to only show once
+                    OUT_FOR_DELIVERY; now shows for the whole assigned
+                    window (rider location is tracked continuously from
+                    acceptance, not just the last leg). */}
+                {tracking.riderPos && isRiderAssigned && (
                     <Card accent className="mb-3.5 border-[var(--color-info-100)] bg-info-tint">
                         <div className="flex justify-between items-center mb-2.5">
                             <Heading icon={FiTruck}>Live Location</Heading>
                             {/* BUG FIX: this badge used to always say "LIVE" regardless
                                 of whether the location was actually current — now
                                 reflects the backend's freshness check. */}
-                            {riderLocation.stale ? (
+                            {tracking.stale ? (
                                 <span className="text-[10px] font-bold text-error bg-error-tint border border-[var(--color-error-100)] px-2 py-0.5 rounded-full">● RECONNECTING</span>
                             ) : (
                                 <span className="text-[10px] font-bold text-success bg-success-tint border border-[var(--color-success-100)] px-2 py-0.5 rounded-full">● LIVE</span>
                             )}
                         </div>
                         <LiveTrackingMap
-                            riderLat={riderLocation.lat}
-                            riderLng={riderLocation.lng}
-                            riderName={riderLocation.riderName || "Partner"}
+                            riderLat={tracking.riderPos[0]}
+                            riderLng={tracking.riderPos[1]}
+                            riderName={tracking.riderName || "Partner"}
+                            vendorLat={tracking.vendorPos?.[0]}
+                            vendorLng={tracking.vendorPos?.[1]}
+                            vendorLabel={order.vendorId?.shopName || "Pickup Point"}
                             destLat={order.latitude}
                             destLng={order.longitude}
                             destLabel={order.address || "Address"}
+                            leg={tracking.leg}
+                            distanceKm={tracking.distanceKm}
+                            etaText={tracking.etaText}
+                            speedKmph={tracking.speedKmph}
+                            headingDeg={tracking.headingDeg}
+                            status={deliveryStatus || order.delivery?.status}
                             height="clamp(170px,28vw,220px)"
-                            lastUpdated={riderLocation.at}
-                            stale={!!riderLocation.stale}
+                            lastUpdated={tracking.lastUpdated}
+                            stale={!!tracking.stale}
                         />
                         <p className="text-[10px] text-muted text-center mt-1.5">
-                            Updated: {riderLocation.at ? new Date(riderLocation.at).toLocaleTimeString("en-IN") : "Just now"}
+                            Updated: {tracking.lastUpdated ? new Date(tracking.lastUpdated).toLocaleTimeString("en-IN") : "Just now"}
                         </p>
                     </Card>
                 )}

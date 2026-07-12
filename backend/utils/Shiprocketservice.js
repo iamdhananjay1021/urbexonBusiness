@@ -355,6 +355,21 @@ export const cancelShiprocketOrder = async ({ orderId }) => {
             signal: AbortSignal.timeout(10_000),
         });
         const data = await res.json();
+
+        // BUG FIX: this used to return success:true unconditionally after
+        // parsing the response — `fetch` doesn't reject on 4xx/5xx, so an
+        // auth failure or "order not found" from Shiprocket's own API
+        // (still a 200-shaped JSON body, or a non-2xx status) was silently
+        // treated as a successful cancel. The caller (shiprocketController.
+        // cancelShipment) trusted this and marked the order CANCELLED in
+        // the DB even though Shiprocket never actually cancelled anything.
+        // Matches the same res.ok / expected-field validation already used
+        // in createShiprocketOrder above.
+        if (!res.ok) {
+            console.error("[Shiprocket] Cancel failed:", res.status, JSON.stringify(data));
+            return { success: false, error: data?.message || `Shiprocket returned ${res.status}` };
+        }
+
         return { success: true, mock: false, data };
     } catch (err) {
         console.error("[Shiprocket] Cancel error:", err.message);

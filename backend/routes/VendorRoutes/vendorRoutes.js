@@ -32,6 +32,7 @@ import {
 import { getVendorOrders, getVendorOrderById, updateOrderStatus } from "../../controllers/vendor/vendorOrders.js";
 import { updateVendorBankDetails } from "../../controllers/vendor/bankDetailsController.js";
 import { vendorRequestPayout, vendorGetPayouts, vendorCancelPayout } from "../../controllers/admin/payoutController.js";
+import { getMyNotifications, getMyUnreadCount, markMyNotificationRead, markAllMyNotificationsRead } from "../../controllers/platformNotificationController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
 import { validateBody } from "../../middlewares/validate.js";
 import { protectVendor, requireApprovedVendor, requireActiveSubscription } from "../../middlewares/vendorMiddleware.js";
@@ -91,6 +92,14 @@ router.get("/me", protectVendor, getMyProfile);
 router.put("/me", protectVendor, requireApprovedVendor, docUpload, updateMyProfile);
 router.patch("/toggle-shop", protectVendor, requireApprovedVendor, toggleShopOpen);
 router.patch("/location", protectVendor, requireApprovedVendor, updateLocation);
+
+// ── Vendor Notifications (persisted history — survives refresh) ─────────────
+// BUG FIX: vendors had zero way to read back their own persisted
+// PlatformNotification history — see platformNotificationController.js.
+router.get("/notifications", protectVendor, getMyNotifications("vendor"));
+router.get("/notifications/unread", protectVendor, getMyUnreadCount("vendor"));
+router.put("/notifications/read-all", protectVendor, markAllMyNotificationsRead("vendor"));
+router.put("/notifications/:id/read", protectVendor, markMyNotificationRead("vendor"));
 
 // ── Vendor Settings (Shop info, delivery zone / service pincodes) ────────────
 // ✅ FIX: previously lived in an unmounted route file with a broken middleware

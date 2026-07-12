@@ -124,9 +124,17 @@ export const useWebSocket = (token, { onMessage, onConnect, onDisconnect } = {})
         }
     }, []);
 
+    // BUG FIX: this nested the payload under a `payload` key
+    // (`{type, payload:{room:"order:123"}}`), but the backend's message
+    // handler (wsHub.js) reads room-join fields flat off the message
+    // itself (`msg.type === "join_room" && msg.room`) — every join_room
+    // call from this hook was silently a no-op (no error, the condition
+    // just never matched), so this app's WS room subscriptions never
+    // actually worked and every "live" feature was quietly 100% dependent
+    // on its polling fallback. Spread the payload flat to match.
     const send = useCallback((type, payload = {}) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type, payload }));
+            wsRef.current.send(JSON.stringify({ type, ...payload }));
         }
     }, []);
 

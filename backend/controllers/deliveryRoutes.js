@@ -11,7 +11,7 @@ import {
     deliveryResetPassword,
 } from "../controllers/delivery/deliveryBoyAuth.js";
 import { validateBody } from "../middlewares/validate.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { protect } from "../middlewares/authMiddleware.js";
 import multer from "multer";
 
 const router = express.Router();

@@ -5,6 +5,7 @@
  *   see HARD_MAX_RADIUS_KM in validations/orderValidations.js)
  * ✅ Loads from DB (DeliveryConfig model) with hardcoded fallbacks
  */
+import { calculateETA, formatEtaText } from "../services/geoEngine.js";
 
 /* ── Hardcoded defaults (fallback if DB not loaded yet) ── */
 const DEFAULTS = {
@@ -21,6 +22,11 @@ const DEFAULTS = {
         CHARGE_PER_KM: 8,
         MAX_CHARGE: 150,
         ETA: "45–120 mins",
+        AVG_RIDER_SPEED_KMPH: 20,
+        DEFAULT_PREP_TIME_MIN: 15,
+        MIN_VENDOR_RADIUS_KM: 1,
+        MAX_VENDOR_RADIUS_KM: 10,
+        DEFAULT_VENDOR_RADIUS_KM: 5,
     },
 
     SHOP_LAT: 26.41922,
@@ -48,13 +54,20 @@ export const DELIVERY_TYPES = {
 };
 
 export const calcDeliveryCharge = (itemsTotal, paymentMethod, options = {}) => {
-    const { deliveryType = DELIVERY_TYPES.ECOMMERCE_STANDARD, distanceKm = 0 } = options;
+    const { deliveryType = DELIVERY_TYPES.ECOMMERCE_STANDARD, distanceKm = 0, vendor = null } = options;
 
     if (deliveryType === DELIVERY_TYPES.URBEXON_HOUR) {
         if (!DELIVERY_CONFIG.URBEXON_HOUR.ENABLED) throw new Error("Urbexon Hour is currently unavailable");
         if (distanceKm > DELIVERY_CONFIG.URBEXON_HOUR.MAX_RADIUS_KM)
             throw new Error(`Urbexon Hour supports up to ${DELIVERY_CONFIG.URBEXON_HOUR.MAX_RADIUS_KM} km only`);
-        const computed = DELIVERY_CONFIG.URBEXON_HOUR.BASE_CHARGE + (distanceKm * DELIVERY_CONFIG.URBEXON_HOUR.CHARGE_PER_KM);
+
+        // Vendor-level override wins over the platform default ONLY when the
+        // vendor has actually configured one (>0) — vendors who haven't
+        // touched these fields get the exact platform-wide formula unchanged.
+        const chargePerKm = vendor?.deliveryChargePerKm > 0 ? vendor.deliveryChargePerKm : DELIVERY_CONFIG.URBEXON_HOUR.CHARGE_PER_KM;
+        if (vendor?.freeDeliveryAbove > 0 && itemsTotal >= vendor.freeDeliveryAbove) return 0;
+
+        const computed = DELIVERY_CONFIG.URBEXON_HOUR.BASE_CHARGE + (distanceKm * chargePerKm);
         return Math.min(Math.round(computed), DELIVERY_CONFIG.URBEXON_HOUR.MAX_CHARGE);
     }
 
@@ -73,8 +86,26 @@ export const calcFinalAmount = (itemsTotal, deliveryCharge) =>
 // @deprecated — COD eligibility now managed by Pincode DB model (see addressController)
 export const isCODServiceable = (_pincode) => true;
 
-export const getDeliveryETA = ({ deliveryType = DELIVERY_TYPES.ECOMMERCE_STANDARD } = {}) => {
-    if (deliveryType === DELIVERY_TYPES.URBEXON_HOUR) return DELIVERY_CONFIG.DELIVERY_ETA.URBEXON_HOUR;
+// Dynamic ETA — prep time + distance/speed via the shared Geo Engine.
+// Only kicks in when distanceKm is genuinely known (a real Number, not
+// null/undefined); ecommerce and "distance unknown" UH orders keep
+// returning the exact static text they always did — zero regression for
+// every existing caller that doesn't pass the new optional params.
+export const getDeliveryETA = ({
+    deliveryType = DELIVERY_TYPES.ECOMMERCE_STANDARD,
+    distanceKm,
+    preparationTimeMin,
+    vendorDeliveryMode,
+} = {}) => {
+    if (deliveryType === DELIVERY_TYPES.URBEXON_HOUR) {
+        const eta = calculateETA({
+            distanceKm,
+            preparationTimeMin: preparationTimeMin ?? DELIVERY_CONFIG.URBEXON_HOUR.DEFAULT_PREP_TIME_MIN,
+            avgSpeedKmph: DELIVERY_CONFIG.URBEXON_HOUR.AVG_RIDER_SPEED_KMPH,
+            deliveryMode: vendorDeliveryMode === "self" ? "self" : "platform",
+        });
+        return formatEtaText(eta) || DELIVERY_CONFIG.DELIVERY_ETA.URBEXON_HOUR;
+    }
     return DELIVERY_CONFIG.DELIVERY_ETA.ECOMMERCE_STANDARD;
 };
 
@@ -114,6 +145,11 @@ export const refreshDeliveryConfig = async () => {
         DELIVERY_CONFIG.URBEXON_HOUR.CHARGE_PER_KM = doc.uhChargePerKm ?? DEFAULTS.URBEXON_HOUR.CHARGE_PER_KM;
         DELIVERY_CONFIG.URBEXON_HOUR.MAX_CHARGE = doc.uhMaxCharge ?? DEFAULTS.URBEXON_HOUR.MAX_CHARGE;
         DELIVERY_CONFIG.URBEXON_HOUR.ETA = doc.uhEtaText ?? DEFAULTS.URBEXON_HOUR.ETA;
+        DELIVERY_CONFIG.URBEXON_HOUR.AVG_RIDER_SPEED_KMPH = doc.avgRiderSpeedKmph ?? DEFAULTS.URBEXON_HOUR.AVG_RIDER_SPEED_KMPH;
+        DELIVERY_CONFIG.URBEXON_HOUR.DEFAULT_PREP_TIME_MIN = doc.defaultPrepTimeMin ?? DEFAULTS.URBEXON_HOUR.DEFAULT_PREP_TIME_MIN;
+        DELIVERY_CONFIG.URBEXON_HOUR.MIN_VENDOR_RADIUS_KM = doc.minVendorRadiusKm ?? DEFAULTS.URBEXON_HOUR.MIN_VENDOR_RADIUS_KM;
+        DELIVERY_CONFIG.URBEXON_HOUR.MAX_VENDOR_RADIUS_KM = doc.maxVendorRadiusKm ?? DEFAULTS.URBEXON_HOUR.MAX_VENDOR_RADIUS_KM;
+        DELIVERY_CONFIG.URBEXON_HOUR.DEFAULT_VENDOR_RADIUS_KM = doc.defaultVendorRadiusKm ?? DEFAULTS.URBEXON_HOUR.DEFAULT_VENDOR_RADIUS_KM;
 
         DELIVERY_CONFIG.SHOP_LAT = doc.shopLat ?? DEFAULTS.SHOP_LAT;
         DELIVERY_CONFIG.SHOP_LNG = doc.shopLng ?? DEFAULTS.SHOP_LNG;

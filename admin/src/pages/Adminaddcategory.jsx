@@ -2,23 +2,12 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createCategory } from "../api/categoryApi";
 import { FiArrowLeft, FiUpload, FiX } from "react-icons/fi";
+import { Button, Badge, Card, ErrorState, FormField, Input } from "../components/ui";
 
 const EMOJI_OPTIONS = ["👔", "👗", "🥻", "👜", "📱", "✨", "👟", "🎒", "⌚", "💍", "🕶️", "🧢", "🏷️"];
 
-const inputStyle = {
-    width: "100%", padding: "10px 14px",
-    border: "1px solid #e2e8f0", borderRadius: 8,
-    fontSize: 13, color: "#1e293b", background: "#fff",
-    fontFamily: "inherit", outline: "none", boxSizing: "border-box",
-};
-
-const Field = ({ label, hint, children }) => (
-    <div>
-        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
-            {label} {hint && <span style={{ color: "#94a3b8", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>{hint}</span>}
-        </label>
-        {children}
-    </div>
+const hintSpan = (text) => (
+    <span style={{ color: "var(--adm-muted)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}> {text}</span>
 );
 
 const AdminAddCategory = () => {
@@ -74,23 +63,20 @@ const AdminAddCategory = () => {
     };
 
     return (
-        <div style={{ fontFamily: "'Inter', system-ui, sans-serif", maxWidth: 640, margin: "0 auto" }}>
-            <style>{`@keyframes ux-spin{to{transform:rotate(360deg)}}`}</style>
+        <div style={{ fontFamily: "var(--adm-font-sans)", maxWidth: 640, margin: "0 auto" }}>
 
             {/* Header */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-                <button onClick={() => navigate("/admin/categories")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, color: "#475569", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                    <FiArrowLeft size={14} /> Back
-                </button>
+                <Button variant="secondary" icon={FiArrowLeft} onClick={() => navigate("/admin/categories")}>Back</Button>
                 <div>
-                    <h1 style={{ fontSize: 20, fontWeight: 700, color: "#1e293b", margin: 0 }}>Add Category</h1>
-                    <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>Create a new product category</p>
+                    <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--adm-text-primary)", margin: 0 }}>Add Category</h1>
+                    <p style={{ fontSize: 12, color: "var(--adm-muted)", marginTop: 2 }}>Create a new product category</p>
                 </div>
             </div>
 
             {/* Preview Card */}
-            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 18px", marginBottom: 16, display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ width: 52, height: 52, borderRadius: 14, background: form.lightColor, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid #e2e8f0" }}>
+            <Card style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 52, height: 52, borderRadius: "var(--adm-radius-lg)", background: form.lightColor, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid var(--adm-border)" }}>
                     {preview
                         ? <img src={preview} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         : <span style={{ fontSize: 26 }}>{form.emoji}</span>
@@ -98,98 +84,93 @@ const AdminAddCategory = () => {
                 </div>
                 <div>
                     <p style={{ fontSize: 14, fontWeight: 700, color: form.color }}>{form.name || "Category Name"}</p>
-                    <p style={{ fontSize: 11, color: "#94a3b8" }}>Live preview</p>
+                    <p style={{ fontSize: 11, color: "var(--adm-muted)" }}>Live preview</p>
                 </div>
-            </div>
+            </Card>
 
             <form onSubmit={handleSubmit}>
-                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.04)", display: "flex", flexDirection: "column", gap: 20 }}>
+                <Card style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
                     {/* Name */}
-                    <Field label="Category Name">
-                        <input name="name" value={form.name} onChange={handleChange} placeholder="e.g. Men's Fashion"
-                            style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
-                    </Field>
+                    <FormField label="Category Name">
+                        <Input name="name" value={form.name} onChange={handleChange} placeholder="e.g. Men's Fashion" style={{ width: "100%" }} />
+                    </FormField>
 
                     {/* Emoji Picker */}
-                    <Field label="Emoji" hint="(shown if no image)">
+                    <FormField label={<>Emoji{hintSpan("(shown if no image)")}</>}>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                             {EMOJI_OPTIONS.map(em => (
                                 <button key={em} type="button" onClick={() => setForm(prev => ({ ...prev, emoji: em }))}
-                                    style={{ width: 38, height: 38, fontSize: 20, border: `2px solid ${form.emoji === em ? "#2563eb" : "#e2e8f0"}`, borderRadius: 8, background: form.emoji === em ? "#eff6ff" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    style={{ width: 38, height: 38, fontSize: 20, border: `2px solid ${form.emoji === em ? "var(--adm-primary)" : "var(--adm-border)"}`, borderRadius: "var(--adm-radius-md)", background: form.emoji === em ? "var(--adm-primary-tint)" : "var(--adm-surface)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                                     {em}
                                 </button>
                             ))}
-                            <input name="emoji" value={form.emoji} onChange={handleChange} placeholder="or type"
-                                style={{ ...inputStyle, width: 80, textAlign: "center", fontSize: 18 }} />
+                            <Input name="emoji" value={form.emoji} onChange={handleChange} placeholder="or type"
+                                style={{ width: 80, textAlign: "center", fontSize: 18 }} />
                         </div>
-                    </Field>
+                    </FormField>
 
                     {/* Colors */}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                        <Field label="Text Color">
+                        <FormField label="Text Color">
                             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                                 <input type="color" value={form.color} onChange={e => setForm(prev => ({ ...prev, color: e.target.value }))}
-                                    style={{ width: 40, height: 38, border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", padding: 2 }} />
-                                <input name="color" value={form.color} onChange={handleChange}
-                                    style={{ ...inputStyle, flex: 1 }} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                                    style={{ width: 40, height: 38, border: "1px solid var(--adm-border)", borderRadius: "var(--adm-radius-md)", cursor: "pointer", padding: 2 }} />
+                                <Input name="color" value={form.color} onChange={handleChange} style={{ flex: 1 }} />
                             </div>
-                        </Field>
-                        <Field label="Background Color">
+                        </FormField>
+                        <FormField label="Background Color">
                             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                                 <input type="color" value={form.lightColor} onChange={e => setForm(prev => ({ ...prev, lightColor: e.target.value }))}
-                                    style={{ width: 40, height: 38, border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", padding: 2 }} />
-                                <input name="lightColor" value={form.lightColor} onChange={handleChange}
-                                    style={{ ...inputStyle, flex: 1 }} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
+                                    style={{ width: 40, height: 38, border: "1px solid var(--adm-border)", borderRadius: "var(--adm-radius-md)", cursor: "pointer", padding: 2 }} />
+                                <Input name="lightColor" value={form.lightColor} onChange={handleChange} style={{ flex: 1 }} />
                             </div>
-                        </Field>
+                        </FormField>
                     </div>
 
                     {/* Image Upload */}
-                    <Field label="Category Image" hint="(optional, replaces emoji)">
+                    <FormField label={<>Category Image{hintSpan("(optional, replaces emoji)")}</>}>
                         {!preview ? (
-                            <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", height: 100, border: "2px dashed #e2e8f0", borderRadius: 10, cursor: "pointer", background: "#f8fafc" }}
-                                onMouseEnter={e => { e.currentTarget.style.borderColor = "#93c5fd"; e.currentTarget.style.background = "#eff6ff"; }}
-                                onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#f8fafc"; }}>
-                                <FiUpload size={18} color="#94a3b8" style={{ marginBottom: 6 }} />
-                                <p style={{ fontSize: 12, color: "#64748b" }}>Upload category image</p>
+                            <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", height: 100, border: "2px dashed var(--adm-border)", borderRadius: "var(--adm-radius-md)", cursor: "pointer", background: "var(--adm-surface-alt)" }}>
+                                <FiUpload size={18} color="var(--adm-muted)" style={{ marginBottom: 6 }} />
+                                <p style={{ fontSize: 12, color: "var(--adm-text-secondary)" }}>Upload category image</p>
                                 <input type="file" accept="image/*" onChange={handleImage} style={{ display: "none" }} />
                             </label>
                         ) : (
-                            <div style={{ position: "relative", width: 80, height: 80, borderRadius: 12, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+                            <div style={{ position: "relative", width: 80, height: 80, borderRadius: "var(--adm-radius-md)", overflow: "hidden", border: "1px solid var(--adm-border)" }}>
                                 <img src={preview} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                                 <button type="button" onClick={() => { setImageFile(null); setPreview(""); }}
-                                    style={{ position: "absolute", top: 4, right: 4, width: 22, height: 22, background: "#ef4444", color: "#fff", border: "none", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                                    style={{ position: "absolute", top: 4, right: 4, width: 22, height: 22, background: "var(--adm-danger)", color: "var(--adm-text-on-accent)", border: "none", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                                     <FiX size={10} />
                                 </button>
                             </div>
                         )}
-                    </Field>
+                    </FormField>
 
                     {/* Type + Order + Active */}
-                    <Field label="Category Type">
+                    <FormField label="Category Type">
                         <div style={{ display: "flex", gap: 10 }}>
                             {[{ value: "ecommerce", label: "🛒 Ecommerce" }, { value: "urbexon_hour", label: "⚡ Urbexon Hour" }].map(opt => (
                                 <button key={opt.value} type="button" onClick={() => setForm(prev => ({ ...prev, type: opt.value }))}
-                                    style={{ flex: 1, padding: "10px 14px", border: `2px solid ${form.type === opt.value ? "#2563eb" : "#e2e8f0"}`, borderRadius: 8, background: form.type === opt.value ? "#eff6ff" : "#fff", cursor: "pointer", fontSize: 13, fontWeight: form.type === opt.value ? 700 : 500, color: form.type === opt.value ? "#2563eb" : "#64748b", fontFamily: "inherit", transition: "all 0.2s" }}>
+                                    style={{ flex: 1, padding: "10px 14px", border: `2px solid ${form.type === opt.value ? "var(--adm-primary)" : "var(--adm-border)"}`, borderRadius: "var(--adm-radius-md)", background: form.type === opt.value ? "var(--adm-primary-tint)" : "var(--adm-surface)", cursor: "pointer", fontSize: 13, fontWeight: form.type === opt.value ? 700 : 500, color: form.type === opt.value ? "var(--adm-primary)" : "var(--adm-text-secondary)", fontFamily: "inherit", transition: "all 0.2s" }}>
                                     {opt.label}
                                 </button>
                             ))}
                         </div>
-                    </Field>
+                    </FormField>
 
                     {/* Subcategories */}
-                    <Field label="Subcategories" hint="(press Enter to add)">
+                    <FormField label={<>Subcategories{hintSpan("(press Enter to add)")}</>}>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: subcategories.length ? 10 : 0 }}>
                             {subcategories.map((sub, i) => (
-                                <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 600, color: "#1d4ed8" }}>
+                                <Badge key={i} tone="primary">
                                     {sub}
                                     <button type="button" onClick={() => setSubcategories(prev => prev.filter((_, j) => j !== i))}
-                                        style={{ background: "none", border: "none", color: "#93c5fd", cursor: "pointer", padding: 0, display: "flex", fontSize: 14, lineHeight: 1 }}>×</button>
-                                </span>
+                                        style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, display: "flex", fontSize: 14, lineHeight: 1, opacity: 0.6 }}>×</button>
+                                </Badge>
                             ))}
                         </div>
-                        <input
+                        <Input
                             value={subInput}
                             onChange={e => setSubInput(e.target.value)}
                             onKeyDown={e => {
@@ -201,30 +182,28 @@ const AdminAddCategory = () => {
                                 }
                             }}
                             placeholder="e.g. Shirts, Shoes, Laptops"
-                            style={inputStyle}
-                            onFocus={e => e.target.style.borderColor = "#93c5fd"}
-                            onBlur={e => e.target.style.borderColor = "#e2e8f0"}
+                            style={{ width: "100%" }}
                         />
-                    </Field>
+                    </FormField>
 
                     {/* Highlight Template */}
-                    <Field label="Product Highlight Fields" hint="(template for products in this category)">
+                    <FormField label={<>Product Highlight Fields{hintSpan("(template for products in this category)")}</>}>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: highlightFields.length ? 10 : 0 }}>
                             {highlightFields.map((hl, i) => (
-                                <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: hl.required ? "#fef3c7" : "#f0fdf4", border: `1px solid ${hl.required ? "#fbbf24" : "#86efac"}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 600, color: hl.required ? "#92400e" : "#166534" }}>
+                                <Badge key={i} tone={hl.required ? "warning" : "success"}>
                                     {hl.title}
-                                    {hl.required && <span style={{ fontSize: 9, background: "#fbbf24", color: "#78350f", padding: "1px 5px", borderRadius: 4, fontWeight: 800 }}>REQ</span>}
+                                    {hl.required && <span style={{ fontSize: 9, background: "var(--adm-warning)", color: "var(--adm-text-on-accent)", padding: "1px 5px", borderRadius: 4, fontWeight: 800 }}>REQ</span>}
                                     <button type="button" onClick={() => {
                                         const next = [...highlightFields];
                                         next[i] = { ...next[i], required: !next[i].required };
                                         setHighlightFields(next);
-                                    }} title="Toggle required" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#94a3b8", padding: 0 }}>⚙</button>
+                                    }} title="Toggle required" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "inherit", padding: 0, opacity: 0.7 }}>⚙</button>
                                     <button type="button" onClick={() => setHighlightFields(prev => prev.filter((_, j) => j !== i))}
-                                        style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, display: "flex", fontSize: 14, lineHeight: 1 }}>×</button>
-                                </span>
+                                        style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, display: "flex", fontSize: 14, lineHeight: 1, opacity: 0.6 }}>×</button>
+                                </Badge>
                             ))}
                         </div>
-                        <input
+                        <Input
                             value={hlInput}
                             onChange={e => setHlInput(e.target.value)}
                             onKeyDown={e => {
@@ -238,46 +217,37 @@ const AdminAddCategory = () => {
                                 }
                             }}
                             placeholder="e.g. Weight, Brand, Expiry Date (press Enter)"
-                            style={inputStyle}
-                            onFocus={e => e.target.style.borderColor = "#93c5fd"}
-                            onBlur={e => e.target.style.borderColor = "#e2e8f0"}
+                            style={{ width: "100%" }}
                         />
-                        <p style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>These fields will auto-load when vendors add products in this category. Click ⚙ to toggle required.</p>
-                    </Field>
+                        <p style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 4 }}>These fields will auto-load when vendors add products in this category. Click ⚙ to toggle required.</p>
+                    </FormField>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                        <Field label="Display Order">
-                            <input name="order" type="number" min="0" value={form.order} onChange={handleChange}
-                                style={inputStyle} onFocus={e => e.target.style.borderColor = "#93c5fd"} onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
-                        </Field>
-                        <Field label="Status">
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", border: "1px solid #e2e8f0", borderRadius: 8 }}>
-                                <span style={{ fontSize: 13, color: "#1e293b", fontWeight: 500 }}>Active</span>
+                        <FormField label="Display Order">
+                            <Input name="order" type="number" min="0" value={form.order} onChange={handleChange} style={{ width: "100%" }} />
+                        </FormField>
+                        <FormField label="Status">
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", border: "1px solid var(--adm-border)", borderRadius: "var(--adm-radius-md)" }}>
+                                <span style={{ fontSize: 13, color: "var(--adm-text-primary)", fontWeight: 500 }}>Active</span>
                                 <button type="button" onClick={() => setForm(prev => ({ ...prev, isActive: !prev.isActive }))}
-                                    style={{ position: "relative", width: 44, height: 24, borderRadius: 12, border: "none", background: form.isActive ? "#2563eb" : "#e2e8f0", cursor: "pointer", transition: "background 0.2s" }}>
-                                    <div style={{ position: "absolute", top: 2, width: 20, height: 20, background: "#fff", borderRadius: "50%", boxShadow: "0 1px 4px rgba(0,0,0,0.2)", transition: "left 0.2s", left: form.isActive ? 22 : 2 }} />
+                                    style={{ position: "relative", width: 44, height: 24, borderRadius: "var(--adm-radius-full)", border: "none", background: form.isActive ? "var(--adm-primary)" : "var(--adm-border)", cursor: "pointer", transition: "background 0.2s" }}>
+                                    <div style={{ position: "absolute", top: 2, width: 20, height: 20, background: "var(--adm-surface)", borderRadius: "50%", boxShadow: "var(--adm-shadow-sm)", transition: "left 0.2s", left: form.isActive ? 22 : 2 }} />
                                 </button>
                             </div>
-                        </Field>
+                        </FormField>
                     </div>
 
-                    {error && (
-                        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 500 }}>
-                            ⚠ {error}
-                        </div>
-                    )}
+                    {error && <ErrorState message={error} />}
 
                     <div style={{ display: "flex", gap: 10 }}>
-                        <button type="button" onClick={() => navigate("/admin/categories")}
-                            style={{ flex: 1, padding: "11px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, color: "#64748b", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
+                        <Button type="button" variant="secondary" onClick={() => navigate("/admin/categories")} style={{ flex: 1 }}>
                             Cancel
-                        </button>
-                        <button type="submit" disabled={saving}
-                            style={{ flex: 1, padding: "11px", background: saving ? "#93c5fd" : "#2563eb", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                            {saving ? <><div style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "#fff", borderRadius: "50%", animation: "ux-spin 0.8s linear infinite" }} />Saving...</> : "Add Category"}
-                        </button>
+                        </Button>
+                        <Button type="submit" variant="primary" loading={saving} style={{ flex: 1 }}>
+                            {saving ? "Saving..." : "Add Category"}
+                        </Button>
                     </div>
-                </div>
+                </Card>
             </form>
         </div>
     );

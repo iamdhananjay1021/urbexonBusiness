@@ -9,7 +9,7 @@
  */
 
 import { useState, useCallback } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useCart } from "../hooks/useCart";
 import {
     FiZap, FiTrash2, FiPlus, FiMinus, FiArrowLeft,
@@ -24,6 +24,16 @@ import { cn } from "../design-system/utils/cn";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
+// BUG FIX: quantity was only ever capped at a hardcoded 99, regardless of
+// how much stock the vendor actually had — a customer could raise the
+// quantity above real availability in the cart UI and only find out it's
+// rejected at checkout. Cap at whichever is lower.
+const atStockLimit = (item) => {
+    if (item.quantity >= 99) return true;
+    if (item.stock != null && item.quantity >= Number(item.stock)) return true;
+    return false;
+};
+
 /* Scoped: quiet entrance for cart rows + reduced-motion respect */
 const PAGE_CSS = `
   .uhc-fade{animation:uhcFade .35s ease both}
@@ -33,6 +43,7 @@ const PAGE_CSS = `
 
 const UHCart = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const {
         uhItems, uhTotalQty, uhTotal,
         increment, decrement, removeItem, clearUH,
@@ -45,9 +56,30 @@ const UHCart = () => {
         else setClearing(true);
     }, [clearing, clearUH]);
 
+    // BUG FIX: navigate(-1) blindly walked the browser's global history —
+    // if this page was opened directly (refresh, deep link, notification
+    // tap), there's no in-app entry to go back to and it could exit the
+    // site entirely. React Router stamps location.key = "default" for
+    // exactly that case (no history the router itself pushed); only use
+    // -1 when there's real in-app history to return to.
+    const handleBack = useCallback(() => {
+        if (location.key !== "default") navigate(-1);
+        else navigate("/urbexon-hour");
+    }, [navigate, location.key]);
+
     const deliveryCharge = uhTotal >= 499 ? 0 : 25;
     const platformFee = 11;
     const grandTotal = uhTotal + deliveryCharge + platformFee;
+    // BUG FIX: checkout had no client-side guard against an out-of-stock
+    // item still sitting in the cart — the customer could tap "Proceed to
+    // Checkout" and only discover the problem after landing on the
+    // checkout page (or later, at order placement).
+    const hasOutOfStockItems = uhItems.some((i) => i.inStock === false || Number(i.stock ?? 0) === 0);
+
+    const goToCheckout = useCallback(() => {
+        if (hasOutOfStockItems) return;
+        navigate("/uh-checkout");
+    }, [hasOutOfStockItems, navigate]);
 
     if (uhItems.length === 0) {
         return (
@@ -77,7 +109,7 @@ const UHCart = () => {
                 className="flex items-center gap-3 bg-surface/90 backdrop-blur-md px-[clamp(16px,3vw,40px)] py-3.5 border-b border-default sticky top-0 z-40"
                 style={{ paddingTop: "max(14px, env(safe-area-inset-top))" }}
             >
-                <button onClick={() => navigate(-1)} aria-label="Go back" className="w-9 h-9 rounded-[var(--radius-md)] bg-canvas flex items-center justify-center text-primary hover:bg-[var(--color-graphite-100)] active:scale-95 transition-all">
+                <button onClick={handleBack} aria-label="Go back" className="w-9 h-9 rounded-[var(--radius-md)] bg-canvas flex items-center justify-center text-primary hover:bg-[var(--color-graphite-100)] active:scale-95 transition-all">
                     <FiArrowLeft size={15} aria-hidden="true" />
                 </button>
                 <div className="flex-1 min-w-0">
@@ -183,17 +215,31 @@ const UHCart = () => {
                                         <span className="w-8 text-center text-[13px] font-bold text-primary tabular-nums">{item.quantity}</span>
                                         <button
                                             onClick={() => increment(uniqueId, "urbexon_hour")}
-                                            disabled={item.quantity >= 99}
+                                            disabled={atStockLimit(item)}
                                             aria-label="Increase quantity"
                                             className="w-8 h-8 hover:bg-[var(--color-graphite-100)] flex items-center justify-center text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                                         >
                                             <FiPlus size={11} aria-hidden="true" />
                                         </button>
                                     </div>
+                                    {atStockLimit(item) && (
+                                        <span className="text-[10px] text-error font-semibold mt-1">Max stock reached</span>
+                                    )}
                                 </div>
                                 {outOfStock && (
-                                    <div className="absolute inset-0 bg-black/70 backdrop-blur-[1px] flex items-center justify-center rounded-2xl text-white font-bold text-[13px]">
-                                        ⚠️ Out of Stock
+                                    // BUG FIX: this overlay used to block the whole card, including
+                                    // the remove button underneath it — a customer with an out-of-
+                                    // stock item had no way to get rid of it from this page short of
+                                    // clearing the entire cart. The remove action now lives on the
+                                    // overlay itself.
+                                    <div className="absolute inset-0 bg-black/70 backdrop-blur-[1px] flex flex-col items-center justify-center gap-2.5 rounded-2xl text-white font-bold text-[13px]">
+                                        <span>⚠️ Out of Stock</span>
+                                        <button
+                                            onClick={() => removeItem(uniqueId, "urbexon_hour")}
+                                            className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/30 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors"
+                                        >
+                                            <FiTrash2 size={11} aria-hidden="true" /> Remove
+                                        </button>
                                     </div>
                                 )}
                             </Card>
@@ -234,11 +280,17 @@ const UHCart = () => {
                         Final delivery & fees calculated at checkout
                     </div>
 
-                    <Alert variant="success" className="mb-3.5">
-                        <span className="flex items-center gap-1.5"><FiClock size={12} aria-hidden="true" /> Delivery in <strong>45–120 mins</strong></span>
-                    </Alert>
+                    {hasOutOfStockItems ? (
+                        <Alert variant="error" className="mb-3.5">
+                            Remove out-of-stock items to continue
+                        </Alert>
+                    ) : (
+                        <Alert variant="success" className="mb-3.5">
+                            <span className="flex items-center gap-1.5"><FiClock size={12} aria-hidden="true" /> Delivery in <strong>45–120 mins</strong></span>
+                        </Alert>
+                    )}
 
-                    <Button variant="primary" className="w-full" onClick={() => navigate("/uh-checkout")}>
+                    <Button variant="primary" className="w-full" disabled={hasOutOfStockItems} onClick={goToCheckout}>
                         Proceed to Checkout
                     </Button>
 
@@ -258,7 +310,7 @@ const UHCart = () => {
                     <span className="text-lg font-black text-primary leading-tight">{fmt(grandTotal)}</span>
                     <span className="text-[11px] text-secondary font-medium">{uhTotalQty} item{uhTotalQty !== 1 ? "s" : ""}</span>
                 </div>
-                <Button variant="primary" className="flex-shrink-0" onClick={() => navigate("/uh-checkout")}>
+                <Button variant="primary" className="flex-shrink-0" disabled={hasOutOfStockItems} onClick={goToCheckout}>
                     Proceed to Checkout
                 </Button>
             </div>

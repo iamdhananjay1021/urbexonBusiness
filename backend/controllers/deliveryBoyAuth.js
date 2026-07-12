@@ -13,7 +13,7 @@ import {
     login as deliveryLogin,
     deliveryForgotPassword,
     deliveryResetPassword,
-} from '../authController.js';
+} from '../controllers/authController.js';
 import User from "../../models/User.js";
 import { uploadToCloudinary } from "../../config/cloudinary.js";
 import { createNotification } from "../admin/notificationController.js";

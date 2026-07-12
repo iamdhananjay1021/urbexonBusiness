@@ -17,6 +17,7 @@ import {
     isMockMode,
 } from "../utils/Shiprocketservice.js";
 import { publishToUser } from "../utils/realtimeHub.js";
+import { applyOrderTransition, buildTimelineEntry } from "../services/orderEngine.js";
 
 /* ══════════════════════════════════════════════════════
    STATUS TRANSITION GUARD
@@ -309,8 +310,8 @@ export const shiprocketWebhook = async (req, res) => {
                     return res.json({ received: true, skipped: true, reason: "invalid_transition" });
                 }
 
-                order.orderStatus = mappedStatus;
-                order.shipping.status = current_status;
+                const prevStatus = order.orderStatus;
+                const setFields = { "shipping.status": current_status };
 
                 const tMap = {
                     CONFIRMED: "confirmedAt",
@@ -319,27 +320,43 @@ export const shiprocketWebhook = async (req, res) => {
                     DELIVERED: "deliveredAt",
                     CANCELLED: "cancelledAt",
                 };
-                if (tMap[mappedStatus]) {
-                    if (!order.statusTimeline) order.statusTimeline = {};
-                    order.statusTimeline[tMap[mappedStatus]] = new Date();
-                    order.markModified("statusTimeline");
-                }
+                if (tMap[mappedStatus]) setFields[`statusTimeline.${tMap[mappedStatus]}`] = new Date();
 
                 if (mappedStatus === "DELIVERED") {
-                    order.payment.status = "PAID";
-                    order.payment.paidAt = new Date();
-                    order.delivery.status = "DELIVERED";
+                    setFields["payment.status"] = "PAID";
+                    setFields["payment.paidAt"] = new Date();
+                    setFields["delivery.status"] = "DELIVERED";
                 }
+                if (mappedStatus === "OUT_FOR_DELIVERY") setFields["delivery.status"] = "OUT_FOR_DELIVERY";
+                if (mappedStatus === "SHIPPED") setFields["shipping.status"] = "SHIPPED";
 
-                if (mappedStatus === "OUT_FOR_DELIVERY") {
-                    order.delivery.status = "OUT_FOR_DELIVERY";
+                // Atomic + auditable — conditions the write on orderStatus
+                // still being `prevStatus`, closing the find→check→save()
+                // race window (Shiprocket redelivers webhook events, and two
+                // redeliveries landing concurrently previously had no
+                // protection against the second silently overwriting the
+                // first's fields after both passed the isValidTransition
+                // check above).
+                const updated = await applyOrderTransition({
+                    orderId: order._id,
+                    fromStatuses: [prevStatus],
+                    toStatus: mappedStatus,
+                    setFields,
+                    timelineEntry: buildTimelineEntry({
+                        status: mappedStatus,
+                        role: "system",
+                        source: "shiprocket_webhook",
+                        note: `AWB ${awb}: ${current_status}`,
+                    }),
+                });
+                if (!updated) {
+                    console.log(`[Webhook] Skipped — order ${order._id} status changed concurrently`);
+                    return res.json({ received: true, skipped: true, reason: "concurrent_update" });
                 }
-
-                if (mappedStatus === "SHIPPED") {
-                    order.shipping.status = "SHIPPED";
-                }
-
-                await order.save();
+                order.orderStatus = updated.orderStatus;
+                order.shipping = updated.shipping;
+                order.payment = updated.payment;
+                order.delivery = updated.delivery;
 
                 publishToUser(order.user, "order_status_updated", {
                     orderId: order._id,
