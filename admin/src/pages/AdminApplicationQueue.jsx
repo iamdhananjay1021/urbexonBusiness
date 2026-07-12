@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import useWebSocket from '../../../client/src/hooks/useWebSocket';
+import useWebSocket from '../hooks/useWebSocket';
 import axios from 'axios';
 import '../styles/AdminApplicationQueue.css';
 
