@@ -3,7 +3,7 @@
  */
 
 import express from "express";
-import { authenticateToken, authorizeRole } from "../../middlewares/authMiddleware.js";
+import { protect, deliveryOnly } from "../../middlewares/authMiddleware.js";
 import deliveryAuthController from "../../controllers/delivery/deliveryAuthController.js";
 import { updateRiderLocation } from "../../controllers/delivery/deliveryController.js";
 import { handleRiderAccept, handleRiderReject } from "../../services/assignmentEngine.js";
@@ -16,7 +16,7 @@ router.post("/login", deliveryAuthController.loginDeliveryPartner);
 router.post("/refresh-token", deliveryAuthController.refreshToken);
 
 // ── Protected Routes ──
-router.use(authenticateToken, authorizeRole("delivery_partner"));
+router.use(protect, deliveryOnly);
 
 // ── Status & Profile ──
 router.get("/status", deliveryAuthController.getDeliveryStatus);

@@ -48,17 +48,16 @@ const deliveryZoneSchema = new mongoose.Schema(
 
         // ── Operating Hours ──
         operatingHours: {
-            monday: { open: "06:00", close: "23:00" },
-            tuesday: { open: "06:00", close: "23:00" },
-            wednesday: { open: "06:00", close: "23:00" },
-            thursday: { open: "06:00", close: "23:00" },
-            friday: { open: "06:00", close: "23:00" },
-            saturday: { open: "06:00", close: "23:00" },
-            sunday: { open: "07:00", close: "22:00" },
+            monday: { open: { type: String, default: "06:00" }, close: { type: String, default: "23:00" } },
+            tuesday: { open: { type: String, default: "06:00" }, close: { type: String, default: "23:00" } },
+            wednesday: { open: { type: String, default: "06:00" }, close: { type: String, default: "23:00" } },
+            thursday: { open: { type: String, default: "06:00" }, close: { type: String, default: "23:00" } },
+            friday: { open: { type: String, default: "06:00" }, close: { type: String, default: "23:00" } },
+            saturday: { open: { type: String, default: "06:00" }, close: { type: String, default: "23:00" } },
+            sunday: { open: { type: String, default: "07:00" }, close: { type: String, default: "22:00" } },
         },
         peakHours: [
-            { start: "12:00", end: "14:30", name: "Lunch" },
-            { start: "18:00", end: "20:00", name: "Evening" },
+            { start: { type: String }, end: { type: String }, name: { type: String } },
         ],
 
         // ── Delivery Partner Management ──

@@ -31,12 +31,12 @@ const deliveryApplicationSchema = new mongoose.Schema(
 
         // ── Completion Status ──
         completionStatus: {
-            personal: { status: "pending", completedAt: null, errors: [] },
-            identity: { status: "pending", completedAt: null, errors: [] },
-            address: { status: "pending", completedAt: null, errors: [] },
-            vehicle: { status: "pending", completedAt: null, errors: [] },
-            bank: { status: "pending", completedAt: null, errors: [] },
-            preferences: { status: "pending", completedAt: null, errors: [] },
+            personal: { status: { type: String, default: "pending" }, completedAt: Date, errors: [String] },
+            identity: { status: { type: String, default: "pending" }, completedAt: Date, errors: [String] },
+            address: { status: { type: String, default: "pending" }, completedAt: Date, errors: [String] },
+            vehicle: { status: { type: String, default: "pending" }, completedAt: Date, errors: [String] },
+            bank: { status: { type: String, default: "pending" }, completedAt: Date, errors: [String] },
+            preferences: { status: { type: String, default: "pending" }, completedAt: Date, errors: [String] },
         },
 
         // ── Timeline ──

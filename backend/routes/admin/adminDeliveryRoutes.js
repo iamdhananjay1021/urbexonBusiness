@@ -3,7 +3,7 @@
  */
 
 import express from "express";
-import { authenticateToken, authorizeRole } from "../../middlewares/authMiddleware.js";
+import { protect, adminOnly } from "../../middlewares/authMiddleware.js";
 import adminDeliveryPartnerController from "../../controllers/admin/adminDeliveryPartnerController.js";
 import adminApplicationController from "../../controllers/admin/adminApplicationController.js";
 import adminKYCController from "../../controllers/admin/adminKYCController.js";
@@ -14,7 +14,7 @@ import adminZoneController from "../../controllers/admin/adminZoneController.js"
 const router = express.Router();
 
 // ── Middleware ──
-router.use(authenticateToken, authorizeRole("admin", "owner"));
+router.use(protect, adminOnly);
 
 // ── Delivery Partners ──
 router.get("/partners", adminDeliveryPartnerController.listDeliveryPartners);
