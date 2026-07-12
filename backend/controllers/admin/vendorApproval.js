@@ -444,10 +444,18 @@ export const getAllDeliveryBoys = async (req, res) => {
 };
 
 /* ── Get online approved riders ────────────────────────── */
+/* ── Get online approved riders ────────────────────────── */
 export const getOnlineRiders = async (req, res) => {
     try {
+        // FIX: was selecting "vehicleType location stats.totalDeliveries
+        // stats.rating" — vehicleType/location are correct flat paths, but
+        // "stats.*" doesn't exist anywhere in the schema (never did), so
+        // those two always came back undefined. rating/totalDeliveries are
+        // flat top-level fields. Added fcmToken (needed by force-assign's
+        // push-notification path) and vehicleNumber (shown in the assign
+        // modal's rider list).
         const riders = await DeliveryBoy.find({ status: "approved", isOnline: true })
-            .select("name phone vehicleType location stats.totalDeliveries stats.rating")
+            .select("name phone vehicleType vehicleNumber location rating totalDeliveries activeOrders fcmToken")
             .lean();
         res.json({ success: true, riders });
     } catch (err) {

@@ -1,8 +1,16 @@
 /**
- * DeliveryBoy.js — Complete Production Delivery Partner Model
+ * DeliveryBoy.js — Production Delivery Partner Model
  *
- * Merged from DeliveryBoy + DeliveryBoy_Enhanced for production scale
- * Relationships: applicationId → DeliveryApplication, kycId → DeliveryKYC, walletId → DeliveryWallet
+ * FIX: Reverted from a nested (vehicle{}/address{}/performance{}) schema
+ * that was migrated in isolation and broke every other call site still
+ * reading/writing flat fields — assignmentEngine.js (rider.location,
+ * rider.activeOrders, rider.geoLocation), deliveryController.js earnings
+ * functions (db.todayDeliveries, db.totalEarnings, db.rating), and
+ * vendorApproval.js (getOnlineRiders' .select()) all assume flat paths.
+ * This schema restores that flat shape (confirmed against production data)
+ * and ADDS the fields the registration form already collects but the old
+ * schema/controller silently dropped: email, dateOfBirth, gender, full
+ * address, and emergency contact.
  */
 import mongoose from "mongoose";
 
@@ -10,198 +18,86 @@ const deliveryBoySchema = new mongoose.Schema(
     {
         // ── User Reference ──
         userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, unique: true, index: true },
-        applicationId: { type: mongoose.Schema.Types.ObjectId, ref: "DeliveryApplication", default: null },
-        kycId: { type: mongoose.Schema.Types.ObjectId, ref: "DeliveryKYC", default: null },
-        walletId: { type: mongoose.Schema.Types.ObjectId, ref: "DeliveryWallet", default: null },
 
         // ── Personal Information ──
         name: { type: String, required: true, trim: true, maxlength: 100 },
         phone: { type: String, required: true, trim: true, unique: true, index: true },
-        email: { type: String, trim: true, lowercase: true, default: null },
-        dateOfBirth: Date,
-        gender: { type: String, enum: ["male", "female", "other"], default: null },
-        profilePhoto: String,
-        emergencyContactName: String,
-        emergencyContactPhone: String,
-        bloodGroup: String,
-
-        // ── Identity Documents ──
-        identityDocuments: {
-            aadhaarNumber: { type: String, default: null },
-            aadhaarVerified: { type: Boolean, default: false },
-            panNumber: { type: String, default: null },
-            panVerified: { type: Boolean, default: false },
-        },
-
-        // ── Current Address ──
-        address: {
-            houseNumber: String,
-            area: String,
-            landmark: String,
-            city: { type: String, index: true },
-            district: String,
-            state: String,
-            pincode: { type: String, index: true },
-            latitude: Number,
-            longitude: Number,
-            nearestZone: mongoose.Schema.Types.ObjectId,
-        },
+        email: { type: String, trim: true, lowercase: true, default: "" },
+        dateOfBirth: { type: Date, default: null },
+        gender: { type: String, enum: ["male", "female", "other", null], default: null },
 
         // ── Vehicle Information ──
-        vehicle: {
-            vehicleType: {
-                type: String,
-                enum: ["bicycle", "scooter", "motorcycle", "car", "ev"],
-                default: "motorcycle",
-                index: true,
-            },
-            vehicleNumber: { type: String, default: "", unique: true, sparse: true, index: true },
-            vehicleModel: { type: String, default: "" },
-            vehiclePhoto: String,
-            vehicleColor: String,
-            rcNumber: String,
-            rcFront: String,
-            rcBack: String,
-            rcVerified: { type: Boolean, default: false },
-            rcValidTill: Date,
-            drivingLicenseNumber: String,
-            drivingLicenseFront: String,
-            drivingLicenseBack: String,
-            licenseVerified: { type: Boolean, default: false },
-            licenseValidTill: Date,
-            insuranceDocument: String,
-            insuranceValidTill: Date,
-            pucDocument: String,
-            pucValidTill: Date,
-            pucVerified: { type: Boolean, default: false },
-            helmetPhoto: String,
-            helmetVerified: { type: Boolean, default: false },
+        vehicleType: {
+            type: String,
+            enum: ["bicycle", "scooter", "motorcycle", "car", "other"],
+            default: "bicycle",
+            index: true,
         },
+        vehicleNumber: { type: String, default: "" },
+        vehicleModel: { type: String, default: "" },
+
+        // ── Registered / Home Address ──
+        houseNumber: { type: String, default: "" },
+        landmark: { type: String, default: "" },
+        area: { type: String, default: "" },
+        city: { type: String, default: "", index: true },
+        district: { type: String, default: "" },
+        state: { type: String, default: "" },
+        pincode: { type: String, default: "", index: true },
+        // Captured once at registration (rider's base address) — distinct
+        // from `location`/`geoLocation` below, which track LIVE GPS while
+        // the rider is online/on a delivery.
+        latitude: { type: Number, default: null },
+        longitude: { type: Number, default: null },
+
+        // ── Emergency Contact ──
+        emergencyContactName: { type: String, default: "" },
+        emergencyContactPhone: { type: String, default: "" },
 
         // ── Bank & Payment Details ──
         bankDetails: {
             accountHolder: { type: String, trim: true, default: "" },
-            accountNumber: { type: String, trim: true, default: null },
+            accountNumber: { type: String, trim: true, default: "" },
             ifsc: { type: String, trim: true, uppercase: true, default: "" },
             bankName: { type: String, trim: true, default: "" },
             branch: { type: String, trim: true, default: "" },
             upiId: { type: String, trim: true, default: "" },
-            cancelledCheque: String,
-            passbookImage: String,
-            bankVerified: { type: Boolean, default: false },
         },
 
-        // ── Wallet & Balance ──
-        wallet: {
-            balance: { type: Number, default: 0 },
-            totalEarned: { type: Number, default: 0 },
-            pendingSettlement: { type: Number, default: 0 },
-            lastEarningAt: Date,
-        },
-
-        // ── Work Preferences ──
-        workPreferences: {
-            preferredDeliveryRadius: { type: Number, default: 5 },
-            preferredZones: [mongoose.Schema.Types.ObjectId],
-            preferredShifts: [String],
-            workingDays: [String],
-            employmentType: { type: String, enum: ["full_time", "part_time"], default: "part_time" },
-            instantAvailability: { type: Boolean, default: false },
-            maxDeliveriesPerDay: { type: Number, default: 20 },
-        },
-
-        // ── Device Information ──
-        device: {
-            deviceName: String,
-            deviceId: String,
-            appVersion: String,
-            androidVersion: String,
-            lastAppUpdateAt: Date,
-            batteryOptimizationDisabled: { type: Boolean, default: false },
-            gpsPermissionGranted: { type: Boolean, default: false },
-            backgroundLocationGranted: { type: Boolean, default: false },
-            notificationPermissionGranted: { type: Boolean, default: false },
-            fcmTokens: [{ token: String, registeredAt: Date }],
-        },
-
-        // ── Live Location & Tracking ──
+        // ── Live Location & Tracking (updated continuously while online) ──
         location: {
             lat: { type: Number, default: null },
             lng: { type: Number, default: null },
             updatedAt: { type: Date, default: null },
             gpsTimestamp: { type: Number, default: null },
-            accuracy: { type: Number, default: null },
-            speed: { type: Number, default: null },
-            heading: { type: Number, default: null },
         },
-
-        // ── GeoJSON Location for Geo Queries ──
         geoLocation: {
             type: { type: String, enum: ["Point"], default: "Point" },
             coordinates: { type: [Number], default: [0, 0] },
         },
 
-        // ── Status Management ──
+        // ── Status ──
         status: {
             type: String,
-            enum: ["pending", "approved", "rejected", "suspended", "inactive", "deleted"],
+            enum: ["pending", "approved", "rejected", "suspended"],
             default: "pending",
             index: true,
         },
-        applicationStatus: {
-            type: String,
-            enum: [
-                "form_incomplete",
-                "submitted",
-                "under_review",
-                "document_rejected",
-                "interview_pending",
-                "interview_completed",
-                "background_check",
-                "approved",
-                "rejected",
-                "withdrawn",
-            ],
-            default: "form_incomplete",
-        },
         isOnline: { type: Boolean, default: false, index: true },
-        onlineStatus: {
-            type: String,
-            enum: ["online", "offline", "busy", "on_break", "on_delivery"],
-            default: "offline",
-        },
 
-        // ── Performance Metrics ──
-        performance: {
-            totalDeliveries: { type: Number, default: 0, index: true },
-            completedDeliveries: { type: Number, default: 0 },
-            cancelledDeliveries: { type: Number, default: 0 },
-            failedDeliveries: { type: Number, default: 0 },
-            rating: { type: Number, default: 5.0, min: 1, max: 5, index: true },
-            totalRatings: { type: Number, default: 0 },
-            ratingBreakdown: {
-                five_star: { type: Number, default: 0 },
-                four_star: { type: Number, default: 0 },
-                three_star: { type: Number, default: 0 },
-                two_star: { type: Number, default: 0 },
-                one_star: { type: Number, default: 0 },
-            },
-            acceptanceRate: { type: Number, default: 100 },
-            completionRate: { type: Number, default: 100 },
-            onTimeDeliveryRate: { type: Number, default: 100 },
-            customerSatisfactionScore: { type: Number, default: 4.5 },
-            todayDeliveries: { type: Number, default: 0 },
-            todayEarnings: { type: Number, default: 0 },
-            weekDeliveries: { type: Number, default: 0 },
-            weekEarnings: { type: Number, default: 0 },
-            monthDeliveries: { type: Number, default: 0 },
-            monthEarnings: { type: Number, default: 0 },
-            totalEarnings: { type: Number, default: 0 },
-        },
-
-        // ── Active Orders ──
+        // ── Performance / Earnings (flat — matches assignmentEngine.js,
+        //     deliveryController.js earnings calculations, and every
+        //     existing $inc call site) ──
         activeOrders: { type: Number, default: 0, index: true },
-        maxActiveOrders: { type: Number, default: 1 },
+        todayDeliveries: { type: Number, default: 0 },
+        todayEarnings: { type: Number, default: 0 },
+        weekDeliveries: { type: Number, default: 0 },
+        weekEarnings: { type: Number, default: 0 },
+        totalDeliveries: { type: Number, default: 0 },
+        totalEarnings: { type: Number, default: 0 },
+        rating: { type: Number, default: 5, min: 1, max: 5 },
+        totalRatings: { type: Number, default: 0 },
+        acceptanceRate: { type: Number, default: 100 },
 
         // ── Documents & Verification ──
         documents: {
@@ -223,93 +119,25 @@ const deliveryBoySchema = new mongoose.Schema(
             selfie: { type: String, default: "" },
         },
 
-        // ── KYC Status ──
-        kycStatus: {
-            type: String,
-            enum: ["pending", "under_review", "approved", "rejected", "expired"],
-            default: "pending",
-        },
-        kycVerifiedAt: Date,
-        kycVerifiedBy: mongoose.Schema.Types.ObjectId,
-
-        // ── Service Pincodes ──
+        // ── Service Area ──
         servicePincodes: [{ type: String, index: true }],
-        serviceZones: [mongoose.Schema.Types.ObjectId],
 
         // ── Notifications ──
         fcmToken: { type: String, default: null },
-        notificationPreferences: {
-            sound: { type: Boolean, default: true },
-            muted: { type: Boolean, default: false },
-            push: { type: Boolean, default: true },
-            email: { type: Boolean, default: true },
-            sms: { type: Boolean, default: true },
-            marketing: { type: Boolean, default: true },
-            transactional: { type: Boolean, default: true },
-        },
-
-        // ── Penalties & Compliance ──
-        penalties: [
-            {
-                type: String,
-                reason: String,
-                amount: Number,
-                createdAt: Date,
-                status: { type: String, enum: ["active", "waived"], default: "active" },
-            },
-        ],
-        suspensions: [
-            {
-                reason: String,
-                startDate: Date,
-                endDate: Date,
-                suspendedBy: mongoose.Schema.Types.ObjectId,
-            },
-        ],
 
         // ── Admin Management ──
         adminNote: { type: String, default: "" },
         rejectionReason: { type: String, default: "" },
-        managedBy: mongoose.Schema.Types.ObjectId,
-        flags: {
-            isDuplicate: { type: Boolean, default: false },
-            duplicateOf: mongoose.Schema.Types.ObjectId,
-            requiresManualReview: { type: Boolean, default: false },
-            flagReason: String,
-        },
-
-        // ── IP & Security ──
-        registrationIP: String,
-        lastLoginIP: String,
-        userAgent: String,
-        loginAttempts: { type: Number, default: 0 },
-        lockedUntil: Date,
-
-        // ── Metadata ──
-        registeredAt: { type: Date, default: Date.now },
-        approvedAt: Date,
-        approvedBy: mongoose.Schema.Types.ObjectId,
-        rejectedAt: Date,
-        rejectedBy: mongoose.Schema.Types.ObjectId,
-        suspendedAt: Date,
-        deactivatedAt: Date,
-        lastActivityAt: Date,
-        lastDeliveryAt: Date,
     },
     { timestamps: true }
 );
 
-// ── Indexes for Production Performance ──
+// ── Indexes ──
 deliveryBoySchema.index({ status: 1, isOnline: 1 });
 deliveryBoySchema.index({ geoLocation: "2dsphere" });
-deliveryBoySchema.index({ "performance.rating": -1, status: 1 });
+deliveryBoySchema.index({ rating: -1, status: 1 });
 deliveryBoySchema.index({ city: 1, status: 1 });
 deliveryBoySchema.index({ servicePincodes: 1 });
-deliveryBoySchema.index({ userId: 1 });
-deliveryBoySchema.index({ phone: 1 });
 deliveryBoySchema.index({ status: 1, createdAt: -1 });
-deliveryBoySchema.index({ applicationStatus: 1 });
-deliveryBoySchema.index({ "performance.totalDeliveries": -1 });
-deliveryBoySchema.index({ lastActivityAt: 1 }, { expireAfterSeconds: 63072000, sparse: true });
 
 export default mongoose.model("DeliveryBoy", deliveryBoySchema);

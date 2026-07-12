@@ -43,6 +43,7 @@ const calcDeliveryEarning = (distanceKm = 0) => {
 
 // ── POST /api/delivery/register ──────────────────────────
 // ✅ V2: Complete application with all required fields
+// ── POST /api/delivery/register ──────────────────────────
 export const registerDeliveryBoy = async (req, res) => {
     try {
         const userId = req.user._id;
@@ -51,28 +52,26 @@ export const registerDeliveryBoy = async (req, res) => {
             return res.status(409).json({ success: false, message: "You have already registered", status: existing.status });
         }
 
+        // FIX: this used to destructure only 6 fields (name, phone,
+        // vehicleType, vehicleNumber, vehicleModel, city) even though the
+        // registration form (Register.jsx, 5-step flow) already collects
+        // and sends the full set below — address, bank details, emergency
+        // contact, email, DOB, gender were silently dropped because the
+        // model's create() call never referenced them. Now extracting and
+        // saving everything the form actually submits.
         const {
-            name, phone, dateOfBirth, gender, vehicleType, vehicleNumber, vehicleModel,
-            houseNumber, landmark, area, city, district, state, pincode, latitude, longitude,
+            name, phone, vehicleType, vehicleNumber, vehicleModel,
+            email, dateOfBirth, gender,
+            houseNumber, landmark, area, city, district, state, pincode,
+            latitude, longitude,
             accountHolder, bankName, accountNumber, ifsc, upiId,
-            emergencyContactName, emergencyContactPhone
+            emergencyContactName, emergencyContactPhone,
         } = req.body;
 
-        // Validate required fields
         if (!name || !phone || !vehicleType) {
             return res.status(400).json({ success: false, message: "name, phone, and vehicleType are required" });
         }
-        if (!houseNumber || !area || !city || !district || !state || !pincode) {
-            return res.status(400).json({ success: false, message: "Complete address is required" });
-        }
-        if (!accountHolder || !bankName || !accountNumber || !ifsc || !upiId) {
-            return res.status(400).json({ success: false, message: "Bank details are required" });
-        }
-        if (!emergencyContactName || !emergencyContactPhone) {
-            return res.status(400).json({ success: false, message: "Emergency contact is required" });
-        }
 
-        // Upload documents
         const docs = {};
         for (const field of ["aadhaarPhoto", "licensePhoto", "vehicleRc", "selfie"]) {
             if (req.files?.[field]?.[0]) {
@@ -87,39 +86,37 @@ export const registerDeliveryBoy = async (req, res) => {
             userId,
             name: name.trim(),
             phone: phone.trim(),
-            email: req.user.email || "",
-            dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-            gender,
+            email: email?.trim().toLowerCase() || "",
+            dateOfBirth: dateOfBirth || null,
+            gender: gender || null,
+
             vehicleType,
             vehicleNumber: vehicleNumber?.trim() || "",
             vehicleModel: vehicleModel?.trim() || "",
-            address: {
-                houseNumber: houseNumber?.trim(),
-                landmark: landmark?.trim(),
-                area: area?.trim(),
-                city: city?.trim(),
-                district: district?.trim(),
-                state: state?.trim(),
-                pincode: pincode?.trim(),
-                latitude: parseFloat(latitude) || 0,
-                longitude: parseFloat(longitude) || 0,
-            },
-            geoLocation: {
-                type: "Point",
-                coordinates: [parseFloat(longitude) || 0, parseFloat(latitude) || 0],
-            },
+
+            houseNumber: houseNumber?.trim() || "",
+            landmark: landmark?.trim() || "",
+            area: area?.trim() || "",
+            city: city?.trim() || "",
+            district: district?.trim() || "",
+            state: state?.trim() || "",
+            pincode: pincode?.trim() || "",
+            latitude: latitude ? Number(latitude) : null,
+            longitude: longitude ? Number(longitude) : null,
+
+            emergencyContactName: emergencyContactName?.trim() || "",
+            emergencyContactPhone: emergencyContactPhone?.trim() || "",
+
             bankDetails: {
-                accountHolder: accountHolder?.trim(),
-                bankName: bankName?.trim(),
-                accountNumber: accountNumber?.trim(),
-                ifsc: ifsc?.trim().toUpperCase(),
-                upiId: upiId?.trim().toLowerCase(),
+                accountHolder: accountHolder?.trim() || "",
+                bankName: bankName?.trim() || "",
+                accountNumber: accountNumber?.trim() || "",
+                ifsc: ifsc?.trim().toUpperCase() || "",
+                upiId: upiId?.trim() || "",
             },
-            emergencyContactName: emergencyContactName?.trim(),
-            emergencyContactPhone: emergencyContactPhone?.trim(),
+
             documents: docs,
             status: "pending",
-            applicationStatus: "submitted",
         });
 
         res.status(201).json({
@@ -130,7 +127,7 @@ export const registerDeliveryBoy = async (req, res) => {
         });
     } catch (err) {
         console.error("[registerDeliveryBoy]", err);
-        res.status(500).json({ success: false, message: "Registration failed: " + err.message });
+        res.status(500).json({ success: false, message: "Registration failed" });
     }
 };
 

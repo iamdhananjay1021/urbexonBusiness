@@ -127,8 +127,14 @@ const AssignModal = ({ order, onlineRiders, onConfirm, onClose, saving }) => {
                                                         {r.distance.toFixed(1)} km
                                                     </span>
                                                 )}
-                                                {r.stats?.totalDeliveries > 0 && (
-                                                    <span style={{ fontSize: 10, color: "var(--adm-muted)", display: "block" }}>{r.stats.totalDeliveries} trips</span>
+                                                {/* FIX: was r.stats?.totalDeliveries — "stats" is not a field on the
+                                                    DeliveryBoy schema (never was); totalDeliveries is a flat
+                                                    top-level field, same as everywhere else in this codebase
+                                                    (assignmentEngine.js, deliveryController.js earnings). This
+                                                    always evaluated to undefined before, so trip count silently
+                                                    never rendered here. */}
+                                                {r.totalDeliveries > 0 && (
+                                                    <span style={{ fontSize: 10, color: "var(--adm-muted)", display: "block" }}>{r.totalDeliveries} trips</span>
                                                 )}
                                             </div>
                                         </button>

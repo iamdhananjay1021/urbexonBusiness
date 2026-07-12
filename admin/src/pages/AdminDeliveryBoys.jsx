@@ -1,10 +1,10 @@
 /**
  * AdminDeliveryBoys.jsx — Manage delivery partners
- * ✅ Fixed: uses d.name (not d.fullName)
- * ✅ Document viewer modal with per-doc approval/rejection
- * ✅ Online/Offline status indicator
- * ✅ Location display
- * ✅ Responsive card + table view
+ * ✅ FIX: DocModal + table now show full rider details — vehicle number,
+ *    city/address, email, emergency contact, service area — which were
+ *    previously either missing from the UI or silently unavailable
+ *    because the schema/controller/register-form chain wasn't saving them.
+ *    Now reading flat fields matching the corrected DeliveryBoy schema.
  */
 import { useEffect, useState } from "react";
 import adminApi from "../api/adminApi";
@@ -27,6 +27,7 @@ const DocModal = ({ rider, onClose, onUpdate }) => {
     const docs = rider.documents || {};
     const docStatuses = rider.documentStatus || {};
     const docNotes = rider.documentNotes || {};
+    const bank = rider.bankDetails || {};
 
     const handleDocAction = async (docKey, status) => {
         setUpdating(p => ({ ...p, [docKey]: true }));
@@ -39,27 +40,70 @@ const DocModal = ({ rider, onClose, onUpdate }) => {
         finally { setUpdating(p => ({ ...p, [docKey]: false })); }
     };
 
+    // Full registered address, assembled from the flat address fields.
+    const fullAddress = [rider.houseNumber, rider.landmark, rider.area, rider.city, rider.district, rider.state]
+        .filter(Boolean).join(", ") + (rider.pincode ? ` - ${rider.pincode}` : "");
+
     return (
         <>
             <Modal
                 open={!!rider}
                 onClose={onClose}
                 title={rider.name || "Rider"}
-                width={600}
+                width={640}
             >
                 <p style={{ fontSize: 12, color: "var(--adm-muted)", margin: "-8px 0 16px" }}>{rider.phone} · {rider.city || "No city"}</p>
 
-                {/* Rider details */}
+                {/* Rider details grid */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
                     <div style={{ background: "var(--adm-surface-alt)", borderRadius: "var(--adm-radius-sm)", padding: "10px 14px" }}>
                         <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-muted)", textTransform: "uppercase", letterSpacing: .5 }}>Vehicle</div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--adm-text-primary)", marginTop: 2, textTransform: "capitalize" }}>{rider.vehicleType || "—"}</div>
-                        <div style={{ fontSize: 11, color: "var(--adm-text-secondary)" }}>{rider.vehicleNumber || "No number"}</div>
+                        <div style={{ fontSize: 11, color: "var(--adm-text-secondary)" }}>{rider.vehicleNumber || "No number"} {rider.vehicleModel ? `· ${rider.vehicleModel}` : ""}</div>
                     </div>
                     <div style={{ background: "var(--adm-surface-alt)", borderRadius: "var(--adm-radius-sm)", padding: "10px 14px" }}>
                         <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-muted)", textTransform: "uppercase", letterSpacing: .5 }}>Stats</div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--adm-text-primary)", marginTop: 2 }}>{rider.totalDeliveries || 0} deliveries</div>
-                        <div style={{ fontSize: 11, color: "var(--adm-text-secondary)" }}>₹{rider.totalEarnings || 0} earned</div>
+                        <div style={{ fontSize: 11, color: "var(--adm-text-secondary)" }}>₹{rider.totalEarnings || 0} earned · ⭐ {rider.rating?.toFixed(1) || "5.0"}</div>
+                    </div>
+                    <div style={{ background: "var(--adm-surface-alt)", borderRadius: "var(--adm-radius-sm)", padding: "10px 14px" }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-muted)", textTransform: "uppercase", letterSpacing: .5 }}>Contact</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--adm-text-primary)", marginTop: 2 }}>{rider.email || "No email"}</div>
+                        <div style={{ fontSize: 11, color: "var(--adm-text-secondary)" }}>{rider.phone}</div>
+                    </div>
+                    <div style={{ background: "var(--adm-surface-alt)", borderRadius: "var(--adm-radius-sm)", padding: "10px 14px" }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-muted)", textTransform: "uppercase", letterSpacing: .5 }}>Emergency Contact</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--adm-text-primary)", marginTop: 2 }}>{rider.emergencyContactName || "—"}</div>
+                        <div style={{ fontSize: 11, color: "var(--adm-text-secondary)" }}>{rider.emergencyContactPhone || "No number"}</div>
+                    </div>
+                </div>
+
+                {/* Address */}
+                <div style={{ background: "var(--adm-surface-alt)", borderRadius: "var(--adm-radius-sm)", padding: "10px 14px", marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-muted)", textTransform: "uppercase", letterSpacing: .5, marginBottom: 4 }}>Registered Address</div>
+                    <div style={{ fontSize: 13, color: "var(--adm-text-primary)" }}>{fullAddress.trim() || "Not provided"}</div>
+                    {rider.latitude && rider.longitude && (
+                        <div style={{ fontSize: 11, color: "var(--adm-text-secondary)", marginTop: 2 }}>📍 {rider.latitude}, {rider.longitude}</div>
+                    )}
+                </div>
+
+                {/* Service Area */}
+                <div style={{ background: "var(--adm-surface-alt)", borderRadius: "var(--adm-radius-sm)", padding: "10px 14px", marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-muted)", textTransform: "uppercase", letterSpacing: .5, marginBottom: 4 }}>Service Area (Pincodes)</div>
+                    <div style={{ fontSize: 13, color: "var(--adm-text-primary)" }}>
+                        {rider.servicePincodes?.length > 0 ? rider.servicePincodes.join(", ") : "All areas (no restriction set)"}
+                    </div>
+                </div>
+
+                {/* Bank Details */}
+                <div style={{ background: "var(--adm-surface-alt)", borderRadius: "var(--adm-radius-sm)", padding: "10px 14px", marginBottom: 16 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--adm-muted)", textTransform: "uppercase", letterSpacing: .5, marginBottom: 6 }}>Bank Details</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12 }}>
+                        <div><strong>Holder:</strong> {bank.accountHolder || "—"}</div>
+                        <div><strong>Bank:</strong> {bank.bankName || "—"}</div>
+                        <div><strong>Account:</strong> {bank.accountNumber ? `****${bank.accountNumber.slice(-4)}` : "—"}</div>
+                        <div><strong>IFSC:</strong> {bank.ifsc || "—"}</div>
+                        <div style={{ gridColumn: "1 / -1" }}><strong>UPI:</strong> {bank.upiId || "—"}</div>
                     </div>
                 </div>
 
@@ -75,7 +119,6 @@ const DocModal = ({ rider, onClose, onUpdate }) => {
                         return (
                             <div key={doc.key} style={{ border: "1px solid var(--adm-border)", borderRadius: "var(--adm-radius-md)", overflow: "hidden", background: "var(--adm-surface)" }}>
                                 <div style={{ display: "flex", gap: 12, padding: 12, alignItems: "flex-start" }}>
-                                    {/* Thumbnail */}
                                     {url ? (
                                         <div style={{ width: 80, height: 80, borderRadius: "var(--adm-radius-sm)", overflow: "hidden", border: "1px solid var(--adm-border)", cursor: "pointer", flexShrink: 0 }}
                                             onClick={() => setFullscreen({ url, label: doc.label })}>
@@ -87,7 +130,6 @@ const DocModal = ({ rider, onClose, onUpdate }) => {
                                             <span style={{ fontSize: 9, color: "var(--adm-border)" }}>Not uploaded</span>
                                         </div>
                                     )}
-                                    {/* Info + actions */}
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                                             <span style={{ fontSize: 13, fontWeight: 700, color: "var(--adm-text-primary)" }}>{doc.label}</span>
@@ -99,7 +141,6 @@ const DocModal = ({ rider, onClose, onUpdate }) => {
                                                 Open full size ↗
                                             </a>
                                         )}
-                                        {/* Action buttons */}
                                         {url && (
                                             <div style={{ marginTop: 8 }}>
                                                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
@@ -136,9 +177,6 @@ const DocModal = ({ rider, onClose, onUpdate }) => {
                 )}
             </Modal>
 
-            {/* Fullscreen doc viewer — a borderless image lightbox, not a form dialog;
-                left as a bespoke overlay since the shared Modal always renders header
-                chrome (title bar + close button) that would clash with this use case. */}
             {fullscreen && (
                 <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.9)", zIndex: 2000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}
                     onClick={() => setFullscreen(null)}>
@@ -201,8 +239,10 @@ const AdminDeliveryBoys = () => {
     const columns = [
         { key: "name", label: "Name" },
         { key: "phone", label: "Phone" },
+        { key: "email", label: "Email" },
         { key: "city", label: "City" },
         { key: "vehicle", label: "Vehicle" },
+        { key: "emergency", label: "Emergency Contact" },
         { key: "status", label: "Status" },
         { key: "online", label: "Online" },
         { key: "rating", label: "Rating" },
@@ -255,8 +295,14 @@ const AdminDeliveryBoys = () => {
                                     <div style={{ fontSize: 11, color: "var(--adm-muted)" }}>{d.vehicleNumber || "—"}</div>
                                 </td>
                                 <td>{d.phone}</td>
+                                <td>{d.email || "—"}</td>
                                 <td>{d.city || "—"}</td>
-                                <td style={{ textTransform: "capitalize" }}>{d.vehicleType || "—"}</td>
+                                <td style={{ textTransform: "capitalize" }}>{d.vehicleType || "—"}{d.vehicleModel ? ` · ${d.vehicleModel}` : ""}</td>
+                                <td>
+                                    {d.emergencyContactName
+                                        ? <>{d.emergencyContactName}<div style={{ fontSize: 11, color: "var(--adm-muted)" }}>{d.emergencyContactPhone}</div></>
+                                        : "—"}
+                                </td>
                                 <td><StatusBadge status={d.status} /></td>
                                 <td><StatusBadge status={d.isOnline ? "online" : "offline"} /></td>
                                 <td>⭐ {d.rating?.toFixed(1) || "5.0"}</td>
