@@ -194,7 +194,7 @@ const Login = () => {
               ✨ New to Urbexon?
             </p>
             <a
-              href={`${CLIENT_URL}/register`}
+              href={`${CLIENT_URL}/register?role=vendor`}
               className="apply-btn"
               style={{
                 display: "block", width: "100%", padding: "11px",

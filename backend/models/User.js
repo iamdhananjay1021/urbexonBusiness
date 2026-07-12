@@ -157,6 +157,27 @@ const userSchema = new mongoose.Schema(
         refreshToken: { type: String, select: false, default: undefined, index: true },
         refreshTokenExpires: { type: Date, select: false, default: undefined },
         tokenVersion: { type: Number, default: 0, select: false },
+
+        // Multi-session refresh tokens: one entry per browser/panel session.
+        // Replaces the single refreshToken field above (kept for migration —
+        // refresh() falls back to it and converts it into a session entry).
+        // Without this, logging in on a second device/panel invalidated the
+        // first one's session, and concurrent multi-tab refreshes raced each
+        // other into forced logouts.
+        refreshSessions: {
+            type: [
+                {
+                    token: { type: String, required: true },
+                    scope: { type: String, enum: ["client", "vendor", "admin", "delivery"], default: "client" },
+                    expiresAt: { type: Date, required: true },
+                    createdAt: { type: Date, default: Date.now },
+                    ip: String,
+                    device: String,
+                },
+            ],
+            select: false,
+            default: undefined,
+        },
     },
     { timestamps: true }
 );
@@ -164,5 +185,7 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ createdAt: -1 });
+// Refresh lookup happens on every token refresh — must be indexed.
+userSchema.index({ "refreshSessions.token": 1 });
 
 export default mongoose.model("User", userSchema);

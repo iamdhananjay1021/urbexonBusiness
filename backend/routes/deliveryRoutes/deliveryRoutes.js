@@ -46,7 +46,28 @@ router.post(
     deliveryLogin
 );
 
-router.post("/register", protect, docUpload, validateBody({ name: { required: true, minLength: 2 }, phone: { required: true, pattern: /^[6-9]\d{9}$/ }, vehicleType: { required: true, enum: ['bicycle', 'scooter', 'motorcycle', 'car', 'other'] } }), registerDeliveryBoy);
+router.post("/register", protect, docUpload, validateBody({
+    name: { required: true, minLength: 2 },
+    phone: { required: true, pattern: /^[6-9]\d{9}$/ },
+    vehicleType: { required: true, enum: ['bicycle', 'scooter', 'motorcycle', 'car', 'other'] },
+    dateOfBirth: { required: true },
+    gender: { required: true, enum: ['male', 'female', 'other'] },
+    houseNumber: { required: true, minLength: 1 },
+    area: { required: true, minLength: 2 },
+    city: { required: true, minLength: 2 },
+    district: { required: true, minLength: 2 },
+    state: { required: true, minLength: 2 },
+    pincode: { required: true, pattern: /^\d{6}$/ },
+    latitude: { required: true, type: 'number' },
+    longitude: { required: true, type: 'number' },
+    accountHolder: { required: true, minLength: 2 },
+    bankName: { required: true, minLength: 2 },
+    accountNumber: { required: true, pattern: /^\d{9,18}$/ },
+    ifsc: { required: true, pattern: /^[A-Z]{4}0[A-Z0-9]{6}$/ },
+    upiId: { required: true },
+    emergencyContactName: { required: true, minLength: 2 },
+    emergencyContactPhone: { required: true, pattern: /^[6-9]\d{9}$/ },
+}), registerDeliveryBoy);
 router.get("/status", protect, deliveryOnly, getDeliveryStatus);
 router.patch("/toggle-status", protect, deliveryOnly, toggleOnlineStatus);
 

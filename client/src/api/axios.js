@@ -73,9 +73,12 @@ const performRefresh = async () => {
         throw new Error("No active session");
     }
 
+    // `scope` tells the backend WHICH panel's session cookie to use — all
+    // four Urbexon apps share this API origin, so without it the server
+    // can't tell a client-app refresh from a vendor/admin/delivery one.
     const { data } = await axios.post(
         `${API_URL}/auth/refresh`,
-        {},
+        { scope: "client" },
         {
             timeout: 10000,
             withCredentials: true,

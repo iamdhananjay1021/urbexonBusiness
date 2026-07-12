@@ -101,7 +101,10 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const { data } = await api.post("/auth/refresh");
+        // scope: "vendor" → refresh against the rt_vendor cookie only, so a
+        // later login on another Urbexon panel in this browser can't swap
+        // this session to a different account.
+        const { data } = await api.post("/auth/refresh", { scope: "vendor" });
         const newAccessToken = data?.token;
         if (!newAccessToken) throw new Error("Refresh response missing token");
 
@@ -287,7 +290,7 @@ export const AuthProvider = ({ children }) => {
    * and-forget: local logout must succeed instantly regardless of network.
    */
   const logout = () => {
-    api.post("/auth/logout").catch(() => {
+    api.post("/auth/logout", { scope: "vendor" }).catch(() => {
       // Non-fatal — local session is cleared below either way
     });
     localStorage.removeItem(STORAGE_KEY);

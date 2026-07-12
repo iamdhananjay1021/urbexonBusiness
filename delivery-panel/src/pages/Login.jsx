@@ -9,7 +9,7 @@
  * - Error handling improved
  */
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { FaEye, FaEyeSlash, FaBolt, FaMotorcycle } from "react-icons/fa";
 
@@ -42,6 +42,8 @@ const S = {
 const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from;
 
   const [identifier, setIdentifier] = useState("");
   const [pass, setPass] = useState("");
@@ -59,7 +61,7 @@ const Login = () => {
     setError("");
     try {
       await login({ identifier: identifier.trim(), password: pass.trim() });
-      navigate("/dashboard");
+      navigate(from || "/dashboard", { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Login failed. Please check your credentials.");
     } finally {
@@ -284,12 +286,14 @@ const Login = () => {
               <div style={{ flex: 1, height: 1, background: "#f3f4f6" }} />
             </div>
 
-            {/* ✅ FIX: Internal route, hits /apply defined in AppRoutes.js
-                (which renders the in-panel Register flow). Previously this
-                was an external <a href> to the client site, which never
-                reached /apply at all. */}
-            <Link
-              to="/apply"
+            {/* ✅ FIX: Delivery panel has NO signup page and /delivery/login only
+                accepts accounts that already have role "delivery_boy". New applicants
+                must create their account on the CLIENT app with the delivery role
+                pre-selected (?role=delivery_boy). After signup, the client app
+                redirects them back here (VITE_DELIVERY_URL), they log in, and the
+                Protected route sends them to /apply automatically. */}
+            <a
+              href={`${import.meta.env.VITE_CLIENT_URL || "https://urbexon.in"}/register?role=delivery_boy`}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
                 padding: "14px", borderRadius: 12,
@@ -303,7 +307,7 @@ const Login = () => {
             >
               <FaMotorcycle size={15} style={{ color: "#10b981" }} />
               Apply as a new delivery partner
-            </Link>
+            </a>
 
             {/* Help */}
             <div style={{

@@ -42,6 +42,7 @@ const calcDeliveryEarning = (distanceKm = 0) => {
 };
 
 // ── POST /api/delivery/register ──────────────────────────
+// ✅ V2: Complete application with all required fields
 export const registerDeliveryBoy = async (req, res) => {
     try {
         const userId = req.user._id;
@@ -49,10 +50,29 @@ export const registerDeliveryBoy = async (req, res) => {
         if (existing) {
             return res.status(409).json({ success: false, message: "You have already registered", status: existing.status });
         }
-        const { name, phone, vehicleType, vehicleNumber, vehicleModel, city } = req.body;
+
+        const {
+            name, phone, dateOfBirth, gender, vehicleType, vehicleNumber, vehicleModel,
+            houseNumber, landmark, area, city, district, state, pincode, latitude, longitude,
+            accountHolder, bankName, accountNumber, ifsc, upiId,
+            emergencyContactName, emergencyContactPhone
+        } = req.body;
+
+        // Validate required fields
         if (!name || !phone || !vehicleType) {
             return res.status(400).json({ success: false, message: "name, phone, and vehicleType are required" });
         }
+        if (!houseNumber || !area || !city || !district || !state || !pincode) {
+            return res.status(400).json({ success: false, message: "Complete address is required" });
+        }
+        if (!accountHolder || !bankName || !accountNumber || !ifsc || !upiId) {
+            return res.status(400).json({ success: false, message: "Bank details are required" });
+        }
+        if (!emergencyContactName || !emergencyContactPhone) {
+            return res.status(400).json({ success: false, message: "Emergency contact is required" });
+        }
+
+        // Upload documents
         const docs = {};
         for (const field of ["aadhaarPhoto", "licensePhoto", "vehicleRc", "selfie"]) {
             if (req.files?.[field]?.[0]) {
@@ -62,21 +82,55 @@ export const registerDeliveryBoy = async (req, res) => {
                 } catch (e) { console.warn(`[Delivery] Upload ${field} failed:`, e.message); }
             }
         }
+
         const rider = await DeliveryBoy.create({
-            userId, name: name.trim(), phone: phone.trim(),
-            vehicleType, vehicleNumber: vehicleNumber?.trim() || "",
+            userId,
+            name: name.trim(),
+            phone: phone.trim(),
+            email: req.user.email || "",
+            dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+            gender,
+            vehicleType,
+            vehicleNumber: vehicleNumber?.trim() || "",
             vehicleModel: vehicleModel?.trim() || "",
-            city: city?.trim() || "", documents: docs, status: "pending",
+            address: {
+                houseNumber: houseNumber?.trim(),
+                landmark: landmark?.trim(),
+                area: area?.trim(),
+                city: city?.trim(),
+                district: district?.trim(),
+                state: state?.trim(),
+                pincode: pincode?.trim(),
+                latitude: parseFloat(latitude) || 0,
+                longitude: parseFloat(longitude) || 0,
+            },
+            geoLocation: {
+                type: "Point",
+                coordinates: [parseFloat(longitude) || 0, parseFloat(latitude) || 0],
+            },
+            bankDetails: {
+                accountHolder: accountHolder?.trim(),
+                bankName: bankName?.trim(),
+                accountNumber: accountNumber?.trim(),
+                ifsc: ifsc?.trim().toUpperCase(),
+                upiId: upiId?.trim().toLowerCase(),
+            },
+            emergencyContactName: emergencyContactName?.trim(),
+            emergencyContactPhone: emergencyContactPhone?.trim(),
+            documents: docs,
+            status: "pending",
+            applicationStatus: "submitted",
         });
+
         res.status(201).json({
             success: true,
             message: "Registration submitted. Pending approval.",
             rider,
-            applicationStatus: rider.status, // ✅ NEW — lets frontend update state immediately without a refetch
+            applicationStatus: rider.status,
         });
     } catch (err) {
         console.error("[registerDeliveryBoy]", err);
-        res.status(500).json({ success: false, message: "Registration failed" });
+        res.status(500).json({ success: false, message: "Registration failed: " + err.message });
     }
 };
 

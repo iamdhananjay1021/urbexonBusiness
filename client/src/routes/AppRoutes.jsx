@@ -1,6 +1,6 @@
 /**
  * AppRoutes.jsx — Production v2.0
- * ✅ /become-vendor, /become-delivery, /wishlist routes added
+ * ✅ /become-vendor, /wishlist routes added
  * ✅ Role-based redirects
  */
 import { lazy, Suspense, useEffect } from "react";
@@ -44,7 +44,6 @@ const UHProductDetail = lazy(() => import("../pages/UHProductDetail"));
 const Wishlist = lazy(() => import("../pages/Wishlist"));
 const Coupons = lazy(() => import("../pages/Coupons"));
 const BecomeVendor = lazy(() => import("../pages/BecomeVendor"));
-const BecomeDelivery = lazy(() => import("../pages/BecomeDelivery"));
 const VendorStore = lazy(() => import("../pages/VendorStore"));
 
 const Loader = () => (
@@ -113,7 +112,6 @@ const AppRoutes = () => (
           <Route path="/contact" element={<PageTransition><ContactUs /></PageTransition>} />
           <Route path="/verify-invoice" element={<PageTransition><VerifyInvoice /></PageTransition>} />
           <Route path="/become-vendor" element={<PageTransition><BecomeVendor /></PageTransition>} />
-          <Route path="/become-delivery" element={<PageTransition><BecomeDelivery /></PageTransition>} />
           <Route path="/vendor/:slug" element={<PageTransition><VendorStore /></PageTransition>} />
 
           {/* Authentication — Password reset inside MainLayout */}

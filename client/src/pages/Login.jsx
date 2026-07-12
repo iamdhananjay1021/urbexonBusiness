@@ -22,7 +22,8 @@ const getRoleRedirect = (role) => {
             // ✅ FIX: Standardize on Vite environment variables
             return { external: true, url: import.meta.env.VITE_VENDOR_URL || "https://vendor.urbexon.in" };
         case "delivery_boy":
-            return { external: false, url: "/become-delivery" };
+            // Delivery partners use separate delivery-panel app, not customer app
+            return { external: true, url: import.meta.env.VITE_DELIVERY_URL || "https://delivery.partner.urbexon.in" };
         case "admin":
         case "owner":
             return null; // block - use admin panel

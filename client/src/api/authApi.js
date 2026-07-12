@@ -11,3 +11,5 @@ export const getProfile = (config) => api.get("/auth/profile", config);
 export const updateProfile = (payload) => api.put("/auth/profile", payload);
 export const changePassword = (payload) => api.put("/auth/change-password", payload);
 export const saveLocation = (payload) => api.post("/auth/save-location", payload);
+// scope tells the backend to revoke ONLY this panel's refresh session/cookie.
+export const logout = () => api.post("/auth/logout", { scope: "client" });

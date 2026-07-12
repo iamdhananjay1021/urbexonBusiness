@@ -20,7 +20,10 @@ import multer from "multer";
 import slugify from "slugify";
 
 import { registerVendor, getVendorStatus } from "../../controllers/vendor/vendorAuth.js";
-import { login as vendorLogin } from "../../controllers/authController.js";
+// QA FIX: was `login as vendorLogin` — the GENERIC login. That skipped the
+// vendor role filter (any customer could log into the vendor panel) and set
+// the wrong refresh-cookie scope (rt_client instead of rt_vendor).
+import { vendorLogin } from "../../controllers/authController.js";
 import { getFeaturedVendors, getVendorStore, getNearbyVendors } from "../../controllers/vendor/vendorPublic.js";
 import { getMyProfile, updateMyProfile, toggleShopOpen, updateLocation } from "../../controllers/vendor/venderProfile.js";
 import { getEarnings, getWeeklyEarnings, getSubscription, requestPlanChange, cancelPlanChangeRequest } from "../../controllers/vendor/vendorEarnings.js";

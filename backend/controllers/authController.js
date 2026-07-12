@@ -51,36 +51,90 @@ const generateToken = (user) =>
 
 const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-// BUG FIX (production readiness): the refreshToken cookie had no `domain`
-// attribute, so it defaulted to the exact host that set it. Urbexon runs
-// customer/vendor/admin/delivery on separate subdomains (see the *_URL env
-// vars used below in the password-reset builders) — without a shared
-// `domain`, the cookie set by the API is invisible to requests initiated
-// from those other subdomains in any deployment where the API itself isn't
-// on the exact same host the cookie was issued from. Also switched
-// `sameSite` from "strict" to "lax": "strict" blocks the cookie on more
-// cross-subdomain/cross-site request patterns than this multi-panel setup
-// can afford, while "lax" still blocks true cross-site (CSRF-style) sends.
-// Both are env-driven so local dev (single host, no COOKIE_DOMAIN set)
-// behaves exactly as before.
+/* ─────────────────────────────────────────────
+    Refresh sessions — per-panel scoped cookies
+─────────────────────────────────────────────
+All four apps (client / vendor / admin / delivery) share this API origin,
+so a single "refreshToken" cookie meant each panel's login OVERWROTE the
+others' session in the same browser: when panel A's access token expired,
+/auth/refresh matched the cookie of whichever account logged in LAST and
+handed panel A a token for the wrong user/role — every role-guarded call
+then 401/403'd and the panel force-logged-out. Each panel now gets its own
+cookie (rt_client / rt_vendor / rt_admin / rt_delivery) and declares its
+scope when refreshing.
+
+Sessions are stored as an ARRAY on the user (see User.refreshSessions):
+the old single refreshToken field meant a login on any second device or
+panel invalidated the first one's session, and two tabs refreshing at the
+same moment raced each other into a forced logout (first tab rotated the
+DB token, second tab's cookie no longer matched). Refresh now uses a
+SLIDING expiry on the matched session instead of rotating the token, so
+concurrent tabs can never invalidate each other; tokens rotate only on
+fresh logins. */
+const AUTH_SCOPES = ["client", "vendor", "admin", "delivery"];
+const MAX_SESSIONS_PER_USER = 10;
+const scopeCookieName = (scope) => `rt_${scope}`;
+
+// Cookie path covers /api/auth/refresh AND /api/auth/logout. The old path
+// ("/api/auth/refresh") meant the logout endpoint never received the cookie,
+// so server-side revocation on logout silently never worked.
 const REFRESH_COOKIE_OPTIONS = (expires) => ({
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
     expires,
-    path: "/api/auth/refresh",
+    path: "/api/auth",
 });
 
-const issueTokens = async (res, user) => {
+const CLEAR_COOKIE_OPTIONS = (path = "/api/auth") => ({
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+    path,
+});
+
+const roleToScope = (role) =>
+    role === "vendor" ? "vendor"
+        : role === "delivery_boy" ? "delivery"
+            : ["admin", "owner"].includes(role) ? "admin"
+                : "client";
+
+const issueTokens = async (res, user, scope, req = null) => {
+    const validScope = AUTH_SCOPES.includes(scope) ? scope : roleToScope(user.role);
     const accessToken = generateToken(user);
     const refreshToken = crypto.randomBytes(64).toString("hex");
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
-    user.refreshToken = refreshToken;
-    user.refreshTokenExpires = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+    // Sessions may not be loaded on this document (select: false) — fetch
+    // current ones so we append instead of clobbering other devices/panels.
+    const withSessions = await User.findById(user._id).select("+refreshSessions").lean();
+    const now = Date.now();
+    const sessions = (withSessions?.refreshSessions || [])
+        .filter(s => s.expiresAt && new Date(s.expiresAt).getTime() > now);
+
+    sessions.push({
+        token: refreshToken,
+        scope: validScope,
+        expiresAt,
+        createdAt: new Date(),
+        ip: req ? getClientIp(req) : undefined,
+        device: req ? getDeviceLabel(req) : undefined,
+    });
+
+    // Cap sessions per user (drop oldest first) so a user can't grow an
+    // unbounded list of live refresh tokens.
+    while (sessions.length > MAX_SESSIONS_PER_USER) sessions.shift();
+
+    user.refreshSessions = sessions;
+    // Stop writing the legacy single-token fields; clear them so old and new
+    // mechanisms can't disagree about which token is live.
+    user.refreshToken = undefined;
+    user.refreshTokenExpires = undefined;
     await user.save({ validateBeforeSave: false });
 
-    res.cookie("refreshToken", refreshToken, REFRESH_COOKIE_OPTIONS(user.refreshTokenExpires));
+    res.cookie(scopeCookieName(validScope), refreshToken, REFRESH_COOKIE_OPTIONS(expiresAt));
 
     return accessToken;
 };
@@ -197,11 +251,29 @@ const buildDeliveryResetEmail = (name, resetUrl) => `
  * frontend is responsible for routing the user to the application form or a
  * "pending approval" screen as appropriate.
  */
-const authenticateByRole = asyncHandler(async (req, res, { roleFilter, deniedMessage, allowAdminRoles = false }) => {
+// NOTE: plain async helper (NOT asyncHandler-wrapped). It's invoked by the
+// exported login handlers below with an options object in the 3rd arg — if
+// it were asyncHandler-wrapped, that object would land in asyncHandler's
+// `next` slot and `.catch(next)` would call a non-function on any throw,
+// leaving the rejection unhandled and crashing the process. The exported
+// handlers are each wrapped in asyncHandler instead, so rejections here
+// propagate correctly to Express's error middleware.
+const authenticateByRole = async (req, res, { roleFilter, deniedMessage, allowAdminRoles = false, scope }) => {
     const { email, phone, password } = req.body;
-    const identifier = email || phone;
 
-    if (!identifier?.trim() || !password?.trim())
+    // SECURITY: credentials must be strings. A NoSQL-injection probe like
+    // { "email": { "$gt": "" }, "password": { "$gt": "" } } used to reach
+    // `password.trim()` and throw "trim is not a function" — which, combined
+    // with the asyncHandler misuse above, crashed the whole server (remote
+    // DoS) and also fed an operator object straight into the Mongo query.
+    if (typeof password !== "string" ||
+        (typeof email !== "string" && typeof phone !== "string")) {
+        return res.status(400).json({ success: false, message: "Email/phone and password are required" });
+    }
+
+    const identifier = (email || phone || "").trim();
+
+    if (!identifier || !password.trim())
         return res.status(400).json({ success: false, message: "Email/phone and password are required" });
 
     const user = await User.findOne(buildIdentifierQuery(identifier))
@@ -267,7 +339,7 @@ const authenticateByRole = asyncHandler(async (req, res, { roleFilter, deniedMes
     }
     await user.save({ validateBeforeSave: false });
 
-    const accessToken = await issueTokens(res, user);
+    const accessToken = await issueTokens(res, user, scope, req);
     return res.status(200).json({
         success: true,
         token: accessToken,
@@ -275,7 +347,7 @@ const authenticateByRole = asyncHandler(async (req, res, { roleFilter, deniedMes
         ...(vendorApplicationStatus !== null && { vendorApplicationStatus }),
         ...(deliveryApplicationStatus !== null && { deliveryApplicationStatus }),
     });
-});
+};
 
 /* ═══════════════════════════════════════════════════
     REGISTER
@@ -397,7 +469,7 @@ export const verifyOtp = asyncHandler(async (req, res) => {
     user.isEmailVerified = true;
     await user.save({ validateBeforeSave: false }); // Use false to avoid re-validating fields not being changed
 
-    const accessToken = await issueTokens(res, user);
+    const accessToken = await issueTokens(res, user, null, req);
 
     // ✅ FIX: Also return applicationStatus right after OTP verification so the
     // delivery/vendor panel frontend can route a freshly-verified user straight
@@ -446,23 +518,28 @@ export const resendOtp = asyncHandler(async (req, res) => {
 /* ═══════════════════════════════════════════════════
     LOGIN
 ═══════════════════════════════════════════════════ */
-export const login = (req, res) =>
-    authenticateByRole(req, res, { roleFilter: null, deniedMessage: null });
+export const login = asyncHandler((req, res) =>
+    authenticateByRole(req, res, { roleFilter: null, deniedMessage: null, scope: "client" }));
 
-export const vendorLogin = (req, res) =>
-    authenticateByRole(req, res, { roleFilter: ["vendor"], deniedMessage: "Access denied. This is not a vendor account." });
+export const vendorLogin = asyncHandler((req, res) =>
+    authenticateByRole(req, res, { roleFilter: ["vendor"], deniedMessage: "Access denied. This is not a vendor account.", scope: "vendor" }));
 
-export const deliveryLogin = (req, res) =>
-    authenticateByRole(req, res, { roleFilter: ["delivery_boy"], deniedMessage: "Access denied. This is not a delivery partner account." });
+export const deliveryLogin = asyncHandler((req, res) =>
+    authenticateByRole(req, res, { roleFilter: ["delivery_boy"], deniedMessage: "Access denied. This is not a delivery partner account.", scope: "delivery" }));
 
-export const adminLogin = (req, res) =>
-    authenticateByRole(req, res, { roleFilter: ["admin", "owner"], deniedMessage: "Access denied. Not an admin account.", allowAdminRoles: true });
+export const adminLogin = asyncHandler((req, res) =>
+    authenticateByRole(req, res, { roleFilter: ["admin", "owner"], deniedMessage: "Access denied. Not an admin account.", allowAdminRoles: true, scope: "admin" }));
 
 /* ═══════════════════════════════════════════════════
     LOGOUT ALL DEVICES
 ═══════════════════════════════════════════════════ */
 export const logoutAllDevices = asyncHandler(async (req, res) => {
-    await User.findByIdAndUpdate(req.user._id, { $inc: { tokenVersion: 1 } });
+    // Bump tokenVersion (kills all live access tokens via protect middleware)
+    // AND drop every refresh session so no device can mint a new one.
+    await User.findByIdAndUpdate(req.user._id, {
+        $inc: { tokenVersion: 1 },
+        $unset: { refreshSessions: 1, refreshToken: 1, refreshTokenExpires: 1 },
+    });
     return res.json({ success: true, message: "Logged out from all devices." });
 });
 
@@ -514,6 +591,11 @@ export const changePassword = asyncHandler(async (req, res) => {
 
     user.password = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     user.tokenVersion = (user.tokenVersion || 0) + 1;
+    // Kill refresh sessions too — tokenVersion only invalidates ACCESS tokens;
+    // without this, an old device could still mint fresh ones via refresh.
+    user.refreshSessions = undefined;
+    user.refreshToken = undefined;
+    user.refreshTokenExpires = undefined;
     await user.save();
     res.json({ success: true, message: "Password changed successfully. Please login again on other devices." });
 });
@@ -589,7 +671,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
             user.loginHistory.splice(10);
         }
         await user.save({ validateBeforeSave: false });
-        const accessToken = await issueTokens(res, user);
+        const accessToken = await issueTokens(res, user, null, req);
         return res.json({ success: true, token: accessToken, user: safeUserPayload(user) });
     }
 
@@ -607,7 +689,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
         googleId: uid,
     });
 
-    const accessToken = await issueTokens(res, user);
+    const accessToken = await issueTokens(res, user, null, req);
     return res.status(201).json({ success: true, token: accessToken, user: safeUserPayload(user) });
 });
 
@@ -649,7 +731,14 @@ export const toggleBlockUser = asyncHandler(async (req, res) => {
 
     user.isBlocked = !user.isBlocked;
     user.blockedAt = user.isBlocked ? new Date() : null;
-    if (user.isBlocked) user.tokenVersion = (user.tokenVersion || 0) + 1;
+    if (user.isBlocked) {
+        user.tokenVersion = (user.tokenVersion || 0) + 1;
+        // Blocked users are already rejected by /refresh, but drop the
+        // sessions anyway so unblocking doesn't silently revive them.
+        user.refreshSessions = undefined;
+        user.refreshToken = undefined;
+        user.refreshTokenExpires = undefined;
+    }
     await user.save({ validateBeforeSave: false });
 
     res.json({ success: true, message: `User ${user.isBlocked ? "blocked" : "unblocked"} successfully`, isBlocked: user.isBlocked });
@@ -698,6 +787,11 @@ async function handleResetPassword({ roleFilter }, req, res) {
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
     user.tokenVersion = (user.tokenVersion || 0) + 1;
+    // Also revoke all refresh sessions — a password reset must terminate
+    // every existing session, not just expire the short-lived access tokens.
+    user.refreshSessions = undefined;
+    user.refreshToken = undefined;
+    user.refreshTokenExpires = undefined;
     await user.save();
     return res.json({ success: true, message: "Password reset successfully." });
 }
@@ -754,24 +848,34 @@ export const deliveryResetPassword = asyncHandler(async (req, res) => {
     LOGOUT
 ═══════════════════════════════════════════════════ */
 export const logout = asyncHandler(async (req, res) => {
-    const refreshToken = req.cookies?.refreshToken;
-    if (refreshToken) {
-        const user = await User.findOne({ refreshToken });
-        if (user) {
-            user.refreshToken = undefined;
-            user.refreshTokenExpires = undefined;
-            await user.save({ validateBeforeSave: false });
+    // Revoke only the requesting panel's session (scope in body). Without a
+    // scope, revoke every session cookie this request carries — logging out
+    // of one panel must never kill a DIFFERENT panel's session unless we
+    // can't tell them apart.
+    const scope = AUTH_SCOPES.includes(req.body?.scope) ? req.body.scope : null;
+    const scopesToClear = scope ? [scope] : AUTH_SCOPES;
+
+    for (const s of scopesToClear) {
+        const token = req.cookies?.[scopeCookieName(s)];
+        if (token) {
+            await User.updateOne(
+                { "refreshSessions.token": token },
+                { $pull: { refreshSessions: { token } } }
+            );
         }
+        res.clearCookie(scopeCookieName(s), CLEAR_COOKIE_OPTIONS());
     }
-    // Must match the same domain/sameSite/path the cookie was set with, or
-    // browsers won't recognize it as the same cookie to clear.
-    res.clearCookie("refreshToken", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
-        path: "/api/auth/refresh",
-    });
+
+    // Legacy cookie (pre-scoped deploys) — revoke and clear it too.
+    const legacyToken = req.cookies?.refreshToken;
+    if (legacyToken) {
+        await User.updateOne(
+            { refreshToken: legacyToken },
+            { $unset: { refreshToken: 1, refreshTokenExpires: 1 } }
+        );
+    }
+    res.clearCookie("refreshToken", CLEAR_COOKIE_OPTIONS("/api/auth/refresh"));
+
     res.json({ success: true, message: "Logged out successfully" });
 });
 
@@ -779,15 +883,45 @@ export const logout = asyncHandler(async (req, res) => {
     REFRESH TOKEN
 ═══════════════════════════════════════════════════ */
 export const refreshToken = asyncHandler(async (req, res) => {
-    const refreshToken = req.cookies?.refreshToken;
-    if (!refreshToken) {
+    // Each panel declares which session it's refreshing (scope in body →
+    // scoped cookie). Legacy "refreshToken" cookie still accepted so
+    // sessions issued before this deploy keep working until they rotate.
+    const scope = AUTH_SCOPES.includes(req.body?.scope) ? req.body.scope : null;
+
+    let token = null;
+    let tokenIsLegacy = false;
+
+    if (scope && req.cookies?.[scopeCookieName(scope)]) {
+        token = req.cookies[scopeCookieName(scope)];
+    } else if (req.cookies?.refreshToken) {
+        token = req.cookies.refreshToken;
+        tokenIsLegacy = true;
+    } else if (!scope) {
+        // No scope declared and no legacy cookie — if exactly one scoped
+        // cookie is present, use it (old frontend build talking to new API).
+        const present = AUTH_SCOPES.filter(s => req.cookies?.[scopeCookieName(s)]);
+        if (present.length === 1) token = req.cookies[scopeCookieName(present[0])];
+    }
+
+    if (!token) {
         return res.status(401).json({ success: false, message: "Refresh token not found" });
     }
 
-    const user = await User.findOne({
-        refreshToken,
-        refreshTokenExpires: { $gt: Date.now() }
-    }).select("+tokenVersion");
+    const now = new Date();
+
+    // Primary lookup: session array. Fallback: legacy single-token fields.
+    let user = await User.findOne({
+        refreshSessions: { $elemMatch: { token, expiresAt: { $gt: now } } },
+    }).select("+tokenVersion +refreshSessions");
+
+    let legacyMatch = false;
+    if (!user) {
+        user = await User.findOne({
+            refreshToken: token,
+            refreshTokenExpires: { $gt: now },
+        }).select("+tokenVersion +refreshSessions");
+        legacyMatch = !!user;
+    }
 
     if (!user) {
         return res.status(403).json({ success: false, message: "Invalid or expired refresh token" });
@@ -797,7 +931,37 @@ export const refreshToken = asyncHandler(async (req, res) => {
         return res.status(403).json({ success: false, message: "Account is not eligible to refresh session." });
     }
 
-    const accessToken = await issueTokens(res, user);
+    const sessionScope = scope || roleToScope(user.role);
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+    if (legacyMatch) {
+        // Migrate the legacy single token into a session entry (same token,
+        // so other tabs still holding the legacy cookie keep working).
+        const sessions = (user.refreshSessions || []).filter(s => s.expiresAt > now);
+        sessions.push({ token, scope: sessionScope, expiresAt, createdAt: new Date(), ip: getClientIp(req), device: getDeviceLabel(req) });
+        user.refreshSessions = sessions;
+        user.refreshToken = undefined;
+        user.refreshTokenExpires = undefined;
+        await user.save({ validateBeforeSave: false });
+    } else {
+        // Sliding expiry on the matched session. Deliberately NOT rotating
+        // the token here: rotation on refresh is what let two concurrent
+        // tabs invalidate each other (first tab rotates, second tab's cookie
+        // no longer matches → 403 → forced logout). Tokens rotate on login.
+        await User.updateOne(
+            { _id: user._id, "refreshSessions.token": token },
+            { $set: { "refreshSessions.$.expiresAt": expiresAt } }
+        );
+    }
+
+    // Re-set the scoped cookie with the extended expiry (also migrates a
+    // legacy-cookie session onto its scoped cookie name).
+    res.cookie(scopeCookieName(sessionScope), token, REFRESH_COOKIE_OPTIONS(expiresAt));
+    if (tokenIsLegacy) {
+        res.clearCookie("refreshToken", CLEAR_COOKIE_OPTIONS("/api/auth/refresh"));
+    }
+
+    const accessToken = generateToken(user);
     return res.json({ success: true, token: accessToken, user: safeUserPayload(user) });
 });
 

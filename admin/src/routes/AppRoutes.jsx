@@ -35,6 +35,7 @@ const AdminRefundReturn = lazy(() => import("../pages/AdminRefundReturn"));
 const AdminCoupons = lazy(() => import("../pages/AdminCoupons"));
 const AdminMapDashboard = lazy(() => import("../pages/AdminMapDashboard"));
 const AdminDeliverySettings = lazy(() => import("../pages/AdminDeliverySettings"));
+const AdminApplicationQueue = lazy(() => import("../pages/AdminApplicationQueue"));
 const SchedulerDashboard = lazy(() => import("../pages/SchedulerDashboard"));
 
 const Loader = () => (
@@ -79,6 +80,7 @@ const AppRoutes = () => (
 
                     {/* Users */}
                     <Route path="customers" element={<AdminCustomers />} />
+                    <Route path="delivery/applications" element={<AdminApplicationQueue />} />
                     <Route path="delivery-boys" element={<AdminDeliveryBoys />} />
 
                     {/* Finance */}

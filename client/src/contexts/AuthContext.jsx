@@ -146,6 +146,10 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const logout = useCallback(() => {
+        // Revoke the server-side refresh session too (fire-and-forget) — a
+        // local-only logout left the httpOnly cookie alive, meaning the
+        // session silently resurrected on the next refresh call.
+        authApi.logout().catch(() => { });
         store.dispatch(clearCart());
         const userId = user?._id || "guest";
         localStorage.removeItem("auth");

@@ -65,7 +65,10 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const { data } = await api.post('/auth/refresh');
+        // scope: "delivery" → refresh against the rt_delivery cookie only, so
+        // a later login on another Urbexon panel in this browser can't swap
+        // this session to a different account.
+        const { data } = await api.post('/auth/refresh', { scope: "delivery" });
         const newAccessToken = data.token;
 
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -269,6 +272,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    // Revoke the server-side refresh session (fire-and-forget) — local-only
+    // logout left the httpOnly rt_delivery cookie alive on the server.
+    api.post("/auth/logout", { scope: "delivery" }).catch(() => { });
     localStorage.removeItem(STORAGE_KEY);
     delete api.defaults.headers.common["Authorization"];
     setRider(null);

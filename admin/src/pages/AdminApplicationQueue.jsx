@@ -26,26 +26,22 @@ export default function AdminApplicationQueue() {
   useEffect(() => {
     if (!ws) return;
 
-    const handleApplicationUpdate = (event) => {
-      if (event.type === 'delivery:application_status_changed') {
-        // Refresh applications when status changes
-        fetchApplications();
-      }
-    };
-
-    ws.addEventListener('message', (e) => {
+    const handleMessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-        if (data.event === 'delivery:application_status_changed') {
-          handleApplicationUpdate(data);
+        if (data.type === 'delivery:application_status_changed') {
+          // Refresh applications when status changes
+          fetchApplications();
         }
       } catch (err) {
         console.error('WebSocket message error:', err);
       }
-    });
+    };
+
+    ws.addEventListener('message', handleMessage);
 
     return () => {
-      ws.removeEventListener('message', handleApplicationUpdate);
+      ws.removeEventListener('message', handleMessage);
     };
   }, [ws]);
 

@@ -68,14 +68,14 @@ const refreshAccessToken = async () => {
         throw new Error("No admin session");
     }
 
+    // scope: "admin" → backend refreshes against the rt_admin cookie, so an
+    // admin session can never be swapped for another panel's account that
+    // logged in later in the same browser.
     const { data } = await axios.post(
         `${API_URL}/auth/refresh`,
-        {},
+        { scope: "admin" },
         {
             withCredentials: true,
-            headers: {
-                Authorization: `Bearer ${auth.token}`,
-            },
         }
     );
 

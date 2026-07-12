@@ -70,11 +70,13 @@ const Register = () => {
 
         let destination = "/";
 
-        // Priority 1: vendor/delivery → always go to application page
+        // Priority 1: vendor/delivery → redirect to respective apps
         if (data.user.role === "vendor") {
-            destination = "/become-vendor";
+            window.location.href = import.meta.env.VITE_VENDOR_URL || "https://vendor.urbexon.in";
+            return;
         } else if (data.user.role === "delivery_boy") {
-            destination = "/become-delivery";
+            window.location.href = import.meta.env.VITE_DELIVERY_URL || "https://delivery.partner.urbexon.in";
+            return;
         } else if (from) {
             // Priority 2: regular user came from somewhere specific
             destination = from;

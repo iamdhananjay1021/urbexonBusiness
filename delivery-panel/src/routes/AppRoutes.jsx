@@ -211,13 +211,13 @@ const AppRoutes = () => (
     <Routes>
       <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
 
-      {/* ✅ FIX: "/apply" and "/register" now use RequireAuth (not PublicOnly).
-          Register.jsx itself requires an authenticated rider to submit the
-          application — wrapping it in PublicOnly meant any logged-in user
-          (including one who still needs to apply) was redirected away to
-          /dashboard before ever seeing the form, recreating the original
-          login↔apply deadlock. */}
-      <Route path="/register" element={<RequireAuth><Register /></RequireAuth>} />
+      {/* ✅ FIX (v2): Updated route protection strategy:
+          - /register: Unauthenticated users → redirects to /login with from="/register"
+                       Authenticated users → shows application form
+          - /apply: PROTECTED (authenticated users apply as existing delivery account holders)
+          Both use Register.jsx but serve different flows based on auth state.
+      */}
+      <Route path="/register" element={<Register />} />
       <Route path="/apply" element={<RequireAuth><Register /></RequireAuth>} />
 
       {/* ✅ NEW: shown when applicationStatus is 'pending' or 'rejected' */}

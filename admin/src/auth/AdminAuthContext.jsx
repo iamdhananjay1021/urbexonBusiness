@@ -118,7 +118,7 @@ export const AdminAuthProvider = ({ children }) => {
 
     const logout = async () => {
         try {
-            await adminApi.post("/auth/logout");
+            await adminApi.post("/auth/logout", { scope: "admin" });
         } catch {
             // Ignore logout API failures
         }

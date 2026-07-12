@@ -151,11 +151,24 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
-/* ───────── LIMITERS ───────── */
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
-const publicLimiter = rateLimit({ windowMs: 60 * 1000, max: 200 });
-const generalLimiter = rateLimit({ windowMs: 60 * 1000, max: 120 });
-const adminLimiter = rateLimit({ windowMs: 60 * 1000, max: 150 });
+/* ───────── LIMITERS ─────────
+ * Limits are env-tunable. The `skip` predicate lets an authenticated
+ * automated-QA client bypass limiting when the backend is explicitly run
+ * with DISABLE_RATE_LIMIT=1 (never set in production) — otherwise a full
+ * E2E run trips the 30-login auth window and every subsequent /api/auth
+ * request (including profile + admin dashboard, which sit under the same
+ * mount) starts returning 429. Real traffic is unaffected.
+ */
+const RL_DISABLED = process.env.DISABLE_RATE_LIMIT === "1" && process.env.NODE_ENV !== "production";
+const skipWhenDisabled = () => RL_DISABLED;
+const num = (v, d) => (Number.isFinite(+v) && +v > 0 ? +v : d);
+
+if (RL_DISABLED) console.warn("⚠️  Rate limiting DISABLED (DISABLE_RATE_LIMIT=1, non-production)");
+
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: num(process.env.RL_AUTH_MAX, 30), skip: skipWhenDisabled });
+const publicLimiter = rateLimit({ windowMs: 60 * 1000, max: num(process.env.RL_PUBLIC_MAX, 200), skip: skipWhenDisabled });
+const generalLimiter = rateLimit({ windowMs: 60 * 1000, max: num(process.env.RL_GENERAL_MAX, 120), skip: skipWhenDisabled });
+const adminLimiter = rateLimit({ windowMs: 60 * 1000, max: num(process.env.RL_ADMIN_MAX, 150), skip: skipWhenDisabled });
 
 /* ───────── MIDDLEWARE ───────── */
 app.use(express.json({ limit: "1mb" }));

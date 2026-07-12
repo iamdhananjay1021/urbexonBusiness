@@ -1,0 +1,26 @@
+{
+    "name": "urbexon-testing",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Production QA automation for Urbexon (client / vendor / admin / delivery + API)",
+    "scripts": {
+        "seed": "node playwright/seed/seed.mjs",
+        "test": "playwright test",
+        "test:api": "playwright test tests/auth tests/security tests/flows tests/payments tests/performance --project=api",
+        "test:ui": "playwright test tests/customer tests/vendor tests/admin tests/delivery tests/realtime tests/edge --project=chromium",
+        "test:auth": "playwright test tests/auth",
+        "test:security": "playwright test tests/security",
+        "test:flows": "playwright test tests/flows tests/payments",
+        "test:perf": "playwright test tests/performance",
+        "report": "playwright show-report reports/html",
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@playwright/test": "^1.49.0",
+        "@types/node": "^22.10.0",
+        "bcryptjs": "^2.4.3",
+        "dotenv": "^16.4.5",
+        "mongoose": "^8.9.0",
+        "typescript": "^5.7.0"
+    }
+}

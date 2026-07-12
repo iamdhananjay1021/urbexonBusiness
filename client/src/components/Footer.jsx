@@ -1,7 +1,7 @@
 /**
  * Footer.jsx — Production v2.0
  * ✅ No Tailwind — pure CSS-in-JS
- * ✅ Links updated (become-vendor, become-delivery)
+ * ✅ Links updated (become-vendor)
  * ✅ Responsive
  */
 import { Link } from "react-router-dom";
@@ -79,7 +79,6 @@ const Footer = () => (
                 <Link to="/profile" className="ft-link">My Account</Link>
                 <Link to="/orders" className="ft-link">Track Order</Link>
                 <Link to="/become-vendor" className="ft-link">Become a Vendor</Link>
-                <Link to="/become-delivery" className="ft-link">Delivery Partner</Link>
                 <Link to="/verify-invoice" className="ft-link">Verify Invoice</Link>
                 <Link to="/about" className="ft-link">About Us</Link>
             </div>
