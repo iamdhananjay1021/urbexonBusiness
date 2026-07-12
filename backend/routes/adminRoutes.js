@@ -13,6 +13,7 @@ import {
     markAsRead,
     cleanOldNotifications
 } from '../controllers/admin/notificationController.js';
+import adminDeliveryRoutes from './admin/adminDeliveryRoutes.js';
 import schedulerRoutes from './schedulerRoutes.js';
 import {
     getAllVendors, getVendorDetail, approveVendor, rejectVendor, suspendVendor,
@@ -112,6 +113,9 @@ router.get('/notifications/unread', getUnreadCount);
 router.put('/notifications/read-all', markAllAsRead);
 router.put('/notifications/:id/read', markAsRead);
 router.delete('/notifications/clean', cleanOldNotifications);
+
+// Admin Delivery Management Routes
+router.use('/delivery', adminDeliveryRoutes);
 
 // Scheduler routes (from original server.js)
 router.use(schedulerRoutes);
