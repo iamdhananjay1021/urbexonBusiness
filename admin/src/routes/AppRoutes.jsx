@@ -39,8 +39,8 @@ const AdminCustomerSupport = lazy(() => import("../pages/AdminCustomerSupport"))
 const AdminDeliverySettings = lazy(() => import("../pages/AdminDeliverySettings"));
 const AdminApplicationQueue = lazy(() => import("../pages/AdminApplicationQueue"));
 const SchedulerDashboard = lazy(() => import("../pages/SchedulerDashboard"));
-const AdminZone = lazy(() => import("../pages/AdminZone"));
-const AdminKYC = lazy(() => import("../pages/AdminKYC"));
+const AdminZone = lazy(() => import("../pages/Adminzone"));
+const AdminKYC = lazy(() => import("../pages/AdminKyC"));
 
 const Loader = () => (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}>
