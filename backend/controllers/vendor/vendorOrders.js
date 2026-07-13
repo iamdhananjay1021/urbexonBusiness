@@ -10,7 +10,7 @@ import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
 import { restoreStock, unmarkCouponUsed } from "../../services/pricing.js";
 import { sendNotification as sendToUser } from "../../utils/notificationQueue.js";
 import { publishToUser } from "../../utils/realtimeHub.js";
-import { startAssignment, cancelAssignment } from "../../services/assignmentEngine.js";
+import { startAssignment, cancelAssignment, releaseRiderSlot } from "../../services/assignmentEngine.js";
 import { applyOrderTransition, buildTimelineEntry, notifyOrderStakeholders } from "../../services/orderEngine.js";
 import { sendWhatsAppMessage, isWhatsAppConfigured } from "../../services/whatsappService.js";
 import { settleVendorForOrder } from "../../services/settlementEngine.js";
@@ -485,8 +485,35 @@ export const updateOrderStatus = async (req, res) => {
             // Vendor-initiated cancel previously never triggered a refund —
             // a PAID Razorpay order stayed "PAID" with no refund started.
             await refundOrderPayment(order, { reason: "Cancelled by vendor" }).catch(() => { });
-            if (order.delivery?.assignedTo) {
-                Order.updateOne({ _id: order._id }, { $set: { "delivery.status": "CANCELLED" } }).catch(() => { });
+            // BUG FIX: a genuine LOCAL_RIDER assignment (delivery.assignedTo
+            // set) is NOT covered by the legacyAssignedRiderId release above
+            // — that variable is only ever populated for vendor-self orders
+            // (vendorOrders.js:395). A vendor cancelling a LOCAL_RIDER order
+            // from READY_FOR_PICKUP (allowed per getVendorTransitions' base
+            // map, and a rider can already be ASSIGNED by then since
+            // delivery.status and orderStatus are independent fields)
+            // previously only flipped the order's own delivery.status —
+            // assignedTo/riderName/riderPhone/assignedAt stayed in place and
+            // the rider's activeOrders counter was never released. Order
+            // history/timeline is untouched here (already written above via
+            // applyOrderTransition). Guarded on !legacyAssignedRiderId so a
+            // vendor-self order with a stale legacy assignedTo (already
+            // released a few lines up) is never decremented twice.
+            if (order.delivery?.assignedTo && !legacyAssignedRiderId) {
+                const cancelledRiderId = order.delivery.assignedTo;
+                await Order.updateOne(
+                    { _id: order._id },
+                    {
+                        $set: {
+                            "delivery.status": "CANCELLED",
+                            "delivery.assignedTo": null,
+                            "delivery.riderName": "",
+                            "delivery.riderPhone": "",
+                            "delivery.assignedAt": null,
+                        },
+                    }
+                ).catch(() => { });
+                await releaseRiderSlot(cancelledRiderId);
             }
             if (order.orderMode === "URBEXON_HOUR") {
                 cancelAssignment(order._id);

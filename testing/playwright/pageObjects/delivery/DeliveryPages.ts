@@ -11,7 +11,15 @@ export class DeliveryLoginPage extends BasePage {
 
     get identifier() { return this.page.locator('form input:not([type="password"])').first(); }
     get password() { return this.page.locator('input[type="password"]').first(); }
-    get submit() { return this.page.locator('form button[type="submit"], form button').first(); }
+    // BUG FIX: was `form button[type="submit"], form button` — a union
+    // selector Playwright matches in DOM order, not alternative-priority
+    // order. The password show/hide toggle (<button type="button">, no
+    // type="submit") sits earlier in the DOM than the real submit button,
+    // so `.first()` always clicked the eye icon and the form never
+    // actually submitted (confirmed: zero /api/delivery/login requests
+    // ever fired). Scoping to `[type="submit"]` only targets the real
+    // Sign In button.
+    get submit() { return this.page.locator('form button[type="submit"]').first(); }
     /** External link → client app signup with ?role=delivery_boy (QA-fixed flow) */
     get applyLink() { return this.page.getByRole("link", { name: /apply as a new delivery partner/i }); }
 

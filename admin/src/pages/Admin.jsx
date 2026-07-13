@@ -8,7 +8,7 @@ import {
     FaSignOutAlt, FaBars, FaTimes, FaChevronRight, FaPlusCircle,
     FaImage, FaTags, FaStore, FaMapMarkerAlt, FaMoneyBillWave, FaUndoAlt, FaTruck,
     FaUsers, FaTicketAlt, FaBell, FaCheck, FaShoppingCart, FaExclamationTriangle, FaInfoCircle,
-    FaGlobeAsia, FaCog, FaWallet, FaPercentage,
+    FaGlobeAsia, FaCog, FaWallet, FaPercentage, FaDrawPolygon, FaTachometerAlt, FaLifeRing,
 } from "react-icons/fa";
 
 /* ─── Pages that need zero padding (manage their own layout) ─── */
@@ -226,6 +226,7 @@ const NAV_SECTIONS = [
         items: [
             { to: "customers", icon: FaUsers, label: "Customers" },
             { to: "delivery-boys", icon: FaTruck, label: "Delivery Boys" },
+            { to: "support", icon: FaLifeRing, label: "Customer Support" },
         ],
     },
     {
@@ -247,7 +248,9 @@ const NAV_SECTIONS = [
     {
         label: "Operations",
         items: [
+            { to: "operations", icon: FaTachometerAlt, label: "Ops Dashboard" },
             { to: "pincodes", icon: FaMapMarkerAlt, label: "Pincodes" },
+            { to: "zones", icon: FaDrawPolygon, label: "Delivery Zones" },
             { to: "settlements", icon: FaMoneyBillWave, label: "Settlements" },
             // FIX: Payouts used to share FaMoneyBillWave with Settlements —
             // two adjacent nav items with the identical icon are hard to

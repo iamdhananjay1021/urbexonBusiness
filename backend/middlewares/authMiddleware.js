@@ -99,6 +99,39 @@ export const protect = async (req, res, next) => {
     }
 };
 
+/* ── OPTIONAL AUTH ──
+   Same token verification as `protect`, but never rejects the request —
+   attaches req.user when a valid token is present, otherwise leaves it
+   undefined and calls next() regardless. For routes that must stay public
+   (e.g. the contact form, which guests use too) but still want to know
+   the caller's identity when they happen to be logged in. */
+export const optionalAuth = async (req, res, next) => {
+    try {
+        let token;
+        if (req.headers.authorization?.startsWith("Bearer ")) {
+            token = req.headers.authorization.split(" ")[1];
+        } else if (req.cookies?.token) {
+            token = req.cookies.token;
+        }
+        if (!token) return next();
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
+        const userId = decoded.id || decoded._id;
+        if (!userId) return next();
+
+        const user = await User.findById(userId).select("-password");
+        if (!user || user.isBanned || user.isDeleted || user.status === "disabled") return next();
+        if (typeof user.tokenVersion === "number" && (decoded.tokenVersion ?? 0) !== user.tokenVersion) return next();
+
+        req.user = user;
+        next();
+    } catch {
+        // Any failure (expired/invalid token, DB error) — treat as anonymous,
+        // never block the request.
+        next();
+    }
+};
+
 /* ── ROLE-BASED ACCESS (factory) ── */
 // Single source of truth for "is user authenticated + has allowed role".
 const requireRole = (...allowedRoles) => (req, res, next) => {

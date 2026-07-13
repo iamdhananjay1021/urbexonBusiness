@@ -9,17 +9,18 @@
  */
 
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid,
     Tooltip, ResponsiveContainer,
 } from "recharts";
 import api from "../api/adminApi";
+import { useAdminWsContext } from "../contexts/AdminWsContext";
 import {
     FiDollarSign, FiShoppingBag, FiUsers, FiTrendingUp,
     FiPackage, FiClock, FiGrid, FiRefreshCw,
     FiArrowUpRight, FiArrowDownRight, FiAlertCircle,
-    FiInbox, FiChevronDown,
+    FiInbox, FiChevronDown, FiTruck, FiUserCheck, FiRefreshCcw, FiAlertTriangle,
 } from "react-icons/fi";
 import { Skeleton, StatusBadge, EmptyState } from "../components/ui";
 
@@ -40,8 +41,16 @@ const loadSections = () => {
 const saveSections = (s) => { try { localStorage.setItem(SECTION_KEY, JSON.stringify(s)); } catch { /* noop */ } };
 
 const Section = ({ id, title, subtitle, icon: Icon, iconColor, iconBg, children, defaultOpen = true, delay = 0, extra }) => {
-    const saved = loadSections();
-    const [open, setOpen] = useState(saved[id] !== undefined ? saved[id] : defaultOpen);
+    // BUG FIX: was `const saved = loadSections()` called as a plain
+    // expression above useState — that read+JSON.parse'd localStorage on
+    // EVERY render of every Section instance (5 of them), even though the
+    // value is only ever consulted once, at mount. useState's lazy
+    // initializer form runs the function only on the component's first
+    // render.
+    const [open, setOpen] = useState(() => {
+        const saved = loadSections();
+        return saved[id] !== undefined ? saved[id] : defaultOpen;
+    });
     const bodyRef = useRef(null);
     const [height, setHeight] = useState(open ? "auto" : "0px");
     const first = useRef(true);
@@ -156,6 +165,33 @@ const StatCard = ({ icon: Icon, label, value, change, positive, accent, accentBg
     </div>
 );
 
+/* ─── Mini Stat Card — extracted from three copy-pasted inline card
+   blocks (Total Products / Pending Orders / Active Vendors each had their
+   own hand-duplicated JSX) into one component, reused below for those
+   three plus every newly-added card. ─── */
+const MiniStatCard = ({ icon: Icon, iconColor, iconBg, label, value, footer, footerColor, loading }) => (
+    <div style={{ background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 14, padding: "20px", flex: 1, minWidth: 180 }}>
+        {loading ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><Skeleton height={13} width="50%" /><Skeleton height={30} width="40%" /><Skeleton height={12} width="60%" /></div>
+        ) : (
+            <>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <Icon size={16} color={iconColor} />
+                    </div>
+                    <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", fontWeight: 500, margin: 0 }}>{label}</p>
+                </div>
+                <p style={{ fontSize: 30, fontWeight: 800, color: "var(--adm-text-primary)", margin: "0 0 8px", letterSpacing: "-0.5px" }}>
+                    {value ?? "—"}
+                </p>
+                <p style={{ fontSize: 12, color: footerColor || "var(--adm-muted)", fontWeight: footerColor ? 700 : 400, margin: 0, display: "flex", alignItems: "center", gap: 4 }}>
+                    {footer}
+                </p>
+            </>
+        )}
+    </div>
+);
+
 /* ══════════════════════════════════════════
    MAIN COMPONENT
 ══════════════════════════════════════════ */
@@ -171,21 +207,48 @@ const AdminDashboard = () => {
     const [statusBreakdown, setStatusBreakdown] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [adminName, setAdminName] = useState("Admin");
+    // Read once on mount — this never changes within a session, so it has
+    // no business being re-read/re-parsed from localStorage on every
+    // fetchData() call (including every manual Refresh click), which is
+    // what the previous version did.
+    const [adminName] = useState(() => {
+        try { return JSON.parse(localStorage.getItem("adminAuth"))?.user?.name || "Admin"; } catch { return "Admin"; }
+    });
     const navigate = useNavigate();
     const mounted = useRef(true);
+    // Cancels the previous in-flight request set before a new one starts —
+    // closes the race window where a rapid Refresh click (or an unmount)
+    // could let an older request's response land after a newer one's and
+    // silently overwrite fresher state with stale data.
+    const abortRef = useRef(null);
 
     useEffect(() => {
         mounted.current = true;
-        return () => { mounted.current = false; };
+        return () => { mounted.current = false; abortRef.current?.abort(); };
     }, []);
 
     const fetchData = useCallback(async (isRefresh = false) => {
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+        const { signal } = controller;
+
         if (!isRefresh) setLoading(true);
         try {
-            // 1. Dashboard stats — use comprehensive endpoint
-            const { data: dash } = await api.get("/admin/dashboard");
-            if (!mounted.current) return;
+            // 1. Dashboard stats + the handful of counts this page needs
+            // that already exist on other admin endpoints (ops-summary,
+            // delivery application stats) — reused as-is, no new backend
+            // calls introduced for these.
+            const [dashRes, opsRes, appRes] = await Promise.allSettled([
+                api.get("/admin/dashboard", { signal }),
+                api.get("/admin/ops-summary", { signal }),
+                api.get("/admin/delivery/applications/stats", { signal }),
+            ]);
+            if (signal.aborted || !mounted.current) return;
+
+            const dash = dashRes.status === "fulfilled" ? dashRes.value.data : {};
+            const ops = opsRes.status === "fulfilled" ? opsRes.value.data : null;
+            const appStats = appRes.status === "fulfilled" ? appRes.value.data?.data : null;
 
             const s = dash.stats || {};
 
@@ -197,10 +260,6 @@ const AdminDashboard = () => {
                 (dash.ordersByStatus || [])
                     .map((o) => ({ status: o._id, count: o.count }))
                     .sort((a, b) => b.count - a.count)
-            );
-
-            setAdminName(
-                (() => { try { const a = JSON.parse(localStorage.getItem("adminAuth")); return a?.user?.name || "Admin"; } catch { return "Admin"; } })()
             );
 
             setStats({
@@ -215,8 +274,18 @@ const AdminDashboard = () => {
                 ordersChange: s.ordersGrowth ?? null,
                 customersChange: null,
                 conversionChange: null,
-                productsAdded: s.outOfStock != null ? `${s.outOfStock} out of stock` : null,
-                newVendorsWeek: s.pendingVendors > 0 ? `${s.pendingVendors} pending` : null,
+                outOfStockCount: s.outOfStock ?? null,
+                pendingVendors: s.pendingVendors ?? null,
+                // Today / live snapshot — todayRevenue & todayOrders were
+                // already returned by /admin/dashboard and simply never
+                // read anywhere on this page; activeOrders/activeRiders
+                // come from the existing ops-summary aggregate.
+                todayRevenue: s.todayRevenue ?? null,
+                todayOrders: s.todayOrders ?? null,
+                activeOrders: ops?.orders?.live ?? null,
+                activeRiders: ops?.riders?.active ?? null,
+                pendingRefunds: s.pendingRefunds ?? null,
+                pendingApplications: appStats ? (appStats.submitted || 0) + (appStats.under_review || 0) : null,
             });
 
             setRecentOrders(dash.recentOrders || []);
@@ -234,7 +303,7 @@ const AdminDashboard = () => {
 
             // 3. Top products
             try {
-                const { data: prods } = await api.get("/products/admin/all?limit=5");
+                const { data: prods } = await api.get("/products/admin/all?limit=5", { signal });
                 const list = prods.products || prods || [];
                 setTopProducts(list.slice(0, 5).map((p, i) => ({
                     rank: i + 1,
@@ -250,6 +319,7 @@ const AdminDashboard = () => {
             }
 
         } catch (err) {
+            if (err.name === "CanceledError" || err.name === "AbortError") return; // superseded by a newer fetch, not a real failure
             // API failed — show empty states, not fake data
             if (!mounted.current) return;
             setStats(null);
@@ -263,14 +333,46 @@ const AdminDashboard = () => {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
+    // Realtime: reuse the ONE shared admin socket (no second connection) to
+    // debounce-refresh the dashboard's own numbers when something that
+    // would change them happens — same debounced-refetch-on-WS-event
+    // pattern already used by AdminOrders.jsx/AdminRefundReturn.jsx. This
+    // page has never had any WS wiring before; it previously only ever
+    // updated via the manual Refresh button.
+    const { lastMessage, connected } = useAdminWsContext();
+    const wsRefreshTimer = useRef(null);
+    useEffect(() => {
+        if (!lastMessage) return;
+        if (!["admin:order_event", "vendor:status_changed"].includes(lastMessage.type)) return;
+        clearTimeout(wsRefreshTimer.current);
+        wsRefreshTimer.current = setTimeout(() => fetchData(true), 1500);
+        return () => clearTimeout(wsRefreshTimer.current);
+    }, [lastMessage, fetchData]);
+
     const handleRefresh = async () => {
         setRefreshing(true);
         await fetchData(true);
         setRefreshing(false);
     };
 
-    // Chart data is pre-aggregated from API
-    const processedChart = chartData;
+    // Recomputed only when statusBreakdown actually changes — this used to
+    // be an inline IIFE evaluated on every render of the whole dashboard
+    // (including renders triggered by unrelated state, e.g. `refreshing`
+    // toggling), rebuilding the STATUS_COLOR map and re-summing totals
+    // every time for no reason.
+    const statusRows = useMemo(() => {
+        const total = statusBreakdown.reduce((sum, s) => sum + s.count, 0) || 1;
+        const STATUS_COLOR = {
+            DELIVERED: "var(--adm-success)", CANCELLED: "var(--adm-danger)", PLACED: "var(--adm-warning)",
+            CONFIRMED: "var(--adm-primary)", PACKED: "var(--adm-primary)", READY_FOR_PICKUP: "var(--adm-warning)",
+            SHIPPED: "var(--adm-primary)", OUT_FOR_DELIVERY: "var(--adm-warning)",
+        };
+        return statusBreakdown.map(({ status, count }) => ({
+            status, count,
+            pct: Math.round((count / total) * 100),
+            color: STATUS_COLOR[status] || "var(--adm-muted)",
+        }));
+    }, [statusBreakdown]);
 
     return (
         <div style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", color: "var(--adm-text-primary)", width: "100%", minWidth: 0, background: "var(--adm-bg)", minHeight: "100vh", padding: "0 0 40px" }}>
@@ -304,6 +406,9 @@ const AdminDashboard = () => {
                     <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--adm-text-primary)", margin: 0, letterSpacing: "-0.3px" }}>Dashboard Overview</h1>
                     <p style={{ fontSize: 13, color: "var(--adm-muted)", margin: "4px 0 0" }}>
                         Welcome back, <span style={{ color: "var(--adm-primary)", fontWeight: 700 }}>{adminName}!</span>{" "}Here's your store at a glance.
+                        <span style={{ marginLeft: 8, fontSize: 11, color: connected ? "var(--adm-success)" : "var(--adm-muted)" }}>
+                            ● {connected ? "Live" : "Reconnecting…"}
+                        </span>
                     </p>
                 </div>
                 <button onClick={handleRefresh} disabled={refreshing || loading}
@@ -346,76 +451,60 @@ const AdminDashboard = () => {
             {/* ── Secondary cards ── */}
             <Section id="secondary" title="Store Overview" subtitle="Products, pending orders & vendors" icon={FiPackage} iconColor={"#8b5cf6"} iconBg={"#f5f3ff"} delay={200}>
                 <div className="db-sec-grid">
-                    {/* Total Products */}
-                    <div style={{ background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 14, padding: "20px", flex: 1, minWidth: 180 }}>
-                        {loading ? (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><Skeleton height={13} width="50%" /><Skeleton height={30} width="40%" /><Skeleton height={12} width="60%" /></div>
-                        ) : (
-                            <>
-                                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f5f3ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                        <FiPackage size={16} color={"#8b5cf6"} />
-                                    </div>
-                                    <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", fontWeight: 500, margin: 0 }}>Total Products</p>
-                                </div>
-                                <p style={{ fontSize: 30, fontWeight: 800, color: "var(--adm-text-primary)", margin: "0 0 8px", letterSpacing: "-0.5px" }}>
-                                    {stats?.totalProducts != null ? fmt(stats.totalProducts) : "—"}
-                                </p>
-                                {stats?.productsAdded != null
-                                    ? <p style={{ fontSize: 12, color: "var(--adm-success)", fontWeight: 700, margin: 0 }}>↑ {stats.productsAdded} added this month</p>
-                                    : <p style={{ fontSize: 12, color: "var(--adm-muted)", margin: 0 }}>Active listings</p>
-                                }
-                            </>
-                        )}
-                    </div>
+                    <MiniStatCard
+                        icon={FiPackage} iconColor={"#8b5cf6"} iconBg={"#f5f3ff"} loading={loading}
+                        label="Total Products" value={stats?.totalProducts != null ? fmt(stats.totalProducts) : null}
+                        footer="Active listings"
+                    />
+                    <MiniStatCard
+                        icon={FiClock} iconColor={"var(--adm-warning)"} iconBg={"var(--adm-warning-tint)"} loading={loading}
+                        label="Pending Orders" value={stats?.pendingOrders != null ? fmt(stats.pendingOrders) : null}
+                        footer={stats?.pendingOrders > 0 ? <><FiAlertCircle size={11} /> Needs attention</> : "✓ All clear"}
+                        footerColor={stats?.pendingOrders > 0 ? "var(--adm-danger)" : "var(--adm-success)"}
+                    />
+                    <MiniStatCard
+                        icon={FiGrid} iconColor={"var(--adm-success)"} iconBg={"var(--adm-success-tint)"} loading={loading}
+                        label="Active Vendors" value={stats?.activeVendors != null ? fmt(stats.activeVendors) : null}
+                        footer={stats?.pendingVendors > 0 ? `${stats.pendingVendors} pending approval` : "Partner vendors"}
+                        footerColor={stats?.pendingVendors > 0 ? "var(--adm-warning)" : undefined}
+                    />
+                </div>
+            </Section>
 
-                    {/* Pending Orders */}
-                    <div style={{ background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 14, padding: "20px", flex: 1, minWidth: 180 }}>
-                        {loading ? (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><Skeleton height={13} width="50%" /><Skeleton height={30} width="40%" /><Skeleton height={12} width="60%" /></div>
-                        ) : (
-                            <>
-                                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--adm-warning-tint)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                        <FiClock size={16} color={"var(--adm-warning)"} />
-                                    </div>
-                                    <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", fontWeight: 500, margin: 0 }}>Pending Orders</p>
-                                </div>
-                                <p style={{ fontSize: 30, fontWeight: 800, color: "var(--adm-text-primary)", margin: "0 0 8px", letterSpacing: "-0.5px" }}>
-                                    {stats?.pendingOrders != null ? fmt(stats.pendingOrders) : "—"}
-                                </p>
-                                {stats?.pendingOrders > 0
-                                    ? <p style={{ fontSize: 12, color: "var(--adm-danger)", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 4 }}>
-                                        <FiAlertCircle size={11} /> Needs attention
-                                    </p>
-                                    : <p style={{ fontSize: 12, color: "var(--adm-success)", fontWeight: 700, margin: 0 }}>✓ All clear</p>
-                                }
-                            </>
-                        )}
-                    </div>
-
-                    {/* Active Vendors */}
-                    <div style={{ background: "var(--adm-surface)", border: `1px solid var(--adm-border)`, borderRadius: 14, padding: "20px", flex: 1, minWidth: 180 }}>
-                        {loading ? (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><Skeleton height={13} width="50%" /><Skeleton height={30} width="40%" /><Skeleton height={12} width="60%" /></div>
-                        ) : (
-                            <>
-                                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--adm-success-tint)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                        <FiGrid size={16} color={"var(--adm-success)"} />
-                                    </div>
-                                    <p style={{ fontSize: 13, color: "var(--adm-text-secondary)", fontWeight: 500, margin: 0 }}>Active Vendors</p>
-                                </div>
-                                <p style={{ fontSize: 30, fontWeight: 800, color: "var(--adm-text-primary)", margin: "0 0 8px", letterSpacing: "-0.5px" }}>
-                                    {stats?.activeVendors != null ? fmt(stats.activeVendors) : "—"}
-                                </p>
-                                {stats?.newVendorsWeek != null
-                                    ? <p style={{ fontSize: 12, color: "var(--adm-warning)", fontWeight: 700, margin: 0 }}>{stats.newVendorsWeek}</p>
-                                    : <p style={{ fontSize: 12, color: "var(--adm-muted)", margin: 0 }}>Partner vendors</p>
-                                }
-                            </>
-                        )}
-                    </div>
+            {/* ── Live Snapshot — the metrics a production quick-commerce
+                admin dashboard needs that /admin/dashboard already returns
+                (todayRevenue/todayOrders/pendingVendors/pendingRefunds/
+                outOfStock) but this page never rendered, plus Active
+                Orders/Active Delivery Partners from the existing
+                ops-summary endpoint. Deliberately excludes Assignment
+                Queue, the realtime event timeline, and Scheduler/WebSocket
+                status — those already live on the Operations Dashboard
+                (/admin/operations) and showing them here too would just be
+                the same numbers twice. ── */}
+            <Section id="live-snapshot" title="Live Snapshot" subtitle="Today's activity & items needing attention" icon={FiTrendingUp} iconColor={"var(--adm-primary)"} iconBg={"var(--adm-primary-tint)"} delay={240}
+                extra={<Link to="operations" style={{ fontSize: 12, fontWeight: 700, color: "var(--adm-primary)", textDecoration: "none", display: "flex", alignItems: "center", gap: 4, padding: "6px 12px", background: "var(--adm-primary-tint)", border: "1px solid #dbeafe", borderRadius: 8 }} onClick={e => e.stopPropagation()}>Ops Dashboard →</Link>}
+            >
+                <div className="db-sec-grid">
+                    <MiniStatCard icon={FiDollarSign} iconColor={"var(--adm-success)"} iconBg={"var(--adm-success-tint)"} loading={loading}
+                        label="Revenue Today" value={stats?.todayRevenue != null ? `₹${fmt(stats.todayRevenue)}` : null} footer="Since midnight" />
+                    <MiniStatCard icon={FiShoppingBag} iconColor={"var(--adm-primary)"} iconBg={"var(--adm-primary-tint)"} loading={loading}
+                        label="Orders Today" value={stats?.todayOrders != null ? fmt(stats.todayOrders) : null} footer="Since midnight" />
+                    <MiniStatCard icon={FiTruck} iconColor={"#f97316"} iconBg={"#fff7ed"} loading={loading}
+                        label="Active Orders" value={stats?.activeOrders != null ? fmt(stats.activeOrders) : null} footer="Not yet delivered/cancelled" />
+                    <MiniStatCard icon={FiUserCheck} iconColor={"var(--adm-info)"} iconBg={"var(--adm-info-tint)"} loading={loading}
+                        label="Active Delivery Partners" value={stats?.activeRiders != null ? fmt(stats.activeRiders) : null} footer="Online now" />
+                    <MiniStatCard icon={FiGrid} iconColor={"var(--adm-warning)"} iconBg={"var(--adm-warning-tint)"} loading={loading}
+                        label="Pending Vendor Approval" value={stats?.pendingVendors != null ? fmt(stats.pendingVendors) : null}
+                        footer={stats?.pendingVendors > 0 ? "Needs review" : "✓ All clear"} footerColor={stats?.pendingVendors > 0 ? "var(--adm-warning)" : "var(--adm-success)"} />
+                    <MiniStatCard icon={FiUserCheck} iconColor={"var(--adm-warning)"} iconBg={"var(--adm-warning-tint)"} loading={loading}
+                        label="Pending Delivery Applications" value={stats?.pendingApplications != null ? fmt(stats.pendingApplications) : null}
+                        footer={stats?.pendingApplications > 0 ? "Needs review" : "✓ All clear"} footerColor={stats?.pendingApplications > 0 ? "var(--adm-warning)" : "var(--adm-success)"} />
+                    <MiniStatCard icon={FiRefreshCcw} iconColor={"var(--adm-danger)"} iconBg={"var(--adm-danger-tint)"} loading={loading}
+                        label="Pending Refunds" value={stats?.pendingRefunds != null ? fmt(stats.pendingRefunds) : null}
+                        footer={stats?.pendingRefunds > 0 ? "Needs review" : "✓ All clear"} footerColor={stats?.pendingRefunds > 0 ? "var(--adm-danger)" : "var(--adm-success)"} />
+                    <MiniStatCard icon={FiAlertTriangle} iconColor={"var(--adm-danger)"} iconBg={"var(--adm-danger-tint)"} loading={loading}
+                        label="Out of Stock" value={stats?.outOfStockCount != null ? fmt(stats.outOfStockCount) : null}
+                        footer={stats?.outOfStockCount > 0 ? "Restock needed" : "✓ All in stock"} footerColor={stats?.outOfStockCount > 0 ? "var(--adm-danger)" : "var(--adm-success)"} />
                 </div>
             </Section>
 
@@ -432,14 +521,14 @@ const AdminDashboard = () => {
                             </div>
                         </div>
 
-                        {loading ? <Skeleton height={230} /> : processedChart.length === 0 ? (
+                        {loading ? <Skeleton height={230} /> : chartData.length === 0 ? (
                             <div style={{ height: 230, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--adm-muted)" }}>
                                 <FiInbox size={32} style={{ marginBottom: 10, opacity: 0.4 }} />
                                 <p style={{ fontSize: 13, margin: 0 }}>No order data available yet</p>
                             </div>
                         ) : (
                             <ResponsiveContainer width="100%" height={240}>
-                                <AreaChart data={processedChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                                <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                                     <defs>
                                         <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor={"var(--adm-primary)"} stopOpacity={0.18} />
@@ -524,31 +613,19 @@ const AdminDashboard = () => {
                         </div>
                     ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                            {(() => {
-                                const total = statusBreakdown.reduce((sum, s) => sum + s.count, 0) || 1;
-                                const STATUS_COLOR = {
-                                    DELIVERED: "var(--adm-success)", CANCELLED: "var(--adm-danger)", PLACED: "var(--adm-warning)",
-                                    CONFIRMED: "var(--adm-primary)", PACKED: "var(--adm-primary)", READY_FOR_PICKUP: "var(--adm-warning)",
-                                    SHIPPED: "var(--adm-primary)", OUT_FOR_DELIVERY: "var(--adm-warning)",
-                                };
-                                return statusBreakdown.map(({ status, count }) => {
-                                    const pct = Math.round((count / total) * 100);
-                                    const color = STATUS_COLOR[status] || "var(--adm-muted)";
-                                    return (
-                                        <div key={status} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--adm-text-secondary)", width: 150, flexShrink: 0, textTransform: "capitalize" }}>
-                                                {status.toLowerCase().replace(/_/g, " ")}
-                                            </span>
-                                            <div style={{ flex: 1, height: 8, background: "var(--adm-border-soft)", borderRadius: 4, overflow: "hidden" }}>
-                                                <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.3s ease" }} />
-                                            </div>
-                                            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--adm-text-primary)", width: 70, textAlign: "right", flexShrink: 0 }}>
-                                                {fmt(count)} <span style={{ color: "var(--adm-muted)", fontWeight: 500 }}>({pct}%)</span>
-                                            </span>
-                                        </div>
-                                    );
-                                });
-                            })()}
+                            {statusRows.map(({ status, count, pct, color }) => (
+                                <div key={status} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--adm-text-secondary)", width: 150, flexShrink: 0, textTransform: "capitalize" }}>
+                                        {status.toLowerCase().replace(/_/g, " ")}
+                                    </span>
+                                    <div style={{ flex: 1, height: 8, background: "var(--adm-border-soft)", borderRadius: 4, overflow: "hidden" }}>
+                                        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.3s ease" }} />
+                                    </div>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--adm-text-primary)", width: 70, textAlign: "right", flexShrink: 0 }}>
+                                        {fmt(count)} <span style={{ color: "var(--adm-muted)", fontWeight: 500 }}>({pct}%)</span>
+                                    </span>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>

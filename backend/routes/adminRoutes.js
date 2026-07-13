@@ -14,6 +14,7 @@ import {
     cleanOldNotifications
 } from '../controllers/admin/notificationController.js';
 import adminDeliveryRoutes from './admin/adminDeliveryRoutes.js';
+import adminTicketRoutes from './admin/adminTicketRoutes.js';
 import schedulerRoutes from './schedulerRoutes.js';
 import {
     getAllVendors, getVendorDetail, approveVendor, rejectVendor, suspendVendor,
@@ -28,6 +29,7 @@ import {
     adminGetAllPayouts, adminApprovePayout, adminRejectPayout, adminCompletePayout,
 } from '../controllers/admin/payoutController.js';
 import { getDashboardStats, getMapData } from '../controllers/admin/dashboardController.js';
+import { getOpsSummary, broadcastNotification } from '../controllers/admin/opsController.js';
 
 const router = express.Router();
 
@@ -37,6 +39,12 @@ router.use(protect, adminOnly);
 // Dashboard & Map
 router.get("/dashboard", getDashboardStats);
 router.get("/map-data", getMapData);
+
+// Ops Dashboard — aggregates metrics with no existing endpoint; everything
+// else it needs is read straight from the routes already declared in this
+// file (dashboard, map-data, assignments/active, scheduler/*).
+router.get("/ops-summary", getOpsSummary);
+router.post("/broadcast", broadcastNotification);
 
 // Vendors
 router.get("/vendors", getAllVendors);
@@ -116,6 +124,9 @@ router.delete('/notifications/clean', cleanOldNotifications);
 
 // Admin Delivery Management Routes
 router.use('/delivery', adminDeliveryRoutes);
+
+// Admin Support Ticket Routes
+router.use('/tickets', adminTicketRoutes);
 
 // Scheduler routes (from original server.js)
 router.use(schedulerRoutes);

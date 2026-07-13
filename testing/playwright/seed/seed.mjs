@@ -49,6 +49,12 @@ const DeliveryBoy = loose("QaDeliveryBoy", "deliveryboys");
 const Product = loose("QaProduct", "products");
 const Category = loose("QaCategory", "categories");
 const Coupon = loose("QaCoupon", "coupons");
+const Subscription = loose("QaSubscription", "subscriptions");
+const Pincode = loose("QaPincode", "pincodes");
+
+// Delhi coords, ~1-2km apart — well inside the 10km Urbexon Hour radius.
+const UH_VENDOR_LOC = { lat: 28.6139, lng: 77.2090 };
+const UH_PINCODE = "201301";
 
 const upsertUser = async (u, role, hash) => {
     const doc = await User.findOneAndUpdate(
@@ -75,7 +81,13 @@ const run = async () => {
     const deliveryUser = await upsertUser(QA.delivery, "delivery_boy", hash);
     const admin = await upsertUser(QA.admin, "admin", hash);
 
-    // Approved vendor profile (what admin approval produces)
+    // Approved vendor profile (what admin approval produces) — plus every
+    // field needed to place a real Urbexon Hour order end-to-end (location/
+    // isOpen/acceptingOrders/subscription/deliveryMode are all checked by
+    // validateDeliveryServiceability before an order can be created;
+    // isDeleted is required by protectVendor's own lookup query, so leaving
+    // it unset made every vendor-authenticated route 404 with "Vendor
+    // profile not found" despite the vendor existing).
     await Vendor.findOneAndUpdate(
         { userId: vendorUser._id },
         {
@@ -87,6 +99,13 @@ const run = async () => {
                 phone: QA.vendor.phone,
                 status: "approved",
                 isActive: true,
+                isDeleted: false,
+                location: { type: "Point", coordinates: [UH_VENDOR_LOC.lng, UH_VENDOR_LOC.lat] },
+                isOpen: true,
+                acceptingOrders: true,
+                subscription: { isActive: true, expiryDate: new Date(Date.now() + 365 * 24 * 3600 * 1000) },
+                deliveryRadius: 10,
+                deliveryMode: "platform",
             },
         },
         { upsert: true, new: true }
@@ -129,8 +148,31 @@ const run = async () => {
                 isActive: true,
                 status: "active",
                 vendorId: vendorDoc?._id,
+                // Vendor-owned products are Urbexon Hour by definition; "in
+                // stock" must be explicit — orderValidations.js checks
+                // `product.inStock` directly (not just the stock count), and
+                // an unset field reads as falsy, so every checkout failed
+                // with "out of stock or has insufficient quantity" without it.
+                productType: "urbexon_hour",
+                inStock: true,
             },
         },
+        { upsert: true }
+    );
+
+    // A real Subscription doc (separate from Vendor.subscription above) —
+    // requireActiveSubscription middleware queries this collection directly
+    // for every vendor-authenticated order route.
+    await Subscription.findOneAndUpdate(
+        { vendorId: vendorDoc?._id },
+        { $set: { vendorId: vendorDoc?._id, status: "active", expiryDate: new Date(Date.now() + 365 * 24 * 3600 * 1000) } },
+        { upsert: true }
+    );
+
+    // COD is only allowed for pincodes explicitly marked "active".
+    await Pincode.findOneAndUpdate(
+        { code: UH_PINCODE },
+        { $set: { code: UH_PINCODE, status: "active", city: "Noida", state: "Uttar Pradesh" } },
         { upsert: true }
     );
 

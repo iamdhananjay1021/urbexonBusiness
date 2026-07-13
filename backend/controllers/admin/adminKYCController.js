@@ -1,5 +1,16 @@
 /**
  * adminKYCController.js — Admin KYC Verification Management
+ *
+ * [FIX] verifyAadhaar/verifyPAN previously wrote "aadhaar.verificationStatus"
+ * and "aadhaar.notes" (and the PAN equivalents) — neither path exists on
+ * the DeliveryKYC schema (models/deliveryModels/DeliveryKYC.js), which has
+ * "aadhaar.verified" (Boolean) and no "notes" sub-field at all. Under
+ * Mongoose's default strict mode these writes were silently dropped —
+ * the endpoint returned 200, but nothing about the actual pass/fail
+ * decision was ever persisted, only verifiedAt/verifiedBy (which DO
+ * exist on the schema) went through. Fixed to write "verified" (Boolean)
+ * and log the reviewer's note in the `timeline` array, which is a real
+ * schema field designed exactly for this.
  */
 
 import DeliveryKYC from "../../models/deliveryModels/DeliveryKYC.js";
@@ -38,7 +49,7 @@ export const getKYCDetails = async (req, res) => {
 
         const kyc = await DeliveryKYC.findById(id).populate(
             "deliveryBoyId",
-            "name phone email city vehicle bankDetails"
+            "name phone email city vehicleType vehicleNumber bankDetails documents documentStatus"
         );
 
         if (!kyc) {
@@ -57,14 +68,29 @@ export const verifyAadhaar = async (req, res) => {
         const { id } = req.params;
         const { verified, notes } = req.body;
 
+        // [FIX] "verified" (Boolean) + "verificationMethod" are real schema
+        // paths under aadhaar — was writing "verificationStatus" which
+        // doesn't exist and was silently dropped on save.
         const kyc = await DeliveryKYC.findByIdAndUpdate(
             id,
             {
                 $set: {
-                    "aadhaar.verificationStatus": verified ? "approved" : "rejected",
+                    "aadhaar.verified": !!verified,
+                    "aadhaar.verificationMethod": "manual",
                     "aadhaar.verifiedAt": new Date(),
                     "aadhaar.verifiedBy": req.user._id,
-                    "aadhaar.notes": notes || "",
+                },
+                $push: {
+                    // [FIX] the reviewer's note now goes into `timeline`
+                    // (a real schema field) instead of the nonexistent
+                    // "aadhaar.notes" path.
+                    timeline: {
+                        event: verified ? "aadhaar_verified" : "aadhaar_rejected",
+                        timestamp: new Date(),
+                        status: verified ? "approved" : "rejected",
+                        verifiedBy: req.user._id,
+                        notes: notes || "",
+                    },
                 },
             },
             { new: true }
@@ -86,14 +112,25 @@ export const verifyPAN = async (req, res) => {
         const { id } = req.params;
         const { verified, notes } = req.body;
 
+        // [FIX] same class of bug as verifyAadhaar above — "pan.verified"
+        // (Boolean) is the real schema path, not "pan.verificationStatus".
         const kyc = await DeliveryKYC.findByIdAndUpdate(
             id,
             {
                 $set: {
-                    "pan.verificationStatus": verified ? "approved" : "rejected",
+                    "pan.verified": !!verified,
+                    "pan.verificationMethod": "manual",
                     "pan.verifiedAt": new Date(),
                     "pan.verifiedBy": req.user._id,
-                    "pan.notes": notes || "",
+                },
+                $push: {
+                    timeline: {
+                        event: verified ? "pan_verified" : "pan_rejected",
+                        timestamp: new Date(),
+                        status: verified ? "approved" : "rejected",
+                        verifiedBy: req.user._id,
+                        notes: notes || "",
+                    },
                 },
             },
             { new: true }
@@ -126,7 +163,7 @@ export const approveKYCRecord = async (req, res) => {
         if (deliveryBoy) {
             sendNotification(String(deliveryBoy.userId), "delivery:kyc_approved", {
                 message: "Your KYC has been successfully verified!",
-            }).catch(() => {});
+            }).catch(() => { });
         }
 
         res.json(result);
@@ -156,7 +193,7 @@ export const rejectKYCRecord = async (req, res) => {
         if (deliveryBoy) {
             sendNotification(String(deliveryBoy.userId), "delivery:kyc_rejected", {
                 message: `KYC verification failed. Reason: ${reason}`,
-            }).catch(() => {});
+            }).catch(() => { });
         }
 
         res.json(result);

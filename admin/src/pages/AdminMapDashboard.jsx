@@ -9,6 +9,7 @@ import { MapContainer, TileLayer, Marker, Popup, CircleMarker, useMap } from "re
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import api from "../api/adminApi";
+import { useAdminWsContext } from "../contexts/AdminWsContext";
 import {
     FiMapPin, FiUsers, FiShoppingBag, FiTruck,
     FiRefreshCw, FiEye, FiZap, FiPackage,
@@ -242,6 +243,25 @@ const AdminMapDashboard = () => {
     }, [load]);
 
     const refresh = () => { setRefreshing(true); load(); };
+
+    // Live rider movement between polls: every admin session is auto-joined
+    // to the shared "admins" room, and the delivery-location endpoint now
+    // broadcasts each accepted GPS fix there (see deliveryController.js's
+    // updateRiderLocation). Patch the matching activeDeliveries entry in
+    // place so the rider marker moves in realtime instead of only jumping
+    // every 30s on the next REST poll.
+    const { lastMessage } = useAdminWsContext();
+    useEffect(() => {
+        if (lastMessage?.type !== "rider_location" || !lastMessage.orderId) return;
+        setData(prev => {
+            if (!prev?.activeDeliveries?.length) return prev;
+            const idx = prev.activeDeliveries.findIndex(d => String(d.id) === String(lastMessage.orderId));
+            if (idx === -1) return prev;
+            const next = prev.activeDeliveries.slice();
+            next[idx] = { ...next[idx], riderLat: lastMessage.lat, riderLng: lastMessage.lng };
+            return { ...prev, activeDeliveries: next };
+        });
+    }, [lastMessage]);
 
     const allPositions = useMemo(() => {
         if (!data) return [];

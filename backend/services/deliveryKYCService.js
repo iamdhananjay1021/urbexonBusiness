@@ -1,10 +1,39 @@
 /**
  * deliveryKYCService.js — KYC Verification and Document Management
+ *
+ * [FIX] Every write in this file previously used field names that don't
+ * exist in the DeliveryKYC schema (models/deliveryModels/DeliveryKYC.js) —
+ * e.g. "front"/"back" instead of "frontImage"/"backImage",
+ * "verificationStatus" (string) instead of "verified" (Boolean),
+ * "document" instead of "image", "number" instead of "registrationNumber"
+ * on vehicleRC, and "matchScore"/"livenessScore" which don't exist on
+ * faceVerification at all. Because Mongoose schemas are strict by
+ * default, all of these were being silently dropped on save — no error,
+ * no persisted data. All writes below now use the actual schema paths.
+ *
+ * [FIX] Document submission no longer disappears into a black hole:
+ * each submit function now also nudges `overallStatus` from "pending" to
+ * "under_review" (only on first submission), because
+ * adminKYCController.listPendingKYC only queries overallStatus ===
+ * "under_review" — without this, the admin review queue would stay
+ * permanently empty no matter how many riders submitted documents.
+ *
+ * [FIX] Submission events are now recorded in the `timeline` array
+ * (which DOES exist on the schema) instead of a non-existent
+ * "submittedAt" sub-field.
  */
 
 import DeliveryKYC from "../models/deliveryModels/DeliveryKYC.js";
-import DeliveryBoy from "../models/deliveryModels/DeliveryBoy.js";
 import { uploadToCloudinary } from "../config/cloudinary.js";
+
+// Bump overallStatus into the admin review queue on first submission only —
+// never downgrade an already-approved/rejected record just because a rider
+// re-uploads one document.
+const markUnderReviewIfPending = (kyc) => {
+    if (kyc.overallStatus === "pending") {
+        kyc.overallStatus = "under_review";
+    }
+};
 
 export const verifyAadhaar = async (deliveryBoyId, aadhaarNumber, frontImage, backImage) => {
     try {
@@ -27,18 +56,23 @@ export const verifyAadhaar = async (deliveryBoyId, aadhaarNumber, frontImage, ba
             uploadedUrls.back = back.secure_url;
         }
 
+        // [FIX] frontImage/backImage (schema) — was front/back
         kyc.aadhaar = {
+            ...(kyc.aadhaar?.toObject?.() || kyc.aadhaar || {}),
             number: `XXXX XXXX ${aadhaarNumber.slice(-4)}`,
-            front: uploadedUrls.front || kyc.aadhaar?.front,
-            back: uploadedUrls.back || kyc.aadhaar?.back,
-            verificationStatus: "under_review",
-            submittedAt: new Date(),
+            frontImage: uploadedUrls.front || kyc.aadhaar?.frontImage,
+            backImage: uploadedUrls.back || kyc.aadhaar?.backImage,
+            verified: false, // reset — awaiting fresh admin review
         };
 
+        markUnderReviewIfPending(kyc);
+
+        // [FIX] "submittedAt" isn't a real sub-field — log the event in timeline instead
         kyc.timeline.push({
             event: "aadhaar_submitted",
             timestamp: new Date(),
-            note: "Aadhaar submitted for verification",
+            status: "under_review",
+            notes: "Aadhaar submitted for verification",
         });
 
         await kyc.save();
@@ -64,23 +98,27 @@ export const verifyPAN = async (deliveryBoyId, panNumber, image) => {
             kyc = new DeliveryKYC({ deliveryBoyId, overallStatus: "under_review" });
         }
 
-        let imageUrl = kyc.pan?.document;
+        // [FIX] schema field is "image" — was being written to a nonexistent "document"
+        let imageUrl = kyc.pan?.image;
         if (image) {
             const uploaded = await uploadToCloudinary(image, `kyc/${deliveryBoyId}/pan`);
             imageUrl = uploaded.secure_url;
         }
 
         kyc.pan = {
+            ...(kyc.pan?.toObject?.() || kyc.pan || {}),
             number: panNumber,
-            document: imageUrl,
-            verificationStatus: "under_review",
-            submittedAt: new Date(),
+            image: imageUrl,
+            verified: false, // reset — awaiting fresh admin review
         };
+
+        markUnderReviewIfPending(kyc);
 
         kyc.timeline.push({
             event: "pan_submitted",
             timestamp: new Date(),
-            note: "PAN submitted for verification",
+            status: "under_review",
+            notes: "PAN submitted for verification",
         });
 
         await kyc.save();
@@ -112,18 +150,22 @@ export const verifyDrivingLicense = async (deliveryBoyId, licenseNumber, frontIm
             uploadedUrls.back = back.secure_url;
         }
 
+        // [FIX] frontImage/backImage (schema) — was front/back
         kyc.drivingLicense = {
+            ...(kyc.drivingLicense?.toObject?.() || kyc.drivingLicense || {}),
             number: licenseNumber,
-            front: uploadedUrls.front || kyc.drivingLicense?.front,
-            back: uploadedUrls.back || kyc.drivingLicense?.back,
-            verificationStatus: "under_review",
-            submittedAt: new Date(),
+            frontImage: uploadedUrls.front || kyc.drivingLicense?.frontImage,
+            backImage: uploadedUrls.back || kyc.drivingLicense?.backImage,
+            verified: false,
         };
+
+        markUnderReviewIfPending(kyc);
 
         kyc.timeline.push({
             event: "license_submitted",
             timestamp: new Date(),
-            note: "Driving License submitted for verification",
+            status: "under_review",
+            notes: "Driving License submitted for verification",
         });
 
         await kyc.save();
@@ -155,18 +197,23 @@ export const verifyVehicleRC = async (deliveryBoyId, rcNumber, frontImage, backI
             uploadedUrls.back = back.secure_url;
         }
 
+        // [FIX] schema field is "registrationNumber" — was being written to "number".
+        // [FIX] frontImage/backImage (schema) — was front/back
         kyc.vehicleRC = {
-            number: rcNumber,
-            front: uploadedUrls.front || kyc.vehicleRC?.front,
-            back: uploadedUrls.back || kyc.vehicleRC?.back,
-            verificationStatus: "under_review",
-            submittedAt: new Date(),
+            ...(kyc.vehicleRC?.toObject?.() || kyc.vehicleRC || {}),
+            registrationNumber: rcNumber,
+            frontImage: uploadedUrls.front || kyc.vehicleRC?.frontImage,
+            backImage: uploadedUrls.back || kyc.vehicleRC?.backImage,
+            verified: false,
         };
+
+        markUnderReviewIfPending(kyc);
 
         kyc.timeline.push({
             event: "rc_submitted",
             timestamp: new Date(),
-            note: "Vehicle RC submitted for verification",
+            status: "under_review",
+            notes: "Vehicle RC submitted for verification",
         });
 
         await kyc.save();
@@ -194,18 +241,23 @@ export const verifyFaceMatch = async (deliveryBoyId, selfieImage) => {
             imageUrl = uploaded.secure_url;
         }
 
+        // [FIX] schema has "status" (enum pending/verified/failed) and
+        // "aadhaarMatchScore" — was writing nonexistent "matchScore",
+        // "livenessScore", and "verificationStatus".
         kyc.faceVerification = {
+            ...(kyc.faceVerification?.toObject?.() || kyc.faceVerification || {}),
             selfieImage: imageUrl,
-            matchScore: 0,
-            livenessScore: 0,
-            verificationStatus: "under_review",
-            submittedAt: new Date(),
+            status: "pending",
+            aadhaarMatchScore: null,
         };
+
+        markUnderReviewIfPending(kyc);
 
         kyc.timeline.push({
             event: "selfie_submitted",
             timestamp: new Date(),
-            note: "Selfie submitted for face verification",
+            status: "under_review",
+            notes: "Selfie submitted for face verification",
         });
 
         await kyc.save();
@@ -222,33 +274,40 @@ export const verifyFaceMatch = async (deliveryBoyId, selfieImage) => {
 
 export const approveKYC = async (deliveryBoyId, adminId, notes = "") => {
     try {
+        // [FIX] schema has approvedAt/approvedBy — was writing nonexistent
+        // top-level "verifiedAt"/"verifiedBy" (those names only exist
+        // nested inside aadhaar/pan/etc, not at the KYC document root).
         const kyc = await DeliveryKYC.findOneAndUpdate(
             { deliveryBoyId },
             {
                 $set: {
                     overallStatus: "approved",
-                    verifiedAt: new Date(),
-                    verifiedBy: adminId,
+                    approvedAt: new Date(),
+                    approvedBy: adminId,
+                    adminNotes: notes || "",
                 },
                 $push: {
+                    // [FIX] timeline sub-schema fields are event/timestamp/status/
+                    // verifiedBy/notes — was pushing nonexistent "approvedBy"/"note"
                     timeline: {
                         event: "kyc_approved",
                         timestamp: new Date(),
-                        approvedBy: adminId,
-                        note: notes,
+                        status: "approved",
+                        verifiedBy: adminId,
+                        notes,
                     },
                 },
             },
             { new: true }
         );
 
-        if (kyc) {
-            await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
-                kycStatus: "approved",
-                kycVerifiedAt: new Date(),
-                kycVerifiedBy: adminId,
-            });
-        }
+        // [FIX] DeliveryBoy schema (models/deliveryModels/DeliveryBoy.js) has no
+        // kycStatus/kycVerifiedAt/kycVerifiedBy fields — that update was a
+        // silent no-op every time. DeliveryKYC.overallStatus is the single
+        // source of truth for KYC state; removed the dead write rather than
+        // inventing fields on DeliveryBoy that nothing else reads.
+        // If you want DeliveryBoy to mirror KYC status, add those fields to
+        // the DeliveryBoy schema first, then reinstate this sync here.
 
         return { success: true, message: "KYC approved", data: kyc };
     } catch (err) {
@@ -258,31 +317,32 @@ export const approveKYC = async (deliveryBoyId, adminId, notes = "") => {
 
 export const rejectKYC = async (deliveryBoyId, adminId, reason) => {
     try {
+        // [FIX] schema has rejectedAt/rejectedBy/rejectionReason at the KYC
+        // document root — was writing nonexistent "verifiedAt"/"verifiedBy".
         const kyc = await DeliveryKYC.findOneAndUpdate(
             { deliveryBoyId },
             {
                 $set: {
                     overallStatus: "rejected",
                     rejectedAt: new Date(),
+                    rejectedBy: adminId,
                     rejectionReason: reason,
                 },
                 $push: {
                     timeline: {
                         event: "kyc_rejected",
                         timestamp: new Date(),
-                        rejectedBy: adminId,
-                        note: reason,
+                        status: "rejected",
+                        verifiedBy: adminId,
+                        notes: reason,
                     },
                 },
             },
             { new: true }
         );
 
-        if (kyc) {
-            await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
-                kycStatus: "rejected",
-            });
-        }
+        // [FIX] see approveKYC — DeliveryBoy has no kycStatus field, dead
+        // write removed rather than left silently failing.
 
         return { success: true, message: "KYC rejected", data: kyc };
     } catch (err) {

@@ -13,7 +13,7 @@ const userNotificationSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ["price_drop", "back_in_stock", "deal_alert", "wishlist_reminder", "cart_reminder", "general"],
+        enum: ["price_drop", "back_in_stock", "deal_alert", "wishlist_reminder", "cart_reminder", "general", "support_ticket"],
         required: true,
     },
     title: { type: String, required: true, maxlength: 200 },

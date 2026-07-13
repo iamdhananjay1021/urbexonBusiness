@@ -65,6 +65,17 @@ const STATUS_MAP = {
     // Generic online/offline
     online: { tone: "success", label: "Online" },
     offline: { tone: "neutral", label: "Offline" },
+
+    // Support ticket lifecycle + priority (AdminCustomerSupport.jsx)
+    open: { tone: "info", label: "Open" },
+    in_progress: { tone: "primary", label: "In Progress" },
+    waiting_customer: { tone: "warning", label: "Waiting Customer" },
+    resolved: { tone: "success", label: "Resolved" },
+    closed: { tone: "neutral", label: "Closed" },
+    low: { tone: "neutral", label: "Low" },
+    normal: { tone: "info", label: "Normal" },
+    high: { tone: "warning", label: "High" },
+    urgent: { tone: "danger", label: "Urgent" },
 };
 
 const StatusBadge = ({ status, dot = true, className = "" }) => {

@@ -23,6 +23,7 @@ import { sendEmailBackground } from "../../utils/emailService.js";
 import { deliveryAssignedEmail } from "../../utils/emailTemplates.js";
 import { DELIVERY_CONFIG } from "../../config/deliveryConfig.js";
 import { getRedis, isRedisUp } from "../../config/redis.js";
+import { broadcastToAdmins } from "../../utils/wsHub.js";
 import { handleRiderAccept, handleRiderReject, handleRiderCancel, MAX_ACTIVE_ORDERS } from "../../services/assignmentEngine.js";
 import { sendOrderStatusPush } from "../../services/fcmService.js";
 import { haversineKm, isPlausibleIndiaLatLng, isPlausibleMovement } from "../../services/geoEngine.js";
@@ -532,17 +533,27 @@ export const markDelivered = async (req, res) => {
 // ── PATCH /api/delivery/location ────────────────────────
 export const updateRiderLocation = async (req, res) => {
     try {
-        const { lat, lng, orderId, timestamp } = req.body;
+        const { lat, lng, orderId, timestamp, accuracy } = req.body;
         if (!lat || !lng) return res.status(400).json({ success: false, message: "lat and lng required" });
 
         const numLat = Number(lat);
         const numLng = Number(lng);
         const gpsTimestamp = Number.isFinite(Number(timestamp)) ? Number(timestamp) : null;
+        const numAccuracy = Number.isFinite(Number(accuracy)) ? Number(accuracy) : null;
 
         // Security: never trust frontend coordinates blindly — reject
         // out-of-range/impossible values outright (spoofed or garbage fixes).
         if (!isPlausibleIndiaLatLng(numLat, numLng)) {
             return res.status(400).json({ success: false, message: "Invalid coordinates" });
+        }
+
+        // Security: reject low-accuracy fixes server-side too — the frontend
+        // already filters these out before sending, but the backend must not
+        // rely on the client actually doing that (a modified/spoofed client
+        // could send an unfiltered fix straight to this endpoint).
+        const MAX_ACCURACY_M = 100;
+        if (numAccuracy !== null && numAccuracy > MAX_ACCURACY_M) {
+            return res.json({ success: true, ignored: true, reason: "low_accuracy" });
         }
 
         // BUG FIX: the delivery-panel runs a real-time `watchPosition` AND a
@@ -624,11 +635,19 @@ export const updateRiderLocation = async (req, res) => {
                     gpsTimestamp
                 ).catch(() => null);
 
-                sendToUser(String(order.user), "rider_location", {
+                const trackingPayload = {
                     orderId, lat: numLat, lng: numLng, riderName: db.name,
                     riderPhone: db.phone, at: new Date().toISOString(),
                     ...(tracking || {}),
-                });
+                };
+                sendToUser(String(order.user), "rider_location", trackingPayload);
+
+                // Admin fleet map (AdminMapDashboard) only refreshes its
+                // dataset every 30s via REST poll — every admin session is
+                // already joined to the shared "admins" room (wsHub auto-join
+                // on connect), so pushing rider fixes there too lets the map
+                // move riders live between polls instead of only on refresh.
+                broadcastToAdmins("rider_location", trackingPayload);
             }
         }
         res.json({ success: true });

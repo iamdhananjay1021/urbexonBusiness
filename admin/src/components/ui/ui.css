@@ -258,6 +258,36 @@
 @keyframes adm-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes adm-modal-in { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 
+/* ── Stat tile ─────────────────────────────────────────────────────── */
+.adm-stat-tile {
+    display: flex;
+    align-items: center;
+    gap: var(--adm-space-3);
+    padding: var(--adm-space-4);
+    background: var(--adm-card);
+    border: 1px solid var(--adm-border);
+    border-radius: var(--adm-radius-lg);
+    box-shadow: var(--adm-shadow-sm);
+    min-width: 0;
+}
+.adm-stat-tile-clickable { cursor: pointer; transition: transform var(--adm-transition-fast), box-shadow var(--adm-transition-fast); }
+.adm-stat-tile-clickable:hover { transform: translateY(-1px); box-shadow: var(--adm-shadow-md); }
+.adm-stat-tile-icon {
+    width: 38px; height: 38px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--adm-radius-md);
+}
+.adm-stat-tile-icon-primary { background: var(--adm-primary-tint); color: var(--adm-primary); }
+.adm-stat-tile-icon-success { background: var(--adm-success-tint); color: var(--adm-success); }
+.adm-stat-tile-icon-warning { background: var(--adm-warning-tint); color: var(--adm-warning); }
+.adm-stat-tile-icon-danger { background: var(--adm-danger-tint); color: var(--adm-danger); }
+.adm-stat-tile-icon-info { background: var(--adm-info-tint); color: var(--adm-info); }
+.adm-stat-tile-icon-neutral { background: var(--adm-neutral-tint); color: var(--adm-neutral); }
+.adm-stat-tile-body { min-width: 0; }
+.adm-stat-tile-value { font: var(--adm-text-h2); color: var(--adm-text-primary); }
+.adm-stat-tile-label { font: var(--adm-text-caption); color: var(--adm-text-secondary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.adm-stat-tile-sublabel { font: var(--adm-text-caption); color: var(--adm-muted); margin-top: 1px; }
+
 /* ── Form field ────────────────────────────────────────────────────── */
 .adm-field { display: flex; flex-direction: column; gap: 6px; }
 .adm-field-label { font: var(--adm-text-label); color: var(--adm-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }

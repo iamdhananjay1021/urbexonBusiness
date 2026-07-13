@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import useWebSocket from '../hooks/useWebSocket';
+import { useAdminWsContext } from '../contexts/AdminWsContext';
 import axios from 'axios';
 import '../styles/AdminApplicationQueue.css';
 
@@ -15,7 +15,12 @@ export default function AdminApplicationQueue() {
   const [filter, setFilter] = useState('submitted');
   const [stats, setStats] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const { ws } = useWebSocket();
+  // Reuse the one shared admin socket (AdminWsContext) instead of opening a
+  // second connection — `useWebSocket()` with no token never connects and
+  // its return value has no `ws` field, so this listener was previously
+  // silently non-functional (see AdminWsContext.jsx's own header comment
+  // for the duplicate-connection bug this pattern already caused once).
+  const { lastMessage } = useAdminWsContext();
 
   // Fetch applications on mount and filter change
   useEffect(() => {
@@ -24,26 +29,10 @@ export default function AdminApplicationQueue() {
 
   // Listen for realtime application updates
   useEffect(() => {
-    if (!ws) return;
-
-    const handleMessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.type === 'delivery:application_status_changed') {
-          // Refresh applications when status changes
-          fetchApplications();
-        }
-      } catch (err) {
-        console.error('WebSocket message error:', err);
-      }
-    };
-
-    ws.addEventListener('message', handleMessage);
-
-    return () => {
-      ws.removeEventListener('message', handleMessage);
-    };
-  }, [ws]);
+    if (lastMessage?.type === 'delivery:application_status_changed') {
+      fetchApplications();
+    }
+  }, [lastMessage]);
 
   const fetchApplications = async () => {
     try {

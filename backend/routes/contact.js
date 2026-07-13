@@ -1,16 +1,34 @@
 import express from "express";
 import Contact from "../models/Contact.js";
 import Newsletter from "../models/Newsletter.js";
-import { protect, adminOnly } from "../middlewares/authMiddleware.js";
+import Ticket from "../models/Ticket.js";
+import { protect, adminOnly, optionalAuth } from "../middlewares/authMiddleware.js";
 import { sendEmail } from "../utils/emailService.js"; // ✅ Nodemailer service
+import { broadcastToAdmins } from "../utils/wsHub.js";
+import { createNotification } from "../controllers/admin/notificationController.js";
 
 const router = express.Router();
 
 /* ==============================================
    POST /api/contact
    User se contact form submit
+
+   BUG FIX: this route never checked whether the requester was logged in
+   (no auth middleware at all, req.user always ignored) and only ever
+   wrote to the Contact model — which has NO admin-facing UI anywhere in
+   admin/src (its GET/PATCH routes below were fully working but never
+   called by any page). Meanwhile the admin's actual working "Customer
+   Support" screen (AdminCustomerSupport.jsx) only ever reads from the
+   separate Ticket model. Net effect: a logged-in customer's message was
+   saved successfully but was invisible to admin in the only screen they
+   check. Now: a logged-in submitter's message becomes a real Ticket (so
+   it shows up where admin already looks, with the existing WS broadcast +
+   admin notification the ticket system already provides); an anonymous
+   guest's message still falls back to the Contact record + email exactly
+   as before (now surfaced too — see AdminCustomerSupport.jsx's Guest
+   Messages panel).
 ============================================== */
-router.post("/", async (req, res) => {
+router.post("/", optionalAuth, async (req, res) => {
     const { name, email, phone, subject, message } = req.body;
 
     if (!name || !email || !message) {
@@ -18,11 +36,34 @@ router.post("/", async (req, res) => {
     }
 
     try {
-        // 1. Save in DB
+        if (req.user) {
+            const ticket = await Ticket.create({
+                customerId: req.user._id,
+                customerName: name || req.user.name || "Customer",
+                customerEmail: email || req.user.email,
+                customerPhone: phone || req.user.phone || "",
+                subject: subject?.trim() || "Contact form submission",
+                category: "other",
+                messages: [{ sender: "customer", senderId: req.user._id, senderName: name || req.user.name || "Customer", message }],
+                lastReplyAt: new Date(),
+                lastReplyBy: "customer",
+                activityLog: [{ action: "created", actorId: req.user._id, actorName: name || req.user.name || "Customer" }],
+            });
+            createNotification({
+                type: "system",
+                title: "New Support Ticket",
+                message: `${ticket.customerName}: ${ticket.subject}`,
+                link: `/admin/support/${ticket._id}`,
+                meta: { ticketId: String(ticket._id) },
+            }).catch(() => {});
+            broadcastToAdmins("admin:ticket_event", { ticketId: String(ticket._id), event: "created", status: ticket.status });
+            return res.status(200).json({ success: true });
+        }
+
+        // Anonymous/guest submission — unchanged Contact-record path.
         await Contact.create({ name, email, phone, subject, message });
 
-        // 2. Send Email via Nodemailer
-        await sendEmail({
+        const emailResult = await sendEmail({
             to: "dhananjay072007@gmail.com",
             subject: `📩 New Contact: ${subject || "No Subject"} — ${name}`,
             html: `
@@ -47,6 +88,14 @@ router.post("/", async (req, res) => {
                 </div>
             `
         });
+        // BUG FIX: the email result was previously never checked — a total
+        // send failure (bad API key, rate limit, etc.) was completely
+        // invisible. The customer still gets "message sent" (the DB write,
+        // which is the actual source of truth, already succeeded), but
+        // this is no longer silent server-side.
+        if (!emailResult.success) {
+            console.error("❌ Contact notification email failed:", emailResult.error);
+        }
 
         res.status(200).json({ success: true });
 

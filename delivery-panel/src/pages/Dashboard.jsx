@@ -12,6 +12,16 @@ import { startAlert, stopAlert, playNotification } from "../utils/notificationSo
 import useFcm from "../hooks/useFcm";
 import { useLocationTracking } from "../hooks/useLocationTracking";
 
+// Haversine, meters — used below for the live "distance to target" display.
+const distanceMeters = (lat1, lng1, lat2, lng2) => {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 const Dashboard = () => {
   const { rider, logout } = useAuth();
   const navigate = useNavigate();
@@ -26,11 +36,12 @@ const Dashboard = () => {
   const [newOrderAlert, setNewOrderAlert] = useState(null);
   const wsRef = useRef(null);
 
-  const activeOrder = orders.find(o => o.orderStatus === "OUT_FOR_DELIVERY");
-  // BUG FIX: this used to track only when there was an active order —
-  // the exact bug ActiveOrders.jsx's copy had already been fixed for
-  // (Zepto/Swiggy-style riders report location continuously while
-  // ONLINE, not just mid-delivery). Now both pages share one hook.
+  // Matches ActiveOrders.jsx's definition: a rider can only ever have one
+  // non-delivered assigned order at a time (MAX_ACTIVE_ORDERS = 1 server-side),
+  // so "assigned to me and not yet delivered" is "my current order" across
+  // its whole lifecycle, not just OUT_FOR_DELIVERY — otherwise the Dashboard's
+  // Current Order card/map stayed hidden through ASSIGNED/ARRIVING_VENDOR.
+  const activeOrder = orders.find(o => !!o.delivery?.assignedTo && o.orderStatus !== "DELIVERED");
   const riderPos = useLocationTracking(isOnline, activeOrder?._id);
 
   const load = useCallback(async () => {
@@ -272,14 +283,28 @@ const Dashboard = () => {
               )}
 
               {/* Live Map */}
-              {riderPos ? (
+              {riderPos ? (() => {
+                const notYetPickedUp = ["PENDING", "SEARCHING_RIDER", "ASSIGNED", "ARRIVING_VENDOR"].includes(activeOrder.delivery?.status);
+                const leg = notYetPickedUp ? "TO_VENDOR" : "TO_CUSTOMER";
+                const tLat = leg === "TO_VENDOR" ? activeOrder.vendorLat : (activeOrder.latitude || activeOrder.deliveryAddress?.lat);
+                const tLng = leg === "TO_VENDOR" ? activeOrder.vendorLng : (activeOrder.longitude || activeOrder.deliveryAddress?.lng);
+                const liveDistanceKm = tLat != null && tLng != null
+                  ? Math.round((distanceMeters(riderPos.lat, riderPos.lng, tLat, tLng) / 1000) * 10) / 10
+                  : null;
+                return (
                 <div style={{ borderRadius: 8, overflow: "hidden", marginTop: 12, border: `1px solid ${G.border}` }}>
                   <DeliveryMap
-                    myLat={riderPos.lat}
-                    myLng={riderPos.lng}
+                    riderLat={riderPos.lat}
+                    riderLng={riderPos.lng}
                     destLat={activeOrder.latitude || activeOrder.deliveryAddress?.lat}
                     destLng={activeOrder.longitude || activeOrder.deliveryAddress?.lng}
                     destLabel={activeOrder.address || "Customer"}
+                    vendorLat={activeOrder.vendorLat}
+                    vendorLng={activeOrder.vendorLng}
+                    vendorLabel={activeOrder.vendorName || "Pickup Point"}
+                    leg={leg}
+                    distanceKm={liveDistanceKm}
+                    status={activeOrder.delivery?.status}
                     height={140}
                   />
                   <div style={{ padding: "6px 12px", fontSize: 10, color: G.green600, background: "#f9fafb", display: "flex", justifyContent: "space-between" }}>
@@ -287,7 +312,8 @@ const Dashboard = () => {
                     <span style={{ fontWeight: 700, color: "#059669" }}>● GPS ON</span>
                   </div>
                 </div>
-              ) : (
+                );
+              })() : (
                 <div style={{ height: 100, background: "linear-gradient(135deg, #e8f5e9, #f1f8e9)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 12 }}>
                   <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 24 }}>🗺️</div>

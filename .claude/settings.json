@@ -5,7 +5,15 @@
       "Bash(node --check controllers/couponController.js)",
       "Bash(node --check routes/couponRoutes.js)",
       "Bash(grep -n \"createdAt\" ../../client/src/contexts/AuthContext.jsx ../controllers/authController.js 2>/dev/null | head -10)",
-      "Read(//c/Ecommerce/client/src/contexts/**)"
+      "Read(//c/Ecommerce/client/src/contexts/**)",
+      "Bash(node verify_cancel_fixes.mjs)",
+      "Bash(node -e ' *)",
+      "Bash(node verify_reconcile.mjs)",
+      "Bash(rm -f /c/Ecommerce/Urbexon/testing/verify_reconcile.mjs)",
+      "Bash(node verify_reconcile_tmp.mjs)",
+      "Bash(grep -v \"//\")",
+      "Bash(node --check controllers/admin/ticketController.js)",
+      "Bash(node --check models/UserNotification.js)"
     ]
   }
 }

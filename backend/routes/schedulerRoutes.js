@@ -29,6 +29,19 @@ router.get('/scheduler/status', protect, adminOnly, (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════
+// POST /api/admin/scheduler/restart
+// Stop + re-register every cron job (Ops Dashboard "Restart Scheduler")
+// ══════════════════════════════════════════════════════
+router.post('/scheduler/restart', protect, adminOnly, async (req, res) => {
+    try {
+        const stats = await scheduler.restart();
+        res.json({ success: true, message: 'Scheduler restarted', data: stats });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Failed to restart scheduler' });
+    }
+});
+
+// ══════════════════════════════════════════════════════
 // GET /api/admin/scheduler/jobs
 // List all scheduled jobs with details
 // ══════════════════════════════════════════════════════
@@ -78,6 +91,7 @@ const getJobDescription = (jobName) => {
         'Refresh Cache Data': 'Refreshes Redis cache for banners, categories, products',
         'Auto-Assign Delivery Boys': 'Automatically assigns delivery boys to pending orders',
         'Update Delivery Status': 'Updates delivery status based on time thresholds',
+        'Reconcile Active Orders Counter': 'Repairs DeliveryBoy.activeOrders drift against real assigned-order counts and logs the result',
     };
 
     return descriptions[jobName] || 'Unknown job';

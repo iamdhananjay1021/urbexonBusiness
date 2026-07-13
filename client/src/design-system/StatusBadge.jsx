@@ -33,6 +33,12 @@ const STATUS_MAP = {
   active: "success",
   expired: "error",
   inactive: "neutral",
+  // Support ticket lifecycle (Contactus.jsx "My Queries")
+  open: "info",
+  in_progress: "info",
+  waiting_customer: "warning",
+  resolved: "success",
+  closed: "neutral",
 };
 
 const DOT_CLASSES = {

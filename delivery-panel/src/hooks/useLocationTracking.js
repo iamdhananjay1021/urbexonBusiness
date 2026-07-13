@@ -61,7 +61,7 @@ export const useLocationTracking = (isOnline, activeOrderId) => {
             // older, regardless of which HTTP request arrives at the
             // server last (previously caused the rider marker to visibly
             // jump backward on the customer's map).
-            const body = { lat, lng, timestamp };
+            const body = { lat, lng, timestamp, accuracy };
             if (activeOrderId) body.orderId = activeOrderId;
             api.patch("/delivery/location", body).catch(() => { });
         };
@@ -69,7 +69,7 @@ export const useLocationTracking = (isOnline, activeOrderId) => {
         const watchId = navigator.geolocation.watchPosition(
             (p) => sendLocation(p.coords.latitude, p.coords.longitude, p.timestamp, p.coords.accuracy),
             () => { },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
 
         // Fallback: force an update every 15s even if no movement detected

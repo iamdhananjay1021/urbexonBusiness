@@ -34,9 +34,13 @@ const AdminCustomers = lazy(() => import("../pages/AdminCustomers"));
 const AdminRefundReturn = lazy(() => import("../pages/AdminRefundReturn"));
 const AdminCoupons = lazy(() => import("../pages/AdminCoupons"));
 const AdminMapDashboard = lazy(() => import("../pages/AdminMapDashboard"));
+const AdminOperations = lazy(() => import("../pages/AdminOperations"));
+const AdminCustomerSupport = lazy(() => import("../pages/AdminCustomerSupport"));
 const AdminDeliverySettings = lazy(() => import("../pages/AdminDeliverySettings"));
 const AdminApplicationQueue = lazy(() => import("../pages/AdminApplicationQueue"));
 const SchedulerDashboard = lazy(() => import("../pages/SchedulerDashboard"));
+const AdminZone = lazy(() => import("../pages/AdminZone"));
+const AdminKYC = lazy(() => import("../pages/AdminKYC"));
 
 const Loader = () => (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}>
@@ -82,6 +86,7 @@ const AppRoutes = () => (
                     <Route path="customers" element={<AdminCustomers />} />
                     <Route path="delivery/applications" element={<AdminApplicationQueue />} />
                     <Route path="delivery-boys" element={<AdminDeliveryBoys />} />
+                    <Route path="delivery/kyc" element={<AdminKYC />} />
 
                     {/* Finance */}
                     <Route path="subscriptions" element={<AdminSubscriptions />} />
@@ -92,9 +97,12 @@ const AppRoutes = () => (
 
                     {/* Operations */}
                     <Route path="pincodes" element={<AdminPincodes />} />
+                    <Route path="zones" element={<AdminZone />} />
                     <Route path="local-delivery" element={<AdminLocalDelivery />} />
                     <Route path="delivery-settings" element={<AdminDeliverySettings />} />
                     <Route path="map" element={<AdminMapDashboard />} />
+                    <Route path="operations" element={<AdminOperations />} />
+                    <Route path="support" element={<AdminCustomerSupport />} />
                     <Route path="scheduler" element={<SchedulerDashboard />} />
                 </Route>
             </Route>

@@ -331,6 +331,27 @@ export const handleRiderReject = async (orderId, riderId) => {
 };
 
 /* ═══════════════════════════════════════════════════
+   PUBLIC: releaseRiderSlot
+   Atomically decrements a rider's activeOrders, floored at 0, in a single
+   update — no separate floor-correction round trip, so there's no window
+   for a concurrent decrement to push the counter negative before the floor
+   correction lands. Used by every cancellation path that unassigns a rider
+   (admin cancel, vendor cancel) so a stale/cancelled order can never leave
+   a rider's slot permanently occupied.
+═══════════════════════════════════════════════════ */
+export const releaseRiderSlot = async (riderId) => {
+    if (!riderId) return;
+    try {
+        await DeliveryBoy.updateOne(
+            { _id: riderId },
+            [{ $set: { activeOrders: { $max: [{ $subtract: ["$activeOrders", 1] }, 0] } } }]
+        );
+    } catch (err) {
+        console.warn(`[Assignment] Failed to release rider slot for ${riderId}: ${err.message}`);
+    }
+};
+
+/* ═══════════════════════════════════════════════════
    PUBLIC: handleRiderCancel (mid-delivery)
 ═══════════════════════════════════════════════════ */
 export const handleRiderCancel = async (orderId, riderId, reason = "") => {

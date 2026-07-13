@@ -44,7 +44,7 @@ import DeliveryBoy from "../models/deliveryModels/DeliveryBoy.js";
 import { addUserStream, removeUserStream, publishToUser } from "../utils/realtimeHub.js";
 import { sendNotification as sendToUser } from "../utils/notificationQueue.js";
 import { broadcastToUsers } from "../utils/wsHub.js";
-import { startAssignment, cancelAssignment } from "../services/assignmentEngine.js";
+import { startAssignment, cancelAssignment, releaseRiderSlot } from "../services/assignmentEngine.js";
 import { createNotification } from "./admin/notificationController.js";
 import Vendor from "../models/vendorModels/Vendor.js";
 import { createShiprocketOrder } from "../utils/Shiprocketservice.js";
@@ -951,8 +951,29 @@ export const updateOrderStatus = async (req, res) => {
             // Admin force-cancel previously never triggered a refund at all —
             // a PAID Razorpay order stayed payment.status:"PAID" forever.
             await refundOrderPayment(order, { reason: req.body?.reason || "Cancelled by admin", ip: getClientIp(req) });
+            // BUG FIX: a rider already assigned to this order (delivery.assignedTo
+            // set, reachable from READY_FOR_PICKUP or even OUT_FOR_DELIVERY —
+            // i.e. mid-delivery) previously only got the order's own
+            // delivery.status flipped to CANCELLED — assignedTo/riderName/
+            // riderPhone/assignedAt were left in place and the rider's
+            // activeOrders counter was never released, permanently occupying
+            // their MAX_ACTIVE_ORDERS slot. Order history/timeline is
+            // untouched here (already written above via applyOrderTransition).
             if (order.delivery?.assignedTo) {
-                Order.updateOne({ _id: order._id }, { $set: { "delivery.status": "CANCELLED" } }).catch(() => { });
+                const cancelledRiderId = order.delivery.assignedTo;
+                await Order.updateOne(
+                    { _id: order._id },
+                    {
+                        $set: {
+                            "delivery.status": "CANCELLED",
+                            "delivery.assignedTo": null,
+                            "delivery.riderName": "",
+                            "delivery.riderPhone": "",
+                            "delivery.assignedAt": null,
+                        },
+                    }
+                ).catch(() => { });
+                await releaseRiderSlot(cancelledRiderId);
             }
             if (order.orderMode === "URBEXON_HOUR") {
                 cancelAssignment(order._id);
