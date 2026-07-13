@@ -16,9 +16,11 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
-// Fall back to the backend's own .env for MONGO_URI
+// Fall back to the backend's own .env for MONGO_URI. override:true is
+// required because testing/.env ships an empty MONGO_URI= placeholder, and
+// without override dotenv keeps that empty value instead of the real one.
 if (!process.env.MONGO_URI) {
-    dotenv.config({ path: path.resolve(__dirname, "../../../backend/.env") });
+    dotenv.config({ path: path.resolve(__dirname, "../../../backend/.env"), override: true });
 }
 
 const MONGO_URI = process.env.MONGO_URI;

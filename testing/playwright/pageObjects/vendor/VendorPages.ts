@@ -11,7 +11,11 @@ export class VendorLoginPage extends BasePage {
 
     get identifier() { return this.page.locator('form input:not([type="password"])').first(); }
     get password() { return this.page.locator('input[type="password"]').first(); }
-    get submit() { return this.page.locator('form button[type="submit"], form button').first(); }
+    // Scope to [type="submit"] only: the password show/hide toggle is a
+    // <button type="button"> that sits before the real submit button, so a
+    // `form button` union selector + .first() clicked the eye icon and the
+    // form never submitted (same bug that hit the delivery login POM).
+    get submit() { return this.page.locator('form button[type="submit"]').first(); }
     get applyAsVendorLink() { return this.page.getByRole("link", { name: /apply as vendor/i }); }
 
     async open() { await this.goto(this.path); }

@@ -196,6 +196,7 @@ export const useUHCheckout = (buyNowItem = null) => {
     }, []);
 
     /* ── COD ── */
+    // ✅ handleCOD — fixed
     const handleCOD = useCallback(async () => {
         try {
             setLoading(true); setError("");
@@ -205,6 +206,14 @@ export const useUHCheckout = (buyNowItem = null) => {
                 contact,
                 address: selectedAddress,
                 pincode: selectedAddress?.pincode,
+                // ✅ FIX: extract lat/lng from the selected address and send them
+                // top-level — createOrder() (orderController.js) reads
+                // req.body.latitude/longitude directly, NOT from inside `address`.
+                // Without this, order.latitude/order.longitude were always
+                // undefined, so distance/ETA could never be computed for the
+                // customer leg of delivery, no matter how good the rider's GPS was.
+                latitude: selectedAddress?.lat,
+                longitude: selectedAddress?.lng,
                 deliveryType: "URBEXON_HOUR",
                 orderMode: "URBEXON_HOUR",
                 distanceKm: 0,
@@ -222,6 +231,7 @@ export const useUHCheckout = (buyNowItem = null) => {
     }, [checkoutItems, contact, selectedAddress, clearUH, navigate, buyNowItem]);
 
     /* ── Online ── */
+    // ✅ handlePayOnline — fixed
     const handlePayOnline = useCallback(async () => {
         try {
             setLoading(true); setError(""); setPayState("processing");
@@ -229,14 +239,17 @@ export const useUHCheckout = (buyNowItem = null) => {
                 items: checkoutItems,
                 contact,
                 address: selectedAddress,
+                // ✅ FIX: same missing lat/lng issue as handleCOD above.
+                latitude: selectedAddress?.lat,
+                longitude: selectedAddress?.lng,
                 navigate,
                 onSuccess: () => { if (!buyNowItem) clearUH(); setPayState("success"); },
                 onFailure: (msg) => { setError(msg); setPayState("failed"); setLoading(false); },
                 onCancel: (msg) => { setError(msg); setPayState("failed"); setLoading(false); },
-                deliveryType: "URBEXON_HOUR",  // ← yeh add karo
+                deliveryType: "URBEXON_HOUR",
                 orderMode: "URBEXON_HOUR",
                 distanceKm: 0,
-                coupon: null, // Pass null for coupon
+                coupon: null,
             });
         } catch (err) {
             setError(err.message || "Payment initialization failed.");

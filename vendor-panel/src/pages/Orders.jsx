@@ -1,6 +1,12 @@
 /**
- * Orders.jsx - v3.1 Production
+ * Orders.jsx - v3.2 Production
  * Grouped workflow tabs + vendor/self-delivery aware actions
+ *
+ * FIX (v3.2): Order ID short-code was using .slice(-6), while the
+ * customer-facing OrderDetails.jsx page uses .slice(-8) — same order showed
+ * a different, shorter ID here than what the customer sees, making it hard
+ * for vendor support to match an order a customer references. Standardized
+ * to 8 characters.
  */
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,6 +25,8 @@ const STATUS_CFG = {
 };
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
+// ✅ FIX: 8 chars — matches customer-facing OrderDetails.jsx and the admin panel.
+const shortOrderId = (id) => String(id || "").slice(-8).toUpperCase();
 const isVendorSelfDelivery = (order) => order?.orderMode === "URBEXON_HOUR" && order?.delivery?.provider === "VENDOR_SELF";
 const isLocalRiderDelivery = (order) => order?.orderMode === "URBEXON_HOUR" && order?.delivery?.provider === "LOCAL_RIDER";
 
@@ -295,7 +303,7 @@ const Orders = () => {
                   return (
                     <tr key={o._id} style={{ borderBottom: idx < orders.length - 1 ? "1px solid #f3f4f6" : "none" }}>
                       <td style={{ padding: "13px 16px", fontWeight: 700, color: "#111827", fontSize: 12, fontFamily: "monospace" }}>
-                        #{o._id?.slice(-6)?.toUpperCase()}
+                        #{shortOrderId(o._id)}
                       </td>
                       <td style={{ padding: "13px 16px" }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>

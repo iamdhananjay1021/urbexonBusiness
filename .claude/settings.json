@@ -13,7 +13,23 @@
       "Bash(node verify_reconcile_tmp.mjs)",
       "Bash(grep -v \"//\")",
       "Bash(node --check controllers/admin/ticketController.js)",
-      "Bash(node --check models/UserNotification.js)"
+      "Bash(node --check models/UserNotification.js)",
+      "Bash(DEV_API_URL=http://127.0.0.1:9001 npx playwright test --project=api --grep \"phone-number login|scoped httpOnly|resolve the seeded|operator injection in password|registering with role|credentials flag\" --reporter=line)",
+      "Bash(curl -s -X POST http://127.0.0.1:9001/api/auth/login -H 'Content-Type: application/json' -d '{\"phone\":\"9800000001\",\"password\":\"QaTest@12345\"}' --max-time 8)",
+      "Bash(curl -s -D - -o /dev/null http://127.0.0.1:9001/api/products?limit=1 -H 'Origin: http://localhost:5173' --max-time 8)",
+      "Bash(DEV_API_URL=http://127.0.0.1:9001 npx playwright test --project=api --grep \"allowed origin is echoed|role=admin must NOT\" --reporter=line)",
+      "Bash(DEV_API_URL=http://127.0.0.1:9001 npx playwright test --project=api --grep \"allowed origin is echoed|role=admin must NOT\")",
+      "Bash(DEV_API_URL=http://127.0.0.1:9001 npx playwright test --project=api tests/flows)",
+      "Bash(node playwright/seed/seed.mjs)",
+      "Bash(SEED=0 DEV_API_URL=http://127.0.0.1:9001 npx playwright test --project=api tests/flows tests/payments)",
+      "Bash(SEED=0 DEV_API_URL=http://127.0.0.1:9001 npx playwright test --project=chromium --reporter=line)",
+      "Bash(curl -s -o /dev/null -w \"admin=%{http_code}\\\\n\" \"http://localhost:5174\" --max-time 4)",
+      "Bash(SEED=0 DEV_API_URL=http://127.0.0.1:9001 npx playwright test --project=chromium tests/admin --reporter=line)",
+      "Bash(curl -s -o /dev/null -w \"vendor=%{http_code}\\\\n\" \"http://localhost:5175\" --max-time 5)",
+      "Bash(DEV_API_URL=http://127.0.0.1:9001 npx playwright test)",
+      "Bash(SEED=0 DEV_API_URL=http://127.0.0.1:9001 npx playwright test --project=api tests/payments --reporter=line)",
+      "Bash(node --check backend/controllers/delivery/deliveryController.js)",
+      "Bash(DEV_API_URL=http://127.0.0.1:9001 npx playwright test --project=chromium tests/delivery/gps-location.spec.ts --reporter=line)"
     ]
   }
 }

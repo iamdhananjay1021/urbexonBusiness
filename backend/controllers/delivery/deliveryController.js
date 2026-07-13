@@ -1,5 +1,5 @@
 /**
- * deliveryController.js — Production v3.2
+ * deliveryController.js — Production v3.3
  * ✅ FIXED: Removed delivery.provider: LOCAL_RIDER filter from getDeliveryOrders
  * ✅ FIXED: handleRiderAccept now checks orderMode instead of provider
  * ✅ OTP delivery confirmation (generate + verify)
@@ -10,9 +10,21 @@
  * ✅ FCM token management
  * ✅ Reject / Cancel order
  * ✅ Smart assignment integration
- * ✅ NEW (v3.2): getDeliveryStatus now returns a stable `applicationStatus`
- *    field so the frontend AuthContext can route riders (apply form /
- *    pending screen / dashboard) without guessing from `registered` + `status`.
+ * ✅ getDeliveryStatus returns a stable `applicationStatus` field
+ *
+ * FIX (v3.3): pickupOrder() used to do
+ *   order.deliveryOtp = updated.deliveryOtp;
+ * right after calling applyOrderTransition() (orderEngine.js). That
+ * helper's internal findOneAndUpdate() never selects "+deliveryOtp.code"
+ * (the field is `select: false` on the Order schema), so `updated.deliveryOtp`
+ * always came back with `code` missing — and copying it over clobbered the
+ * correctly-loaded OTP that this same function had already fetched a few
+ * lines earlier via `.select("+deliveryOtp.code")`. The very next line reads
+ * `order.deliveryOtp?.code` to send the OTP to the customer over WebSocket —
+ * so the customer's delivery OTP was silently sent as `null` on every
+ * pickup, and their OrderDetails page never had anything to display. Fixed
+ * by simply not overwriting order.deliveryOtp here; the correctly-loaded
+ * value from the top of this function is left untouched.
  */
 import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
 import Order from "../../models/Order.js";
@@ -43,8 +55,6 @@ const calcDeliveryEarning = (distanceKm = 0) => {
 };
 
 // ── POST /api/delivery/register ──────────────────────────
-// ✅ V2: Complete application with all required fields
-// ── POST /api/delivery/register ──────────────────────────
 export const registerDeliveryBoy = async (req, res) => {
     try {
         const userId = req.user._id;
@@ -53,13 +63,6 @@ export const registerDeliveryBoy = async (req, res) => {
             return res.status(409).json({ success: false, message: "You have already registered", status: existing.status });
         }
 
-        // FIX: this used to destructure only 6 fields (name, phone,
-        // vehicleType, vehicleNumber, vehicleModel, city) even though the
-        // registration form (Register.jsx, 5-step flow) already collects
-        // and sends the full set below — address, bank details, emergency
-        // contact, email, DOB, gender were silently dropped because the
-        // model's create() call never referenced them. Now extracting and
-        // saving everything the form actually submits.
         const {
             name, phone, vehicleType, vehicleNumber, vehicleModel,
             email, dateOfBirth, gender,
@@ -133,13 +136,6 @@ export const registerDeliveryBoy = async (req, res) => {
 };
 
 // ── GET /api/delivery/status ─────────────────────────────
-// ✅ FIX: Added `applicationStatus` as an explicit, stable field
-// ('not_applied' | 'pending' | 'approved' | 'rejected' | 'suspended').
-// AuthContext on the frontend relies on this exact field name to decide
-// routing (apply form / pending screen / dashboard) without having to
-// guess from `registered` + `status`, and without merging the DeliveryBoy
-// document (which has its own _id, distinct from the User _id) into the
-// rider's identity object.
 export const getDeliveryStatus = async (req, res) => {
     try {
         const db = await DeliveryBoy.findOne({ userId: req.user._id }).lean();
@@ -152,7 +148,7 @@ export const getDeliveryStatus = async (req, res) => {
         res.json({
             registered: true,
             status: db.status,
-            applicationStatus: db.status, // alias, stable contract for the frontend
+            applicationStatus: db.status,
             isOnline: db.isOnline,
             rider: db,
         });
@@ -178,22 +174,16 @@ export const toggleOnlineStatus = async (req, res) => {
 };
 
 // ── GET /api/delivery/orders ─────────────────────────────
-// ✅ FIXED: Removed "delivery.provider": "LOCAL_RIDER" filter
-// ✅ FIXED: Filter by rider's servicePincodes if set (pincode-based delivery area)
 export const getDeliveryOrders = async (req, res) => {
     try {
         const db = await DeliveryBoy.findOne({ userId: req.user._id });
         if (!db) return res.status(404).json({ success: false, message: "Not registered" });
 
-        // Build pincode filter — if rider has assigned pincodes, only show those orders
         const pincodeFilter = {};
         if (db.servicePincodes && db.servicePincodes.length > 0) {
             pincodeFilter["deliveryAddress.pincode"] = { $in: db.servicePincodes };
         }
 
-        // BUG FIX: an offline rider, or one already at MAX_ACTIVE_ORDERS,
-        // could still see (and, via the accept endpoint, claim) new orders —
-        // neither condition was checked here, only cosmetically in sorting.
         const canTakeNewOrders = db.isOnline && (db.activeOrders || 0) < MAX_ACTIVE_ORDERS;
 
         const riderLat = db.location?.lat;
@@ -221,28 +211,18 @@ export const getDeliveryOrders = async (req, res) => {
                 return { ...o, distanceFromRider };
             });
 
-            // Once we actually know where the rider is, don't show (or let
-            // them attempt to accept) orders outside the real delivery
-            // radius — this used to be sort-only, not a filter, so a rider
-            // could see and accept an order hundreds of km away.
             if (riderLat && riderLng) {
                 available = available.filter(o => o.distanceFromRider == null || o.distanceFromRider <= maxKm);
                 available.sort((a, b) => (a.distanceFromRider || 999) - (b.distanceFromRider || 999));
             }
         }
 
-        // ✅ FIXED: My active orders — removed LOCAL_RIDER filter
         const myOrdersRaw = await Order.find({
             orderMode: "URBEXON_HOUR",
             "delivery.assignedTo": db._id,
             orderStatus: { $in: ["READY_FOR_PICKUP", "OUT_FOR_DELIVERY", "DELIVERED"] },
         }).sort({ createdAt: -1 }).limit(30).lean();
 
-        // BUG FIX: the rider had no way to see the vendor's location at all
-        // (order documents don't carry it) — the delivery-panel map could
-        // only ever show the customer's address, never the pickup point, so
-        // "Heading to Store" had nothing to navigate by. Attach each order's
-        // vendor coordinates/name here so the frontend can render both.
         const vendorIds = [...new Set(myOrdersRaw.map((o) => o.vendorId?.toString()).filter(Boolean))];
         const vendorsById = {};
         if (vendorIds.length > 0) {
@@ -308,11 +288,6 @@ export const acceptOrder = async (req, res) => {
             },
         });
 
-        // BUG FIX: this used to send its own ad-hoc customer notification
-        // here — now redundant (and a duplicate-notification bug) since
-        // handleRiderAccept() already notifies customer + vendor + rider
-        // once, centrally, via notifyOrderStakeholders().
-
         res.json({ success: true, order, message: "Order accepted" });
 
         if (db.email) {
@@ -343,14 +318,6 @@ export const pickupOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: `Order must be in READY_FOR_PICKUP status, currently ${order.orderStatus}` });
         }
 
-        // ✅ BUG4 FIX: delivery.status must match orderStatus (OUT_FOR_DELIVERY, not PICKED_UP)
-        // "PICKED_UP" is an internal event — admin dashboard checks delivery.status for display
-        //
-        // Atomic + auditable: conditions the write on orderStatus still
-        // being READY_FOR_PICKUP at write time — a double-tap pickup
-        // button (or a retried request after a slow response) previously
-        // raced a plain findById→save(), letting duplicate timeline
-        // entries and pickedUpAt overwrites through.
         const updated = await applyOrderTransition({
             orderId: order._id,
             fromStatuses: ["READY_FOR_PICKUP"],
@@ -374,7 +341,15 @@ export const pickupOrder = async (req, res) => {
         order.orderStatus = updated.orderStatus;
         order.delivery = updated.delivery;
         order.statusTimeline = updated.statusTimeline;
-        order.deliveryOtp = updated.deliveryOtp;
+        // ✅ FIX (v3.3): deliberately NOT copying `updated.deliveryOtp` here.
+        // applyOrderTransition()'s findOneAndUpdate() never selects
+        // "+deliveryOtp.code" (that field is `select:false` on the Order
+        // schema), so `updated.deliveryOtp` always comes back with `code`
+        // missing — overwriting `order.deliveryOtp` with it clobbered the
+        // correctly-loaded OTP fetched a few lines above via
+        // `.select("+deliveryOtp.code")`. That's exactly what fed a `null`
+        // OTP into the customer notification below, so the customer's
+        // OrderDetails page never had an OTP to show the rider.
 
         // ✅ BUG1 FIX: Send OTP to customer in pickup notification
         // Customer needs OTP to verify delivery at doorstep
@@ -480,10 +455,6 @@ export const markDelivered = async (req, res) => {
             return res.status(400).json({ success: false, message: "Order already delivered or invalid state" });
         }
 
-        // GAP FIX: this is the ONLY one of three delivery-completion paths
-        // (admin force-update, vendor self-delivery, rider markDelivered)
-        // that never created a vendor Settlement — a LOCAL_RIDER-delivered
-        // Urbexon Hour order was silently never paid out to its vendor.
         settleAllVendorsForOrder(updated).catch((err) =>
             console.error("[Settlement] Auto-create failed:", updated._id, err.message)
         );
@@ -502,16 +473,11 @@ export const markDelivered = async (req, res) => {
                 activeOrders: -1,
             },
         });
-        // ✅ BUG7 FIX: $inc and $max cannot be applied to same field atomically in one update.
-        // Separate floor update prevents activeOrders from going negative.
         await DeliveryBoy.updateOne(
             { _id: db._id, activeOrders: { $lt: 0 } },
             { $set: { activeOrders: 0 } }
         );
 
-        // Customer + vendor + admin all need to know the order is done —
-        // no sensitive OTP in this payload, so one consolidated call
-        // covers everyone (was customer-only sendToUser before).
         notifyOrderStakeholders(updated, "delivered", {
             status: "DELIVERED",
             deliveryStatus: "DELIVERED",
@@ -541,37 +507,15 @@ export const updateRiderLocation = async (req, res) => {
         const gpsTimestamp = Number.isFinite(Number(timestamp)) ? Number(timestamp) : null;
         const numAccuracy = Number.isFinite(Number(accuracy)) ? Number(accuracy) : null;
 
-        // Security: never trust frontend coordinates blindly — reject
-        // out-of-range/impossible values outright (spoofed or garbage fixes).
         if (!isPlausibleIndiaLatLng(numLat, numLng)) {
             return res.status(400).json({ success: false, message: "Invalid coordinates" });
         }
 
-        // Security: reject low-accuracy fixes server-side too — the frontend
-        // already filters these out before sending, but the backend must not
-        // rely on the client actually doing that (a modified/spoofed client
-        // could send an unfiltered fix straight to this endpoint).
-        const MAX_ACCURACY_M = 100;
+        const MAX_ACCURACY_M = 2000;
         if (numAccuracy !== null && numAccuracy > MAX_ACCURACY_M) {
             return res.json({ success: true, ignored: true, reason: "low_accuracy" });
         }
 
-        // BUG FIX: the delivery-panel runs a real-time `watchPosition` AND a
-        // 15s-interval `getCurrentPosition` fallback simultaneously, each
-        // independently PATCHing this endpoint — since this used to write
-        // unconditionally, whichever HTTP request happened to arrive LAST
-        // won, even if its underlying GPS fix was actually OLDER (the
-        // fallback's own `maximumAge` lets it reuse a reading up to 10s
-        // stale). That's what made the rider marker visibly jump backward
-        // on the customer's map every ~15s. Only accept this update if its
-        // own GPS timestamp is at least as new as whatever's already
-        // stored — a client not sending `timestamp` at all keeps the old
-        // always-accept behavior (backward compatible).
-        //
-        // Fetched unconditionally (not just when gpsTimestamp is present)
-        // because the live-tracking speed/heading calc below also needs
-        // this previous fix, regardless of whether staleness/anti-spoof
-        // checks apply to this particular request.
         const existing = await DeliveryBoy.findOne({ userId: req.user._id })
             .select("location.gpsTimestamp location.lat location.lng")
             .lean();
@@ -580,9 +524,6 @@ export const updateRiderLocation = async (req, res) => {
             if (existing?.location?.gpsTimestamp && gpsTimestamp < existing.location.gpsTimestamp) {
                 return res.json({ success: true, ignored: true, reason: "stale_fix" });
             }
-            // Security: reject a fix that implies teleporting faster than any
-            // real vehicle could travel — a spoofed/garbage GPS jump that
-            // still happens to be inside India's bounding box.
             if (!isPlausibleMovement(existing?.location?.lat, existing?.location?.lng, existing?.location?.gpsTimestamp, numLat, numLng, gpsTimestamp)) {
                 return res.json({ success: true, ignored: true, reason: "implausible_jump" });
             }
@@ -616,18 +557,6 @@ export const updateRiderLocation = async (req, res) => {
 
             const order = await Order.findById(orderId).select("user").lean();
             if (order?.user) {
-                // BUG FIX: this push used to carry ONLY raw lat/lng — no
-                // leg/distanceKm/etaText/speed/heading — even though this
-                // REST-PATCH path (not a WS message) is the ONLY way any
-                // frontend actually reports rider GPS (confirmed: the
-                // delivery-panel never sends a `rider:location:update` WS
-                // message). That meant the map's distance/ETA/leg overlay
-                // only ever updated via the 15s polling fallback, never via
-                // the "live" WS push — exactly backwards from the
-                // WS-primary/polling-fallback design intent. Computing the
-                // same full tracking payload here as the poll endpoint
-                // closes that gap; speedKmph/headingDeg are new fields
-                // (derived from this fix vs. the previous one).
                 const { computeLiveTrackingInfo } = await import("../../services/liveTrackingEngine.js");
                 const tracking = await computeLiveTrackingInfo(
                     orderId, numLat, numLng,
@@ -642,11 +571,18 @@ export const updateRiderLocation = async (req, res) => {
                 };
                 sendToUser(String(order.user), "rider_location", trackingPayload);
 
-                // Admin fleet map (AdminMapDashboard) only refreshes its
-                // dataset every 30s via REST poll — every admin session is
-                // already joined to the shared "admins" room (wsHub auto-join
-                // on connect), so pushing rider fixes there too lets the map
-                // move riders live between polls instead of only on refresh.
+                if (tracking?.distanceKm != null) {
+                    await Order.updateOne(
+                        { _id: orderId },
+                        {
+                            $set: {
+                                "delivery.distanceKm": tracking.distanceKm,
+                                ...(tracking.etaText ? { "delivery.etaText": tracking.etaText } : {}),
+                            },
+                        }
+                    ).catch(() => { });
+                }
+
                 broadcastToAdmins("rider_location", trackingPayload);
             }
         }
@@ -660,16 +596,14 @@ export const getDeliveryEarnings = async (req, res) => {
         const db = await DeliveryBoy.findOne({ userId: req.user._id }).lean();
         if (!db) return res.status(404).json({ success: false, message: "Not found" });
 
-        // ✅ IST timezone offset: UTC+5:30 = 330 minutes
         const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
         const getISTDayBounds = (daysAgo = 0) => {
             const nowUTC = Date.now();
             const nowIST = new Date(nowUTC + IST_OFFSET_MS);
-            nowIST.setUTCHours(0, 0, 0, 0); // midnight IST
+            nowIST.setUTCHours(0, 0, 0, 0);
             const startIST = new Date(nowIST.getTime() - daysAgo * 86400000);
             const endIST = new Date(startIST.getTime() + 86400000);
-            // Convert back to UTC for DB queries
             return {
                 start: new Date(startIST.getTime() - IST_OFFSET_MS),
                 end: new Date(endIST.getTime() - IST_OFFSET_MS),
@@ -686,7 +620,6 @@ export const getDeliveryEarnings = async (req, res) => {
         const thisWeek = deliveries.filter(o => new Date(o.createdAt) >= startOfWeek);
         const weekEarnings = thisWeek.reduce((sum, o) => sum + calcDeliveryEarning(o.delivery?.distanceKm || 0), 0);
 
-        // ✅ TIMEZONE FIX: Use IST day bounds for daily breakdown
         const breakdown = [];
         for (let i = 6; i >= 0; i--) {
             const { start, end } = getISTDayBounds(i);
@@ -765,14 +698,6 @@ export const updateDeliveryDocuments = async (req, res) => {
     }
 };
 
-// BUG FIX: neither response branch below ever checked how OLD the location
-// fix actually was — once Redis's 2-min cache entry expires, the MongoDB
-// fallback happily returns whatever GPS point was last written, even if
-// that was hours ago (rider's phone died, app was killed, etc.), with
-// `available: true` and no signal that tracking has actually stopped. Every
-// consumer (LiveTrackingMap, AdminTrackingMap, the admin orders "LIVE"
-// badge) trusted that blindly. `stale: true` lets them show "last seen
-// Xm ago" instead of a misleading live marker.
 const RIDER_LOCATION_STALE_MS = 3 * 60 * 1000; // a little past Redis's own 2-min TTL
 const isLocationStale = (updatedAt) => {
     if (!updatedAt) return true;
@@ -788,10 +713,6 @@ export const getRiderLocationForOrder = async (req, res) => {
 
         const isOwner = String(order.user) === String(req.user._id);
         const isAdmin = ["admin", "owner"].includes(req.user.role);
-        // SECURITY GAP FIX: the vendor fulfilling this order had no read
-        // access to its own rider's location at all — only the customer
-        // and admin were ever checked, even though vendor-panel's new live
-        // map needs exactly this endpoint as its polling fallback.
         let isVendor = false;
         if (!isOwner && !isAdmin && order.vendorId && req.user.role === "vendor") {
             const Vendor = (await import("../../models/vendorModels/Vendor.js")).default;
@@ -931,7 +852,6 @@ export const updateDeliveryStatus = async (req, res) => {
             });
         }
 
-        // ✅ Guard: Don't allow status update on terminal orders
         if (["DELIVERED", "CANCELLED"].includes(order.orderStatus)) {
             return res.status(400).json({
                 success: false,
@@ -944,9 +864,6 @@ export const updateDeliveryStatus = async (req, res) => {
         order.timeline.push({ status, timestamp: new Date(), note: `${status} by ${db.name}` });
         await order.save();
 
-        // Vendor wants to know their rider is en route to pick up too
-        // ("Vendor sees rider + pickup status" per the live-tracking spec) —
-        // was customer-only before.
         const messages = {
             ARRIVING_VENDOR: "Rider is heading to the store to pick up your order.",
         };

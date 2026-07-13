@@ -23,6 +23,28 @@ test.describe("rider GPS location endpoint", () => {
         expect(res.status()).toBe(400);
     });
 
+    test("REGRESSION: a coarse Wi-Fi/desktop fix (accuracy 800m) is accepted, not dropped", async ({ deliveryApi }) => {
+        // The 100m accuracy filter used to silently drop every desktop/weak-GPS
+        // fix (Wi-Fi geolocation is 500–5000m) → rider location never persisted,
+        // maps blank, distanceKm never computed. It must now be accepted.
+        const res = await deliveryApi.patch(EP.deliveryLocation, {
+            data: { lat: 28.6142, lng: 77.2085, accuracy: 800, timestamp: Date.now() },
+        });
+        expect(res.status()).toBe(200);
+        const body = await res.json();
+        expect(body.ignored, "an 800m fix must NOT be ignored as low_accuracy").toBeFalsy();
+    });
+
+    test("a truly garbage fix (accuracy 3000m) is still ignored", async ({ deliveryApi }) => {
+        const res = await deliveryApi.patch(EP.deliveryLocation, {
+            data: { lat: 28.61, lng: 77.20, accuracy: 3000, timestamp: Date.now() },
+        });
+        expect(res.status()).toBe(200);
+        const body = await res.json();
+        expect(body.ignored).toBe(true);
+        expect(body.reason).toBe("low_accuracy");
+    });
+
     test("non-numeric coordinates → 400 (GPS spoof / bad payload)", async ({ deliveryApi }) => {
         const res = await deliveryApi.patch(EP.deliveryLocation, {
             data: { lat: "not-a-number", lng: "spoofed" },

@@ -58,7 +58,8 @@ const withFreshCodStatus = async (cachedData) => {
     return { ...cachedData, codAllowed, codStatus };
 };
 
-const fetchLatLng = async (pincode) => {
+export const fetchLatLng = async (pincode) => {
+
     if (LOCAL_PINCODE_COORDS[pincode]) return LOCAL_PINCODE_COORDS[pincode];
     try {
         const res = await fetch(

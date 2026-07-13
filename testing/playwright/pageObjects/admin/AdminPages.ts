@@ -11,7 +11,8 @@ export class AdminLoginPage extends BasePage {
 
     get email() { return this.page.locator('input[type="email"], form input:not([type="password"])').first(); }
     get password() { return this.page.locator('input[type="password"]').first(); }
-    get submit() { return this.page.locator('form button[type="submit"], form button').first(); }
+    // [type="submit"] only — the form also contains type="button" toggles.
+    get submit() { return this.page.locator('form button[type="submit"]').first(); }
 
     async open() {
         await this.goto(this.path);

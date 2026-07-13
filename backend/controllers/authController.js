@@ -106,33 +106,38 @@ const issueTokens = async (res, user, scope, req = null) => {
     const accessToken = generateToken(user);
     const refreshToken = crypto.randomBytes(64).toString("hex");
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+    const now = new Date();
 
-    // Sessions may not be loaded on this document (select: false) — fetch
-    // current ones so we append instead of clobbering other devices/panels.
-    const withSessions = await User.findById(user._id).select("+refreshSessions").lean();
-    const now = Date.now();
-    const sessions = (withSessions?.refreshSessions || [])
-        .filter(s => s.expiresAt && new Date(s.expiresAt).getTime() > now);
-
-    sessions.push({
+    const newSession = {
         token: refreshToken,
         scope: validScope,
         expiresAt,
-        createdAt: new Date(),
+        createdAt: now,
         ip: req ? getClientIp(req) : undefined,
         device: req ? getDeviceLabel(req) : undefined,
-    });
+    };
 
-    // Cap sessions per user (drop oldest first) so a user can't grow an
-    // unbounded list of live refresh tokens.
-    while (sessions.length > MAX_SESSIONS_PER_USER) sessions.shift();
-
-    user.refreshSessions = sessions;
-    // Stop writing the legacy single-token fields; clear them so old and new
-    // mechanisms can't disagree about which token is live.
-    user.refreshToken = undefined;
-    user.refreshTokenExpires = undefined;
-    await user.save({ validateBeforeSave: false });
+    // CONCURRENCY FIX: previously this read the user (findById), mutated
+    // `refreshSessions` in memory, and called user.save(). Two logins for the
+    // same account in parallel (double-clicked button, two devices/tabs at
+    // once) both loaded the same `__v`, and the second save threw a Mongoose
+    // VersionError → 500. Refresh-token writes now use ATOMIC operators via
+    // updateOne, so concurrent logins can never version-conflict.
+    //
+    // 1. Prune expired sessions + drop the legacy single-token fields.
+    await User.updateOne(
+        { _id: user._id },
+        {
+            $pull: { refreshSessions: { expiresAt: { $lte: now } } },
+            $unset: { refreshToken: 1, refreshTokenExpires: 1 },
+        }
+    );
+    // 2. Append the new session, capped to the newest MAX_SESSIONS_PER_USER
+    //    ($slice: -N keeps the last N entries after the push).
+    await User.updateOne(
+        { _id: user._id },
+        { $push: { refreshSessions: { $each: [newSession], $slice: -MAX_SESSIONS_PER_USER } } }
+    );
 
     res.cookie(scopeCookieName(validScope), refreshToken, REFRESH_COOKIE_OPTIONS(expiresAt));
 
@@ -937,12 +942,19 @@ export const refreshToken = asyncHandler(async (req, res) => {
     if (legacyMatch) {
         // Migrate the legacy single token into a session entry (same token,
         // so other tabs still holding the legacy cookie keep working).
-        const sessions = (user.refreshSessions || []).filter(s => s.expiresAt > now);
-        sessions.push({ token, scope: sessionScope, expiresAt, createdAt: new Date(), ip: getClientIp(req), device: getDeviceLabel(req) });
-        user.refreshSessions = sessions;
-        user.refreshToken = undefined;
-        user.refreshTokenExpires = undefined;
-        await user.save({ validateBeforeSave: false });
+        // Atomic (updateOne) for the same concurrency reason as issueTokens.
+        await User.updateOne(
+            { _id: user._id },
+            {
+                $push: {
+                    refreshSessions: {
+                        $each: [{ token, scope: sessionScope, expiresAt, createdAt: new Date(), ip: getClientIp(req), device: getDeviceLabel(req) }],
+                        $slice: -MAX_SESSIONS_PER_USER,
+                    },
+                },
+                $unset: { refreshToken: 1, refreshTokenExpires: 1 },
+            }
+        );
     } else {
         // Sliding expiry on the matched session. Deliberately NOT rotating
         // the token here: rotation on refresh is what let two concurrent

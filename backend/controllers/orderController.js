@@ -48,6 +48,8 @@ import { startAssignment, cancelAssignment, releaseRiderSlot } from "../services
 import { createNotification } from "./admin/notificationController.js";
 import Vendor from "../models/vendorModels/Vendor.js";
 import { createShiprocketOrder } from "../utils/Shiprocketservice.js";
+import { fetchLatLng } from "./addressController.js"; // ✅ NEW import
+
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -271,6 +273,20 @@ export const createOrder = async (req, res) => {
         if (!phone?.trim()) return res.status(400).json({ success: false, message: "Phone number is required" });
         if (!address?.trim()) return res.status(400).json({ success: false, message: "Delivery address is required" });
         if (!items?.length) return res.status(400).json({ success: false, message: "Cart is empty" });
+        let finalLatitude = latitude ? Number(latitude) : null;
+        let finalLongitude = longitude ? Number(longitude) : null;
+
+        if ((!finalLatitude || !finalLongitude) && pincode) {
+            try {
+                const fallback = await fetchLatLng(pincode.trim());
+                if (fallback.lat != null && fallback.lng != null) {
+                    finalLatitude = fallback.lat;
+                    finalLongitude = fallback.lng;
+                }
+            } catch (e) {
+                console.warn("[createOrder] Pincode lat/lng fallback failed:", e.message);
+            }
+        }
 
         // ─── Determine order channel ──────────────────────────────────────
         // ✅ FIX-2: Frontend orderMode is primary signal — trust it first
@@ -422,8 +438,8 @@ export const createOrder = async (req, res) => {
             city: city?.trim().slice(0, 100) || "",
             state: state?.trim().slice(0, 100) || "",
             pincode: pincode?.trim() || "",
-            latitude: latitude ? Number(latitude) : undefined,
-            longitude: longitude ? Number(longitude) : undefined,
+            latitude: finalLatitude ?? undefined,
+            longitude: finalLongitude ?? undefined,
             totalAmount: finalTotal,
             platformFee,
             deliveryCharge,

@@ -21,12 +21,17 @@ const APP_URL: Record<AppName, string> = {
     delivery: ENV.deliveryUrl,
 };
 
-/** Each app persists a differently-shaped auth blob */
+/** Each app persists a differently-shaped auth blob (must match each app's
+ *  own AuthContext rehydration: client/admin read specific shapes, vendor
+ *  nests under `vendor`, delivery under `rider`). */
 const authBlob = (app: AppName, token: string, user: any): unknown => {
     switch (app) {
         case "client": return { token, user };
         case "vendor": return { token, vendor: { ...user, token } };
-        case "admin": return { token, user };
+        // Admin rehydration reads a FLAT object and checks `parsed.role`
+        // (not parsed.user.role), matching AdminAuthContext.login's stored
+        // shape — a nested { token, user } is rejected and bounced to login.
+        case "admin": return { _id: user?._id, name: user?.name, email: user?.email, role: user?.role, token };
         case "delivery": return {
             token,
             rider: { ...user, applicationStatus: user?.applicationStatus ?? "approved" },

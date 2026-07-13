@@ -40,15 +40,25 @@ export const useLocationTracking = (isOnline, activeOrderId) => {
 
         const MIN_INTERVAL_MS = 5000;
         const MIN_MOVE_METERS = 20;
-        // A GPS fix's own reported accuracy (meters of uncertainty) — a
-        // low-confidence fix (weak signal indoors, cell-tower-only
-        // fallback) gets rejected outright rather than sent identically to
-        // a high-confidence one; `enableHighAccuracy: true` only REQUESTS a
-        // good fix, it doesn't guarantee one.
-        const MAX_ACCURACY_M = 100;
+        // A GPS fix's own reported accuracy (meters of uncertainty).
+        //
+        // BUG FIX: this was 100m, which silently dropped EVERY fix on any
+        // device without a strong GPS lock — desktops/laptops geolocate via
+        // Wi-Fi/IP (typically 500–5000m accuracy), and even real phones
+        // report coarse fixes indoors, in dense urban areas, or during the
+        // first few seconds before GPS warms up. The result: `setPos` never
+        // fired (map stuck on "Acquiring GPS…") and no fix was ever PATCHed
+        // to the backend, so the customer/admin maps got no rider position
+        // and distanceKm was never computed. 2000m accepts realistic coarse
+        // fixes while still rejecting truly garbage cell-tower-only readings;
+        // the server's anti-spoof/plausible-movement checks catch the rest.
+        const MAX_ACCURACY_M = 2000;
         const sendLocation = (lat, lng, timestamp, accuracy) => {
-            if (accuracy != null && accuracy > MAX_ACCURACY_M) return;
+            // Always update the LOCAL position first — the rider's own map
+            // should render an approximate location immediately rather than
+            // hang on "Acquiring GPS…"; accuracy only gates the network send.
             setPos({ lat, lng });
+            if (accuracy != null && accuracy > MAX_ACCURACY_M) return;
 
             const last = lastSentRef.current;
             const elapsed = Date.now() - last.at;
