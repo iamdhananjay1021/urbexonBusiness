@@ -43,6 +43,7 @@ import stockNotificationRoutes from "./routes/stockNotificationRoutes.js";
 import userNotificationRoutes from "./routes/userNotificationRoutes.js";
 import sitemapRoutes from "./routes/sitemapRoutes.js";
 import deliveryConfigRoutes from "./routes/deliveryConfigRoutes.js";
+import vendorAuthRoutes from "./routes//VendorRoutes/vendorRoutes.js";
 // [FIX] schedulerRoutes was imported here but never mounted directly —
 // it's already correctly mounted inside adminRoutes.js via router.use(schedulerRoutes).
 // Removed the dead top-level import to avoid confusion about where it lives.
@@ -217,6 +218,7 @@ app.use("/api/pincode", publicLimiter, pincodeRoutes);
 app.use("/api/admin", adminLimiter, adminRoutes);
 app.use("/api", sitemapRoutes);
 app.use("/api", deliveryConfigRoutes);
+app.use("/api/auth/vendor", authLimiter, vendorAuthRoutes);
 
 
 /* ───────── ERROR HANDLING ───────── */
