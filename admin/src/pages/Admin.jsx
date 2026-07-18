@@ -459,6 +459,15 @@ const AdminShell = () => {
         fetchUnreadCount();
         // Dispatch event so child pages can react (e.g. AdminLocalDelivery, AdminOrders)
         window.dispatchEvent(new CustomEvent("admin:ws_message", { detail: lastMessage }));
+
+        // BUG FIX: admin broadcasts (POST /admin/broadcast) reach this
+        // socket already, but broadcastToAdmins/broadcastAll never write a
+        // PlatformNotification record — fetchUnreadCount() above has
+        // nothing new to show, so the message arrived with zero visible
+        // effect. Pop it straight into the global toast (App.jsx) instead.
+        if (lastMessage.type === "admin:broadcast" && lastMessage.payload?.message) {
+            window.dispatchEvent(new CustomEvent("ux-broadcast", { detail: { message: lastMessage.payload.message } }));
+        }
     }, [lastMessage, fetchUnreadCount]);
 
     /* Fetch full list when dropdown opens */

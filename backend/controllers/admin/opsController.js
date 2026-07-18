@@ -18,7 +18,9 @@
 import Order from "../../models/Order.js";
 import Vendor from "../../models/vendorModels/Vendor.js";
 import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
+import BroadcastLog from "../../models/BroadcastLog.js";
 import { getWsStats, broadcastAll, broadcastToAdmins } from "../../utils/wsHub.js";
+import { fanoutBroadcast } from "../../services/broadcastService.js";
 
 // Mirrors jobs/deliveryJobs.js's alertStaleAssignedOrders threshold — a
 // UH order assigned but not picked up within this window is "late". Kept
@@ -94,12 +96,19 @@ export const getOpsSummary = async (req, res) => {
 };
 
 // POST /api/admin/broadcast — Ops Dashboard "Broadcast Notification".
-// Thin wrapper over the existing wsHub broadcast primitives; no new
-// realtime transport/logic, just an HTTP trigger for an admin action.
+// WS delivery is a thin wrapper over the existing wsHub primitives and
+// stays synchronous (it's instant). Email/WhatsApp are opt-in via
+// `channels` and run in the background via fanoutBroadcast — NOT
+// awaited — so this endpoint still responds immediately even when the
+// audience is thousands of rows; see broadcastService.js for why.
 export const broadcastNotification = async (req, res) => {
     try {
         const message = String(req.body?.message || "").trim().slice(0, 500);
         const audience = req.body?.audience === "admins" ? "admins" : "all";
+        const channels = {
+            email: Boolean(req.body?.channels?.email),
+            whatsapp: Boolean(req.body?.channels?.whatsapp),
+        };
         if (!message) return res.status(400).json({ success: false, message: "message is required" });
 
         const payload = {
@@ -114,9 +123,36 @@ export const broadcastNotification = async (req, res) => {
             broadcastAll("admin:broadcast", payload);
         }
 
-        res.json({ success: true, message: "Broadcast sent", audience });
+        const log = await BroadcastLog.create({
+            message,
+            audience,
+            channels: { ws: true, ...channels },
+            wsConnections: getWsStats().connections,
+            sentBy: { id: req.user?._id, name: req.user?.name || "Admin" },
+            status: channels.email || channels.whatsapp ? "sending" : "completed",
+        });
+
+        if (channels.email || channels.whatsapp) {
+            fanoutBroadcast({ logId: log._id, message, audience, channels, fromName: payload.from })
+                .catch((err) => console.error("[broadcastNotification] fanout failed:", err.message));
+        }
+
+        res.json({ success: true, message: "Broadcast sent", audience, channels, logId: log._id });
     } catch (err) {
         console.error("[broadcastNotification]", err);
         res.status(500).json({ success: false, message: "Failed to broadcast" });
+    }
+};
+
+// GET /api/admin/broadcast/history — audit trail so admin can see past
+// broadcasts and whether email/WhatsApp fan-out actually completed,
+// instead of the "sent" response being the only trace it ever happened.
+export const getBroadcastHistory = async (req, res) => {
+    try {
+        const logs = await BroadcastLog.find({}).sort({ createdAt: -1 }).limit(20).lean();
+        res.json({ success: true, logs });
+    } catch (err) {
+        console.error("[getBroadcastHistory]", err);
+        res.status(500).json({ success: false, message: "Failed to load broadcast history" });
     }
 };

@@ -64,6 +64,19 @@ export default function GlobalWebSocket() {
                         if (msg.type === "notification") {
                             window.dispatchEvent(new CustomEvent("ux-notification", { detail: msg.payload || msg }));
                         }
+                        // BUG FIX: admin broadcasts (POST /admin/broadcast) were
+                        // sent correctly over this exact socket — the backend
+                        // wraps them as { type: "admin:broadcast", payload: {
+                        // message, from, at } } — but nothing anywhere ever
+                        // read that type, so the message arrived and was
+                        // silently dropped with zero visible effect for the
+                        // user. Route it into the app's existing global toast
+                        // (App.jsx already renders <Toast/> and listens for a
+                        // window event to trigger it) instead of building a
+                        // second toast system.
+                        if (msg.type === "admin:broadcast" && msg.payload?.message) {
+                            window.dispatchEvent(new CustomEvent("ux-broadcast", { detail: { message: msg.payload.message } }));
+                        }
                     } catch { /* ignore */ }
                 };
 

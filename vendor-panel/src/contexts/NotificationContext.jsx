@@ -178,6 +178,19 @@ export const NotificationProvider = ({ children }) => {
                                 data: msg.payload,
                             });
                         }
+
+                        // BUG FIX: admin broadcasts (POST /admin/broadcast,
+                        // { type: "admin:broadcast", payload: { message,
+                        // from, at } }) reached this exact socket already —
+                        // nothing read the type, so it was silently dropped
+                        // with zero visible effect for the vendor.
+                        if (msg.type === "admin:broadcast" && msg.payload?.message) {
+                            addNotification({
+                                title: "Announcement",
+                                body: msg.payload.message,
+                                type: "info",
+                            });
+                        }
                     } catch (err) {
                         console.error("WS message error:", err);
                     }

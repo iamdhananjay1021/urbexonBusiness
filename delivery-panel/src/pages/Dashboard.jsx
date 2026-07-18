@@ -127,6 +127,14 @@ const Dashboard = () => {
               alert(p.message || "An order assigned to you was cancelled by admin.");
               load();
             }
+
+            // BUG FIX: admin broadcasts (POST /admin/broadcast) reached this
+            // socket already — nothing read the type, so it was silently
+            // dropped with zero visible effect. No toast system here
+            // (order_cancelled above uses alert() too), so reuse that.
+            if (msg.type === "admin:broadcast" && msg.payload?.message) {
+              alert(`📢 ${msg.payload.message}`);
+            }
           } catch { }
         };
         ws.onclose = () => {

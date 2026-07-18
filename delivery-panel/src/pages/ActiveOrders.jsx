@@ -164,6 +164,14 @@ const ActiveOrders = () => {
               load();
             }
 
+            // BUG FIX: admin broadcasts (POST /admin/broadcast) reached this
+            // socket already — nothing read the type, so it was silently
+            // dropped with zero visible effect. This panel has no toast
+            // system (order_cancelled above uses alert() too), so reuse that.
+            if (msg.type === "admin:broadcast" && msg.payload?.message) {
+              alert(`📢 ${msg.payload.message}`);
+            }
+
             // ✅ NEW: Handle "order_ready" event (when vendor marks order as ready)
             if (msg.type === "order_ready") {
               const p = msg.payload || {};

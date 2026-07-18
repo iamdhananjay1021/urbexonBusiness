@@ -29,7 +29,7 @@ import {
     adminGetAllPayouts, adminApprovePayout, adminRejectPayout, adminCompletePayout,
 } from '../controllers/admin/payoutController.js';
 import { getDashboardStats, getMapData } from '../controllers/admin/dashboardController.js';
-import { getOpsSummary, broadcastNotification } from '../controllers/admin/opsController.js';
+import { getOpsSummary, broadcastNotification, getBroadcastHistory } from '../controllers/admin/opsController.js';
 
 const router = express.Router();
 
@@ -45,6 +45,7 @@ router.get("/map-data", getMapData);
 // file (dashboard, map-data, assignments/active, scheduler/*).
 router.get("/ops-summary", getOpsSummary);
 router.post("/broadcast", broadcastNotification);
+router.get("/broadcast/history", getBroadcastHistory);
 
 // Vendors
 router.get("/vendors", getAllVendors);

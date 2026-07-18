@@ -27,6 +27,16 @@ export default function App() {
     return () => window.removeEventListener("api:error", handler);
   }, [showToast]);
 
+  // Admin broadcast announcements (see GlobalWebSocket.jsx) — same toast
+  // pipeline as api:error, just a different trigger event and a longer
+  // duration since it's a message meant to actually be read, not a
+  // transient error blip.
+  useEffect(() => {
+    const handler = (e) => showToast(e.detail.message, "info", 6000);
+    window.addEventListener("ux-broadcast", handler);
+    return () => window.removeEventListener("ux-broadcast", handler);
+  }, [showToast]);
+
   // ✅ SAHI — Toast ko Router ke andar, AuthProvider ke andar rakha
   return (
     <ErrorBoundary>
