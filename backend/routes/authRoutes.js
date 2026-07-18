@@ -18,6 +18,8 @@ import {
     getAllUsers, toggleBlockUser,
     forgotPassword, resetPassword,
     adminForgotPassword, adminResetPassword,
+    vendorForgotPassword, vendorResetPassword,
+    deliveryForgotPassword, deliveryResetPassword,
     adminGetDashboard,
     googleLogin,
     logout, logoutAllDevices, // [FIX] now imported
@@ -75,6 +77,33 @@ router.post("/forgot-password",
 router.post("/reset-password/:token",
     validateBody({ password: { required: true, minLength: 8 } }),
     resetPassword,
+);
+
+/* ── Vendor password reset ──
+   [FIX] vendorForgotPassword/vendorResetPassword already existed fully
+   implemented in authController.js (role-filtered to "vendor", branded
+   email, VENDOR_URL reset link) but were never imported or routed here —
+   vendor-panel's ForgotPassword.jsx has always called these exact paths
+   and gotten a 404 "Route not found" for every vendor. */
+router.post("/vendor/forgot-password",
+    validateBody({ email: { required: true, type: "email" } }),
+    vendorForgotPassword,
+);
+
+router.post("/vendor/reset-password/:token",
+    validateBody({ password: { required: true, minLength: 8 } }),
+    vendorResetPassword,
+);
+
+/* ── Delivery partner password reset — same unwired-controller bug ── */
+router.post("/delivery/forgot-password",
+    validateBody({ email: { required: true, type: "email" } }),
+    deliveryForgotPassword,
+);
+
+router.post("/delivery/reset-password/:token",
+    validateBody({ password: { required: true, minLength: 8 } }),
+    deliveryResetPassword,
 );
 
 /* ── Admin auth ── */

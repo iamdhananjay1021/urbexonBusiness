@@ -71,12 +71,21 @@ const Register = () => {
 
         let destination = "/";
 
-        // Priority 1: vendor/delivery → redirect to respective apps
+        // Priority 1: vendor/delivery → redirect to respective apps' /apply page.
+        // BUG FIX: /apply was only baked into the fallback default, which
+        // never actually runs — client/.env sets BOTH VITE_VENDOR_URL and
+        // VITE_DELIVERY_URL to bare origins (e.g. "http://localhost:5175",
+        // no path), so the `||` short-circuited before /apply ever got
+        // appended. Both roles landed on the panel's bare root instead of
+        // the application form. Append /apply unconditionally, after the
+        // fallback resolves, so it's always present either way.
         if (data.user.role === "vendor") {
-            window.location.href = import.meta.env.VITE_VENDOR_URL || "https://vendor.urbexon.in";
+            const base = import.meta.env.VITE_VENDOR_URL || "https://vendor.urbexon.in";
+            window.location.href = `${base.replace(/\/$/, "")}/apply`;
             return;
         } else if (data.user.role === "delivery_boy") {
-            window.location.href = import.meta.env.VITE_DELIVERY_URL || "https://delivery.partner.urbexon.in";
+            const base = import.meta.env.VITE_DELIVERY_URL || "https://delivery.partner.urbexon.in";
+            window.location.href = `${base.replace(/\/$/, "")}/apply`;
             return;
         } else if (from) {
             // Priority 2: regular user came from somewhere specific
