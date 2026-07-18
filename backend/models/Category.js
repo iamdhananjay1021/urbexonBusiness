@@ -59,6 +59,35 @@ const categorySchema = new mongoose.Schema(
             ],
             default: [],
         },
+
+        // ── Discovery metadata (Product Discovery Engine) ─────
+        // Defines which dynamic attributes products of this category carry.
+        // Drives: vendor/admin product forms (auto-generated fields),
+        // filter sidebar ordering & labels, and spec display. Adding a new
+        // category with its own attributes requires ZERO code changes.
+        attributeSchema: {
+            type: [
+                {
+                    key: { type: String, required: true, trim: true },      // "fabric", "ram"
+                    label: { type: String, trim: true, default: "" },        // "Fabric" (falls back to key)
+                    type: { type: String, enum: ["select", "text"], default: "text" },
+                    options: { type: [String], default: [] },                // for type=select
+                    required: { type: Boolean, default: false },
+                    filterable: { type: Boolean, default: true },            // show in filter sidebar
+                    order: { type: Number, default: 0 },                     // sidebar priority
+                },
+            ],
+            default: [],
+        },
+
+        // Per-category SEO — used by the client's category page head tags.
+        seo: {
+            title: { type: String, trim: true, default: "" },
+            description: { type: String, trim: true, default: "" },
+        },
+
+        // Default sort for this category's listing ("newest", "popularity", …)
+        defaultSort: { type: String, trim: true, default: "" },
     },
     { timestamps: true }
 );

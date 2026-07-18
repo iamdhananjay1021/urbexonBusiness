@@ -1,2 +1,0 @@
-import DSCheck from "./src/_ds_check.jsx";
-console.log(DSCheck);

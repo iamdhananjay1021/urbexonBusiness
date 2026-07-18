@@ -14,7 +14,7 @@ import {
     getDeliveryOrders, acceptOrder, pickupOrder, markDelivered,
     updateRiderLocation, getDeliveryEarnings, updateDeliveryProfile,
     getRiderLocationForOrder, rejectOrder, cancelOrder, saveFcmToken,
-    updateDeliveryStatus, updateDeliveryDocuments,
+    updateDeliveryStatus, updateDeliveryDocuments, reportDeliveryIssue,
 } from "../../controllers/delivery/deliveryController.js";
 import {
     deliveryUpdateBankDetails, deliveryRequestPayout, deliveryGetPayouts,
@@ -100,6 +100,7 @@ router.get("/orders/:id/rider-location", protect, getRiderLocationForOrder);
 router.patch("/orders/:id/reject", protect, deliveryOnly, rejectOrder);
 router.patch("/orders/:id/cancel", protect, deliveryOnly, cancelOrder);
 router.patch("/orders/:id/status", protect, deliveryOnly, validateBody({ status: { required: true } }), updateDeliveryStatus);
+router.patch("/orders/:id/report-issue", protect, deliveryOnly, reportDeliveryIssue);
 router.patch("/fcm-token", protect, deliveryOnly, validateBody({ token: { required: true } }), saveFcmToken);
 
 export default router;

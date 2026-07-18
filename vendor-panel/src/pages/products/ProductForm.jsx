@@ -30,6 +30,10 @@ const ProductForm = () => {
   const [highlights, setHighlights] = useState([]); // [{ title, value }]
   const [highlightTemplate, setHighlightTemplate] = useState([]); // from category
   const [customHighlight, setCustomHighlight] = useState({ title: "", value: "" });
+  // Metadata-driven attributes — fields auto-render from the category's
+  // attributeSchema (defined by admin); values power storefront filters.
+  const [attributeSchema, setAttributeSchema] = useState([]);
+  const [attributes, setAttributes] = useState({}); // { key: value }
 
   // Fetch dynamic categories (with subcategories)
   useEffect(() => {
@@ -43,7 +47,7 @@ const ProductForm = () => {
 
   // Update subcategory options when category changes
   useEffect(() => {
-    if (!form.category) { setSubcategoryOptions([]); setHighlightTemplate([]); return; }
+    if (!form.category) { setSubcategoryOptions([]); setHighlightTemplate([]); setAttributeSchema([]); return; }
     const cat = categoryList.find(c => c.name === form.category);
     setSubcategoryOptions(Array.isArray(cat?.subcategories) ? cat.subcategories : []);
 
@@ -58,6 +62,16 @@ const ProductForm = () => {
         }
       })
       .catch(() => setHighlightTemplate([]));
+
+    // Fetch attribute schema (discovery metadata) — no code changes needed
+    // when admin adds a new category with new attributes.
+    if (cat?.slug) {
+      api.get(`/categories/${cat.slug}/metadata`, { params: { productType: "urbexon_hour" } })
+        .then(({ data }) => setAttributeSchema(data?.metadata?.attributeSchema || []))
+        .catch(() => setAttributeSchema([]));
+    } else {
+      setAttributeSchema([]);
+    }
   }, [form.category, categoryList]);
 
   useEffect(() => {
@@ -68,6 +82,9 @@ const ProductForm = () => {
       setExistingImages(data.images || []);
       if (Array.isArray(data.highlightsArray) && data.highlightsArray.length > 0) {
         setHighlights(data.highlightsArray);
+      }
+      if (data.attributes && typeof data.attributes === "object") {
+        setAttributes(data.attributes);
       }
     }).catch(() => setError("Failed to load product")).finally(() => setLoading(false));
   }, [id]);
@@ -89,6 +106,7 @@ const ProductForm = () => {
       // Add structured highlights
       const validHighlights = highlights.filter(h => h.title.trim() && h.value.trim());
       fd.append("highlightsArray", JSON.stringify(validHighlights));
+      fd.append("attributes", JSON.stringify(attributes));
       images.forEach(img => fd.append("images", img.file));
       if (isEdit) await api.put(`/products/vendor/${id}`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       else await api.post("/products/vendor", fd, { headers: { "Content-Type": "multipart/form-data" } });
@@ -223,6 +241,40 @@ const ProductForm = () => {
             </button>
           </div>
         </div>
+
+        {/* Product Attributes — metadata-driven fields from the category's
+            attributeSchema. These values power the storefront's dynamic
+            filter sidebar automatically. */}
+        {attributeSchema.length > 0 && (
+          <div style={{ background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", marginTop: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+              🏷️ Product Attributes
+              <span style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>(auto-loaded for this category — used for filters)</span>
+            </div>
+            <div className="product-form-grid">
+              {attributeSchema.map((attr) => (
+                <Field key={attr.key} label={attr.label || attr.key} required={attr.required}>
+                  {attr.type === "select" && attr.options?.length > 0 ? (
+                    <select
+                      value={attributes[attr.key] || ""}
+                      onChange={(e) => setAttributes((p) => ({ ...p, [attr.key]: e.target.value }))}
+                      style={{ width: "100%", padding: "10px 13px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box", background: "#fafafe" }}
+                    >
+                      <option value="">Select {attr.label || attr.key}</option>
+                      {attr.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <Inp
+                      value={attributes[attr.key] || ""}
+                      onChange={(e) => setAttributes((p) => ({ ...p, [attr.key]: e.target.value }))}
+                      placeholder={`e.g. ${attr.options?.[0] || attr.label || attr.key}`}
+                    />
+                  )}
+                </Field>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Deal toggle */}
         <div style={{ background: form.isDeal ? "#fffbeb" : "#f8fafc", border: `1.5px solid ${form.isDeal ? "#fbbf24" : "#e2e8f0"}`, borderRadius: 10, padding: "14px 16px", marginTop: 16, transition: "all .2s" }}>

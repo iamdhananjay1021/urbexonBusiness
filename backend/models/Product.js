@@ -60,6 +60,22 @@ const productSchema = new mongoose.Schema({
     returnPolicy: { type: String, default: "7 days return" },
     shippingInfo: { type: String, default: "" },
     gstPercent: { type: Number, default: 0 },
+    hsn: { type: String, trim: true, default: "" },
+    barcode: { type: String, trim: true, default: "" },
+    lowStockThreshold: { type: Number, default: 5, min: 0 },
+
+    // ── SEO (admin-editable; falls back to name/description) ──
+    seo: {
+        metaTitle: { type: String, trim: true, default: "", maxlength: 120 },
+        metaDescription: { type: String, trim: true, default: "", maxlength: 200 },
+    },
+
+    // ── Shipping package (for courier rate calculation) ───
+    shipping: {
+        lengthCm: { type: Number, default: 0, min: 0 },
+        widthCm: { type: Number, default: 0, min: 0 },
+        heightCm: { type: Number, default: 0, min: 0 },
+    },
 
     // ── Cancellation / Return / Replacement Policy ────────
     isCancellable: { type: Boolean, default: true },
@@ -82,6 +98,13 @@ const productSchema = new mongoose.Schema({
         notePlaceholder: { type: String, default: "", trim: true },
         extraPrice: { type: Number, default: 0, min: 0 },
     },
+    // ── Dynamic filter attributes ─────────────────────────
+    // Free-form key→value pairs ("fabric": "Cotton", "fit": "Slim",
+    // "ram": "8 GB", …). Admin/vendor panels can introduce ANY new
+    // attribute without a schema change — GET /products/filters
+    // aggregates whatever keys exist into facets automatically.
+    attributes: { type: Map, of: String, default: {} },
+
     highlights: { type: Map, of: String, default: {} },
     highlightsArray: {
         type: [
@@ -156,13 +179,23 @@ productSchema.pre("save", async function (next) {
 });
 
 // ── Auto inStock ──────────────────────────────────────────
-// If colorVariants exist → inStock if ANY variant has stock > 0
-// Otherwise → use base stock
+// Source of truth for base stock:
+//   colorVariants exist → sum of variant stocks
+//   else sizes exist with maintained stock (sum > 0) → sum of size stocks
+//     (BUG FIX: sizes were ignored before — a product whose stock lived
+//      only in sizes[].stock could sit at base stock 0 / inStock false and
+//      vanish from every listing despite being purchasable)
+//   else → admin-entered base stock (legacy products with unmaintained
+//     per-size stocks keep working unchanged)
 productSchema.pre("save", function (next) {
     if (this.colorVariants && this.colorVariants.length > 0) {
         const totalVariantStock = this.colorVariants.reduce((s, v) => s + (v.stock || 0), 0);
         this.stock = totalVariantStock;
         this.inStock = totalVariantStock > 0;
+    } else if (this.sizes && this.sizes.length > 0) {
+        const totalSizeStock = this.sizes.reduce((s, x) => s + (Number(x.stock) || 0), 0);
+        if (totalSizeStock > 0) this.stock = totalSizeStock;
+        this.inStock = this.stock > 0;
     } else {
         this.inStock = this.stock > 0;
     }
@@ -187,5 +220,13 @@ productSchema.index({ isDeal: 1, isActive: 1, inStock: 1 });
 productSchema.index({ isFeatured: 1, isActive: 1, inStock: 1 });
 productSchema.index({ vendorId: 1, isActive: 1 });
 productSchema.index({ name: "text", description: "text", brand: "text", tags: "text" });
+// Wildcard index so ANY dynamic attribute key is queryable without
+// knowing attribute names ahead of time (attributes.fabric, attributes.ram, …).
+productSchema.index({ "attributes.$**": 1 });
+productSchema.index({ brand: 1, isActive: 1 });
+// SKU lookups (duplicate-check + admin search). Sparse-style partial: only
+// docs that actually have a non-empty sku. Uniqueness enforced in the
+// controller (409) so legacy duplicates never crash writes.
+productSchema.index({ sku: 1 }, { partialFilterExpression: { sku: { $gt: "" } } });
 
 export default mongoose.model("Product", productSchema);

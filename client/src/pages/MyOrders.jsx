@@ -211,19 +211,21 @@ const MyOrders = () => {
                     />
                 </div>
 
-                {/* Mobile filter drawer overlay */}
+                {/* Mobile filter drawer overlay — z above the mobile bottom nav
+                    (z-600), otherwise the sheet's lower options get cut off
+                    behind it. Same layering as the products FilterDrawer. */}
                 {mobileFilterOpen && (
-                    <div className="fixed inset-0 z-40 bg-[var(--bg-overlay)]" onClick={() => setMobileFilterOpen(false)} />
+                    <div className="fixed inset-0 z-[700] bg-[var(--bg-overlay)]" onClick={() => setMobileFilterOpen(false)} />
                 )}
                 <div className={cn(
-                    "fixed bottom-0 left-0 right-0 z-50 bg-surface rounded-t-2xl max-h-[60vh] overflow-y-auto transition-transform duration-250",
+                    "fixed bottom-0 left-0 right-0 z-[701] bg-surface rounded-t-2xl max-h-[70vh] overflow-y-auto transition-transform duration-250",
                     mobileFilterOpen ? "translate-y-0" : "translate-y-full"
                 )}>
                     <div className="px-4 py-3 border-b border-default flex items-center justify-between">
                         <p className="font-bold text-primary text-sm">Filter Orders</p>
                         <button onClick={() => setMobileFilterOpen(false)} aria-label="Close" className="p-1 text-muted"><FiX size={14} aria-hidden="true" /></button>
                     </div>
-                    <div className="p-2">
+                    <div className="p-2 pb-[max(12px,env(safe-area-inset-bottom))]">
                         <FilterBtn active={activeFilter === "ALL"} onClick={() => { setActiveFilter("ALL"); setMobileFilterOpen(false); }} label="All Orders" count={tabOrders.length} />
                         {Object.entries(STATUS_CONFIG).map(([key, cfg]) => {
                             const count = tabOrders.filter((o) => o.orderStatus === key).length;

@@ -19,10 +19,11 @@
   --color-graphite-50:  #F7F7F9;
 
   /* Indigo — brand accent (Ecommerce) */
-  --color-indigo-600: #4A4DD1;
-  --color-indigo-500: #5457E5;
-  --color-indigo-400: #7678EC;
-  --color-indigo-100: #E6E6FB;
+  --color-indigo-600: #4338CA;
+  --color-indigo-500: #4F46E5;
+  --color-indigo-400: #818CF8;
+  --color-indigo-300: #A5B4FC;
+  --color-indigo-100: #E0E7FF;
 
   /* Amber — Urbexon Hour accent ONLY */
   --color-amber-600: #D98A1F;
@@ -47,6 +48,10 @@
   --font-display: "Manrope", system-ui, sans-serif;
   --font-body: "Inter", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Breakpoints — `xs:` is used throughout the app but was never defined,
+     so those variants silently generated no CSS until this line. */
+  --breakpoint-xs: 23.4375rem; /* 375px */
 
   /* Radius */
   --radius-sm: 6px;
@@ -96,7 +101,7 @@
   --icon-info: var(--color-info-500);
   --bg-info-tint: var(--color-info-100);
 
-  --focus-ring: rgba(84,87,229,.35);
+  --focus-ring: rgba(79,70,229,.35);
 }
 
 .dark {

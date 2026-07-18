@@ -28,7 +28,15 @@ import { initiateOnlinePayment } from "../services/paymentService";
 // silently discarded, showing whatever was in the UH cart instead (or the
 // empty-cart guard, if the cart was empty). Mirrors useCheckout's exact
 // buyNowItem-bypasses-cart pattern.
-export const useUHCheckout = (buyNowItem = null) => {
+//
+// BUG FIX: this hook never accepted/stored/forwarded a coupon at all —
+// unlike useCheckout.js, refreshPricing() here never sent couponId/
+// couponCode to the pricing endpoint, and handleCOD/handlePayOnline both
+// hardcoded `coupon: null`. So a coupon applied on UHCart.jsx (and passed
+// via navigate state) was silently dropped, and there was no way to apply
+// one on this page either. Mirrors useCheckout's coupon plumbing, but with
+// a mutable setter (not read-only) so it can also be applied/removed here.
+export const useUHCheckout = (buyNowItem = null, couponFromCart = null) => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { uhItems, clearUH } = useCart();
@@ -36,6 +44,7 @@ export const useUHCheckout = (buyNowItem = null) => {
 
     const [step, setStep] = useState(1);
     const [error, setError] = useState("");
+    const [coupon, setCoupon] = useState(couponFromCart);
 
     const [contact, setContact] = useState({
         name: user?.name || "",
@@ -95,13 +104,18 @@ export const useUHCheckout = (buyNowItem = null) => {
                 const data = await fetchCheckoutPricing(
                     checkoutItems,
                     method || paymentMethod || "RAZORPAY",
-                    { deliveryType, pincode: selectedAddress?.pincode }
+                    {
+                        deliveryType,
+                        pincode: selectedAddress?.pincode,
+                        ...(coupon?.couponId && { couponId: coupon.couponId }),
+                        ...(coupon?.code && { couponCode: coupon.code }),
+                    }
                 );
                 setPricing(data);
             } catch { /* keep existing */ }
             finally { setPricingLoading(false); }
         }, 300);
-    }, [checkoutItems, paymentMethod, selectedAddress?.pincode]);
+    }, [checkoutItems, paymentMethod, selectedAddress?.pincode, coupon]);
 
     // Cleanup debounce on unmount
     useEffect(() => () => clearTimeout(pricingDebounce.current), []);
@@ -114,9 +128,26 @@ export const useUHCheckout = (buyNowItem = null) => {
         if (paymentMethod) refreshPricing(paymentMethod === "cod" ? "COD" : "RAZORPAY");
     }, [paymentMethod]); // eslint-disable-line
 
-    /* ── COD availability check (Flipkart-style) ── */
+    // BUG FIX: applying/removing a coupon on this page updates `coupon`
+    // state but nothing re-fetched pricing to reflect it — same gap fixed
+    // in useCheckout.js.
     useEffect(() => {
-        if (step !== 3 || !selectedAddress?.pincode) {
+        if (checkoutItems?.length > 0) refreshPricing(paymentMethod === "cod" ? "COD" : "RAZORPAY");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [coupon]);
+
+    /* ── COD availability check (Flipkart-style) ──
+       BUG FIX: this used to also gate on `step === 3` ("Order Summary"),
+       but the COD option itself is only shown/selectable one step later, at
+       step 4 ("Payment"). Since `step` was a dependency, advancing 3→4
+       re-ran this effect, hit the `step !== 3` early-return, and wiped the
+       just-fetched result back to `setCodStatus(null)` — so COD always
+       rendered as unavailable on the Payment step, on every UH order.
+       Keying only on the pincode (not the step) also means re-entering
+       step 3 with an unchanged address no longer re-fires an identical
+       network call. */
+    useEffect(() => {
+        if (!selectedAddress?.pincode) {
             setCodStatus(null);
             return;
         }
@@ -132,7 +163,7 @@ export const useUHCheckout = (buyNowItem = null) => {
             }
         };
         checkCOD();
-    }, [selectedAddress?.pincode, step]);
+    }, [selectedAddress?.pincode]);
 
     const codAvailable = codStatus === "available";
 
@@ -217,7 +248,7 @@ export const useUHCheckout = (buyNowItem = null) => {
                 deliveryType: "URBEXON_HOUR",
                 orderMode: "URBEXON_HOUR",
                 distanceKm: 0,
-                coupon: null,
+                coupon: coupon || null,
             });
             if (!buyNowItem) clearUH();
             navigate(`/order-success/${data.orderId}`, {
@@ -228,7 +259,7 @@ export const useUHCheckout = (buyNowItem = null) => {
             console.error("=== COD Error ===", err.response?.data || err.message);
             setError(err.response?.data?.message || "Order placement failed. Please try again.");
         } finally { setLoading(false); }
-    }, [checkoutItems, contact, selectedAddress, clearUH, navigate, buyNowItem]);
+    }, [checkoutItems, contact, selectedAddress, clearUH, navigate, buyNowItem, coupon]);
 
     /* ── Online ── */
     // ✅ handlePayOnline — fixed
@@ -249,21 +280,25 @@ export const useUHCheckout = (buyNowItem = null) => {
                 deliveryType: "URBEXON_HOUR",
                 orderMode: "URBEXON_HOUR",
                 distanceKm: 0,
-                coupon: null,
+                coupon: coupon || null,
             });
         } catch (err) {
             setError(err.message || "Payment initialization failed.");
             setPayState("failed");
         } finally { setLoading(false); }
-    }, [checkoutItems, contact, selectedAddress, clearUH, navigate, buyNowItem]);
+    }, [checkoutItems, contact, selectedAddress, clearUH, navigate, buyNowItem, coupon]);
 
+    // BUG FIX: this called refreshPricing() directly AND setPaymentMethod()
+    // — but the effect above already re-runs refreshPricing() whenever
+    // paymentMethod changes, so every method selection fired the identical
+    // pricing request twice back-to-back. Let the effect own it.
     const selectPaymentMethod = useCallback((method) => {
         setPaymentMethod(method); setError(""); setPayState("idle");
-        refreshPricing(method === "cod" ? "COD" : "RAZORPAY");
-    }, [refreshPricing]);
+    }, []);
 
     return {
         step, setStep: goToStep, error, setError,
+        coupon, setCoupon,
         contact, setContact,
         addresses, addrLoading, selectedAddrId, setSelectedAddrId, selectedAddress,
         showAddForm, setShowAddForm, editingAddr, setEditingAddr,

@@ -4,7 +4,7 @@ import Vendor from "../models/vendorModels/Vendor.js";
 import express from "express";
 
 const router = express.Router();
-const BASE = "https://www.urbexon.in";
+const BASE = "https://urbexon.in";
 
 router.get("/sitemap.xml", async (_req, res) => {
     try {

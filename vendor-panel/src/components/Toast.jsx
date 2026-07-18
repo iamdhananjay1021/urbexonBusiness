@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 
 const COLORS = {
     success: { bg:"#f0fdf4",border:"#86efac",color:"#15803d",icon:"✓" },

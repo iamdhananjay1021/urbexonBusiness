@@ -1,0 +1,11 @@
+# admin.urbexon.in — internal admin dashboard. No public content, no SEO
+# value; every route is auth-gated. Blanket disallow keeps well-behaved
+# crawlers from even requesting pages (saves crawl budget, avoids wasted
+# hits on auth endpoints). Not a security boundary — auth/route guards
+# are — this is SEO/crawl hygiene only. Layered with the noindex meta
+# tag in index.html and the X-Robots-Tag response header (see
+# vercel.json / nginx.conf) so protection holds even if a bot ignores
+# one layer.
+
+User-agent: *
+Disallow: /

@@ -2,7 +2,7 @@
  * Checkout.jsx — v3 Complete Scratch Rewrite
  * ─────────────────────────────────────────────────────────
  * ✅ Full Tailwind CSS — zero inline <style> blocks
- * ✅ Premium light-mode UI — clean cards, orange accent
+ * ✅ Premium light-mode UI — clean cards, Signal indigo accent
  * ✅ Standalone page (no MainLayout) — own minimal header
  * ✅ Mobile sticky CTA fixed bottom
  * ✅ All business logic 100% preserved from v2
@@ -20,7 +20,10 @@ import {
     FaHome, FaBriefcase, FaBookmark, FaChevronDown, FaChevronUp,
     FaStar, FaShoppingCart, FaBolt, FaTag,
 } from "react-icons/fa";
+import { useState } from "react";
 import { useCheckout } from "../../hooks/useCheckout";
+import { validateCoupon } from "../../api/orderApi";
+import BackButton from "../BackButton";
 import PriceSummary from "./PriceSummary";
 import AddressForm from "./AddressForm";
 import SEO from "../SEO";
@@ -48,7 +51,7 @@ const SectionCard = ({ children, className = "" }) => (
 
 const CardHeader = ({ icon, title }) => (
     <div className="flex items-center gap-3 px-5 py-4 border-b border-neutral-100 bg-neutral-50/60">
-        <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center text-orange-500 shrink-0">
+        <div className="w-8 h-8 rounded-xl bg-accent-tint flex items-center justify-center text-accent shrink-0">
             {icon}
         </div>
         <h2 className="text-[15px] font-bold text-neutral-900 tracking-tight">{title}</h2>
@@ -68,7 +71,7 @@ const Input = ({ className = "", ...props }) => (
         className={`w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl
                     text-sm text-neutral-900 outline-none transition-all duration-150
                     placeholder:text-neutral-300
-                    focus:border-orange-400 focus:bg-white focus:shadow-[0_0_0_3px_rgba(249,115,22,0.1)]
+                    focus:border-[var(--accent-primary)] focus:bg-white focus:shadow-[0_0_0_3px_rgba(79,70,229,0.1)]
                     ${className}`}
     />
 );
@@ -83,7 +86,7 @@ const ErrorBanner = ({ msg }) => msg ? (
 const StepDot = ({ state, icon }) => {
     const base = "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 transition-all duration-300";
     if (state === "done") return <div className={`${base} bg-green-500 text-white`}><FaCheckCircle size={13} /></div>;
-    if (state === "active") return <div className={`${base} bg-orange-500 text-white shadow-[0_0_0_4px_rgba(249,115,22,0.2)]`}>{icon}</div>;
+    if (state === "active") return <div className={`${base} bg-accent text-white shadow-[0_0_0_4px_rgba(79,70,229,0.2)]`}>{icon}</div>;
     return <div className={`${base} bg-neutral-100 text-neutral-400`}>{icon}</div>;
 };
 
@@ -91,7 +94,7 @@ const StepDot = ({ state, icon }) => {
 const CtaButton = ({ onClick, disabled, loading, loadingText, children, variant = "dark", className = "" }) => {
     const variants = {
         dark: "bg-neutral-900 hover:bg-neutral-800 text-white",
-        orange: "bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white shadow-[0_4px_16px_rgba(249,115,22,0.35)] hover:shadow-[0_6px_22px_rgba(249,115,22,0.45)]",
+        orange: "bg-accent hover:bg-accent-hover text-white shadow-[0_4px_16px_rgba(79,70,229,0.35)] hover:shadow-[0_6px_22px_rgba(79,70,229,0.45)]",
         green: "bg-green-600 hover:bg-green-700 text-white",
         red: "bg-red-500 hover:bg-red-600 text-white",
     };
@@ -141,12 +144,40 @@ const Checkout = () => {
         deliveryType, setDeliveryType,
         mobileSummaryOpen, setMobileSummaryOpen,
         checkoutItems,
+        coupon, setCoupon,
         handleContactContinue, handleAddressContinue,
         handleAddAddress, handleEditAddress, handleDeleteAddress, handleSetDefault,
         handleCOD, handlePayOnline,
     } = ck;
 
     const finalTotal = pricing?.finalTotal || 0;
+
+    // BUG FIX: there was no way to apply/change/remove a coupon on this
+    // page at all — `coupon` used to arrive read-only from Cart.jsx's nav
+    // state, and "Buy Now" (which bypasses Cart entirely) had no coupon
+    // affordance whatsoever. Self-contained apply/remove logic, same
+    // pattern as Cart.jsx's working coupon UI.
+    const [couponCode, setCouponCode] = useState("");
+    const [couponApplying, setCouponApplying] = useState(false);
+    const [couponErr, setCouponErr] = useState("");
+
+    const applyCoupon = async () => {
+        if (!couponCode.trim()) return;
+        setCouponApplying(true); setCouponErr("");
+        try {
+            const { data } = await validateCoupon({
+                code: couponCode.trim(),
+                orderTotal: pricing?.itemsTotal || 0,
+                orderType: deliveryType === "URBEXON_HOUR" ? "urbexon_hour" : "ecommerce",
+            });
+            setCoupon(data);
+            setCouponCode("");
+        } catch (e) {
+            setCouponErr(e.response?.data?.message || "Invalid coupon");
+        } finally { setCouponApplying(false); }
+    };
+
+    const removeCoupon = () => { setCoupon(null); setCouponCode(""); setCouponErr(""); };
 
     /* ── Empty cart guard ── */
     if (!checkoutItems?.length) return (
@@ -157,7 +188,7 @@ const Checkout = () => {
             <h2 className="text-lg font-bold text-neutral-900">Your cart is empty</h2>
             <p className="text-sm text-neutral-500">Add items before checking out</p>
             <button onClick={() => navigate("/")}
-                className="mt-2 px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white
+                className="mt-2 px-6 py-2.5 bg-accent hover:bg-accent-hover text-white
                            rounded-xl font-bold text-sm transition-colors">
                 Continue Shopping
             </button>
@@ -206,23 +237,17 @@ const Checkout = () => {
         <>
             <SEO title="Checkout — Urbexon" noindex />
 
-            <div className="min-h-screen bg-neutral-50 flex flex-col"
-                style={{ fontFamily: "'Inter','-apple-system','BlinkMacSystemFont','Segoe UI',sans-serif" }}>
+            <div className="min-h-screen bg-canvas flex flex-col">
 
                 {/* ════════════════════════════
                     HEADER — own, standalone
                 ════════════════════════════ */}
-                <header className="sticky top-0 z-50 bg-neutral-900 h-14 flex items-center justify-between px-4 sm:px-6 shrink-0">
-                    {/* Logo */}
-                    <Link to="/" className="no-underline flex items-center gap-1">
-                        <span className="text-white font-black text-[1.2rem] tracking-tight">URBE</span>
-                        <span className="font-black text-[1.2rem] tracking-tight"
-                            style={{
-                                background: "linear-gradient(90deg,#f97316,#f59e0b)",
-                                WebkitBackgroundClip: "text",
-                                WebkitTextFillColor: "transparent",
-                                backgroundClip: "text",
-                            }}>XON</span>
+                <header className="sticky top-0 z-50 bg-white border-b border-[var(--color-graphite-100)] h-14 flex items-center justify-between px-4 sm:px-6 shrink-0">
+                    {/* Logo — same wordmark treatment as the global navbar */}
+                    <Link to="/" className="no-underline flex items-center">
+                        <span className="font-display text-[19px] font-extrabold text-primary tracking-[-0.025em] leading-none">
+                            Urbexon
+                        </span>
                     </Link>
 
                     {/* Stepper — center, desktop */}
@@ -234,13 +259,13 @@ const Checkout = () => {
                                     <div className="flex items-center gap-1.5">
                                         <StepDot state={state} icon={s.icon} />
                                         <span className={`text-[11px] font-semibold tracking-wide
-                                            ${state === "done" ? "text-green-400" : state === "active" ? "text-orange-400" : "text-neutral-500"}`}>
+                                            ${state === "done" ? "text-success" : state === "active" ? "text-accent" : "text-muted"}`}>
                                             {s.label}
                                         </span>
                                     </div>
                                     {i < STEPS.length - 1 && (
                                         <div className={`w-8 h-[1.5px] mx-1 rounded-full
-                                            ${step > s.id ? "bg-green-500" : "bg-neutral-700"}`} />
+                                            ${step > s.id ? "bg-[var(--icon-success)]" : "bg-[var(--color-graphite-200)]"}`} />
                                     )}
                                 </div>
                             );
@@ -248,8 +273,8 @@ const Checkout = () => {
                     </div>
 
                     {/* Secure badge */}
-                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-neutral-500">
-                        <FaShieldAlt size={10} /> <span className="hidden sm:inline">Secure Checkout</span>
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted">
+                        <FaShieldAlt size={10} className="text-[var(--icon-success)]" /> <span className="hidden sm:inline">Secure Checkout</span>
                     </div>
                 </header>
 
@@ -261,7 +286,7 @@ const Checkout = () => {
                             <div key={s.id} className="flex items-center gap-1.5 flex-1">
                                 <StepDot state={state} icon={s.icon} />
                                 <span className={`text-[10px] font-semibold
-                                    ${state === "done" ? "text-green-500" : state === "active" ? "text-orange-500" : "text-neutral-400"}`}>
+                                    ${state === "done" ? "text-green-500" : state === "active" ? "text-accent" : "text-neutral-400"}`}>
                                     {s.label}
                                 </span>
                                 {i < STEPS.length - 1 && (
@@ -276,23 +301,23 @@ const Checkout = () => {
                 {/* Mobile order total bar */}
                 <div
                     className="md:hidden flex items-center justify-between px-4 py-2.5
-                               bg-orange-50 border-b border-orange-100 cursor-pointer"
+                               bg-accent-tint border-b border-[var(--accent-primary-tint)] cursor-pointer"
                     onClick={() => setMobileSummaryOpen(o => !o)}>
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-orange-600">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--accent-primary-hover)]">
                         <FaTag size={10} /> Order Total
                     </div>
                     <div className="flex items-center gap-2">
-                        <span className="text-[17px] font-bold text-orange-600">
+                        <span className="text-[17px] font-bold text-[var(--accent-primary-hover)]">
                             {pricingLoading ? "…" : `₹${fmt(finalTotal)}`}
                         </span>
-                        <span className="text-[10px] text-orange-400 flex items-center gap-0.5">
+                        <span className="text-[10px] text-accent flex items-center gap-0.5">
                             {mobileSummaryOpen ? <FaChevronUp size={8} /> : <FaChevronDown size={8} />} Details
                         </span>
                     </div>
                 </div>
 
                 {/* Mobile accordion summary */}
-                <div className={`md:hidden overflow-hidden transition-all duration-300 bg-orange-50 border-b border-orange-100
+                <div className={`md:hidden overflow-hidden transition-all duration-300 bg-accent-tint border-b border-[var(--accent-primary-tint)]
                                  ${mobileSummaryOpen ? "max-h-48" : "max-h-0"}`}>
                     <div className="px-4 py-3 flex flex-col gap-2">
                         <div className="flex justify-between text-xs text-neutral-600">
@@ -305,10 +330,10 @@ const Checkout = () => {
                                 {pricing?.deliveryCharge === 0 && paymentMethod !== "cod" ? "FREE" : `₹${fmt(pricing?.deliveryCharge)}`}
                             </span>
                         </div>
-                        <div className="h-px bg-orange-100" />
+                        <div className="h-px bg-accent-tint" />
                         <div className="flex justify-between">
                             <span className="text-sm font-bold text-neutral-900">Total</span>
-                            <span className="text-[17px] font-bold text-orange-600">₹{fmt(finalTotal)}</span>
+                            <span className="text-[17px] font-bold text-[var(--accent-primary-hover)]">₹{fmt(finalTotal)}</span>
                         </div>
                     </div>
                 </div>
@@ -319,19 +344,22 @@ const Checkout = () => {
                 <div className="flex-1 pb-24 md:pb-10">
                     <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
 
-                        {/* Back button */}
-                        <button
-                            onClick={() => step === 1 ? navigate(-1) : setStep(step - 1)}
-                            className="flex items-center gap-2 text-sm font-semibold text-neutral-500
-                                       hover:text-neutral-900 transition-colors mb-5 group">
-                            <span className="w-7 h-7 rounded-full bg-white border border-neutral-200
-                                             flex items-center justify-center
-                                             group-hover:border-orange-300 group-hover:text-orange-500
-                                             transition-all shadow-sm">
-                                <FaArrowLeft size={10} />
-                            </span>
-                            {step === 1 ? "Back to Cart" : `Back to ${STEPS[step - 2].label}`}
-                        </button>
+                        {/* Back button — BUG FIX: step 1 used to do a blind
+                            navigate(-1) with no real-history guard, same class
+                            of bug already fixed elsewhere via BackButton's
+                            smart-back (a deep link/refresh straight onto
+                            checkout had nothing to go back to and could exit
+                            the site). onClick override handles the wizard's
+                            own step-back behavior for step > 1. */}
+                        <BackButton
+                            onClick={() => {
+                                if (step > 1) { setStep(step - 1); return; }
+                                if (location.key !== "default") navigate(-1);
+                                else navigate("/cart");
+                            }}
+                            label={step === 1 ? "Back to Cart" : `Back to ${STEPS[step - 2].label}`}
+                            className="!text-neutral-500 hover:!text-neutral-900 mb-5 !normal-case !tracking-normal !text-sm"
+                        />
 
                         <div className="flex gap-5 items-start">
 
@@ -406,12 +434,12 @@ const Checkout = () => {
                                                                     onClick={() => { if (!editingAddr && !showAddForm) setSelectedAddrId(addr._id); }}
                                                                     className={`relative rounded-2xl border-2 transition-all duration-200 cursor-pointer overflow-hidden
                                                                         ${isSelected
-                                                                            ? "border-orange-400 bg-orange-50/50 shadow-[0_0_0_3px_rgba(249,115,22,0.1)]"
+                                                                            ? "border-[var(--accent-primary)] bg-accent-tint/60 shadow-[0_0_0_3px_rgba(79,70,229,0.1)]"
                                                                             : "border-neutral-100 bg-white hover:border-neutral-300"}`}>
 
                                                                     {/* Selected tick */}
                                                                     {isSelected && !isEditing && (
-                                                                        <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-orange-500
+                                                                        <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-accent
                                                                                         flex items-center justify-center">
                                                                             <FaCheckCircle size={11} className="text-white" />
                                                                         </div>
@@ -496,8 +524,8 @@ const Checkout = () => {
                                                     {/* Add new address */}
                                                     {addresses.length < 5 && (
                                                         showAddForm ? (
-                                                            <div className="border-2 border-dashed border-orange-300 bg-orange-50/50 rounded-2xl p-4 mb-4">
-                                                                <p className="text-[10px] font-black uppercase tracking-widest text-orange-500 mb-3 flex items-center gap-1.5">
+                                                            <div className="border-2 border-dashed border-[var(--accent-primary)] bg-accent-tint/60 rounded-2xl p-4 mb-4">
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-accent mb-3 flex items-center gap-1.5">
                                                                     <FaPlus size={8} /> New Address
                                                                 </p>
                                                                 <AddressForm onSave={handleAddAddress} onCancel={() => setShowAddForm(false)} saving={savingAddr} />
@@ -508,7 +536,7 @@ const Checkout = () => {
                                                                 className="w-full flex items-center justify-center gap-2 py-3.5
                                                                            border-2 border-dashed border-neutral-200 rounded-2xl
                                                                            text-sm font-semibold text-neutral-500
-                                                                           hover:border-orange-300 hover:text-orange-500
+                                                                           hover:border-[var(--accent-primary)] hover:text-accent
                                                                            transition-all duration-200 mb-4">
                                                                 <FaPlus size={11} /> Add New Address
                                                                 <span className="text-[11px] text-neutral-300 font-normal">({addresses.length}/5)</span>
@@ -625,7 +653,7 @@ const Checkout = () => {
                                                     </div>
                                                 </div>
                                                 <button onClick={() => setStep(2)}
-                                                    className="text-[11px] font-bold text-orange-500 hover:text-orange-600
+                                                    className="text-[11px] font-bold text-accent hover:text-[var(--accent-primary-hover)]
                                                                whitespace-nowrap shrink-0 transition-colors">
                                                     Change
                                                 </button>
@@ -640,7 +668,7 @@ const Checkout = () => {
                                                     onClick={() => setDeliveryType("ECOMMERCE_STANDARD")}
                                                     className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all duration-200
                                                         ${deliveryType === "ECOMMERCE_STANDARD"
-                                                            ? "border-orange-400 bg-orange-50/50 shadow-[0_0_0_3px_rgba(249,115,22,0.08)]"
+                                                            ? "border-[var(--accent-primary)] bg-accent-tint/60 shadow-[0_0_0_3px_rgba(79,70,229,0.08)]"
                                                             : "border-neutral-100 bg-neutral-50 hover:border-neutral-300"}`}>
                                                     <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center shrink-0">
                                                         <FaTruck size={14} className="text-white" />
@@ -653,7 +681,7 @@ const Checkout = () => {
                                                         </p>
                                                     </div>
                                                     {deliveryType === "ECOMMERCE_STANDARD" && (
-                                                        <FaCheckCircle size={18} className="text-orange-500 shrink-0" />
+                                                        <FaCheckCircle size={18} className="text-accent shrink-0" />
                                                     )}
                                                 </button>
                                             </div>
@@ -670,7 +698,7 @@ const Checkout = () => {
                                                     className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 text-left
                                                                 transition-all duration-200
                                                                 ${paymentMethod === "online"
-                                                            ? "border-orange-400 bg-orange-50/50 shadow-[0_0_0_3px_rgba(249,115,22,0.08)]"
+                                                            ? "border-[var(--accent-primary)] bg-accent-tint/60 shadow-[0_0_0_3px_rgba(79,70,229,0.08)]"
                                                             : "border-neutral-100 bg-neutral-50 hover:border-neutral-300"}`}>
                                                     <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center shrink-0">
                                                         <FaLock size={13} className="text-white" />
@@ -687,7 +715,7 @@ const Checkout = () => {
                                                         <p className="text-xs text-neutral-500">UPI · Cards · Net Banking · EMI</p>
                                                     </div>
                                                     {paymentMethod === "online" && (
-                                                        <FaCheckCircle size={18} className="text-orange-500 shrink-0" />
+                                                        <FaCheckCircle size={18} className="text-accent shrink-0" />
                                                     )}
                                                 </button>
 
@@ -782,6 +810,42 @@ const Checkout = () => {
 
                             {/* ══ SIDEBAR — desktop only ══ */}
                             <div className="hidden md:block w-[280px] shrink-0 sticky top-[72px]">
+                                {/* Coupon */}
+                                <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm p-4 mb-3">
+                                    <div className="flex items-center gap-2 text-sm font-bold text-neutral-900">
+                                        <FaTag size={12} className="text-accent" /> Coupon / Promo Code
+                                    </div>
+                                    {coupon ? (
+                                        <div className="mt-2.5 bg-green-50 border border-green-100 rounded-xl px-3.5 py-2.5 flex justify-between items-center">
+                                            <div>
+                                                <div className="text-xs font-semibold text-green-700">✅ {coupon.code} applied!</div>
+                                                <div className="text-xs text-green-700 font-semibold">You save ₹{fmt(coupon.discount)}</div>
+                                            </div>
+                                            <button onClick={removeCoupon} aria-label="Remove coupon" className="text-red-500 text-base">✕</button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="flex gap-2 mt-2.5">
+                                                <input
+                                                    className="flex-1 min-w-0 px-3 py-2 border border-neutral-200 rounded-xl text-[13px] outline-none focus:border-[var(--accent-primary)] transition-colors"
+                                                    placeholder="Enter coupon code"
+                                                    value={couponCode}
+                                                    onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                                                    onKeyDown={e => e.key === "Enter" && applyCoupon()}
+                                                />
+                                                <button
+                                                    onClick={applyCoupon}
+                                                    disabled={couponApplying || !couponCode.trim()}
+                                                    className="px-4 py-2 bg-accent hover:bg-accent-hover disabled:bg-neutral-200 disabled:text-neutral-400 text-white rounded-xl text-xs font-bold transition-colors"
+                                                >
+                                                    {couponApplying ? "..." : "Apply"}
+                                                </button>
+                                            </div>
+                                            {couponErr && <p className="text-xs text-red-500 mt-2">⚠️ {couponErr}</p>}
+                                        </>
+                                    )}
+                                </div>
+
                                 {/* Price summary */}
                                 <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden mb-3">
                                     <div className="flex items-center justify-between px-4 py-3 bg-neutral-900">
@@ -849,7 +913,7 @@ const Checkout = () => {
                                             { icon: <FaShieldAlt size={11} className="text-green-600" />, label: "Safe & Secure Payment", bg: "bg-green-50" },
                                             { icon: <FaTruck size={11} className="text-blue-600" />, label: "Delivery Across India", bg: "bg-blue-50" },
                                             { icon: <FaMoneyBillWave size={11} className="text-green-600" />, label: "Cash on Delivery (COD)", bg: "bg-green-50" },
-                                            { icon: <FaTag size={11} className="text-orange-600" />, label: "Verified & Authentic", bg: "bg-orange-50" },
+                                            { icon: <FaTag size={11} className="text-[var(--accent-primary-hover)]" />, label: "Verified & Authentic", bg: "bg-accent-tint" },
                                         ].map(({ icon, label, bg }) => (
                                             <div key={label} className="flex items-center gap-2.5">
                                                 <div className={`w-7 h-7 rounded-lg ${bg} flex items-center justify-center shrink-0`}>

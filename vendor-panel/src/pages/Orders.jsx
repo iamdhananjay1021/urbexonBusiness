@@ -50,8 +50,18 @@ const Orders = () => {
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState({});
 
-  const load = useCallback(() => {
-    setLoading(true);
+  // BUG FIX: `load()` always set `loading=true` first, which unmounts the
+  // entire table/stat-cards block in favor of a full-page centered spinner
+  // (see the `loading` render branch below) — so every status-change button
+  // (Confirm/Pack/Ready-for-Pickup/etc, via `updateStatus` below) blanked
+  // the whole page and re-rendered it from scratch, not just the one order
+  // that changed. `silent=true` re-fetches the exact same data (so tab
+  // membership/stats/pagination stay correct — an order that just moved
+  // from "pending" to "processing" still correctly leaves the current tab)
+  // without ever toggling `loading`, so the existing list stays visible and
+  // simply swaps to the fresh data once it arrives.
+  const load = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     const p = new URLSearchParams({ page, limit: 15 });
     const activeTab = TABS.find((tab) => tab.key === filter);
 
@@ -59,17 +69,17 @@ const Orders = () => {
     if (debouncedSearch.trim()) p.set("search", debouncedSearch.trim());
     if (dateRange) p.set("days", dateRange);
 
-    api.get(`/vendor/orders?${p}`)
+    const req = api.get(`/vendor/orders?${p}`)
       .then(({ data }) => {
         setOrders(data.orders || []);
         setTotal(data.total || 0);
         setStats(data.stats || {});
       })
       .catch(() => {
-        setOrders([]);
-        setTotal(0);
-      })
-      .finally(() => setLoading(false));
+        if (!silent) { setOrders([]); setTotal(0); }
+      });
+
+    if (!silent) req.finally(() => setLoading(false));
   }, [filter, page, debouncedSearch, dateRange]);
 
   useEffect(() => {
@@ -100,7 +110,7 @@ const Orders = () => {
   const updateStatus = async (id, status, extra = {}) => {
     try {
       await api.patch(`/vendor/orders/${id}/status`, { status, ...extra });
-      load();
+      load(true); // silent refresh — see BUG FIX note on load() above
     } catch (err) {
       alert(err.response?.data?.message || "Failed");
     }

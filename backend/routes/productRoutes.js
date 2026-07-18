@@ -7,6 +7,10 @@ import { protectVendor, requireApprovedVendor, requireActiveSubscription } from 
 
 import {
     getProducts,
+    getProductFilters,
+    getRecommendations,
+    getTrendingSearches,
+    adminGetSearchAnalytics,
     getHomepageProducts,
     getDeals,
     getUrbexonHourProducts,
@@ -81,6 +85,9 @@ const router = express.Router();
 
 /* ── Public Routes ───────────────────────────── */
 router.get("/", getProducts);
+router.get("/filters", getProductFilters);
+router.get("/recommendations", getRecommendations);
+router.get("/search/trending", getTrendingSearches);
 router.get("/homepage", getHomepageProducts);
 router.get("/deals", getDeals);
 router.get("/suggestions", getSuggestions);
@@ -95,6 +102,8 @@ router.get(
     adminOnly,
     adminGetAllProducts
 );
+
+router.get("/admin/search-analytics", protect, adminOnly, adminGetSearchAnalytics);
 
 router.post(
     "/admin",

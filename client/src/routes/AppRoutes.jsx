@@ -34,6 +34,9 @@ const TermsConditions = lazy(() => import("../pages/TermsConditions"));
 const RefundPolicy = lazy(() => import("../pages/RefundPolicy"));
 const ContactUs = lazy(() => import("../pages/Contactus"));
 const CategoryPage = lazy(() => import("../pages/Categorypage"));
+const CollectionPage = lazy(() => import("../pages/CollectionPage"));
+const CollectionsIndex = lazy(() => import("../pages/CollectionsIndex"));
+const AboutUs = lazy(() => import("../pages/AboutUs"));
 const DealsPage = lazy(() => import("../pages/Dealspage"));
 const ProductsPage = lazy(() => import("../pages/Productspage"));
 const NotFound = lazy(() => import("../pages/Notfound"));
@@ -44,17 +47,39 @@ const UHProductDetail = lazy(() => import("../pages/UHProductDetail"));
 const Wishlist = lazy(() => import("../pages/Wishlist"));
 const Coupons = lazy(() => import("../pages/Coupons"));
 const BecomeVendor = lazy(() => import("../pages/BecomeVendor"));
+const BecomeDeliveryPartner = lazy(() => import("../pages/BecomeDeliveryPartner"));
 const VendorStore = lazy(() => import("../pages/VendorStore"));
 
+/* Route-chunk fallback. The spinner stays INVISIBLE for the first 350ms —
+   fast chunk loads show only a canvas-coloured screen (no white/spinner
+   "blink" between pages); the spinner fades in only on genuinely slow
+   loads. Colours come from the design tokens, not the old beige/gold. */
 const Loader = () => (
-  <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f7f4ee" }}>
-    <div style={{ width: 36, height: 36, border: "3px solid #e8e4d9", borderTop: "3px solid #c9a84c", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
-    <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
+  <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-canvas)" }}>
+    <div style={{
+      width: 34, height: 34, borderRadius: "50%",
+      border: "3px solid var(--color-graphite-200)",
+      borderTopColor: "var(--accent-primary)",
+      opacity: 0,
+      animation: "route-loader-in .2s ease .35s forwards, spin .8s linear infinite",
+    }} />
+    <style>{"@keyframes spin{to{transform:rotate(360deg)}} @keyframes route-loader-in{to{opacity:1}}"}</style>
   </div>
 );
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
+
+  // The browser's automatic scroll restoration fights SPA navigation: with
+  // lazy chunks the new page's content mounts late, and Chrome then
+  // "restores" the previous page's scroll offset — which is why a page
+  // could open scrolled to the bottom. Take manual control once.
+  useEffect(() => {
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+  }, []);
+
   useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [pathname]);
   return null;
 };
@@ -98,6 +123,9 @@ const AppRoutes = () => (
           <Route path="/" element={<PageTransition><Home /></PageTransition>} />
           <Route path="/products" element={<PageTransition><ProductsPage /></PageTransition>} />
           <Route path="/category/:slug" element={<PageTransition><CategoryPage /></PageTransition>} />
+          <Route path="/collections" element={<PageTransition><CollectionsIndex /></PageTransition>} />
+          <Route path="/collections/:slug" element={<PageTransition><CollectionPage /></PageTransition>} />
+          <Route path="/about" element={<PageTransition><AboutUs /></PageTransition>} />
           <Route path="/deals" element={<PageTransition><DealsPage /></PageTransition>} />
           <Route path="/products/:id" element={<PageTransition><ProductDetails /></PageTransition>} />
 
@@ -112,6 +140,7 @@ const AppRoutes = () => (
           <Route path="/contact" element={<PageTransition><ContactUs /></PageTransition>} />
           <Route path="/verify-invoice" element={<PageTransition><VerifyInvoice /></PageTransition>} />
           <Route path="/become-vendor" element={<PageTransition><BecomeVendor /></PageTransition>} />
+          <Route path="/become-delivery" element={<PageTransition><BecomeDeliveryPartner /></PageTransition>} />
           <Route path="/vendor/:slug" element={<PageTransition><VendorStore /></PageTransition>} />
 
           {/* Authentication — Password reset inside MainLayout */}

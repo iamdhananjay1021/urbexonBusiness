@@ -78,10 +78,17 @@ export const createSubscriptionOrder = async (req, res) => {
         const amount = planConfig.monthlyFee * monthCount;
 
         // Create Razorpay order — server-side amount calculation
+        // BUG FIX: Razorpay rejects `receipt` over 40 chars ("input_validation_failed").
+        // `sub_${vendorId}_${Date.now()}` is 4 + 24 (ObjectId) + 1 + 13 (ms
+        // timestamp) = 42 chars — always over the limit, so every subscription
+        // payment failed at order creation. Full vendorId/plan/months already
+        // travel in `notes` below for traceability; the receipt itself only
+        // needs to be short and reasonably unique, so it keeps just the last
+        // 8 hex chars of the vendorId instead of the full ObjectId.
         const rpOrder = await razorpay.orders.create({
             amount: Math.round(amount * 100), // paise
             currency: "INR",
-            receipt: `sub_${vendorId}_${Date.now()}`,
+            receipt: `sub_${vendorId.toString().slice(-8)}_${Date.now()}`,
             notes: {
                 vendorId: vendorId.toString(),
                 plan,
@@ -155,7 +162,20 @@ export const verifySubscriptionPayment = async (req, res) => {
             .update(`${razorpay_order_id}|${razorpay_payment_id}`)
             .digest("hex");
 
-        if (!crypto.timingSafeEqual(Buffer.from(expectedSig, "hex"), Buffer.from(razorpay_signature, "hex"))) {
+        // BUG FIX: crypto.timingSafeEqual() throws a RangeError on mismatched
+        // buffer lengths instead of returning false — a malformed/tampered
+        // razorpay_signature of the wrong length fell through to the generic
+        // catch(err) below and returned a 500 "Payment verification failed"
+        // instead of this endpoint's own clean 400 "Signature mismatch".
+        // Not a security hole (fails closed either way), but inconsistent
+        // with the identical check in Paymentcontroller.js (normal order
+        // payments), which already guards the length first.
+        const expectedSigBuf = Buffer.from(expectedSig, "hex");
+        const receivedSigBuf = Buffer.from(razorpay_signature, "hex");
+        if (
+            expectedSigBuf.length !== receivedSigBuf.length ||
+            !crypto.timingSafeEqual(expectedSigBuf, receivedSigBuf)
+        ) {
             // Log failed attempt
             await logPaymentAttempt(vendorId, razorpay_order_id, razorpay_payment_id, "failed", "Signature verification failed");
             return res.status(400).json({

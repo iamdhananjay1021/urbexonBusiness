@@ -123,7 +123,6 @@ export const NotificationProvider = ({ children }) => {
                 wsRef.current = ws;
 
                 ws.onopen = () => {
-                    console.log("[Vendor WS] Connected to:", wsBase);
                     backoffRef.current = 3000;
                     retries = 0;
                     setConnected(true);

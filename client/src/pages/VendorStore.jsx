@@ -5,6 +5,7 @@ import {
     FiLink, FiClock, FiShoppingBag, FiCheckCircle,
 } from "react-icons/fi";
 import { FaStore, FaStar, FaRegStar } from "react-icons/fa";
+import BackButton from "../components/BackButton";
 import { getVendorStore } from "../api/vendorApi";
 import ProductCard from "../components/ProductCard";
 import SEO from "../components/SEO";
@@ -200,12 +201,11 @@ const VendorStore = () => {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-black/25" />
 
                 <div className="relative z-[2] flex items-center justify-between px-4 sm:px-5 pt-4" style={{ paddingTop: "max(16px, env(safe-area-inset-top))" }}>
-                    <button
-                        onClick={() => navigate(-1)}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-white/15 backdrop-blur-md border border-white/20 text-white text-sm font-semibold rounded-full hover:bg-white/25 active:scale-95 transition-all"
-                    >
-                        <FiArrowLeft size={14} aria-hidden="true" /> Back
-                    </button>
+                    <BackButton
+                        fallback="/"
+                        label="Back"
+                        className="!text-white px-4 py-2 bg-white/15 backdrop-blur-md border border-white/20 !normal-case !tracking-normal !text-sm rounded-full hover:!text-white hover:bg-white/25 active:scale-95"
+                    />
                     <button
                         onClick={handleShare}
                         title={copied ? "Link copied!" : "Share store"}

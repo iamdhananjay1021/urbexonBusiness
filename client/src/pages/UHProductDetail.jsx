@@ -15,6 +15,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
 import SEO, { JsonLd } from "../components/SEO";
 import { UHDeliveryEstimate } from "../components/DeliveryEstimate";
+import BackButton from "../components/BackButton";
 import {
   FiArrowLeft, FiPlus, FiMinus, FiTrash2, FiShoppingCart,
   FiClock, FiStar, FiChevronRight, FiShare2, FiHome,
@@ -316,9 +317,7 @@ const UHProductDetail = () => {
         className="sticky top-0 z-40 bg-surface/90 backdrop-blur-md flex items-center justify-between px-4 py-3 border-b border-default"
         style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}
       >
-        <button onClick={() => navigate(-1)} aria-label="Go back" className="w-10 h-10 rounded-[var(--radius-md)] bg-canvas flex items-center justify-center text-secondary hover:bg-[var(--color-graphite-100)] active:scale-95 transition-all">
-          <FiArrowLeft size={16} aria-hidden="true" />
-        </button>
+        <BackButton variant="inline" fallback="/urbexon-hour" className="rounded-[var(--radius-md)] hover:bg-[var(--color-graphite-100)] active:scale-95" />
         <div className="flex items-center gap-1.5 text-[15px] font-extrabold text-primary">
           <FiZap size={13} className="text-accent" aria-hidden="true" />
           <span>Urbexon Hour</span>

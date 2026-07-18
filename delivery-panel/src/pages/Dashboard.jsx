@@ -118,6 +118,15 @@ const Dashboard = () => {
               load();
             }
             if (msg.type === "rider:order_assigned") { playNotification(); load(); }
+
+            // BUG FIX: same gap as ActiveOrders.jsx — admin cancelling an
+            // already-accepted order had no real-time signal here either.
+            if (msg.type === "rider:order_cancelled") {
+              const p = msg.payload || {};
+              stopAlert();
+              alert(p.message || "An order assigned to you was cancelled by admin.");
+              load();
+            }
           } catch { }
         };
         ws.onclose = () => {

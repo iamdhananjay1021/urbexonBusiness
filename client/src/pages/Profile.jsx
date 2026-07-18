@@ -7,9 +7,10 @@ import SEO from "../components/SEO";
 import {
     FiUser, FiBox, FiHeart, FiTag, FiArrowRight,
     FiMapPin, FiLogOut, FiEdit2, FiSave,
-    FiX, FiLock, FiEye, FiEyeOff, FiPlus, FiArrowLeft,
+    FiX, FiLock, FiEye, FiEyeOff, FiPlus,
     FiTrash2, FiChevronRight, FiHome, FiHeadphones, FiSettings,
 } from "react-icons/fi";
+import BackButton from "../components/BackButton";
 import Card from "../design-system/Card";
 import Input from "../design-system/Input";
 import Select from "../design-system/Select";
@@ -202,13 +203,7 @@ const Profile = () => {
                 style={{ background: "linear-gradient(180deg, var(--accent-primary-tint) 0%, var(--accent-primary-tint) 55%, transparent 100%)" }}
             >
                 <div className="flex items-center justify-between max-w-[560px] mx-auto mb-6 relative z-10">
-                    <button
-                        onClick={() => navigate(-1)}
-                        aria-label="Go back"
-                        className="w-9 h-9 rounded-full bg-surface shadow-xs flex items-center justify-center text-secondary hover:text-accent transition-colors"
-                    >
-                        <FiArrowLeft size={15} aria-hidden="true" />
-                    </button>
+                    <BackButton variant="inline" fallback="/" />
                     <p className="text-[15px] font-bold text-primary font-display">My Profile</p>
                     <Link
                         to="/contact"

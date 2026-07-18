@@ -4,9 +4,10 @@
  */
 import { useState, useCallback } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
-import { FiMail, FiLock, FiEye, FiEyeOff, FiArrowLeft } from "react-icons/fi";
+import { FiMail, FiLock, FiEye, FiEyeOff } from "react-icons/fi";
 import { FcGoogle } from "react-icons/fc";
 import SEO from "../components/SEO";
+import BackButton from "../components/BackButton";
 import { useAuth } from "../contexts/AuthContext";
 import * as authApi from "../api/authApi";
 import { getFirebaseAuth, isFirebaseConfigured } from "../config/firebase";
@@ -141,14 +142,11 @@ const Login = () => {
 
             <Card padding="none" className="relative w-full max-w-[420px] overflow-hidden shadow-lg">
                 <div className="bg-[var(--color-graphite-900)] px-8 py-7 text-center relative">
-                    <button
-                        onClick={() => navigate(-1)}
-                        title="Go back"
-                        aria-label="Go back"
-                        className="absolute left-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
-                    >
-                        <FiArrowLeft size={13} aria-hidden="true" />
-                    </button>
+                    <BackButton
+                        variant="inline"
+                        fallback="/"
+                        className="absolute left-4 top-1/2 -translate-y-1/2 !h-8 !w-8 !bg-white/10 !border-white/20 !text-white hover:!bg-white/20 hover:!text-white hover:!border-white/20 !shadow-none"
+                    />
                     <div className="font-display text-2xl font-bold text-white tracking-widest uppercase">Urbexon</div>
                     <div className="text-[9px] text-white/40 tracking-[4px] uppercase mt-1.5">Explore the unknown</div>
                 </div>

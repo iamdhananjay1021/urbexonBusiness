@@ -253,9 +253,40 @@ const Settings = () => {
             <h3 style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>
               Subscription & Plans
             </h3>
-            <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>
+            <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
               Manage your plan to list products on Urbexon
             </p>
+
+            {/* BUG FIX: this section only ever offered "request a plan
+                change → wait for admin" (the admin-manual-approval path,
+                POST /vendor/subscription/request-change) and its copy told
+                vendors to "contact admin to renew" — even though a fully
+                working, instant self-serve Razorpay checkout already exists
+                one click away at /subscription. A vendor landing here first
+                had no way to discover it. This banner makes the faster path
+                visible without removing the admin-approval option below
+                (e.g. for vendors who'd rather pay via bank transfer/manual
+                arrangement with admin). */}
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+              background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: 12,
+              padding: "14px 18px", marginBottom: 18,
+            }}>
+              <div style={{ fontSize: 13, color: "#5b21b6" }}>
+                ⚡ Want to activate instantly? Pay online now via the Subscription page.
+              </div>
+              <button
+                onClick={() => navigate("/subscription")}
+                style={{
+                  padding: "8px 16px", border: "none", borderRadius: 8,
+                  background: "linear-gradient(135deg, #7c3aed, #4f46e5)",
+                  color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Pay Online →
+              </button>
+            </div>
 
             {/* Current Status Banner */}
             <div style={{
@@ -289,11 +320,11 @@ const Settings = () => {
                   </div>
                 ) : status === "expired" ? (
                   <div style={{ fontSize: 12, color: "#dc2626" }}>
-                    Expired on {sub?.expiryDate ? new Date(sub.expiryDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}. Contact admin to renew.
+                    Expired on {sub?.expiryDate ? new Date(sub.expiryDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}. Renew instantly on the Subscription page, or request a plan below.
                   </div>
                 ) : status === "pending_payment" ? (
                   <div style={{ fontSize: 12, color: "#92400e" }}>
-                    {sub ? "Payment pending. Contact admin to activate." : "No subscription yet. Choose a plan below."}
+                    {sub ? "Payment pending. Pay instantly on the Subscription page, or contact admin." : "No subscription yet. Pay instantly on the Subscription page, or choose a plan below."}
                   </div>
                 ) : (
                   <div style={{ fontSize: 12, color: "#6b7280" }}>Contact admin for assistance.</div>
@@ -490,9 +521,16 @@ const Settings = () => {
               marginTop: 18, background: "#fefce8", border: "1px solid #fde68a",
               borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#92400e",
             }}>
-              💡 To activate/change/renew your plan, contact admin at{" "}
-              <strong>officialurbexon@gmail.com</strong> or WhatsApp{" "}
-              <strong>8808485840</strong>. Online payment coming soon.
+              💡 The requests above are reviewed and activated by admin. To activate/change/renew instantly
+              yourself instead, use the{" "}
+              <button
+                onClick={() => navigate("/subscription")}
+                style={{ background: "none", border: "none", padding: 0, font: "inherit", fontWeight: 700, color: "#7c3aed", textDecoration: "underline", cursor: "pointer" }}
+              >
+                Subscription page
+              </button>{" "}
+              to pay online. Or contact admin at <strong>officialurbexon@gmail.com</strong> / WhatsApp{" "}
+              <strong>8808485840</strong>.
             </div>
           </div>
         );

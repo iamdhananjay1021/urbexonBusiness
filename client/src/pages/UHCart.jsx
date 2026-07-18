@@ -8,14 +8,16 @@
  * All useCart hook usage, pricing math, and handlers preserved verbatim.
  */
 
-import { useState, useCallback } from "react";
-import { useNavigate, useLocation, Link } from "react-router-dom";
+import { useState, useCallback, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { useCart } from "../hooks/useCart";
+import { validateCoupon } from "../api/orderApi";
 import {
-    FiZap, FiTrash2, FiPlus, FiMinus, FiArrowLeft,
-    FiShoppingCart, FiClock, FiShield, FiTruck,
+    FiZap, FiTrash2, FiPlus, FiMinus,
+    FiShoppingCart, FiClock, FiShield, FiTruck, FiTag,
 } from "react-icons/fi";
 import SEO from "../components/SEO";
+import BackButton from "../components/BackButton";
 import Card from "../design-system/Card";
 import Button from "../design-system/Button";
 import Alert from "../design-system/Alert";
@@ -43,7 +45,6 @@ const PAGE_CSS = `
 
 const UHCart = () => {
     const navigate = useNavigate();
-    const location = useLocation();
     const {
         uhItems, uhTotalQty, uhTotal,
         increment, decrement, removeItem, clearUH,
@@ -56,20 +57,48 @@ const UHCart = () => {
         else setClearing(true);
     }, [clearing, clearUH]);
 
-    // BUG FIX: navigate(-1) blindly walked the browser's global history —
-    // if this page was opened directly (refresh, deep link, notification
-    // tap), there's no in-app entry to go back to and it could exit the
-    // site entirely. React Router stamps location.key = "default" for
-    // exactly that case (no history the router itself pushed); only use
-    // -1 when there's real in-app history to return to.
-    const handleBack = useCallback(() => {
-        if (location.key !== "default") navigate(-1);
-        else navigate("/urbexon-hour");
-    }, [navigate, location.key]);
+
+    // BUG FIX: this page (the actual /uh-cart route every Urbexon Hour
+    // link points to — Cart.jsx's UH tab at /cart is a different, rarely
+    // reached page) had no coupon UI at all, unlike Cart.jsx which already
+    // has a fully working one. Mirrors Cart.jsx's coupon state/handlers and
+    // forwards the applied coupon to checkout the same way.
+    const [couponCode, setCouponCode] = useState("");
+    const [couponData, setCouponData] = useState(null);
+    const [couponErr, setCouponErr] = useState("");
+    const [applying, setApplying] = useState(false);
+    const discount = couponData?.discount || 0;
+
+    const applyCoupon = useCallback(async () => {
+        if (!couponCode.trim()) return;
+        setApplying(true); setCouponErr(""); setCouponData(null);
+        try {
+            const { data } = await validateCoupon({
+                code: couponCode.trim(),
+                orderTotal: uhTotal,
+                orderType: "urbexon_hour",
+            });
+            setCouponData(data);
+        } catch (e) {
+            setCouponErr(e.response?.data?.message || "Invalid coupon");
+        } finally { setApplying(false); }
+    }, [couponCode, uhTotal]);
+
+    const removeCoupon = useCallback(() => {
+        setCouponData(null); setCouponCode(""); setCouponErr("");
+    }, []);
+
+    // Reset coupon if cart total drops below its minimum order value
+    useEffect(() => {
+        if (couponData && couponData.minOrderValue && uhTotal < couponData.minOrderValue) {
+            removeCoupon();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [uhTotal]);
 
     const deliveryCharge = uhTotal >= 499 ? 0 : 25;
     const platformFee = 11;
-    const grandTotal = uhTotal + deliveryCharge + platformFee;
+    const grandTotal = Math.max(0, uhTotal - discount) + deliveryCharge + platformFee;
     // BUG FIX: checkout had no client-side guard against an out-of-stock
     // item still sitting in the cart — the customer could tap "Proceed to
     // Checkout" and only discover the problem after landing on the
@@ -78,8 +107,8 @@ const UHCart = () => {
 
     const goToCheckout = useCallback(() => {
         if (hasOutOfStockItems) return;
-        navigate("/uh-checkout");
-    }, [hasOutOfStockItems, navigate]);
+        navigate("/uh-checkout", { state: couponData ? { coupon: couponData } : undefined });
+    }, [hasOutOfStockItems, navigate, couponData]);
 
     if (uhItems.length === 0) {
         return (
@@ -109,12 +138,10 @@ const UHCart = () => {
                 className="flex items-center gap-3 bg-surface/90 backdrop-blur-md px-[clamp(16px,3vw,40px)] py-3.5 border-b border-default sticky top-0 z-40"
                 style={{ paddingTop: "max(14px, env(safe-area-inset-top))" }}
             >
-                <button onClick={handleBack} aria-label="Go back" className="w-9 h-9 rounded-[var(--radius-md)] bg-canvas flex items-center justify-center text-primary hover:bg-[var(--color-graphite-100)] active:scale-95 transition-all">
-                    <FiArrowLeft size={15} aria-hidden="true" />
-                </button>
+                <BackButton variant="inline" fallback="/urbexon-hour" className="rounded-[var(--radius-md)] hover:bg-[var(--color-graphite-100)] active:scale-95" />
                 <div className="flex-1 min-w-0">
                     <h1 className="text-base font-extrabold text-primary flex items-center gap-1.5">
-                        <FiZap size={14} className="text-accent" aria-hidden="true" /> Urbexon Hour Cart
+                        <FiZap size={14} className="text-[var(--accent-hour)]" aria-hidden="true" /> Urbexon Hour Cart
                     </h1>
                     <span className="text-xs text-secondary font-medium">{uhTotalQty} item{uhTotalQty !== 1 ? "s" : ""}</span>
                 </div>
@@ -248,19 +275,65 @@ const UHCart = () => {
 
                     <Link
                         to="/urbexon-hour"
-                        className="flex items-center justify-center gap-1.5 p-3.5 bg-surface border-2 border-dashed border-strong rounded-2xl text-primary font-bold text-[13px] hover:bg-canvas hover:border-[var(--accent-primary)] hover:text-accent transition-colors"
+                        className="flex items-center justify-center gap-1.5 p-3.5 bg-surface border-2 border-dashed border-strong rounded-2xl text-primary font-bold text-[13px] hover:bg-canvas hover:border-[var(--accent-hour)] hover:text-[var(--accent-hour)] transition-colors"
                     >
                         <FiPlus size={11} aria-hidden="true" /> Add more items
                     </Link>
                 </div>
 
+                {/* Coupon */}
+                <Card className="h-fit hidden md:block rounded-2xl order-2 md:order-none">
+                    <div className="flex items-center gap-2 font-bold text-sm text-primary">
+                        <FiTag size={13} className="text-[var(--accent-hour)]" aria-hidden="true" />Coupon / Promo Code
+                    </div>
+                    {couponData ? (
+                        <div className="mt-2.5 bg-success-tint border border-[var(--color-success-100)] rounded-[var(--radius-sm)] px-3.5 py-2.5 flex justify-between items-center">
+                            <div>
+                                <div className="text-xs font-semibold text-success">✅ {couponData.code} applied!</div>
+                                <div className="text-xs text-success font-semibold">You save {fmt(couponData.discount)}</div>
+                            </div>
+                            <button onClick={removeCoupon} aria-label="Remove coupon" className="text-[var(--color-error-500)] text-base">✕</button>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="flex gap-2 mt-2.5">
+                                <input
+                                    className="flex-1 px-3.5 py-2.5 border border-default rounded-[var(--radius-sm)] text-[13px] outline-none focus-ring-accent focus:border-[var(--accent-primary)] transition-colors"
+                                    placeholder="Enter coupon code"
+                                    value={couponCode}
+                                    onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                                    onKeyDown={e => e.key === "Enter" && applyCoupon()}
+                                />
+                                <Button variant="hour" onClick={applyCoupon} loading={applying}>Apply</Button>
+                            </div>
+                            {couponErr && <p className="text-xs text-error mt-2">⚠️ {couponErr}</p>}
+                        </>
+                    )}
+                </Card>
+
                 {/* Price Summary */}
-                <Card className="h-fit md:sticky md:top-[88px] hidden md:block rounded-2xl">
+                {/* BUG FIX: `top-[88px]` was a fixed guess at the sticky
+                    header's rendered height — the header's own paddingTop
+                    grows with env(safe-area-inset-top) on notched devices
+                    (see the header's inline style above), but this offset
+                    never accounted for that extra growth, so on a notched
+                    phone this card could scroll up underneath (overlap) the
+                    header instead of sitting flush below it. Adds the same
+                    safe-area growth the header itself uses. */}
+                <Card
+                    className="h-fit md:sticky hidden md:block rounded-2xl"
+                    style={{ top: "calc(88px + max(0px, env(safe-area-inset-top) - 14px))" }}
+                >
                     <div className="text-sm font-extrabold text-primary mb-3.5">Price Details</div>
                     <div className="flex justify-between text-[13px] text-secondary mb-2">
                         <span>Items ({uhTotalQty})</span>
                         <span>{fmt(uhTotal)}</span>
                     </div>
+                    {discount > 0 && (
+                        <div className="flex justify-between text-[13px] text-success font-semibold mb-2">
+                            <span>Coupon Discount</span><span>−{fmt(discount)}</span>
+                        </div>
+                    )}
                     <div className="flex justify-between text-[13px] text-secondary mb-2">
                         <span>Est. Delivery</span>
                         <span className={deliveryCharge === 0 ? "text-success font-bold" : ""}>
@@ -290,7 +363,7 @@ const UHCart = () => {
                         </Alert>
                     )}
 
-                    <Button variant="primary" className="w-full" disabled={hasOutOfStockItems} onClick={goToCheckout}>
+                    <Button variant="hour" className="w-full" disabled={hasOutOfStockItems} onClick={goToCheckout}>
                         Proceed to Checkout
                     </Button>
 
@@ -310,7 +383,7 @@ const UHCart = () => {
                     <span className="text-lg font-black text-primary leading-tight">{fmt(grandTotal)}</span>
                     <span className="text-[11px] text-secondary font-medium">{uhTotalQty} item{uhTotalQty !== 1 ? "s" : ""}</span>
                 </div>
-                <Button variant="primary" className="flex-shrink-0" disabled={hasOutOfStockItems} onClick={goToCheckout}>
+                <Button variant="hour" className="flex-shrink-0" disabled={hasOutOfStockItems} onClick={goToCheckout}>
                     Proceed to Checkout
                 </Button>
             </div>

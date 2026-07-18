@@ -22,7 +22,8 @@ import {
 } from "../features/cart/cartSlice";
 import { getProductById } from "../api/productApi";
 import { validateCoupon } from "../api/orderApi";
-import { FiTrash2, FiShoppingBag, FiZap, FiTag, FiArrowRight, FiX, FiPlus, FiMinus, FiSlash, FiArrowLeft } from "react-icons/fi";
+import { FiTrash2, FiShoppingBag, FiZap, FiTag, FiArrowRight, FiX, FiPlus, FiMinus, FiSlash } from "react-icons/fi";
+import BackButton from "../components/BackButton";
 import Card from "../design-system/Card";
 import Button from "../design-system/Button";
 import Badge from "../design-system/Badge";
@@ -156,9 +157,7 @@ const Cart = () => {
       <div className="min-h-screen bg-canvas px-[clamp(12px,4vw,40px)] pt-6" style={{ paddingBottom: MOBILE_BOTTOM_NAV_HEIGHT }}>
         <SEO title="Cart" noindex />
         <div className="max-w-[1100px] mx-auto pb-5">
-          <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-primary font-bold text-sm hover:text-accent transition-colors">
-            <FiArrowLeft size={14} aria-hidden="true" /> Back
-          </button>
+          <BackButton variant="inline" fallback="/" />
         </div>
         <EmptyState
           icon={FiShoppingBag}
@@ -177,9 +176,7 @@ const Cart = () => {
       <div className="max-w-[1100px] mx-auto">
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div className="flex items-start gap-4">
-            <button onClick={() => navigate(-1)} aria-label="Go back" className={cn("text-primary hover:text-accent transition-colors", hasBoth ? "mt-2.5" : "mt-1")}>
-              <FiArrowLeft size={18} aria-hidden="true" />
-            </button>
+            <BackButton variant="inline" fallback="/" className={hasBoth ? "mt-2.5" : "mt-1"} />
             <div>
               {hasBoth && (
                 <Tabs

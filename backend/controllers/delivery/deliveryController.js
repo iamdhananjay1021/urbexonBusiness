@@ -232,11 +232,19 @@ export const getDeliveryOrders = async (req, res) => {
         const myOrders = myOrdersRaw.map((o) => {
             const vendor = o.vendorId ? vendorsById[o.vendorId.toString()] : null;
             const coords = vendor?.location?.coordinates;
+            // BUG FIX: same [0,0]-sentinel gap as liveTrackingEngine.js —
+            // a vendor who hasn't saved a real shop location still "has"
+            // coordinates: [0,0] on the schema. Passing that through as
+            // vendorLat/vendorLng fed the frontend's live "distance to
+            // store" calc (ActiveOrders.jsx) a real-looking (0,0) target,
+            // producing the same bogus ~9230km reading. Reuses the existing
+            // coordinate-plausibility check instead of a new [0,0] literal.
+            const hasRealVendorCoords = coords?.length === 2 && isPlausibleIndiaLatLng(coords[1], coords[0]);
             return {
                 ...o,
                 vendorName: vendor?.shopName || "",
-                vendorLat: coords?.length === 2 ? coords[1] : null,
-                vendorLng: coords?.length === 2 ? coords[0] : null,
+                vendorLat: hasRealVendorCoords ? coords[1] : null,
+                vendorLng: hasRealVendorCoords ? coords[0] : null,
             };
         });
 
@@ -808,6 +816,70 @@ export const cancelOrder = async (req, res) => {
     } catch (err) {
         console.error("[cancelOrder]", err);
         res.status(500).json({ success: false, message: "Failed to cancel delivery" });
+    }
+};
+
+// ── PATCH /api/delivery/orders/:id/report-issue ────────
+// For orders already PICKED_UP/OUT_FOR_DELIVERY, the rider physically has
+// the package — the plain /cancel endpoint (handleRiderCancel) can't be
+// used here because it just drops the rider and re-triggers assignment to
+// a DIFFERENT rider, who wouldn't have the package. This instead flags the
+// delivery as failed (customer unreachable / not answering calls / not
+// available at address) and hands it to admin to decide the next step
+// (reschedule, return-to-vendor, or cancel+refund) — admin already has a
+// working CANCELLED transition from OUT_FOR_DELIVERY that handles refund/
+// stock/coupon correctly, so this deliberately does not duplicate that.
+export const reportDeliveryIssue = async (req, res) => {
+    try {
+        const db = await DeliveryBoy.findOne({ userId: req.user._id });
+        if (!db) return res.status(404).json({ success: false, message: "Not registered" });
+
+        const order = await Order.findById(req.params.id);
+        if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+        if (String(order.delivery?.assignedTo) !== String(db._id)) {
+            return res.status(403).json({ success: false, message: "This order is not assigned to you" });
+        }
+        if (!["PICKED_UP", "OUT_FOR_DELIVERY"].includes(order.delivery?.status)) {
+            return res.status(400).json({ success: false, message: "Can only report an issue after pickup" });
+        }
+        if (["DELIVERED", "CANCELLED"].includes(order.orderStatus)) {
+            return res.status(400).json({ success: false, message: `Order is already ${order.orderStatus}` });
+        }
+
+        const reason = String(req.body.reason || "Customer not responding").trim().slice(0, 300);
+
+        order.delivery.status = "FAILED";
+        order.delivery.note = reason;
+        order.timeline = order.timeline || [];
+        order.timeline.push(buildTimelineEntry({
+            status: "DELIVERY_ISSUE",
+            actorId: req.user._id,
+            role: "delivery",
+            source: "delivery_panel",
+            reason,
+            note: `${db.name} reported: ${reason}`,
+        }));
+        await order.save();
+
+        broadcastToAdmins("order:delivery_issue", {
+            orderId: order._id,
+            invoiceNumber: order.invoiceNumber,
+            riderName: db.name,
+            reason,
+            message: `${db.name} reported an issue on order #${String(order._id).slice(-6).toUpperCase()}: ${reason}`,
+        });
+
+        notifyOrderStakeholders(order, "delivery_issue", {
+            status: order.orderStatus,
+            deliveryStatus: "FAILED",
+            reason,
+            message: `Delivery issue reported: ${reason}. Our team will follow up shortly.`,
+        }).catch((err) => console.warn("[reportDeliveryIssue] stakeholder notify failed:", err.message));
+
+        res.json({ success: true, message: "Issue reported. Admin has been notified." });
+    } catch (err) {
+        console.error("[reportDeliveryIssue]", err);
+        res.status(500).json({ success: false, message: "Failed to report issue" });
     }
 };
 

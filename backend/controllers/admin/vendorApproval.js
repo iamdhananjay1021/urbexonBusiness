@@ -282,12 +282,15 @@ export const deleteVendor = async (req, res) => {
 export const activateVendorSubscription = async (req, res) => {
     try {
         const { plan, months = 1 } = req.body;
-        const PLANS = {
-            starter: { monthlyFee: 0, maxProducts: 10 },
-            basic: { monthlyFee: 499, maxProducts: 30 },
-            standard: { monthlyFee: 999, maxProducts: 100 },
-            premium: { monthlyFee: 1999, maxProducts: 500 },
-        };
+        // BUG FIX: this used to redeclare its own local PLANS object instead
+        // of reusing Subscription.PLANS (models/vendorModels/Subscription.js)
+        // — the same pricing/limits config duplicated a second time here (and
+        // a third time in admin/src/pages/AdminSubscriptions.jsx). A price or
+        // product-limit change would silently drift between the vendor's
+        // self-serve Razorpay flow (vendorSubscriptionPayment.js, which
+        // already used Subscription.PLANS) and this manual admin-activation
+        // path. One source of truth now.
+        const PLANS = Subscription.PLANS;
         if (!PLANS[plan]) return res.status(400).json({ success: false, message: "Invalid plan. Use: starter, basic, standard, premium" });
 
         const numMonths = Number(months);
@@ -411,6 +414,14 @@ export const adminGetAllSubscriptions = async (req, res) => {
             page: Number(page),
             totalPages: Math.ceil(total / Number(limit)),
             summary: { active: activeCount, expired: expiredCount, pending: pendingCount, cancelled: cancelledCount },
+            // BUG FIX: AdminSubscriptions.jsx used to hardcode its own copy
+            // of plan prices/limits (a third duplicate of Subscription.PLANS,
+            // alongside the one removed from activateVendorSubscription
+            // above) — a price change would silently go stale on the very
+            // page admin uses to manually activate plans. Piggyback the
+            // canonical PLANS onto this existing response instead of adding
+            // a new endpoint.
+            plans: Subscription.PLANS,
         });
     } catch (err) {
         console.error("[adminGetAllSubscriptions]", err);

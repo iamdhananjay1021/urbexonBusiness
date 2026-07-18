@@ -25,12 +25,11 @@ export { default as Breadcrumb } from "./Breadcrumb";
 export { default as Pagination } from "./Pagination";
 export { default as Table } from "./Table";
 export { default as SearchBar } from "./SearchBar";
-export { default as Navbar } from "./Navbar";
 export { default as Sidebar } from "./Sidebar";
-export { default as Footer } from "./Footer";
 export { default as Skeleton, SkeletonText, SkeletonCard } from "./Skeleton";
 export { default as Loader } from "./Loader";
 export { default as EmptyState, ErrorState, SuccessState } from "./EmptyState";
-export { default as ProductCard } from "./ProductCard";
+// ProductCard was removed — the app-wide card is components/ProductCard.jsx
+// (single global card; the presentational duplicate here caused style drift).
 export { default as VendorCard } from "./VendorCard";
 export { default as OrderCard } from "./OrderCard";

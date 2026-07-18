@@ -19,6 +19,41 @@ import { uploadToCloudinary } from "../config/cloudinary.js";
 import { sendRestockNotifications } from "./stockNotificationController.js";
 import { handlePriceChange, handleBackInStock } from "../services/productReminders.js";
 import Vendor from "../models/vendorModels/Vendor.js";
+import { buildDynamicConditions, applyAvailability } from "../utils/filterQueryBuilder.js";
+import { computeFacets } from "../services/filterService.js";
+import { getRecommendedProducts, STRATEGIES } from "../services/recommendationService.js";
+import SearchLog from "../models/SearchLog.js";
+
+/* Fire-and-forget search analytics — must never slow down or fail a
+   search request. Powers /products/search/trending. */
+const logSearchTerm = (term, resultCount) => {
+    const normalized = String(term || "").trim().toLowerCase().slice(0, 60);
+    if (normalized.length < 2) return;
+    SearchLog.findOneAndUpdate(
+        { term: normalized },
+        { $inc: { count: 1 }, $set: { lastSearchedAt: new Date(), lastResultCount: resultCount } },
+        { upsert: true }
+    ).catch(() => { /* analytics only */ });
+};
+
+/* Dynamic discovery attributes — sanitize a {key: value} payload coming
+   from admin/vendor product forms (keys defined by category metadata). */
+const sanitizeAttributes = (raw) => {
+    let obj = raw;
+    if (typeof raw === "string") {
+        try { obj = JSON.parse(raw); } catch { return {}; }
+    }
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+        const key = String(k).trim();
+        const val = String(v ?? "").trim();
+        if (!/^[a-zA-Z0-9 _-]{1,40}$/.test(key) || !val) continue;
+        out[key] = val.slice(0, 120);
+        if (Object.keys(out).length >= 30) break;
+    }
+    return out;
+};
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -122,6 +157,11 @@ export const getProducts = async (req, res) => {
             return res.status(400).json({ success: false, message: "minPrice cannot exceed maxPrice" });
         }
 
+        // Dynamic value filters (brand/color/size/rating/discount/attr_*) —
+        // parsed once here so both the cache key and the DB match use them.
+        const { conditions: dynConditions, cacheFragment: dynCacheFragment } =
+            buildDynamicConditions(req.query);
+
         // [FIX-P1] Deterministic flat cache key — NO JSON.stringify
         const cacheKey = [
             "products",
@@ -138,6 +178,8 @@ export const getProducts = async (req, res) => {
             minPrice || "0",
             maxPrice || "0",
             deal || "0",
+            dynCacheFragment || "_",
+            req.query.availability || "_",
         ].join(":");
 
         const lockKey = `${cacheKey}:lock`;
@@ -202,6 +244,13 @@ export const getProducts = async (req, res) => {
             if (!productType) filter.productType = "ecommerce";
         }
 
+        // Selected value filters attach as $and so they can never clobber
+        // the search/deal $or built above.
+        if (dynConditions.length) {
+            filter.$and = [...(filter.$and || []), ...dynConditions];
+        }
+        applyAvailability(filter, req.query);
+
         const sortMap = {
             price_asc: { price: 1 },
             price_desc: { price: -1 },
@@ -209,18 +258,42 @@ export const getProducts = async (req, res) => {
             newest: { createdAt: -1 },
             oldest: { createdAt: 1 },
             discount: { mrp: -1, price: 1, createdAt: -1 },
+            popularity: { sales: -1, views: -1, createdAt: -1 },
+            recommended: { isFeatured: -1, sales: -1, rating: -1 },
         };
         const sortObj = sortMap[sort] || { [sort]: order === "asc" ? 1 : -1 };
         const skip = (page - 1) * limit;
 
         let result;
         try {
-            const [products, total] = await Promise.all([
+            const LIST_FIELDS = "name slug category brand price mrp images rating numReviews inStock stock isDeal dealEndsAt isFeatured tags productType vendorId colorVariants sizes";
+            let [products, total] = await Promise.all([
                 Product.find(filter)
-                    .select("name slug category brand price mrp images rating numReviews inStock stock isDeal dealEndsAt isFeatured tags productType vendorId colorVariants sizes")
+                    .select(LIST_FIELDS)
                     .sort(sortObj).skip(skip).limit(limit).lean(),
                 Product.countDocuments(filter),
             ]);
+
+            // Typo tolerance: when a regex search finds nothing, retry via
+            // the weighted $text index (stemming + multi-token matching
+            // catches "tshrit levis" style queries the regex can't).
+            if (total === 0 && searchRaw && page === 1) {
+                const textFilter = { ...filter };
+                delete textFilter.$or;
+                textFilter.$text = { $search: searchRaw };
+                const [textProducts, textTotal] = await Promise.all([
+                    Product.find(textFilter, { score: { $meta: "textScore" } })
+                        .select(LIST_FIELDS)
+                        .sort({ score: { $meta: "textScore" } })
+                        .limit(limit).lean(),
+                    Product.countDocuments(textFilter),
+                ]);
+                if (textTotal > 0) { products = textProducts; total = textTotal; }
+            }
+
+            // Search analytics (fire-and-forget) — first page only so
+            // pagination doesn't inflate counts.
+            if (searchRaw && page === 1) logSearchTerm(searchRaw, total);
 
             result = { products, total, page, totalPages: Math.ceil(total / limit) };
             await safeSetCache(cacheKey, result, 60);
@@ -237,6 +310,158 @@ export const getProducts = async (req, res) => {
     } catch (err) {
         console.error("[getProducts]", err);
         res.status(500).json({ success: false, message: "Failed to fetch products" });
+    }
+};
+
+/* ════════════════════════════════════════
+   PUBLIC — Dynamic filter facets
+   GET /api/products/filters
+   Aggregates whatever brands/sizes/colors/attributes actually exist
+   in the current context (category/search/…) — nothing hardcoded, so
+   filters update automatically when products are added from Admin.
+════════════════════════════════════════ */
+export const getProductFilters = async (req, res) => {
+    try {
+        const searchRaw = (req.query.search || "").trim();
+        if (searchRaw.length > 50) {
+            return res.status(400).json({ success: false, message: "Search query too long (max 50 characters)" });
+        }
+
+        const cacheKey = [
+            "facets",
+            req.query.productType === "urbexon_hour" ? "uh" : "eco",
+            req.query.category || "_",
+            req.query.subcategory || "_",
+            searchRaw ? `q${searchRaw.slice(0, 30)}` : "_",
+            req.query.vendorId || "_",
+            req.query.deal || "0",
+        ].join(":");
+
+        const cached = await safeGetCache(cacheKey);
+        if (cached) return res.json(cached);
+
+        const filters = await computeFacets(req.query);
+        const result = { success: true, filters };
+
+        // Facets tolerate slightly stale data; 5-min TTL keeps the heavier
+        // aggregation off the hot path.
+        await safeSetCache(cacheKey, result, 300);
+        res.json(result);
+    } catch (err) {
+        console.error("[getProductFilters]", err);
+        res.status(500).json({ success: false, message: "Failed to fetch filters" });
+    }
+};
+
+/* ════════════════════════════════════════
+   PUBLIC — Recommendation Engine
+   GET /api/products/recommendations?type=trending|best-sellers|
+       new-arrivals|top-rated|popular-in-category|similar|recommended
+       (&category=…&productId=…&limit=…)
+════════════════════════════════════════ */
+export const getRecommendations = async (req, res) => {
+    try {
+        const type = String(req.query.type || "recommended").slice(0, 30);
+        if (type !== "similar" && !STRATEGIES[type]) {
+            return res.status(400).json({
+                success: false,
+                message: `Unknown recommendation type. Valid: similar, ${Object.keys(STRATEGIES).join(", ")}`,
+            });
+        }
+
+        const cacheKey = [
+            "recs", type,
+            req.query.category || "_",
+            req.query.productId || "_",
+            Math.min(24, Number(req.query.limit) || 12),
+        ].join(":");
+
+        const cached = await safeGetCache(cacheKey);
+        if (cached) return res.json(cached);
+
+        const products = await getRecommendedProducts({
+            type,
+            category: req.query.category,
+            productId: req.query.productId,
+            limit: req.query.limit,
+        });
+
+        const result = { success: true, type, products };
+        await safeSetCache(cacheKey, result, 180);
+        res.json(result);
+    } catch (err) {
+        console.error("[getRecommendations]", err);
+        res.status(500).json({ success: false, message: "Failed to fetch recommendations" });
+    }
+};
+
+/* ════════════════════════════════════════
+   PUBLIC — Trending searches (from SearchLog analytics)
+════════════════════════════════════════ */
+export const getTrendingSearches = async (req, res) => {
+    try {
+        const cacheKey = "search:trending";
+        const cached = await safeGetCache(cacheKey);
+        if (cached) return res.json(cached);
+
+        const rows = await SearchLog.find({
+            lastResultCount: { $gt: 0 },                                  // never suggest dead ends
+            lastSearchedAt: { $gte: new Date(Date.now() - 30 * 86400000) },
+        })
+            .sort({ count: -1, lastSearchedAt: -1 })
+            .limit(10)
+            .select("term")
+            .lean();
+
+        const result = { success: true, terms: rows.map((r) => r.term) };
+        await safeSetCache(cacheKey, result, 600);
+        res.json(result);
+    } catch (err) {
+        console.error("[getTrendingSearches]", err);
+        res.status(500).json({ success: false, message: "Failed to fetch trending searches" });
+    }
+};
+
+/* ════════════════════════════════════════
+   ADMIN — Search analytics (from SearchLog)
+   Top searches + zero-result searches (merchandising signal: what
+   users want that the catalog doesn't have).
+════════════════════════════════════════ */
+export const adminGetSearchAnalytics = async (req, res) => {
+    try {
+        const days = safeInt(req.query.days, 30, 1, 365);
+        const since = new Date(Date.now() - days * 86400000);
+
+        const [top, zero, totals] = await Promise.all([
+            SearchLog.find({ lastSearchedAt: { $gte: since } })
+                .sort({ count: -1 }).limit(25)
+                .select("term count lastResultCount lastSearchedAt").lean(),
+            SearchLog.find({ lastSearchedAt: { $gte: since }, lastResultCount: 0 })
+                .sort({ count: -1 }).limit(25)
+                .select("term count lastSearchedAt").lean(),
+            SearchLog.aggregate([
+                { $match: { lastSearchedAt: { $gte: since } } },
+                {
+                    $group: {
+                        _id: null,
+                        uniqueTerms: { $sum: 1 },
+                        totalSearches: { $sum: "$count" },
+                        zeroResultTerms: { $sum: { $cond: [{ $eq: ["$lastResultCount", 0] }, 1, 0] } },
+                    },
+                },
+            ]),
+        ]);
+
+        res.json({
+            success: true,
+            days,
+            summary: totals?.[0] || { uniqueTerms: 0, totalSearches: 0, zeroResultTerms: 0 },
+            topSearches: top,
+            zeroResultSearches: zero,
+        });
+    } catch (err) {
+        console.error("[adminGetSearchAnalytics]", err);
+        res.status(500).json({ success: false, message: "Failed to fetch search analytics" });
     }
 };
 
@@ -868,6 +1093,22 @@ export const adminCreateProduct = async (req, res) => {
         // [FIX] Use safeParse to prevent JSON.parse crashes when Zod already parsed it
         const colorVariants = safeParse(body.colorVariants, []);
 
+        // Duplicate-SKU guard — enterprise catalogs can't have two products
+        // sharing a SKU. 409 with a field-level error the form can display.
+        if (body.sku?.trim()) {
+            const skuClash = await Product.findOne({ sku: body.sku.trim() }).select("_id name").lean();
+            if (skuClash) {
+                return res.status(409).json({
+                    success: false,
+                    message: `SKU "${body.sku.trim()}" is already used by "${skuClash.name}"`,
+                    errors: [{ field: "sku", message: "This SKU already exists" }],
+                });
+            }
+        }
+
+        // Per-image alt texts (index-mapped to the main images)
+        const imageAlts = safeParse(body.imageAlts, []);
+
         const images = [];
         const imageErrors = [];
         let fileIndex = 0;
@@ -894,7 +1135,8 @@ export const adminCreateProduct = async (req, res) => {
                         images.push({
                             url: result.secure_url,
                             publicId: result.public_id || "",
-                            alt: body.name?.trim() || "product-image",
+                            alt: (Array.isArray(imageAlts) && imageAlts[i]?.trim())
+                                || body.name?.trim() || "product-image",
                             fileName: file.originalname || `image-${i + 1}`,
                         });
                     } else {
@@ -957,6 +1199,22 @@ export const adminCreateProduct = async (req, res) => {
             tags, sizes,
             highlights: body.highlights || {},
             highlightsArray: Array.isArray(body.highlightsArray) ? body.highlightsArray : [],
+            attributes: sanitizeAttributes(body.attributes),
+            hsn: (body.hsn || "").trim().slice(0, 20),
+            barcode: (body.barcode || "").trim().slice(0, 50),
+            lowStockThreshold: Math.min(10000, Math.max(0, Number(body.lowStockThreshold) || 5)),
+            seo: {
+                metaTitle: (body.metaTitle || "").trim().slice(0, 120),
+                metaDescription: (body.metaDesc || "").trim().slice(0, 200),
+            },
+            shipping: (() => {
+                const s = safeParse(body.shipping, {});
+                return {
+                    lengthCm: Math.max(0, Number(s?.lengthCm) || 0),
+                    widthCm: Math.max(0, Number(s?.widthCm) || 0),
+                    heightCm: Math.max(0, Number(s?.heightCm) || 0),
+                };
+            })(),
             images,
             stock,
             colorVariants,
@@ -1076,10 +1334,42 @@ export const adminUpdateProduct = async (req, res) => {
             occasion: (v) => v,
             gstPercent: (v) => safeNumber(v),
             stock: (v) => safeNumber(v),
+            hsn: (v) => String(v || "").trim().slice(0, 20),
+            barcode: (v) => String(v || "").trim().slice(0, 50),
+            lowStockThreshold: (v) => Math.min(10000, Math.max(0, safeNumber(v))),
         };
+
+        // Duplicate-SKU guard (excluding this product itself)
+        if (body.sku !== undefined && String(body.sku).trim()) {
+            const skuClash = await Product.findOne({ sku: String(body.sku).trim(), _id: { $ne: product._id } })
+                .select("_id name").lean();
+            if (skuClash) {
+                return res.status(409).json({
+                    success: false,
+                    message: `SKU "${String(body.sku).trim()}" is already used by "${skuClash.name}"`,
+                    errors: [{ field: "sku", message: "This SKU already exists" }],
+                });
+            }
+        }
 
         for (const key in fieldMap) {
             if (body[key] !== undefined) product[key] = fieldMap[key](body[key]);
+        }
+
+        // SEO + shipping package
+        if (body.metaTitle !== undefined || body.metaDesc !== undefined) {
+            product.seo = {
+                metaTitle: String(body.metaTitle ?? product.seo?.metaTitle ?? "").trim().slice(0, 120),
+                metaDescription: String(body.metaDesc ?? product.seo?.metaDescription ?? "").trim().slice(0, 200),
+            };
+        }
+        if (body.shipping !== undefined) {
+            const s = safeParse(body.shipping, {});
+            product.shipping = {
+                lengthCm: Math.max(0, Number(s?.lengthCm) || 0),
+                widthCm: Math.max(0, Number(s?.widthCm) || 0),
+                heightCm: Math.max(0, Number(s?.heightCm) || 0),
+            };
         }
 
         if (body.isFeatured !== undefined) product.isFeatured = parseBool(body.isFeatured);
@@ -1114,6 +1404,10 @@ export const adminUpdateProduct = async (req, res) => {
                 const raw = typeof body.highlightsArray === 'string' ? JSON.parse(body.highlightsArray) : body.highlightsArray;
                 product.highlightsArray = Array.isArray(raw) ? raw : [];
             } catch { product.highlightsArray = []; }
+        }
+
+        if (body.attributes !== undefined) {
+            product.attributes = sanitizeAttributes(body.attributes);
         }
 
         if (body.dealEndsAt !== undefined) {
@@ -1285,6 +1579,7 @@ export const vendorCreateProduct = async (req, res) => {
             stock,
             inStock: stock > 0,
             highlightsArray,
+            attributes: sanitizeAttributes(body.attributes),
             prepTimeMinutes: Number(body.prepTimeMinutes) || 10,
             maxOrderQty: Number(body.maxOrderQty) || 10,
             productType: "urbexon_hour",
@@ -1404,6 +1699,10 @@ export const vendorUpdateProduct = async (req, res) => {
                 const raw = typeof body.highlightsArray === 'string' ? JSON.parse(body.highlightsArray) : body.highlightsArray;
                 product.highlightsArray = Array.isArray(raw) ? raw : [];
             } catch { product.highlightsArray = []; }
+        }
+
+        if (body.attributes !== undefined) {
+            product.attributes = sanitizeAttributes(body.attributes);
         }
 
         if (body.isDeal !== undefined) {

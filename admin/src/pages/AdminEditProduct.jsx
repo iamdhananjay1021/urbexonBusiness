@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "../api/adminApi";
 import { fetchAllCategories } from "../api/categoryApi";
 import { Button, Badge, Card, ErrorState, Skeleton, FormField, Input, Select } from "../components/ui";
+import DynamicAttributeFields from "../components/DynamicAttributeFields";
 
 /* ─── Constants ─────────────────────────────────────────── */
 const SIZE_TEMPLATES = {
@@ -170,6 +171,8 @@ const AdminEditProduct = () => {
         isFeatured: false, isDeal: false, dealEndsAt: "", isCustomizable: false,
         tags: "", stock: "", brand: "", sku: "", weight: "", origin: "",
         returnPolicy: "7", shippingInfo: "", metaTitle: "", metaDesc: "",
+        hsn: "", barcode: "", lowStockThreshold: "5",
+        shipLength: "", shipWidth: "", shipHeight: "",
         color: "", material: "", occasion: "", gstPercent: "0",
         isCancellable: true, isReturnable: true, isReplaceable: false,
         returnWindow: "7", replacementWindow: "7", cancelWindow: "0",
@@ -221,7 +224,7 @@ const AdminEditProduct = () => {
 
     /* ── Highlight template on category change ── */
     useEffect(() => {
-        if (!form.category) { setHlTemplate([]); return; }
+        if (!form.category) { setHlTemplate([]); setAttrSchema([]); return; }
         api.get(`/categories/highlight-template?category=${encodeURIComponent(form.category)}`)
             .then(r => setHlTemplate(r.data?.highlightTemplate || []))
             .catch(() => setHlTemplate([]));
@@ -233,6 +236,17 @@ const AdminEditProduct = () => {
         const catName = catObj ? catObj.name : form.category;
         const suggested = getSuggestedSizes(catName);
         setAvailableSizes(prev => Array.from(new Set([...suggested, ...selSizesRef.current])));
+    }, [form.category, categories]);
+
+    /* ── Discovery attributes (metadata-driven fields) ── */
+    const [attrSchema, setAttrSchema] = useState([]);
+    const [attributes, setAttributes] = useState({});
+    useEffect(() => {
+        const catObj = categories.find(c => c.value === form.category || c.slug === form.category || c.name === form.category);
+        if (!catObj?.slug) { setAttrSchema([]); return; }
+        api.get(`/categories/${catObj.slug}/metadata`)
+            .then(r => setAttrSchema(r.data?.metadata?.attributeSchema || []))
+            .catch(() => setAttrSchema([]));
     }, [form.category, categories]);
 
     /* ── Fetch product ── */
@@ -261,8 +275,14 @@ const AdminEditProduct = () => {
                     origin: data.origin || "",
                     returnPolicy: data.returnPolicy || "7",
                     shippingInfo: data.shippingInfo || "",
-                    metaTitle: data.metaTitle || "",
-                    metaDesc: data.metaDesc || "",
+                    metaTitle: data.seo?.metaTitle || data.metaTitle || "",
+                    metaDesc: data.seo?.metaDescription || data.metaDesc || "",
+                    hsn: data.hsn || "",
+                    barcode: data.barcode || "",
+                    lowStockThreshold: String(data.lowStockThreshold ?? 5),
+                    shipLength: data.shipping?.lengthCm ? String(data.shipping.lengthCm) : "",
+                    shipWidth: data.shipping?.widthCm ? String(data.shipping.widthCm) : "",
+                    shipHeight: data.shipping?.heightCm ? String(data.shipping.heightCm) : "",
                     color: data.color || "",
                     material: data.material || "",
                     occasion: data.occasion || "",
@@ -295,6 +315,11 @@ const AdminEditProduct = () => {
                         if (typeof s === "object" && s.size) sm[s.size] = s.stock ?? 0;
                     });
                     setSizeStockMap(sm);
+                }
+
+                /* Discovery attributes */
+                if (data.attributes && typeof data.attributes === "object") {
+                    setAttributes(data.attributes);
                 }
 
                 /* Highlights */
@@ -339,11 +364,21 @@ const AdminEditProduct = () => {
     /* ── Helpers ── */
     const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3200); };
     const clrErr = name => { setFErrs(p => { const n = { ...p }; delete n[name]; return n; }); setTopErr(""); };
+    const [dirty, setDirty] = useState(false);
     const hc = useCallback(e => {
         const { name, value, type, checked } = e.target;
         setForm(p => ({ ...p, [name]: type === "checkbox" ? checked : value }));
+        setDirty(true);
         clrErr(name);
     }, []);
+
+    // Unsaved-changes guard (browser close / refresh)
+    useEffect(() => {
+        if (!dirty) return;
+        const onBeforeUnload = (e) => { e.preventDefault(); e.returnValue = ""; };
+        window.addEventListener("beforeunload", onBeforeUnload);
+        return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    }, [dirty]);
 
     const discPct = form.mrp && form.price && +form.mrp > +form.price
         ? Math.round(((+form.mrp - +form.price) / +form.mrp) * 100) : null;
@@ -516,6 +551,19 @@ const AdminEditProduct = () => {
                 fd.append("highlights", JSON.stringify(obj));
                 fd.append("highlightsArray", JSON.stringify(validHls.map(h => ({ title: h.key.trim(), value: h.value.trim() }))));
             }
+            // BUG FIX: attributes were only sent when highlights existed —
+            // clearing all highlights silently froze attribute edits too.
+            fd.append("attributes", JSON.stringify(attributes));
+
+            // SEO / shipping / inventory extras
+            fd.append("hsn", form.hsn || "");
+            fd.append("barcode", form.barcode || "");
+            fd.append("lowStockThreshold", String(+form.lowStockThreshold || 5));
+            fd.append("shipping", JSON.stringify({
+                lengthCm: +form.shipLength || 0,
+                widthCm: +form.shipWidth || 0,
+                heightCm: +form.shipHeight || 0,
+            }));
 
             /* Main images */
             newImages.forEach(img => fd.append("images", img));
@@ -550,6 +598,7 @@ const AdminEditProduct = () => {
                 headers: { "Content-Type": "multipart/form-data" },
             });
 
+            setDirty(false);
             showToast("ok", "Product updated successfully!");
             setTimeout(() => navigate("/admin/products"), 1500);
 
@@ -979,6 +1028,9 @@ const AdminEditProduct = () => {
                                         <FormField label={LBL("Weight", { hint: "for shipping calc" })}><Input name="weight" value={form.weight} onChange={hc} placeholder="e.g. 250g" /></FormField>
                                         <FormField label="Country of Origin"><Input name="origin" value={form.origin} onChange={hc} placeholder="e.g. India" /></FormField>
                                     </div>
+
+                                    {/* Metadata-driven attributes for the selected category */}
+                                    <DynamicAttributeFields schema={attrSchema} value={attributes} onChange={setAttributes} />
                                 </div>
                             )}
 
@@ -1091,6 +1143,17 @@ const AdminEditProduct = () => {
                                             </Select>
                                         </FormField>
                                         <FormField label="Shipping Info"><Input name="shippingInfo" value={form.shippingInfo} onChange={hc} placeholder="Ships in 2–3 business days" /></FormField>
+                                    </div>
+                                    <SL>Package Dimensions & Inventory</SL>
+                                    <div className="g3">
+                                        <FormField label="Length (cm)"><Input name="shipLength" value={form.shipLength} onChange={hc} type="number" min="0" placeholder="30" /></FormField>
+                                        <FormField label="Width (cm)"><Input name="shipWidth" value={form.shipWidth} onChange={hc} type="number" min="0" placeholder="20" /></FormField>
+                                        <FormField label="Height (cm)"><Input name="shipHeight" value={form.shipHeight} onChange={hc} type="number" min="0" placeholder="5" /></FormField>
+                                    </div>
+                                    <div className="g3">
+                                        <FormField label="HSN Code"><Input name="hsn" value={form.hsn} onChange={hc} maxLength={20} placeholder="e.g. 6109" /></FormField>
+                                        <FormField label="Barcode (EAN/UPC)"><Input name="barcode" value={form.barcode} onChange={hc} maxLength={50} placeholder="e.g. 8901234567890" /></FormField>
+                                        <FormField label="Low Stock Alert (units)"><Input name="lowStockThreshold" value={form.lowStockThreshold} onChange={hc} type="number" min="0" placeholder="5" /></FormField>
                                     </div>
                                 </div>
                             )}

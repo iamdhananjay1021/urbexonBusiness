@@ -5,10 +5,10 @@
  * usage-limit-exhausted, and already-used-by-this-user codes server-side.
  */
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import * as couponApi from "../api/couponApi";
-import { FiTag, FiCopy, FiCheck, FiArrowLeft } from "react-icons/fi";
+import { FiTag, FiCopy, FiCheck } from "react-icons/fi";
 import SEO from "../components/SEO";
+import BackButton from "../components/BackButton";
 import Loader from "../design-system/Loader";
 import Card from "../design-system/Card";
 import { EmptyState } from "../design-system/EmptyState";
@@ -19,7 +19,6 @@ const formatDiscount = (c) =>
         : `₹${c.discountValue} OFF`;
 
 const Coupons = () => {
-    const navigate = useNavigate();
     const [coupons, setCoupons] = useState([]);
     const [loading, setLoading] = useState(true);
     const [copiedCode, setCopiedCode] = useState("");
@@ -49,13 +48,7 @@ const Coupons = () => {
             <SEO title="My Coupons" noindex />
             <div className="max-w-[720px] mx-auto">
                 <div className="flex items-center gap-3 mb-7">
-                    <button
-                        onClick={() => navigate(-1)}
-                        aria-label="Go back"
-                        className="w-9 h-9 rounded-full bg-surface border border-default flex items-center justify-center text-secondary hover:text-accent transition-colors flex-shrink-0"
-                    >
-                        <FiArrowLeft size={15} aria-hidden="true" />
-                    </button>
+                    <BackButton variant="inline" fallback="/" />
                     <h1 className="text-[clamp(20px,3vw,26px)] font-bold text-primary font-display flex items-center gap-2.5">
                         <FiTag className="text-accent" size={20} aria-hidden="true" />
                         My Coupons <span className="text-[15px] text-muted font-medium">({coupons.length})</span>

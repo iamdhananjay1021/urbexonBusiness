@@ -144,29 +144,6 @@ const calculateEstimatedSavings = (uhItems) => {
     return uhItems.reduce((total, item) => total + (((item.mrp || 0) - (item.price || 0)) * (item.quantity || 0)), 0);
 };
 
-/* ── Location bar — elevated via shadow (not a translucent border) so it
-     reads as its own sticky-feeling layer instead of fusing visually
-     with TrustStrip directly below it. ── */
-const LocationBar = memo(({ areaLabel, deliveryMin, deliveryMax, onChange }) => (
-    <div className="bg-gradient-to-r from-[var(--accent-hour)] to-[var(--accent-hour-hover)] shadow-[0_2px_10px_rgba(0,0,0,0.08)] relative z-10">
-        <div className="max-w-[1280px] mx-auto px-4 lg:px-12 flex items-center justify-between py-2.5 sm:py-3 gap-2">
-            <div className="flex items-center gap-2 sm:gap-2.5 text-[12.5px] sm:text-[13px] text-white/90 font-semibold min-w-0">
-                <FaBolt size={12} className="text-white drop-shadow-[0_0_4px_rgba(255,255,255,0.5)] flex-shrink-0" />
-                <span className="text-white/70 text-xs hidden sm:inline flex-shrink-0">Delivering to</span>
-                <span className="text-white font-bold truncate">{areaLabel}</span>
-                <span className="text-white font-bold text-xs flex-shrink-0">• {deliveryMin}–{deliveryMax} min</span>
-            </div>
-            <button
-                className="bg-white/15 border border-white/30 text-white px-3.5 sm:px-4 py-1.5 rounded-full text-xs font-bold cursor-pointer hover:bg-white/25 transition-all flex-shrink-0"
-                onClick={onChange}
-            >
-                Change
-            </button>
-        </div>
-    </div>
-));
-LocationBar.displayName = "LocationBar";
-
 /* ── Hero — owns local pincode-typing state so keystrokes don't
      re-render the parent page ── */
 const PincodeHero = memo(({ loading, locationLoading, error, savedPincode, showBackLink, onCheck, onDetectLocation, onBackToSaved }) => {
@@ -251,65 +228,65 @@ PincodeHero.displayName = "PincodeHero";
      reads as distinct elevated cards instead of flat grey blocks sitting
      directly under the LocationBar. Section closes with a bottom border
      so the boundary before the hero is intentional, not accidental. ── */
-const TrustStrip = memo(({ deliveryMin, deliveryMax, vendorCount }) => {
-    const items = [
-        { Icon: FaBolt, t: "45 Min Delivery", sub: `Lightning fast · ${deliveryMin}–${deliveryMax} min`, accent: "bg-hour-tint text-[var(--accent-hour-hover)]" },
-        { Icon: FaCheckCircle, t: "Fresh & Quality", sub: "100% verified products", accent: "bg-success-tint text-success" },
-        { Icon: FaStore, t: "Local Stores", sub: `${vendorCount || "0"} vendors near you`, accent: "bg-accent-tint text-accent" },
-        { Icon: FaLock, t: "Secure Payments", sub: "256-bit encrypted checkout", accent: "bg-info-tint text-info" },
-    ];
-    return (
-        <div className="bg-canvas py-5 sm:py-6 border-b border-default">
-            <div className="max-w-[1280px] mx-auto px-4 lg:px-12">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-                    {items.map((f) => (
-                        <div
-                            key={f.t}
-                            className="flex items-center gap-3 bg-white border border-default rounded-2xl px-4 py-3.5 sm:py-4 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-strong"
-                        >
-                            <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${f.accent}`}>
-                                <f.Icon size={18} />
-                            </div>
-                            <div className="min-w-0">
-                                <div className="text-[13px] sm:text-[13.5px] font-extrabold text-primary tracking-tight truncate">{f.t}</div>
-                                <div className="text-[11px] text-secondary mt-0.5 font-medium truncate">{f.sub}</div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-});
-TrustStrip.displayName = "TrustStrip";
+// const TrustStrip = memo(({ deliveryMin, deliveryMax, vendorCount }) => {
+//     const items = [
+//         { Icon: FaBolt, t: "45 Min Delivery", sub: `Lightning fast · ${deliveryMin}–${deliveryMax} min`, accent: "bg-hour-tint text-[var(--accent-hour-hover)]" },
+//         { Icon: FaCheckCircle, t: "Fresh & Quality", sub: "100% verified products", accent: "bg-success-tint text-success" },
+//         { Icon: FaStore, t: "Local Stores", sub: `${vendorCount || "0"} vendors near you`, accent: "bg-accent-tint text-accent" },
+//         { Icon: FaLock, t: "Secure Payments", sub: "256-bit encrypted checkout", accent: "bg-info-tint text-info" },
+//     ];
+//     return (
+//         <div className="bg-canvas py-5 sm:py-6 border-b border-default">
+//             <div className="max-w-[1280px] mx-auto px-4 lg:px-12">
+//                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+//                     {items.map((f) => (
+//                         <div
+//                             key={f.t}
+//                             className="flex items-center gap-3 bg-white border border-default rounded-2xl px-4 py-3.5 sm:py-4 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-strong"
+//                         >
+//                             <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${f.accent}`}>
+//                                 <f.Icon size={18} />
+//                             </div>
+//                             <div className="min-w-0">
+//                                 <div className="text-[13px] sm:text-[13.5px] font-extrabold text-primary tracking-tight truncate">{f.t}</div>
+//                                 <div className="text-[11px] text-secondary mt-0.5 font-medium truncate">{f.sub}</div>
+//                             </div>
+//                         </div>
+//                     ))}
+//                 </div>
+//             </div>
+//         </div>
+//     );
+// });
+// TrustStrip.displayName = "TrustStrip";
 
 /* ── Skeleton — fully static, never needs to re-render after mount ── */
-const SkeletonGrid = memo(() => (
-    <div className="max-w-[1280px] mx-auto px-4 lg:px-12 py-5">
-        <div className="flex gap-4 mb-5">
-            {[1, 2, 3, 4].map(i => (
-                <div key={i} className="flex flex-col items-center gap-2">
-                    <div className="w-14 h-14 rounded-2xl bg-[var(--color-graphite-200)] animate-pulse" />
-                    <div className="w-12 h-2.5 rounded bg-[var(--color-graphite-200)] animate-pulse" />
-                </div>
-            ))}
-        </div>
-        <div className="h-5 w-36 rounded bg-[var(--color-graphite-200)] animate-pulse mb-4" />
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
-            {[1, 2, 3, 4, 5, 6].map(i => (
-                <div key={i} className="rounded-2xl border border-default overflow-hidden bg-white">
-                    <div className="aspect-square bg-[var(--color-graphite-200)] animate-pulse" />
-                    <div className="p-3 space-y-2">
-                        <div className="h-2.5 w-4/5 bg-[var(--color-graphite-200)] rounded animate-pulse" />
-                        <div className="h-2.5 w-1/2 bg-[var(--color-graphite-200)] rounded animate-pulse" />
-                        <div className="h-2.5 w-2/5 bg-[var(--color-graphite-200)] rounded animate-pulse" />
-                    </div>
-                </div>
-            ))}
-        </div>
-    </div>
-));
-SkeletonGrid.displayName = "SkeletonGrid";
+// const SkeletonGrid = memo(() => (
+//     <div className="max-w-[1280px] mx-auto px-4 lg:px-12 py-5">
+//         <div className="flex gap-4 mb-5">
+//             {[1, 2, 3, 4].map(i => (
+//                 <div key={i} className="flex flex-col items-center gap-2">
+//                     <div className="w-14 h-14 rounded-2xl bg-[var(--color-graphite-200)] animate-pulse" />
+//                     <div className="w-12 h-2.5 rounded bg-[var(--color-graphite-200)] animate-pulse" />
+//                 </div>
+//             ))}
+//         </div>
+//         <div className="h-5 w-36 rounded bg-[var(--color-graphite-200)] animate-pulse mb-4" />
+//         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
+//             {[1, 2, 3, 4, 5, 6].map(i => (
+//                 <div key={i} className="rounded-2xl border border-default overflow-hidden bg-white">
+//                     <div className="aspect-square bg-[var(--color-graphite-200)] animate-pulse" />
+//                     <div className="p-3 space-y-2">
+//                         <div className="h-2.5 w-4/5 bg-[var(--color-graphite-200)] rounded animate-pulse" />
+//                         <div className="h-2.5 w-1/2 bg-[var(--color-graphite-200)] rounded animate-pulse" />
+//                         <div className="h-2.5 w-2/5 bg-[var(--color-graphite-200)] rounded animate-pulse" />
+//                     </div>
+//                 </div>
+//             ))}
+//         </div>
+//     </div>
+// ));
+// SkeletonGrid.displayName = "SkeletonGrid";
 
 /* ── Flash deal spotlight — single hero-style promo banner for the
      soonest-expiring real deal already fetched (uhDeals[0]). Presentation
@@ -520,10 +497,17 @@ VendorProductGroups.displayName = "VendorProductGroups";
 /* ── Floating cart ── */
 const FloatingCart = memo(({ totalQty, total, savings, deliveryMin, deliveryMax, animating, onClick }) => (
     <button
-        className={`fixed bottom-6 left-1/2 -translate-x-1/2 bg-gradient-to-r from-[var(--accent-hour)] to-[var(--accent-hour-hover)] text-white border-none cursor-pointer flex items-center gap-3 px-5 py-3 rounded-full font-bold shadow-[0_8px_32px_rgba(245,158,11,0.35)] z-50 whitespace-nowrap max-w-[calc(100vw-32px)] transition-all hover:-translate-x-1/2 hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(245,158,11,0.45)] active:-translate-y-0.5 ${animating ? "scale-105" : ""}`}
+        className={`fixed left-1/2 -translate-x-1/2 bg-gradient-to-r from-[var(--accent-hour)] to-[var(--accent-hour-hover)] text-white border-none cursor-pointer flex items-center gap-3 px-5 py-3 rounded-full font-bold shadow-[0_8px_32px_rgba(245,158,11,0.35)] z-[610] whitespace-nowrap max-w-[calc(100vw-32px)] transition-all hover:-translate-x-1/2 hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(245,158,11,0.45)] active:-translate-y-0.5 ${animating ? "scale-105" : ""}`}
         onClick={onClick}
         title={`${totalQty} item${totalQty !== 1 ? "s" : ""} • ${fmt(total)}`}
-        style={{ transform: animating ? "translateX(-50%) scale(1.05)" : undefined }}
+        style={{
+            // Clears the mobile bottom nav (shares --bottom-nav-h, published
+            // by Navbar.jsx — 0px on desktop where that bar doesn't render,
+            // so this collapses back to the original 24px float there) plus
+            // the device's safe-area inset for notched phones.
+            bottom: "calc(var(--bottom-nav-h, 0px) + 24px + env(safe-area-inset-bottom, 0px))",
+            transform: animating ? "translateX(-50%) scale(1.05)" : undefined,
+        }}
     >
         <div className="relative flex items-center justify-center flex-shrink-0">
             <FaShoppingCart size={16} />
@@ -970,6 +954,24 @@ const UrbexonHour = () => {
         setUhDeals([]);
     }, []);
 
+    /* The old on-page amber LocationBar is gone — the pincode editor is now
+       opened from the Navbar's "Deliver to" pill. When this page is already
+       mounted the Navbar fires a window event; when it wasn't (user clicked
+       the pill from /uh-cart etc.), the Navbar sets a one-shot sessionStorage
+       flag we consume on mount. */
+    useEffect(() => {
+        const openEditor = () => {
+            try { sessionStorage.removeItem("uh_open_pincode_edit"); } catch { /* storage unavailable */ }
+            handleChangePincode();
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        };
+        let flagged = false;
+        try { flagged = sessionStorage.getItem("uh_open_pincode_edit") === "1"; } catch { /* storage unavailable */ }
+        if (flagged) openEditor();
+        window.addEventListener("uh:change-pincode", openEditor);
+        return () => window.removeEventListener("uh:change-pincode", openEditor);
+    }, [handleChangePincode]);
+
     const backToSaved = useCallback(() => {
         if (savedPincode?.code) checkPincodeInner(savedPincode.code);
         setShowPincodeEdit(false);
@@ -1052,15 +1054,6 @@ const UrbexonHour = () => {
             <SEO title="Urbexon Hour - Quick Delivery" description="Get groceries, essentials, and more delivered in minutes with Urbexon Hour." path="/urbexon-hour" />
             <main>
 
-                {(hasActiveService || showSkeleton) && !showPincodeEdit && (
-                    <LocationBar
-                        areaLabel={savedPincode?.area || savedPincode?.city || pincode}
-                        deliveryMin={deliveryEta.min}
-                        deliveryMax={deliveryEta.max}
-                        onChange={handleChangePincode}
-                    />
-                )}
-
                 {showHero && (
                     <PincodeHero
                         loading={loading}
@@ -1074,15 +1067,9 @@ const UrbexonHour = () => {
                     />
                 )}
 
-                {(hasActiveService || showSkeleton) && !showPincodeEdit && (
-                    <TrustStrip
-                        deliveryMin={deliveryEta.min}
-                        deliveryMax={deliveryEta.max}
-                        vendorCount={homepageData?.stats?.totalVendors || vendorGroups.length}
-                    />
-                )}
 
-                {showSkeleton && <SkeletonGrid />}
+
+                {/* {showSkeleton && <SkeletonGrid />} */}
 
                 {hasActiveService && !showPincodeEdit && !searchQuery && !activeCategory && (
                     <>

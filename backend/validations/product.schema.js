@@ -39,6 +39,29 @@ export const createProductSchema = z.object({
     occasion: z.string().max(100).optional(),
     subcategory: z.string().max(100).optional(),
     gstPercent: z.coerce.number().min(0).max(100).default(0),
+    hsn: z.string().max(20).optional(),
+    barcode: z.string().max(50).optional(),
+    lowStockThreshold: z.coerce.number().min(0).max(10000).optional(),
+
+    // SEO (flat FormData keys — controller nests them under seo{})
+    metaTitle: z.string().max(120).optional(),
+    metaDesc: z.string().max(200).optional(),
+
+    // Shipping package dimensions (JSON object {lengthCm,widthCm,heightCm})
+    shipping: z.preprocess(
+        safeJsonParse,
+        z.object({
+            lengthCm: z.coerce.number().min(0).default(0),
+            widthCm: z.coerce.number().min(0).default(0),
+            heightCm: z.coerce.number().min(0).default(0),
+        }).optional()
+    ),
+
+    // Per-image alt texts (JSON array of strings, index-mapped to main images)
+    imageAlts: z.preprocess(
+        safeJsonParse,
+        z.array(z.string().max(150)).optional()
+    ),
 
     // Booleans (FormData sends "true"/"false" strings)
     // NOTE: z.coerce.boolean() treats "false" as true (non-empty string).
@@ -74,6 +97,14 @@ export const createProductSchema = z.object({
 
     // Highlights (JSON object: {key: value})
     highlights: z.preprocess(
+        safeJsonParse,
+        z.record(z.string(), z.string()).default({})
+    ),
+
+    // Dynamic discovery attributes (JSON object: {key: value}) — keys come
+    // from the category's attributeSchema metadata; values are free strings.
+    // Powers the global filter engine (attr_<key> params + facets).
+    attributes: z.preprocess(
         safeJsonParse,
         z.record(z.string(), z.string()).default({})
     ),

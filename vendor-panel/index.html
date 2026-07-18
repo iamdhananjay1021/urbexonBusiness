@@ -5,6 +5,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Urbexon — Vendor Portal</title>
+
+  <!-- 🚫 SEO BLOCK — authenticated seller tooling, no public content.
+       Paired with public/robots.txt (disallow-all) and the
+       X-Robots-Tag response header in vercel.json/nginx.conf. -->
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
+  <meta name="googlebot" content="noindex, nofollow" />
+
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <!-- Razorpay Payment Gateway -->
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>

@@ -58,6 +58,7 @@ export const AuthProvider = ({ children }) => {
                     if (!cancelled && data?._id) {
                         const freshUser = {
                             _id: data._id,
+
                             name: data.name,
                             email: data.email,
                             phone: data.phone || "",
@@ -88,17 +89,24 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         const handler = (e) => {
             const data = e.detail;
-            if (data?.token) {
+            if (!data?.token) return;
+            setToken(data.token);
+
+
+            if (data.user) {
                 const refreshedUser = {
-                    _id: data._id,
-                    name: data.name,
-                    email: data.email,
-                    phone: data.phone || "",
-                    role: data.role,
+                    _id: data.user._id,
+                    name: data.user.name,
+                    email: data.user.email,
+                    phone: data.user.phone || "",
+                    role: data.user.role,
                 };
-                setToken(data.token);
                 setUser(refreshedUser);
                 localStorage.setItem("auth", JSON.stringify({ token: data.token, user: refreshedUser }));
+            } else {
+                let stored = null;
+                try { stored = JSON.parse(localStorage.getItem("auth") || "null"); } catch { /* ignore */ }
+                localStorage.setItem("auth", JSON.stringify({ ...stored, token: data.token }));
             }
         };
         window.addEventListener("auth:refreshed", handler);
@@ -115,14 +123,15 @@ export const AuthProvider = ({ children }) => {
     }, [locationAsked]);
 
     const _saveAuth = useCallback((data) => {
+        const src = data.user || data;
         const authData = {
             token: data.token,
             user: {
-                _id: data._id,
-                name: data.name,
-                email: data.email,
-                phone: data.phone || "",
-                role: data.role,
+                _id: src._id,
+                name: src.name,
+                email: src.email,
+                phone: src.phone || "",
+                role: src.role,
             },
         };
         localStorage.setItem("auth", JSON.stringify(authData));

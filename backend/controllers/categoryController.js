@@ -39,6 +39,34 @@ const safeDelPrefix = async (prefix) => {
     try { await delCacheByPrefix(prefix); } catch (_) { }
 };
 
+// JSON field parser (FormData sends arrays/objects as strings)
+const parseJsonField = (raw, fallback) => {
+    if (raw === undefined || raw === null) return fallback;
+    try {
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        return parsed ?? fallback;
+    } catch { return fallback; }
+};
+
+// Sanitize an attributeSchema payload into the model's shape.
+const sanitizeAttributeSchema = (raw) => {
+    const arr = parseJsonField(raw, []);
+    if (!Array.isArray(arr)) return [];
+    return arr
+        .filter((a) => a && typeof a.key === "string" && /^[a-zA-Z0-9 _-]{1,40}$/.test(a.key.trim()))
+        .slice(0, 30)
+        .map((a, i) => ({
+            key: a.key.trim(),
+            label: String(a.label || "").trim().slice(0, 60),
+            type: a.type === "select" ? "select" : "text",
+            options: (Array.isArray(a.options) ? a.options : [])
+                .map((o) => String(o).trim()).filter(Boolean).slice(0, 60),
+            required: a.required === true || a.required === "true",
+            filterable: !(a.filterable === false || a.filterable === "false"),
+            order: Number.isFinite(Number(a.order)) ? Number(a.order) : i,
+        }));
+};
+
 // [FIX-C5] Input validation helper
 const validateCategoryInput = (body) => {
     const errors = [];
@@ -139,6 +167,57 @@ export const getSingleCategory = async (req, res) => {
     } catch (err) {
         console.error("GET CATEGORY ERROR:", err);
         res.status(500).json({ success: false, message: "Failed to fetch category" });
+    }
+};
+
+/* ── GET DISCOVERY METADATA FOR A CATEGORY (public) ──
+   One call powers a listing page: display info, breadcrumbs, SEO,
+   attribute schema (filter ordering + product-form fields), and the
+   category's default sort. Adding a new category from Admin makes all
+   of this work with zero code changes. */
+export const getCategoryMetadata = async (req, res) => {
+    try {
+        const { slug } = req.params;
+        if (!slug) return res.status(400).json({ success: false, message: "Slug required" });
+
+        const resolvedType = req.query.productType === "urbexon_hour" ? "urbexon_hour" : "ecommerce";
+        const cacheKey = `categories:meta:${resolvedType}:${slug}`;
+        const cached = await safeGetCache(cacheKey);
+        if (cached) return res.json(cached);
+
+        const cat = await Category.findOne({ slug, isActive: true, type: resolvedType }).lean();
+        if (!cat) return res.status(404).json({ success: false, message: "Category not found" });
+
+        const result = {
+            success: true,
+            metadata: {
+                name: cat.name,
+                slug: cat.slug,
+                emoji: cat.emoji,
+                image: cat.image?.url || "",
+                subcategories: cat.subcategories || [],
+                attributeSchema: (cat.attributeSchema || [])
+                    .slice()
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+                highlightTemplate: cat.highlightTemplate || [],
+                defaultSort: cat.defaultSort || "",
+                seo: {
+                    title: cat.seo?.title || `${cat.name} — Buy Online at Best Prices`,
+                    description: cat.seo?.description ||
+                        `Shop ${cat.name} on Urbexon. Best prices, verified sellers, fast delivery across India.`,
+                },
+                breadcrumbs: [
+                    { name: "Home", path: "/" },
+                    { name: cat.name, path: `/category/${cat.slug}` },
+                ],
+            },
+        };
+
+        await safeSetCache(cacheKey, result, 300);
+        res.json(result);
+    } catch (err) {
+        console.error("GET CATEGORY METADATA ERROR:", err);
+        res.status(500).json({ success: false, message: "Failed to fetch category metadata" });
     }
 };
 
@@ -246,6 +325,12 @@ export const createCategory = async (req, res) => {
                 try { const arr = typeof ht === "string" ? JSON.parse(ht) : ht; return Array.isArray(arr) ? arr : []; }
                 catch { return []; }
             })(),
+            attributeSchema: sanitizeAttributeSchema(req.body.attributeSchema),
+            seo: {
+                title: String(req.body.seoTitle || "").trim().slice(0, 120),
+                description: String(req.body.seoDescription || "").trim().slice(0, 200),
+            },
+            defaultSort: String(req.body.defaultSort || "").trim().slice(0, 30),
         });
 
         // [FIX-C4] Safe cache invalidation
@@ -291,6 +376,20 @@ export const updateCategory = async (req, res) => {
                 const arr = typeof ht === "string" ? JSON.parse(ht) : ht;
                 cat.highlightTemplate = Array.isArray(arr) ? arr : [];
             } catch { cat.highlightTemplate = []; }
+        }
+
+        // Discovery metadata
+        if (req.body.attributeSchema !== undefined) {
+            cat.attributeSchema = sanitizeAttributeSchema(req.body.attributeSchema);
+        }
+        if (req.body.seoTitle !== undefined || req.body.seoDescription !== undefined) {
+            cat.seo = {
+                title: String(req.body.seoTitle ?? cat.seo?.title ?? "").trim().slice(0, 120),
+                description: String(req.body.seoDescription ?? cat.seo?.description ?? "").trim().slice(0, 200),
+            };
+        }
+        if (req.body.defaultSort !== undefined) {
+            cat.defaultSort = String(req.body.defaultSort || "").trim().slice(0, 30);
         }
 
         if (req.file) {

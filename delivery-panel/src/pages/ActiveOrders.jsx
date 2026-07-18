@@ -151,6 +151,19 @@ const ActiveOrders = () => {
             }
             if (msg.type === "rider:order_assigned") { playNotification(); load(); }
 
+            // BUG FIX: admin cancelling an order that was already accepted
+            // by this rider previously had no real-time signal at all — the
+            // rider only found out once the order silently dropped off the
+            // next 15s poll. Alert immediately and refresh the list so the
+            // now-cancelled order (and any live tracking for it) clears
+            // right away instead of the rider driving toward a dead order.
+            if (msg.type === "rider:order_cancelled") {
+              const p = msg.payload || {};
+              stopAlert();
+              alert(p.message || "An order assigned to you was cancelled by admin.");
+              load();
+            }
+
             // ✅ NEW: Handle "order_ready" event (when vendor marks order as ready)
             if (msg.type === "order_ready") {
               const p = msg.payload || {};
@@ -212,6 +225,7 @@ const ActiveOrders = () => {
         if (orderRequest?.orderId === orderId) { setOrderRequest(null); clearInterval(countdownRef.current); stopAlert(); }
       }
       if (action === "cancel") await api.patch(`/delivery/orders/${orderId}/cancel`, { reason: body.reason || "Rider cancelled" });
+      if (action === "report-issue") await api.patch(`/delivery/orders/${orderId}/report-issue`, { reason: body.reason || "Customer not responding" });
       if (action === "status") await api.patch(`/delivery/orders/${orderId}/status`, { status: body.status });
       if (action === "pickup") await api.patch(`/delivery/orders/${orderId}/pickup`);
       if (action === "deliver") await api.patch(`/delivery/orders/${orderId}/deliver`, { otp: body.otp });
@@ -561,6 +575,33 @@ const ActiveOrders = () => {
                       >
                         ✕ {isWorking ? "Cancelling…" : "Cancel"}
                       </button>
+                    )}
+
+                    {/* BUG FIX: once picked up, the rider had NO way to flag
+                        a stuck delivery — e.g. customer not answering calls
+                        or not responding at the door. The plain Cancel above
+                        only applies pre-pickup (it re-assigns to a different
+                        rider, which can't work once the package is
+                        physically with this one). This reports the issue to
+                        admin/vendor instead, who then decide to reschedule,
+                        cancel + refund, or have the rider return the item. */}
+                    {tab === "active" && order.orderStatus === "OUT_FOR_DELIVERY" && order.delivery?.status !== "FAILED" && (
+                      <button
+                        onClick={() => {
+                          const reason = window.prompt("What's the issue? (e.g. Customer not answering calls / not available at address)", "Customer not answering calls");
+                          if (reason && reason.trim()) doAction(order._id, "report-issue", { reason: reason.trim() });
+                        }}
+                        disabled={isWorking}
+                        style={{ padding: "6px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(239,68,68,.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,.3)" }}
+                      >
+                        ⚠ {isWorking ? "Reporting…" : "Customer Not Responding"}
+                      </button>
+                    )}
+
+                    {order.delivery?.status === "FAILED" && (
+                      <span style={{ padding: "6px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}>
+                        ⚠ Issue reported — waiting on admin
+                      </span>
                     )}
                   </div>
                 </div>

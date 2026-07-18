@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../api/adminApi";
 import { fetchAllCategories } from "../api/categoryApi";
 import { Button, Badge, Card, ErrorState, FormField, Input, Select } from "../components/ui";
+import DynamicAttributeFields from "../components/DynamicAttributeFields";
 
 /* ─────────────────────────────────────────────────────────
    CONSTANTS
@@ -73,14 +74,55 @@ const FIELD_TAB = {
     isCancellable: "policy", isReturnable: "policy", isReplaceable: "policy",
     returnWindow: "policy", replacementWindow: "policy", cancelWindow: "policy",
     returnPolicy: "seo", shippingInfo: "seo", metaTitle: "seo", metaDesc: "seo",
+    hsn: "pricing", barcode: "pricing", lowStockThreshold: "pricing",
+    shipLength: "seo", shipWidth: "seo", shipHeight: "seo",
     prepTimeMinutes: "quick", maxOrderQty: "quick", vendorId: "quick",
 };
+
+/* Per-step required checks for the wizard's Next button. Full validation
+   still runs on Publish; this catches problems early, per step. */
+const STEP_VALIDATORS = {
+    basic: (ctx) => {
+        const fe = {};
+        if (!ctx.form.name.trim()) fe.name = "Required";
+        if (!ctx.form.category) fe.category = "Required";
+        return fe;
+    },
+    pricing: (ctx) => {
+        const fe = {};
+        if (!ctx.form.price || +ctx.form.price <= 0) fe.price = "Enter valid price";
+        if (ctx.form.mrp && +ctx.form.mrp < +ctx.form.price) fe.mrp = "MRP must be ≥ price";
+        if (!ctx.enableVariants && (ctx.form.stock === "" || +ctx.form.stock < 0)) fe.stock = "Required (0 or more)";
+        return fe;
+    },
+    variants: (ctx) => {
+        const fe = {};
+        if (ctx.enableVariants && ctx.colorVariants.some(v => !v.name.trim()))
+            fe.colorVariants = "All color variants must have a name";
+        return fe;
+    },
+    images: (ctx) => {
+        const fe = {};
+        if (ctx.mainImages.length === 0 && ctx.colorVariants.every(v => v.images.length === 0))
+            fe.images = "At least 1 image required";
+        return fe;
+    },
+    quick: (ctx) => {
+        const fe = {};
+        if (!ctx.form.vendorId?.trim()) fe.vendorId = "Vendor ID required for UH";
+        return fe;
+    },
+};
+
+const DRAFT_KEY = "adm_product_draft_v1";
 
 const DEFAULT_FORM = {
     name: "", description: "", price: "", mrp: "", category: "", subcategory: "",
     isFeatured: false, isDeal: false, dealEndsAt: "", isCustomizable: false,
     tags: "", stock: "", brand: "", sku: "", weight: "", origin: "",
     returnPolicy: "7", shippingInfo: "", metaTitle: "", metaDesc: "",
+    hsn: "", barcode: "", lowStockThreshold: "5",
+    shipLength: "", shipWidth: "", shipHeight: "",
     color: "", material: "", occasion: "", gstPercent: "0",
     isCancellable: true, isReturnable: true, isReplaceable: false,
     returnWindow: "7", replacementWindow: "7", cancelWindow: "0",
@@ -333,6 +375,12 @@ const AdminAddProduct = () => {
     const [hls, setHls] = useState([{ key: "", value: "" }]);
     const [mainImages, setMainImages] = useState([]);
     const [mainPreviews, setMainPreviews] = useState([]);
+    const [imageAlts, setImageAlts] = useState([]);      // per-image alt text
+    const [uploadPct, setUploadPct] = useState(0);        // publish upload progress
+    const [dirty, setDirty] = useState(false);            // unsaved-changes guard
+    const [draftAvailable, setDraftAvailable] = useState(() => {
+        try { return !!localStorage.getItem(DRAFT_KEY); } catch { return false; }
+    });
 
     const [colorVariants, setColorVariants] = useState([]);
     const [enableVariants, setEnableVariants] = useState(false);
@@ -362,6 +410,18 @@ const AdminAddProduct = () => {
             .catch(() => setHlTemplate([]));
     }, [form.category]);
 
+    // Discovery attributes — schema fetched from category metadata, fields
+    // auto-render (no hardcoded attribute names anywhere).
+    const [attrSchema, setAttrSchema] = useState([]);
+    const [attributes, setAttributes] = useState({});
+    useEffect(() => {
+        const catObj = categories.find(c => c.value === form.category || c.slug === form.category || c.name === form.category);
+        if (!catObj?.slug) { setAttrSchema([]); return; }
+        api.get(`/categories/${catObj.slug}/metadata`)
+            .then(r => setAttrSchema(r.data?.metadata?.attributeSchema || []))
+            .catch(() => setAttrSchema([]));
+    }, [form.category, categories]);
+
     useEffect(() => {
         const catObj = categories.find(c => c.value === form.category || c.slug === form.category || c.name === form.category);
         const catName = catObj ? catObj.name : form.category;
@@ -384,6 +444,7 @@ const AdminAddProduct = () => {
     const hc = useCallback(e => {
         const { name, value, type, checked } = e.target;
         setForm(p => ({ ...p, [name]: type === "checkbox" ? checked : value }));
+        setDirty(true);
         clrErr(name);
     }, []);
 
@@ -433,12 +494,112 @@ const AdminAddProduct = () => {
         }
         setMainImages(merged);
         setMainPreviews(merged.map(f => URL.createObjectURL(f)));
+        setImageAlts(p => [...p, ...Array(merged.length - p.length).fill("")].slice(0, merged.length));
+        setDirty(true);
         clrErr("images");
     };
     const removeMainImg = i => {
         setMainImages(p => p.filter((_, j) => j !== i));
         setMainPreviews(p => p.filter((_, j) => j !== i));
+        setImageAlts(p => p.filter((_, j) => j !== i));
     };
+
+    /* ── Image manager: reorder / make-primary / alt text / drag-drop ──
+       Display order = upload order = storefront order, so reordering the
+       arrays is all that's needed (first image = primary). */
+    const swapArr = (arr, i, j) => { const n = [...arr]; [n[i], n[j]] = [n[j], n[i]]; return n; };
+    const moveMainImg = (i, dir) => {
+        const j = i + dir;
+        if (j < 0 || j >= mainImages.length) return;
+        setMainImages(p => swapArr(p, i, j));
+        setMainPreviews(p => swapArr(p, i, j));
+        setImageAlts(p => swapArr([...p, ...Array(Math.max(0, mainImages.length - p.length)).fill("")], i, j));
+    };
+    const makePrimaryImg = (i) => {
+        if (i === 0) return;
+        const toFront = (arr) => [arr[i], ...arr.filter((_, j) => j !== i)];
+        setMainImages(toFront);
+        setMainPreviews(toFront);
+        setImageAlts(p => toFront([...p, ...Array(Math.max(0, mainImages.length - p.length)).fill("")]));
+    };
+    const setImgAlt = (i, v) => setImageAlts(p => {
+        const n = [...p, ...Array(Math.max(0, mainImages.length - p.length)).fill("")];
+        n[i] = v; return n;
+    });
+    const handleImageDrop = (e) => {
+        e.preventDefault();
+        const files = Array.from(e.dataTransfer?.files || []).filter(f => f.type.startsWith("image/"));
+        if (!files.length) return;
+        handleMainImgs({ target: { files } });
+    };
+
+    /* ── Wizard: per-step validation + navigation ── */
+    const stepCtx = { form, enableVariants, colorVariants, mainImages };
+    const validateStep = (stepId) => (STEP_VALIDATORS[stepId] ? STEP_VALIDATORS[stepId](stepCtx) : {});
+    const goToStep = (target) => {
+        // moving forward validates every step in between; backward is free
+        const fromIdx = sections.indexOf(tab);
+        const toIdx = sections.indexOf(target);
+        if (toIdx > fromIdx) {
+            for (let i = fromIdx; i < toIdx; i++) {
+                const fe = validateStep(sections[i]);
+                if (Object.keys(fe).length) {
+                    setFErrs(fe);
+                    setTab(sections[i]);
+                    setTopErr("Complete this step before continuing");
+                    return;
+                }
+            }
+        }
+        setFErrs({}); setTopErr("");
+        setTab(target);
+    };
+
+    /* ── Draft autosave (serializable state only — files can't persist) ── */
+    const draftPayload = JSON.stringify({
+        form, hls, attributes, selSizes, sizeStockMap, productType, enableVariants,
+        colorVariantsMeta: colorVariants.map(({ id, name, hex, stock, price, mrp, isDefault }) =>
+            ({ id, name, hex, stock, price, mrp, isDefault })),
+    });
+    const draftRef = useRef(draftPayload);
+    useEffect(() => { draftRef.current = draftPayload; }, [draftPayload]);
+    useEffect(() => {
+        if (!dirty) return;
+        const t = setTimeout(() => {
+            try { localStorage.setItem(DRAFT_KEY, draftRef.current); } catch { /* storage full */ }
+        }, 800);
+        return () => clearTimeout(t);
+    }, [draftPayload, dirty]);
+
+    const resumeDraft = () => {
+        try {
+            const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "{}");
+            if (d.form) setForm(f => ({ ...f, ...d.form }));
+            if (Array.isArray(d.hls) && d.hls.length) setHls(d.hls);
+            if (d.attributes) setAttributes(d.attributes);
+            if (Array.isArray(d.selSizes)) setSelSizes(d.selSizes);
+            if (d.sizeStockMap) setSizeStockMap(d.sizeStockMap);
+            if (d.productType) setProductType(d.productType);
+            if (d.enableVariants !== undefined) setEnableVariants(d.enableVariants);
+            if (Array.isArray(d.colorVariantsMeta) && d.colorVariantsMeta.length) {
+                setColorVariants(d.colorVariantsMeta.map(v => ({ ...v, images: [], previews: [] })));
+            }
+            setDirty(true);
+        } catch { /* corrupt draft */ }
+        setDraftAvailable(false);
+    };
+    const discardDraft = () => {
+        try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+        setDraftAvailable(false);
+    };
+
+    /* ── Unsaved-changes guard (browser close / refresh) ── */
+    useEffect(() => {
+        if (!dirty) return;
+        const onBeforeUnload = (e) => { e.preventDefault(); e.returnValue = ""; };
+        window.addEventListener("beforeunload", onBeforeUnload);
+        return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    }, [dirty]);
 
     const addVariant = () => setColorVariants(p => [
         ...p,
@@ -550,6 +711,20 @@ const AdminAddProduct = () => {
                 fd.append("highlights", JSON.stringify(obj));
                 fd.append("highlightsArray", JSON.stringify(validHls.map(h => ({ title: h.key.trim(), value: h.value.trim() }))));
             }
+            // BUG FIX: attributes were only sent when highlights were filled
+            // (append lived inside the validHls if-block) — send them always.
+            fd.append("attributes", JSON.stringify(attributes));
+
+            // SEO / shipping / inventory extras
+            fd.append("hsn", form.hsn || "");
+            fd.append("barcode", form.barcode || "");
+            fd.append("lowStockThreshold", String(+form.lowStockThreshold || 5));
+            fd.append("shipping", JSON.stringify({
+                lengthCm: +form.shipLength || 0,
+                widthCm: +form.shipWidth || 0,
+                heightCm: +form.shipHeight || 0,
+            }));
+            fd.append("imageAlts", JSON.stringify(imageAlts.slice(0, mainImages.length)));
 
             // Main images
             mainImages.forEach(img => fd.append("images", img));
@@ -583,7 +758,15 @@ const AdminAddProduct = () => {
                 if (form.vendorId?.trim()) fd.append("vendorId", form.vendorId.trim());
             }
 
-            await api.post("/products/admin", fd);
+            setUploadPct(1);
+            await api.post("/products/admin", fd, {
+                onUploadProgress: (ev) => {
+                    if (ev.total) setUploadPct(Math.round((ev.loaded / ev.total) * 100));
+                },
+            });
+            setUploadPct(0);
+            setDirty(false);
+            try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
             showToast("ok", "Product published successfully!");
             setTimeout(() => navigate("/admin/products"), 1500);
 
@@ -606,6 +789,7 @@ const AdminAddProduct = () => {
             }
         } finally {
             setLoading(false);
+            setUploadPct(0);
         }
     };
 
@@ -666,17 +850,34 @@ const AdminAddProduct = () => {
                     </div>
                 </Card>
 
-                {/* Tab bar */}
+                {/* Draft resume banner */}
+                {draftAvailable && (
+                    <Card style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 12, borderLeft: "3px solid var(--adm-primary)" }}>
+                        <div style={{ flex: 1 }}>
+                            <p style={{ fontSize: 13, fontWeight: 700, color: "var(--adm-text-primary)" }}>Unfinished draft found</p>
+                            <p style={{ fontSize: 11, color: "var(--adm-muted)", marginTop: 2 }}>
+                                Resume where you left off (images need re-uploading — browsers can't persist files).
+                            </p>
+                        </div>
+                        <Button type="button" variant="secondary" onClick={discardDraft}>Discard</Button>
+                        <Button type="button" variant="primary" onClick={resumeDraft}>Resume Draft</Button>
+                    </Card>
+                )}
+
+                {/* Wizard stepper — numbered steps; forward moves validate */}
                 <div className="pf-tabbar" style={{ marginBottom: 12 }}>
-                    {sections.map((sid) => {
+                    {sections.map((sid, idx) => {
                         const meta = SECTION_META[sid];
+                        const stepDone = idx < tabIdx && Object.keys(validateStep(sid)).length === 0;
                         return (
                             <button
                                 key={sid} type="button"
                                 className={`pf-tab${tab === sid ? " on" : ""}`}
-                                onClick={() => setTab(sid)}
+                                onClick={() => goToStep(sid)}
                             >
-                                <span className="pf-tab-icon">{meta.icon}</span>
+                                <span className="pf-tab-icon" style={stepDone ? { color: "var(--adm-success)" } : undefined}>
+                                    {stepDone ? "✓" : `${idx + 1}.`}
+                                </span>
                                 <span className="pf-tab-label">{meta.label}</span>
                                 {tabHasErr(sid) && <span className="pf-tab-dot" />}
                             </button>
@@ -854,6 +1055,19 @@ const AdminAddProduct = () => {
                                             <Select name="gstPercent" value={form.gstPercent} onChange={hc}>
                                                 {GST_RATES.map(r => <option key={r} value={r}>{r}% GST</option>)}
                                             </Select>
+                                        </FormField>
+                                    </div>
+
+                                    {/* Inventory extras */}
+                                    <div className="g3">
+                                        <FormField label={LBL("HSN Code", { hint: "GST classification" })}>
+                                            <Input name="hsn" value={form.hsn} onChange={hc} maxLength={20} placeholder="e.g. 6109" />
+                                        </FormField>
+                                        <FormField label="Barcode (EAN/UPC)">
+                                            <Input name="barcode" value={form.barcode} onChange={hc} maxLength={50} placeholder="e.g. 8901234567890" />
+                                        </FormField>
+                                        <FormField label={LBL("Low Stock Alert", { hint: "units" })}>
+                                            <Input name="lowStockThreshold" value={form.lowStockThreshold} onChange={hc} type="number" min="0" placeholder="5" />
                                         </FormField>
                                     </div>
 
@@ -1079,6 +1293,9 @@ const AdminAddProduct = () => {
                                             <Input name="origin" value={form.origin} onChange={hc} placeholder="e.g. India" />
                                         </FormField>
                                     </div>
+
+                                    {/* Metadata-driven attributes for the selected category */}
+                                    <DynamicAttributeFields schema={attrSchema} value={attributes} onChange={setAttributes} />
                                 </div>
                             )}
 
@@ -1094,22 +1311,47 @@ const AdminAddProduct = () => {
                                         <Badge tone={mainPreviews.length === 0 ? "danger" : "primary"}>{mainPreviews.length}/6</Badge>
                                     </div>
                                     {fErrs.images && <p style={{ fontSize: 11, color: "var(--adm-danger)", fontWeight: 600 }}>⚠ {fErrs.images}</p>}
-                                    <div className="pf-imgrid">
+                                    <div className="pf-imgrid"
+                                        onDragOver={(e) => e.preventDefault()}
+                                        onDrop={handleImageDrop}>
                                         {mainPreviews.map((src, i) => (
-                                            <div key={i} className="pf-slot">
-                                                <img src={src} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
-                                                {i === 0 && (
-                                                    <span style={{ position: "absolute", bottom: 6, left: 6 }}>
-                                                        <Badge tone="primary">MAIN</Badge>
-                                                    </span>
-                                                )}
-                                                <button type="button" className="pf-img-del" onClick={() => removeMainImg(i)}>✕</button>
+                                            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                                <div className="pf-slot">
+                                                    <img src={src} alt={imageAlts[i] || ""} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+                                                    {i === 0 && (
+                                                        <span style={{ position: "absolute", bottom: 6, left: 6 }}>
+                                                            <Badge tone="primary">PRIMARY</Badge>
+                                                        </span>
+                                                    )}
+                                                    <button type="button" className="pf-img-del" onClick={() => removeMainImg(i)}>✕</button>
+                                                </div>
+                                                {/* Reorder / make-primary controls */}
+                                                <div style={{ display: "flex", gap: 4, justifyContent: "center" }}>
+                                                    <button type="button" title="Move left" disabled={i === 0}
+                                                        onClick={() => moveMainImg(i, -1)}
+                                                        style={{ border: "1px solid var(--adm-border)", background: "var(--adm-surface)", borderRadius: 6, width: 24, height: 22, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.35 : 1, fontSize: 11 }}>◀</button>
+                                                    {i !== 0 && (
+                                                        <button type="button" title="Make primary"
+                                                            onClick={() => makePrimaryImg(i)}
+                                                            style={{ border: "1px solid var(--adm-primary)", color: "var(--adm-primary)", background: "var(--adm-primary-tint)", borderRadius: 6, height: 22, padding: "0 6px", cursor: "pointer", fontSize: 9, fontWeight: 800 }}>★</button>
+                                                    )}
+                                                    <button type="button" title="Move right" disabled={i === mainPreviews.length - 1}
+                                                        onClick={() => moveMainImg(i, 1)}
+                                                        style={{ border: "1px solid var(--adm-border)", background: "var(--adm-surface)", borderRadius: 6, width: 24, height: 22, cursor: i === mainPreviews.length - 1 ? "default" : "pointer", opacity: i === mainPreviews.length - 1 ? 0.35 : 1, fontSize: 11 }}>▶</button>
+                                                </div>
+                                                <input
+                                                    value={imageAlts[i] || ""}
+                                                    onChange={(e) => setImgAlt(i, e.target.value)}
+                                                    placeholder="Alt text (SEO)"
+                                                    maxLength={150}
+                                                    style={{ width: "100%", fontSize: 10.5, padding: "5px 7px", border: "1px solid var(--adm-border)", borderRadius: 6, background: "var(--adm-surface)", color: "var(--adm-text-primary)", boxSizing: "border-box" }}
+                                                />
                                             </div>
                                         ))}
                                         {mainPreviews.length < 6 && (
                                             <label className="pf-drop">
                                                 <span className="pf-drop-icon">🖼️</span>
-                                                <span className="pf-drop-text">Click to upload</span>
+                                                <span className="pf-drop-text">Click or drag & drop</span>
                                                 <span className="pf-drop-sub">PNG · JPG · WEBP</span>
                                                 <input type="file" multiple accept="image/*" onChange={handleMainImgs} style={{ display: "none" }} />
                                             </label>
@@ -1161,12 +1403,35 @@ const AdminAddProduct = () => {
                             {tab === "seo" && (
                                 <div className="pf-anim" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <SectionLabel>SEO & Shipping</SectionLabel>
-                                    <FormField label={LBL("Meta Title", { hint: "~60 chars" })}>
-                                        <Input name="metaTitle" value={form.metaTitle} onChange={hc} placeholder="Buy Premium Silk Kurta | Urbexon" />
+                                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                        <Button type="button" variant="secondary" size="sm"
+                                            disabled={!form.name.trim()}
+                                            onClick={() => setForm(p => ({
+                                                ...p,
+                                                metaTitle: p.metaTitle || `Buy ${p.name.trim()}${p.brand ? ` by ${p.brand}` : ""} Online | Urbexon`.slice(0, 120),
+                                                metaDesc: p.metaDesc || `${p.name.trim()} at the best price on Urbexon. ${p.description?.trim().slice(0, 120) || "Fast delivery, secure checkout, verified sellers."}`.slice(0, 200),
+                                            }))}>
+                                            ⚡ Auto-generate from product info
+                                        </Button>
+                                    </div>
+                                    <FormField label={LBL("Meta Title", { hint: `${form.metaTitle.length}/120 chars` })}>
+                                        <Input name="metaTitle" value={form.metaTitle} onChange={hc} maxLength={120} placeholder="Buy Premium Silk Kurta | Urbexon" />
                                     </FormField>
-                                    <FormField label={LBL("Meta Description", { hint: "~160 chars" })}>
-                                        <textarea name="metaDesc" value={form.metaDesc} onChange={hc} rows={3} className="adm-field-input" style={{ resize: "none", lineHeight: 1.6, width: "100%" }} />
+                                    <FormField label={LBL("Meta Description", { hint: `${form.metaDesc.length}/200 chars` })}>
+                                        <textarea name="metaDesc" value={form.metaDesc} onChange={hc} rows={3} maxLength={200} className="adm-field-input" style={{ resize: "none", lineHeight: 1.6, width: "100%" }} />
                                     </FormField>
+                                    <SectionLabel>Package Dimensions (for courier rates)</SectionLabel>
+                                    <div className="g3">
+                                        <FormField label="Length (cm)">
+                                            <Input name="shipLength" value={form.shipLength} onChange={hc} type="number" min="0" placeholder="30" />
+                                        </FormField>
+                                        <FormField label="Width (cm)">
+                                            <Input name="shipWidth" value={form.shipWidth} onChange={hc} type="number" min="0" placeholder="20" />
+                                        </FormField>
+                                        <FormField label="Height (cm)">
+                                            <Input name="shipHeight" value={form.shipHeight} onChange={hc} type="number" min="0" placeholder="5" />
+                                        </FormField>
+                                    </div>
                                     <div className="g2">
                                         <FormField label="Return Policy">
                                             <Select name="returnPolicy" value={form.returnPolicy} onChange={hc}>
@@ -1217,17 +1482,42 @@ const AdminAddProduct = () => {
                             </div>
                         )}
 
+                        {/* Upload progress while publishing */}
+                        {loading && uploadPct > 0 && (
+                            <div style={{ margin: "0 22px 10px" }}>
+                                <div style={{ height: 6, borderRadius: 3, background: "var(--adm-border)", overflow: "hidden" }}>
+                                    <div style={{ height: "100%", width: `${uploadPct}%`, background: "var(--adm-primary)", transition: "width .2s" }} />
+                                </div>
+                                <p style={{ fontSize: 10.5, color: "var(--adm-muted)", marginTop: 4, textAlign: "right" }}>
+                                    Uploading images… {uploadPct}%
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Wizard footer — Back / step counter / Next, Publish only on the last step */}
                         <div className="pf-actions">
-                            <Button type="button" variant="secondary" size="sm" disabled={tabIdx <= 0}
-                                onClick={() => setTab(sections[tabIdx - 1])} style={{ flexShrink: 0 }}>←</Button>
-                            <Button type="button" variant="secondary" size="sm" disabled={tabIdx >= sections.length - 1}
-                                onClick={() => setTab(sections[tabIdx + 1])} style={{ flexShrink: 0 }}>→</Button>
-                            <Button type="button" variant="secondary" onClick={() => navigate("/admin/products")} style={{ flex: 1 }}>Cancel</Button>
-                            <span className="pf-submit-wrap">
-                                <Button type="submit" variant="primary" loading={loading}>
-                                    {loading ? "Publishing…" : "✦ Publish Product"}
-                                </Button>
+                            <Button type="button" variant="secondary" disabled={tabIdx <= 0}
+                                onClick={() => goToStep(sections[tabIdx - 1])} style={{ flexShrink: 0 }}>← Back</Button>
+                            <span style={{ flex: 1, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "var(--adm-muted)" }}>
+                                Step {tabIdx + 1} of {sections.length} — {SECTION_META[tab]?.label}
                             </span>
+                            <Button type="button" variant="secondary"
+                                onClick={() => {
+                                    if (dirty && !window.confirm("Discard unsaved changes? Your draft is auto-saved.")) return;
+                                    navigate("/admin/products");
+                                }} style={{ flexShrink: 0 }}>Cancel</Button>
+                            {tabIdx < sections.length - 1 ? (
+                                <Button type="button" variant="primary"
+                                    onClick={() => goToStep(sections[tabIdx + 1])} style={{ flexShrink: 0 }}>
+                                    Next →
+                                </Button>
+                            ) : (
+                                <span className="pf-submit-wrap">
+                                    <Button type="submit" variant="primary" loading={loading}>
+                                        {loading ? "Publishing…" : "✦ Publish Product"}
+                                    </Button>
+                                </span>
+                            )}
                         </div>
                     </Card>
                 </form>

@@ -20,6 +20,12 @@ const AdminBanners = lazy(() => import("../pages/AdminBanners"));
 const AdminAddBanner = lazy(() => import("../pages/Adminaddbanner"));
 const AdminEditBanner = lazy(() => import("../pages/Admineditbanner"));
 const AdminCategories = lazy(() => import("../pages/Admincategories"));
+const AdminCollections = lazy(() => import("../pages/AdminCollections"));
+const AdminDeals = lazy(() => import("../pages/AdminDeals"));
+const AdminBroadcast = lazy(() => import("../pages/AdminBroadcast"));
+const AdminNewsletter = lazy(() => import("../pages/AdminNewsletter"));
+const AdminSearchAnalytics = lazy(() => import("../pages/AdminSearchAnalytics"));
+const AdminReviews = lazy(() => import("../pages/AdminReviews"));
 const AdminAddCategory = lazy(() => import("../pages/Adminaddcategory"));
 const AdminEditCategory = lazy(() => import("../pages/Admineditcategory"));
 const AdminVendors = lazy(() => import("../pages/AdminVendors"));
@@ -75,6 +81,12 @@ const AppRoutes = () => (
 
                     {/* Categories */}
                     <Route path="categories" element={<AdminCategories />} />
+                    <Route path="collections" element={<AdminCollections />} />
+                    <Route path="deals" element={<AdminDeals />} />
+                    <Route path="broadcast" element={<AdminBroadcast />} />
+                    <Route path="newsletter" element={<AdminNewsletter />} />
+                    <Route path="search-analytics" element={<AdminSearchAnalytics />} />
+                    <Route path="reviews" element={<AdminReviews />} />
                     <Route path="categories/new" element={<AdminAddCategory />} />
                     <Route path="categories/:slug/edit" element={<AdminEditCategory />} />
 

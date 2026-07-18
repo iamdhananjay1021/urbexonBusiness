@@ -198,6 +198,15 @@ const OrderDetail = () => {
                         {order.delivery.riderName && <div><span style={{ color: "#9ca3af" }}>Rider: </span><strong>{order.delivery.riderName}</strong></div>}
                     </div>
 
+                    {order.delivery.status === "FAILED" && (
+                        <div style={{ marginTop: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 12px" }}>
+                            <p style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c", margin: 0 }}>⚠ Rider reported a delivery issue</p>
+                            {order.delivery.note && (
+                                <p style={{ fontSize: 12, color: "#7f1d1d", margin: "4px 0 0" }}>"{order.delivery.note}"</p>
+                            )}
+                        </div>
+                    )}
+
                     {/* Live map — previously this card was text-only, no
                         location/map of any kind. */}
                     {isRiderAssigned && tracking.riderPos && (

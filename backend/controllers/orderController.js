@@ -45,6 +45,7 @@ import { addUserStream, removeUserStream, publishToUser } from "../utils/realtim
 import { sendNotification as sendToUser } from "../utils/notificationQueue.js";
 import { broadcastToUsers } from "../utils/wsHub.js";
 import { startAssignment, cancelAssignment, releaseRiderSlot } from "../services/assignmentEngine.js";
+import { sendOrderStatusPush } from "../services/fcmService.js";
 import { createNotification } from "./admin/notificationController.js";
 import Vendor from "../models/vendorModels/Vendor.js";
 import { createShiprocketOrder } from "../utils/Shiprocketservice.js";
@@ -990,6 +991,35 @@ export const updateOrderStatus = async (req, res) => {
                     }
                 ).catch(() => { });
                 await releaseRiderSlot(cancelledRiderId);
+
+                // BUG FIX: the rider previously had zero real-time signal that
+                // admin cancelled their order — they only found out once it
+                // silently disappeared from the delivery panel's next 15s
+                // poll (delivery.assignedTo was already null server-side).
+                // notifyOrderStakeholders() below fires a generic
+                // "order_status_updated" event for every transition, but the
+                // delivery-panel WS handler has no case for it. Send an
+                // explicit, rider-specific event the panel actually listens
+                // for, and push it too in case their app is backgrounded.
+                try {
+                    const cancelledRider = await DeliveryBoy.findById(cancelledRiderId).select("userId name fcmToken").lean();
+                    if (cancelledRider?.userId) {
+                        sendToUser(String(cancelledRider.userId), "rider:order_cancelled", {
+                            orderId: order._id,
+                            reason: req.body?.reason || "Cancelled by admin",
+                            message: "This order was cancelled by admin. It has been removed from your deliveries.",
+                        });
+                        if (cancelledRider.fcmToken) {
+                            sendOrderStatusPush(cancelledRider.fcmToken, {
+                                orderId: String(order._id),
+                                status: "CANCELLED",
+                                message: "An order assigned to you was cancelled by admin.",
+                            }).catch(() => { });
+                        }
+                    }
+                } catch (err) {
+                    console.warn("[updateOrderStatus] rider cancel notify failed:", err.message);
+                }
             }
             if (order.orderMode === "URBEXON_HOUR") {
                 cancelAssignment(order._id);

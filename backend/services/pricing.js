@@ -97,6 +97,22 @@ export const restoreStock = async (items) => {
                 $inc: { stock: qty },
                 $set: { inStock: true },
             });
+
+            // Mirror the restore onto the exact variant / size entry that was
+            // deducted, so per-variant availability stays truthful. Best-effort:
+            // legacy orders without selectedColor/selectedSize just restore base.
+            if (item.selectedColor) {
+                await Product.updateOne(
+                    { _id: item.productId, "colorVariants.name": item.selectedColor },
+                    { $inc: { "colorVariants.$.stock": qty } }
+                ).catch(() => { });
+            }
+            if (item.selectedSize) {
+                await Product.updateOne(
+                    { _id: item.productId, "sizes.size": item.selectedSize },
+                    { $inc: { "sizes.$.stock": qty } }
+                ).catch(() => { });
+            }
         } catch (e) {
             console.warn("[StockRestore] Failed for", item.productId, e.message);
         }
@@ -114,6 +130,7 @@ export const deductStock = async (items) => {
             const qty = Number(item.qty || item.quantity || 0);
             if (!item.productId || !Number.isFinite(qty) || qty <= 0) continue;
 
+            // Base stock is the atomic oversell guard.
             const updated = await Product.findOneAndUpdate(
                 { _id: item.productId, stock: { $gte: qty } },
                 { $inc: { stock: -qty } },
@@ -123,7 +140,34 @@ export const deductStock = async (items) => {
                 throw new Error(`"${item.name}" went out of stock during checkout`);
             }
 
-            deducted.push({ productId: item.productId, qty });
+            // Track WITH the variant selection so a rollback/cancel restores
+            // the same variant/size entry it came from.
+            deducted.push({
+                productId: item.productId, qty,
+                selectedColor: item.selectedColor || "",
+                selectedSize: item.selectedSize || "",
+            });
+
+            // ── Variant/size-level deduction ─────────────────────────────
+            // BUG FIX: previously ONLY base stock was decremented. Variant and
+            // size stocks never fell, so (a) checkout's per-variant stock
+            // check kept passing forever → per-variant oversell, and (b) the
+            // Product pre-save hook recalculates base stock from variant sums
+            // on any .save(), silently UNDOING every base deduction.
+            // Guarded $gte so a drifted/unmaintained entry never goes negative
+            // (base guard above already blocked a true oversell).
+            if (item.selectedColor) {
+                await Product.updateOne(
+                    { _id: item.productId, colorVariants: { $elemMatch: { name: item.selectedColor, stock: { $gte: qty } } } },
+                    { $inc: { "colorVariants.$.stock": -qty } }
+                ).catch(() => { });
+            }
+            if (item.selectedSize) {
+                await Product.updateOne(
+                    { _id: item.productId, sizes: { $elemMatch: { size: item.selectedSize, stock: { $gte: qty } } } },
+                    { $inc: { "sizes.$.stock": -qty } }
+                ).catch(() => { });
+            }
 
             // Keep inStock flag in sync
             if (updated.stock === 0) {

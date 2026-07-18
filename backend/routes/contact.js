@@ -142,6 +142,23 @@ router.patch("/:id/read", protect, adminOnly, async (req, res) => {
    POST /api/contact/newsletter
    Subscribe to newsletter
 ============================================== */
+/* ── ADMIN: newsletter subscribers list (was write-only before —
+      subscribers had no admin visibility at all) ── */
+router.get("/newsletter/subscribers", protect, adminOnly, async (req, res) => {
+    try {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+        const [subscribers, total] = await Promise.all([
+            Newsletter.find({}).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+            Newsletter.countDocuments({}),
+        ]);
+        res.json({ success: true, subscribers, total, page, totalPages: Math.ceil(total / limit) });
+    } catch (err) {
+        console.error("[newsletterSubscribers]", err);
+        res.status(500).json({ success: false, message: "Failed to fetch subscribers" });
+    }
+});
+
 router.post("/newsletter", async (req, res) => {
     try {
         const { email } = req.body;

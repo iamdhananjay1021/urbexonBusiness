@@ -27,11 +27,13 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-    FiArrowLeft, FiZap, FiMapPin, FiCheckCircle,
-    FiHome, FiBriefcase, FiChevronDown, FiChevronUp, FiShield,
+    FiZap, FiMapPin, FiCheckCircle,
+    FiHome, FiBriefcase, FiChevronDown, FiChevronUp, FiShield, FiTag,
 } from "react-icons/fi";
 import { useUHCheckout } from "../hooks/useUHCheckout";
+import { validateCoupon } from "../api/orderApi";
 import { resolveNearestPincode } from "../api/pincodeApi";
+import BackButton from "../components/BackButton";
 import SEO from "../components/SEO";
 import Card from "../design-system/Card";
 import Input from "../design-system/Input";
@@ -87,9 +89,17 @@ const UHCheckout = () => {
         return null;
     })();
 
-    const ck = useUHCheckout(buyNowItem);
+    // BUG FIX: this page never read a coupon forwarded from UHCart.jsx's
+    // `navigate("/uh-checkout", { state: { coupon } })`, and the hook never
+    // accepted/stored/forwarded one either (see useUHCheckout.js) — a
+    // coupon applied on the cart page was silently dropped by the time the
+    // order was placed. Mirrors Checkout.jsx's exact couponFromCart read.
+    const couponFromCart = location.state?.coupon || null;
+
+    const ck = useUHCheckout(buyNowItem, couponFromCart);
     const {
         step, setStep, error,
+        coupon, setCoupon,
         contact, setContact,
         addresses, addrLoading, selectedAddrId, setSelectedAddrId, selectedAddress,
         showAddForm, setShowAddForm, editingAddr, setEditingAddr,
@@ -105,6 +115,30 @@ const UHCheckout = () => {
     } = ck;
 
     const finalTotal = pricing?.finalTotal || 0;
+
+    // BUG FIX: no coupon input UI existed anywhere on this page. Same
+    // self-contained apply/remove pattern as Cart.jsx / Checkout.jsx.
+    const [couponCode, setCouponCode] = useState("");
+    const [couponApplying, setCouponApplying] = useState(false);
+    const [couponErr, setCouponErr] = useState("");
+
+    const applyCoupon = async () => {
+        if (!couponCode.trim()) return;
+        setCouponApplying(true); setCouponErr("");
+        try {
+            const { data } = await validateCoupon({
+                code: couponCode.trim(),
+                orderTotal: pricing?.itemsTotal || 0,
+                orderType: "urbexon_hour",
+            });
+            setCoupon(data);
+            setCouponCode("");
+        } catch (e) {
+            setCouponErr(e.response?.data?.message || "Invalid coupon");
+        } finally { setCouponApplying(false); }
+    };
+
+    const removeCoupon = () => { setCoupon(null); setCouponCode(""); setCouponErr(""); };
 
     // BUG FIX: the header back-arrow used to unconditionally exit straight
     // to /uh-cart no matter which step the customer was on — misclicking it
@@ -144,11 +178,23 @@ const UHCheckout = () => {
             <header className="bg-[var(--color-graphite-900)] text-white h-[60px] flex items-center">
                 <div className="max-w-[1100px] mx-auto w-full px-4 flex justify-between items-center">
                     <div className="flex items-center gap-4">
-                        <button onClick={handleBack} aria-label={step > 1 ? "Back to previous step" : "Back to cart"} className="text-white">
-                            <FiArrowLeft size={16} aria-hidden="true" />
-                        </button>
-                        <div className="text-xl tracking-wide font-display">
-                            <i>Urbexon</i><span className="text-[var(--accent-hour-hover)] ml-1">Hour</span>
+                        <BackButton
+                            variant="inline"
+                            onClick={handleBack}
+                            aria-label={step > 1 ? "Back to previous step" : "Back to cart"}
+                            className="!bg-transparent !border-transparent !text-white !shadow-none hover:!text-white/80 !w-auto !h-auto"
+                        />
+                        {/* BUG FIX: rendered the "Urbexon Hour" wordmark with
+                            its own one-off styling — italic, title-case
+                            "Hour", and --accent-hour-hover (one shade darker
+                            amber) — while the main site Navbar's Hour toggle
+                            (Navbar.jsx) uses non-italic, uppercase "HOUR" in
+                            the actual --accent-hour token. Same brand, same
+                            funnel, two different-looking logos. Matches
+                            Navbar's token/casing/tracking now. */}
+                        <div className="text-xl font-display flex items-baseline gap-1 tracking-[-0.5px]">
+                            <span>Urbexon</span>
+                            <span className="text-[13px] font-semibold text-[var(--accent-hour)] tracking-wide uppercase">Hour</span>
                         </div>
                     </div>
                     <div className="text-xs font-semibold flex items-center gap-1.5 tracking-wide">
@@ -346,6 +392,41 @@ const UHCheckout = () => {
                     </StepCard>
                 </div>
 
+                {/* Coupon — BUG FIX: no coupon input existed anywhere on
+                    this page; pricing already had a display-only
+                    `couponDiscount` row below with nothing to ever populate
+                    it. */}
+                <Card padding="none" className="sticky top-4 hidden md:block mb-3">
+                    <div className="p-4">
+                        <div className="flex items-center gap-2 text-sm font-bold text-primary">
+                            <FiTag size={13} className="text-[var(--accent-hour)]" aria-hidden="true" /> Coupon / Promo Code
+                        </div>
+                        {coupon ? (
+                            <div className="mt-2.5 bg-success-tint border border-[var(--color-success-100)] rounded-[var(--radius-sm)] px-3.5 py-2.5 flex justify-between items-center">
+                                <div>
+                                    <div className="text-xs font-semibold text-success">✅ {coupon.code} applied!</div>
+                                    <div className="text-xs text-success font-semibold">You save {fmt(coupon.discount)}</div>
+                                </div>
+                                <button onClick={removeCoupon} aria-label="Remove coupon" className="text-[var(--color-error-500)] text-base">✕</button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex gap-2 mt-2.5">
+                                    <input
+                                        className="flex-1 min-w-0 px-3 py-2 border border-default rounded-[var(--radius-sm)] text-[13px] outline-none focus:border-[var(--accent-hour)] transition-colors"
+                                        placeholder="Enter coupon code"
+                                        value={couponCode}
+                                        onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                                        onKeyDown={e => e.key === "Enter" && applyCoupon()}
+                                    />
+                                    <Button variant="hour" onClick={applyCoupon} loading={couponApplying}>Apply</Button>
+                                </div>
+                                {couponErr && <p className="text-xs text-error mt-2">⚠️ {couponErr}</p>}
+                            </>
+                        )}
+                    </div>
+                </Card>
+
                 {/* Sidebar: Order Summary */}
                 <Card padding="none" className="sticky top-4 hidden md:block">
                     <div className="px-5 py-3.5 border-b border-default text-sm font-semibold text-secondary uppercase">Price Details</div>
@@ -408,6 +489,28 @@ const UHCheckout = () => {
                                 </div>
                             </div>
                         ))}
+
+                        {/* Coupon — mobile parity for the desktop card above */}
+                        <div className="border-t border-default pt-3 mt-1">
+                            {coupon ? (
+                                <div className="bg-success-tint border border-[var(--color-success-100)] rounded-[var(--radius-sm)] px-3 py-2 flex justify-between items-center">
+                                    <span className="text-xs font-semibold text-success">✅ {coupon.code} · saved {fmt(coupon.discount)}</span>
+                                    <button onClick={removeCoupon} aria-label="Remove coupon" className="text-[var(--color-error-500)] text-sm">✕</button>
+                                </div>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <input
+                                        className="flex-1 min-w-0 px-3 py-2 border border-default rounded-[var(--radius-sm)] text-[13px] outline-none focus:border-[var(--accent-hour)] transition-colors"
+                                        placeholder="Coupon code"
+                                        value={couponCode}
+                                        onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                                        onKeyDown={e => e.key === "Enter" && applyCoupon()}
+                                    />
+                                    <Button variant="hour" onClick={applyCoupon} loading={couponApplying}>Apply</Button>
+                                </div>
+                            )}
+                            {couponErr && <p className="text-xs text-error mt-1.5">⚠️ {couponErr}</p>}
+                        </div>
                     </div>
                 )}
             </div>

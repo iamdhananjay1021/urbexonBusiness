@@ -5,6 +5,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import api from "../api/axios";
+import { useAuth } from "../contexts/AuthContext";
 import {
     FiCheck, FiClock, FiAlertCircle, FiCreditCard,
     FiPackage, FiRefreshCw, FiShield, FiStar, FiZap,
@@ -42,6 +43,7 @@ const PAYMENT_STATUS = {
 };
 
 const Subscription = () => {
+    const { refreshVendor } = useAuth();
     const [plans, setPlans] = useState(null);
     const [currentSub, setCurrentSub] = useState(null);
     const [payments, setPayments] = useState([]);
@@ -112,7 +114,14 @@ const Subscription = () => {
 
                         if (verifyData.success) {
                             showMsg(verifyData.message || "Subscription activated!", "success");
-                            loadData(); // Refresh
+                            loadData(); // Refresh this page's own plan/history state
+                            // BUG FIX: AuthContext's cached `vendor.subscription` (used by
+                            // SubscriptionRoute's route guard) was never refreshed after a
+                            // successful payment, so a vendor who just paid and navigated to
+                            // e.g. /products got bounced straight back here by the stale
+                            // guard until they hard-refreshed the browser. refreshVendor()
+                            // re-fetches /vendor/me and updates the shared context.
+                            refreshVendor();
                         } else {
                             showMsg(verifyData.message || "Verification failed", "error");
                         }

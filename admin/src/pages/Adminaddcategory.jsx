@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { createCategory } from "../api/categoryApi";
 import { FiArrowLeft, FiUpload, FiX } from "react-icons/fi";
 import { Button, Badge, Card, ErrorState, FormField, Input } from "../components/ui";
+import AttributeSchemaEditor from "../components/AttributeSchemaEditor";
 
 const EMOJI_OPTIONS = ["👔", "👗", "🥻", "👜", "📱", "✨", "👟", "🎒", "⌚", "💍", "🕶️", "🧢", "🏷️"];
 
@@ -17,6 +18,8 @@ const AdminAddCategory = () => {
     const [subInput, setSubInput] = useState("");
     const [highlightFields, setHighlightFields] = useState([]); // [{ title, required }]
     const [hlInput, setHlInput] = useState("");
+    const [attributeSchema, setAttributeSchema] = useState([]); // discovery attributes
+    const [seo, setSeo] = useState({ title: "", description: "" });
     const [imageFile, setImageFile] = useState(null);
     const [preview, setPreview] = useState("");
     const [saving, setSaving] = useState(false);
@@ -52,6 +55,9 @@ const AdminAddCategory = () => {
             fd.append("type", form.type);
             fd.append("subcategories", JSON.stringify(subcategories));
             fd.append("highlightTemplate", JSON.stringify(highlightFields));
+            fd.append("attributeSchema", JSON.stringify(attributeSchema));
+            fd.append("seoTitle", seo.title);
+            fd.append("seoDescription", seo.description);
             if (imageFile) fd.append("image", imageFile);
             await createCategory(fd);
             navigate("/admin/categories");
@@ -221,6 +227,23 @@ const AdminAddCategory = () => {
                         />
                         <p style={{ fontSize: 10, color: "var(--adm-muted)", marginTop: 4 }}>These fields will auto-load when vendors add products in this category. Click ⚙ to toggle required.</p>
                     </FormField>
+
+                    {/* Filter Attributes — Product Discovery metadata */}
+                    <FormField label={<>Filter Attributes{hintSpan("(drive storefront filters + product forms)")}</>}>
+                        <AttributeSchemaEditor value={attributeSchema} onChange={setAttributeSchema} />
+                    </FormField>
+
+                    {/* SEO */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
+                        <FormField label={<>SEO Title{hintSpan("(category page meta title)")}</>}>
+                            <Input value={seo.title} onChange={e => setSeo(prev => ({ ...prev, title: e.target.value }))}
+                                placeholder="e.g. Men's Shirts — Buy Online at Best Prices" style={{ width: "100%" }} maxLength={120} />
+                        </FormField>
+                        <FormField label={<>SEO Description{hintSpan("(meta description, ~160 chars)")}</>}>
+                            <Input value={seo.description} onChange={e => setSeo(prev => ({ ...prev, description: e.target.value }))}
+                                placeholder="Shop premium shirts from top brands…" style={{ width: "100%" }} maxLength={200} />
+                        </FormField>
+                    </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                         <FormField label="Display Order">

@@ -50,8 +50,12 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
     const [step, setStep] = useState(1);
     const [error, setError] = useState("");
 
-    /* ── Coupon (passed from Cart) ── */
-    const [coupon] = useState(couponFromCart);
+    /* ── Coupon (seeded from Cart, but mutable — BUG FIX: this used to have
+       no setter, so a coupon could only ever be applied on Cart.jsx and
+       arrived here read-only; there was no way to apply, change, or remove
+       one directly on the Checkout page itself (e.g. after "Buy Now",
+       which bypasses Cart entirely). ── */
+    const [coupon, setCoupon] = useState(couponFromCart);
 
     /* ── Contact ── */
     const [contact, setContact] = useState({
@@ -167,6 +171,17 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
             refreshPricing(paymentMethod ? (paymentMethod === "cod" ? "COD" : "RAZORPAY") : "RAZORPAY");
         }
     }, [deliveryType, codDistance]); // eslint-disable-line
+
+    // BUG FIX: `coupon` is now mutable (setCoupon exposed below, for the
+    // Checkout page's own apply/remove UI) but nothing re-fetched pricing
+    // when it changed — applying/removing a coupon here would update the
+    // `coupon` state but the displayed total would silently stay stale
+    // until some other unrelated field (address, payment method) happened
+    // to trigger a refresh. Mirrors the existing `[paymentMethod]` effect.
+    useEffect(() => {
+        if (checkoutItems?.length > 0) refreshPricing(paymentMethod === "cod" ? "COD" : "RAZORPAY");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [coupon]);
 
     /* ════════════════════════════════════════
        CHECK COD AVAILABILITY
@@ -428,7 +443,7 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
         setDeliveryType,
         mobileSummaryOpen, setMobileSummaryOpen,
         checkoutItems,
-        coupon,
+        coupon, setCoupon,
         orderMode,          // ✅ expose karo agar component ko chahiye
 
         // Actions

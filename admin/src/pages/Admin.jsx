@@ -9,6 +9,7 @@ import {
     FaImage, FaTags, FaStore, FaMapMarkerAlt, FaMoneyBillWave, FaUndoAlt, FaTruck,
     FaUsers, FaTicketAlt, FaBell, FaCheck, FaShoppingCart, FaExclamationTriangle, FaInfoCircle,
     FaGlobeAsia, FaCog, FaWallet, FaPercentage, FaDrawPolygon, FaTachometerAlt, FaLifeRing,
+    FaLayerGroup, FaBolt, FaStar, FaBullhorn, FaEnvelope, FaChartLine,
 } from "react-icons/fa";
 
 /* ─── Pages that need zero padding (manage their own layout) ─── */
@@ -235,6 +236,9 @@ const NAV_SECTIONS = [
             { to: "products", icon: FaBox, label: "Products" },
             { to: "products/new", icon: FaPlusCircle, label: "Add Product" },
             { to: "categories", icon: FaTags, label: "Categories" },
+            { to: "collections", icon: FaLayerGroup, label: "Collections" },
+            { to: "deals", icon: FaBolt, label: "Flash Deals" },
+            { to: "reviews", icon: FaStar, label: "Reviews" },
             { to: "banners", icon: FaImage, label: "Banners" },
         ],
     },
@@ -243,6 +247,14 @@ const NAV_SECTIONS = [
         items: [
             { to: "vendors", icon: FaStore, label: "Vendors" },
             { to: "subscriptions", icon: FaTicketAlt, label: "Subscriptions" },
+        ],
+    },
+    {
+        label: "Marketing & Insights",
+        items: [
+            { to: "broadcast", icon: FaBullhorn, label: "Broadcast" },
+            { to: "newsletter", icon: FaEnvelope, label: "Newsletter" },
+            { to: "search-analytics", icon: FaChartLine, label: "Search Analytics" },
         ],
     },
     {

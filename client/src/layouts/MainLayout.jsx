@@ -25,13 +25,39 @@ export default function MainLayout() {
 
     const hideNavAndFooter = noNavFooterPaths.some(p => currentPath.startsWith(p));
 
+    // Footer is WHITELISTED to discovery/content pages only — on app-style
+    // pages (orders, wishlist, notifications, order details, …) the big
+    // footer was pure noise under short content. Navbar logic is unchanged.
+    const footerPaths = [
+        "/products",        // listing + /products/:id detail
+        "/category/",
+        "/collections/",
+        "/deals",
+        "/vendor/",
+        "/contact",
+        "/privacy-policy",
+        "/terms-conditions",
+        "/refund-policy",
+        "/become-vendor",
+        "/about",
+    ];
+    const showFooter =
+        !hideNavAndFooter &&
+        !isUrbexonHour &&
+        (currentPath === "/" || footerPaths.some(p => currentPath.startsWith(p)));
+
     return (
-        <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f7f4ee" }}>
+        <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "var(--bg-canvas)" }}>
             {!hideNavAndFooter && <Navbar />}
-            <main style={{ flex: 1 }}>
+            {/* The navbar is fixed; every page starts below it via the
+                --nav-h variable the navbar itself measures & publishes
+                (ResizeObserver — category bar, font loads, breakpoints all
+                accounted for). No hardcoded offsets anywhere. When the
+                navbar is hidden/unmounted, --nav-h resets to 0px. */}
+            <main style={{ flex: 1, paddingTop: "var(--nav-h, 0px)" }}>
                 <Outlet />
             </main>
-            {!hideNavAndFooter && !isUrbexonHour && <Footer />}
+            {showFooter && <Footer />}
         </div>
     );
 }

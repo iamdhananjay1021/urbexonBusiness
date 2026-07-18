@@ -88,6 +88,51 @@ export const deleteReview = async (req, res) => {
     }
 };
 
+/* ── ADMIN: moderation — list all reviews (filter by rating/search) ── */
+export const adminGetAllReviews = async (req, res) => {
+    try {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 30));
+        const filter = {};
+        const rating = Number(req.query.rating);
+        if (rating >= 1 && rating <= 5) filter.rating = rating;
+        const q = (req.query.search || "").trim().slice(0, 50);
+        if (q) {
+            const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+            filter.$or = [{ name: rx }, { comment: rx }];
+        }
+
+        const [reviews, total] = await Promise.all([
+            Review.find(filter)
+                .populate("product", "name slug images")
+                .sort({ createdAt: -1 })
+                .skip((page - 1) * limit).limit(limit).lean(),
+            Review.countDocuments(filter),
+        ]);
+
+        res.json({ success: true, reviews, total, page, totalPages: Math.ceil(total / limit) });
+    } catch (error) {
+        console.error("[adminGetAllReviews]", error);
+        res.status(500).json({ success: false, message: "Failed to fetch reviews" });
+    }
+};
+
+/* ── ADMIN: moderation — delete any review (abusive/fake content).
+      Same rating-recalc path as the user's own delete. ── */
+export const adminDeleteReview = async (req, res) => {
+    try {
+        const review = await Review.findById(req.params.reviewId);
+        if (!review) return res.status(404).json({ success: false, message: "Review not found" });
+        const productId = review.product;
+        await review.deleteOne();
+        await recalcProductRating(productId);
+        res.json({ success: true, message: "Review removed" });
+    } catch (error) {
+        console.error("[adminDeleteReview]", error);
+        res.status(500).json({ success: false, message: "Failed to delete review" });
+    }
+};
+
 export const getMyReviews = async (req, res) => {
     try {
         const reviews = await Review.find({ user: req.user._id })

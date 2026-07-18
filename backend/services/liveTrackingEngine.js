@@ -10,7 +10,7 @@
 import Order from "../models/Order.js";
 import Vendor from "../models/vendorModels/Vendor.js";
 import { DELIVERY_CONFIG } from "../config/deliveryConfig.js";
-import { haversineKm, calculateETA, formatEtaText, computeSpeedAndHeading } from "./geoEngine.js";
+import { haversineKm, calculateETA, formatEtaText, computeSpeedAndHeading, isPlausibleIndiaLatLng } from "./geoEngine.js";
 
 const NOT_YET_PICKED_UP = ["PENDING", "SEARCHING_RIDER", "ASSIGNED", "ARRIVING_VENDOR"];
 
@@ -40,7 +40,21 @@ export const computeLiveTrackingInfo = async (orderId, riderLat, riderLng, prevF
     if (order.vendorId) {
         const vendor = await Vendor.findById(order.vendorId).select("location preparationTime").lean();
         const coords = vendor?.location?.coordinates;
-        if (coords?.length === 2) { vendorLng = coords[0]; vendorLat = coords[1]; }
+        // BUG FIX: Vendor.location.coordinates defaults to the GeoJSON
+        // schema sentinel [0,0] (models/vendorModels/Vendor.js) until a
+        // vendor explicitly saves their real shop location via Settings —
+        // registerVendor() never captures it at signup. Treating that [0,0]
+        // as a real coordinate made the "TO_VENDOR" leg compute
+        // haversineKm(riderLat, riderLng, 0, 0) — ~9200-9300km from
+        // anywhere in India — which is exactly the bogus "~9230 km"
+        // distance shown right after READY_FOR_PICKUP (the transition that
+        // kicks off rider assignment, whose first leg is rider→vendor).
+        // Reuses the same "is this a real, set coordinate" check already
+        // used for rider GPS fixes elsewhere in this codebase instead of
+        // re-deriving the [0,0] check here.
+        if (coords?.length === 2 && isPlausibleIndiaLatLng(coords[1], coords[0])) {
+            vendorLng = coords[0]; vendorLat = coords[1];
+        }
         prepTime = vendor?.preparationTime ?? null;
     }
 

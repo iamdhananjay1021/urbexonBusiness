@@ -10,7 +10,7 @@ import { FiHeart, FiShoppingCart, FiZap } from "react-icons/fi";
 import SEO from "../components/SEO";
 import Loader from "../design-system/Loader";
 import Button from "../design-system/Button";
-import ProductCard from "../design-system/ProductCard";
+import ProductCard from "../components/ProductCard";
 import { EmptyState } from "../design-system/EmptyState";
 
 const Wishlist = () => {
@@ -78,12 +78,13 @@ const Wishlist = () => {
               const inCart = cartItems.some(c => c._id === product._id);
               return (
                 <div key={product._id} className="flex flex-col gap-2">
+                  {/* Global card — navigation (incl. UH → /uh-product) is handled
+                      inside it; heart is forced on and removes from this list. */}
                   <ProductCard
                     product={product}
-                    isHour={product.productType === "urbexon_hour"}
+                    hideActions
                     wishlisted
                     onWishlistToggle={() => remove(product._id)}
-                    onClick={() => navigate(`/products/${product.slug || product._id}`)}
                   />
                   {product.productType === "urbexon_hour" && (
                     <div className="text-[9px] font-bold text-accent flex items-center gap-1 -mt-1">

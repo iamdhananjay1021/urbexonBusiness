@@ -5,6 +5,7 @@ import {
    getAllCategories,
    getSingleCategory,
    getCategorySubcategories,
+   getCategoryMetadata,
    createCategory,
    updateCategory,
    deleteCategory,
@@ -42,6 +43,7 @@ router.delete("/:slug", protect, adminOnly, deleteCategory);
    DYNAMIC ROUTE — sabse baad mein
 ───────────────────────────────────────────── */
 router.get("/:slug/subcategories", getCategorySubcategories);
+router.get("/:slug/metadata", getCategoryMetadata);  // discovery metadata (filters/SEO/attributes)
 router.get("/:slug", getSingleCategory);  // ✅ No mongoose auto ObjectId cast
 
 export default router;

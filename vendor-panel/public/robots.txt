@@ -1,0 +1,8 @@
+# vendor.urbexon.in — vendor seller portal. No public/marketing content
+# lives here (the "become a vendor" pitch is on the client app at
+# urbexon.in/become-vendor, which IS indexable) — this origin is pure
+# authenticated tooling. Blanket disallow; paired with the noindex meta
+# tag in index.html and the X-Robots-Tag response header.
+
+User-agent: *
+Disallow: /

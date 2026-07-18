@@ -842,6 +842,17 @@ const AdminOrders = () => {
                                                 ))}
                                             </div>
 
+                                            {order.delivery?.status === "FAILED" && (
+                                                <div style={{ marginTop: 10, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 12px" }}>
+                                                    <p style={{ fontSize: 11, fontWeight: 700, color: "#b91c1c", margin: 0 }}>
+                                                        ⚠ Rider reported a delivery issue{order.delivery?.riderName ? ` (${order.delivery.riderName})` : ""}
+                                                    </p>
+                                                    {order.delivery?.note && (
+                                                        <p style={{ fontSize: 11, color: "#7f1d1d", margin: "4px 0 0" }}>"{order.delivery.note}"</p>
+                                                    )}
+                                                </div>
+                                            )}
+
                                             {!order.delivery?.assignedTo && !isDelivered && !isCancelled && (
                                                 <ActionRow>
                                                     <button

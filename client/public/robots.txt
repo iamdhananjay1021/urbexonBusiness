@@ -1,9 +1,16 @@
-# robots.txt for Urbexon
+# robots.txt for Urbexon (urbexon.in — public storefront ONLY)
+#
+# NOTE: robots.txt is per-ORIGIN. admin.urbexon.in, vendor.urbexon.in and
+# delivery.partner.urbexon.in are separate subdomains/origins — a crawler
+# fetches THEIR OWN /robots.txt independently; this file has zero effect
+# on them. Each of those apps ships its own disallow-all robots.txt
+# (see admin/public, vendor-panel/public, delivery-panel/public).
 
 User-agent: *
 Allow: /
 
-# Private/User Pages
+# Private / account-scoped pages — no SEO value, real content is
+# behind auth anyway. Kept in sync with client/src/routes/AppRoutes.jsx.
 Disallow: /cart
 Disallow: /checkout
 Disallow: /uh-cart
@@ -11,15 +18,13 @@ Disallow: /uh-checkout
 Disallow: /orders
 Disallow: /profile
 Disallow: /wishlist
+Disallow: /coupons
 Disallow: /login
 Disallow: /register
 Disallow: /forgot-password
 Disallow: /reset-password
 Disallow: /order-success
-
-# Admin / Internal (agar ye same domain par kabhi aaye)
-Disallow: /admin
-Disallow: /vendor
+Disallow: /verify-invoice
 
 # Sitemap
 Sitemap: https://urbexon.in/sitemap.xml

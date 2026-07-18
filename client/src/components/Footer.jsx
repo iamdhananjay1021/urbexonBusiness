@@ -6,6 +6,7 @@
  */
 import { Link } from "react-router-dom";
 import { FaInstagram, FaWhatsapp, FaMapMarkerAlt, FaPhoneAlt, FaEnvelope, FaBolt, FaFacebookF } from "react-icons/fa";
+import { useCategories } from "../hooks/useCategories";
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
@@ -20,7 +21,7 @@ const CSS = `
 .ft-soc-btn { width: 38px; height: 38px; border-radius: 50%; background: #1e293b; display: flex; align-items: center; justify-content: center; color: #cbd5e1; transition: all 0.2s ease; text-decoration: none; }
 .ft-soc-btn:hover { background: #3b82f6; color: #ffffff; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
 .ft-col-title { font-size: 15px; font-weight: 700; color: #ffffff; margin-bottom: 20px; letter-spacing: 0.3px; }
-.ft-link { display: inline-block; font-size: 14px; color: #94a3b8; text-decoration: none; margin-bottom: 14px; transition: color 0.2s ease; font-weight: 500; }
+.ft-link { display: block; width: fit-content; font-size: 14px; color: #94a3b8; text-decoration: none; margin-bottom: 14px; transition: color 0.2s ease; font-weight: 500; }
 .ft-link:hover { color: #3b82f6; }
 .ft-contact-item { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; font-size: 14px; color: #94a3b8; text-decoration: none; transition: color 0.2s ease; line-height: 1.5; font-weight: 500; }
 .ft-contact-item:hover { color: #ffffff; }
@@ -34,14 +35,21 @@ const CSS = `
 .ft-legal { display: flex; gap: 24px; flex-wrap: wrap; }
 .ft-legal a { font-size: 13px; color: #64748b; text-decoration: none; transition: color 0.2s ease; font-weight: 500; }
 .ft-legal a:hover { color: #ffffff; }
-@media(max-width: 767px) { 
-  .ft-bottom { padding-bottom: 80px; } 
-  .ft-bottom-inner { flex-direction: column; text-align: center; justify-content: center; } 
-  .ft-legal { justify-content: center; gap: 16px; } 
+@media(max-width: 767px) {
+  .ft-bottom { padding-bottom: 80px; }
+  .ft-bottom-inner { flex-direction: column; text-align: center; justify-content: center; }
+  .ft-legal { justify-content: center; gap: 16px; }
 }
 `;
 
-const Footer = () => (
+const Footer = () => {
+    // Dynamic category links — top ecommerce categories from the API instead
+    // of the old hardcoded mens/womens-fashion pair (which 404'd whenever a
+    // category was renamed in Admin).
+    const { categories } = useCategories("ecommerce");
+    const topCategories = (categories || []).slice(0, 3);
+
+    return (
     <footer className="ft-root">
         <style>{CSS}</style>
         <div className="ft-top">
@@ -67,10 +75,12 @@ const Footer = () => (
                 <div className="ft-col-title">Shop</div>
                 <Link to="/" className="ft-link">Home</Link>
                 <Link to="/products" className="ft-link">All Products</Link>
+                <Link to="/collections" className="ft-link">Collections</Link>
                 <Link to="/deals" className="ft-link">Today's Deals</Link>
                 <Link to="/urbexon-hour" className="ft-link">⚡ Urbexon Hour</Link>
-                <Link to="/category/mens-fashion" className="ft-link">Men's Fashion</Link>
-                <Link to="/category/womens-fashion" className="ft-link">Women's Fashion</Link>
+                {topCategories.map((c) => (
+                    <Link key={c.slug} to={`/category/${c.slug}`} className="ft-link">{c.name}</Link>
+                ))}
             </div>
 
             {/* Business */}
@@ -79,6 +89,7 @@ const Footer = () => (
                 <Link to="/profile" className="ft-link">My Account</Link>
                 <Link to="/orders" className="ft-link">Track Order</Link>
                 <Link to="/become-vendor" className="ft-link">Become a Vendor</Link>
+                <Link to="/become-delivery" className="ft-link">Become a Delivery Partner</Link>
                 <Link to="/verify-invoice" className="ft-link">Verify Invoice</Link>
                 <Link to="/about" className="ft-link">About Us</Link>
             </div>
@@ -104,6 +115,7 @@ const Footer = () => (
             </div>
         </div>
     </footer>
-);
+    );
+};
 
 export default Footer;

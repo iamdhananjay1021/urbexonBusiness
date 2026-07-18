@@ -14,6 +14,7 @@ import {
 } from "react-icons/fi";
 import { FaStore, FaMotorcycle } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
+import BackButton from "../components/BackButton";
 import SEO from "../components/SEO";
 import * as authApi from "../api/authApi";
 import { useAuth } from "../contexts/AuthContext";
@@ -221,10 +222,11 @@ const Register = () => {
                 <Card padding="none" className="overflow-hidden shadow-lg">
                     {/* ── Top brand bar ── */}
                     <div className="relative bg-[var(--color-graphite-900)] px-7 pt-7 pb-6 text-center">
-                        <button onClick={() => navigate(-1)} aria-label="Go back"
-                            className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white/70 hover:bg-white/20 hover:text-white transition-all">
-                            <FiArrowLeft size={12} aria-hidden="true" />
-                        </button>
+                        <BackButton
+                            variant="inline"
+                            fallback="/"
+                            className="absolute left-4 top-1/2 -translate-y-1/2 !w-8 !h-8 !bg-white/10 !border-white/20 !text-white/70 hover:!bg-white/20 hover:!text-white !shadow-none"
+                        />
 
                         <div className="text-white text-[22px] font-black tracking-tight font-display">Urbexon</div>
                         <p className="text-[9px] font-bold tracking-[0.3em] uppercase text-white/30">

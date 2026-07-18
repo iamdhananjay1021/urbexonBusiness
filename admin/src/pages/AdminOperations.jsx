@@ -46,6 +46,7 @@ const EVENT_LABELS = {
     return_requested: "Return requested",
     replacement_requested: "Replacement requested",
     order_status_updated: "Order status updated",
+    delivery_issue: "Rider reported a delivery issue",
 };
 const WS_TYPE_LABELS = {
     "vendor:status_changed": "Vendor status changed",
@@ -53,10 +54,12 @@ const WS_TYPE_LABELS = {
     "order:status:update": "Assignment failed (rounds exhausted)",
     "admin:stale_assignment": "Rider assigned but not picked up (stale)",
     "admin:active_orders_drift": "Rider order-count drift corrected",
+    "order:delivery_issue": "Rider reported a delivery issue",
 };
 const RELEVANT_WS_TYPES = new Set([
     "admin:order_event", "vendor:status_changed", "assignment:no_riders",
     "order:status:update", "admin:stale_assignment", "admin:active_orders_drift",
+    "order:delivery_issue",
 ]);
 
 const notify = (message, type = "success") => {

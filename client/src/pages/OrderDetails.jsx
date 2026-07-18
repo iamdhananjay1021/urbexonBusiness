@@ -23,6 +23,7 @@ import {
     FiClock, FiBox, FiDollarSign, FiMail,
 } from "react-icons/fi";
 import LiveTrackingMap from "../components/LiveTrackingMap";
+import BackButton from "../components/BackButton";
 import Card from "../design-system/Card";
 import Button from "../design-system/Button";
 import Loader from "../design-system/Loader";
@@ -473,9 +474,7 @@ const OrderDetails = () => {
 
                 {/* Back */}
                 <div className="mb-5">
-                    <Link to="/orders" className="inline-flex items-center gap-1.5 text-muted hover:text-primary text-xs font-bold uppercase tracking-wide transition-colors">
-                        <FiArrowLeft size={10} aria-hidden="true" /> Back to Orders
-                    </Link>
+                    <BackButton fallback="/orders" label="Back to Orders" />
                 </div>
 
                 {/* Header */}

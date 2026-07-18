@@ -13,9 +13,22 @@ import {
 } from "../components/ui";
 
 /* ─────────────────────────── PLAN CONFIG ─────────────────────────── */
-/* Plan business data (price/products) stays local — it isn't a color
-   constant. Each plan's *visual identity* is now just a Badge tone from
-   the shared tone palette instead of a bespoke gradient/hex object. */
+/* BUG FIX: price/products used to be hardcoded here — a THIRD independent
+   copy of the same config already duplicated between
+   backend/models/vendorModels/Subscription.js (PLANS, the canonical
+   source) and backend/controllers/admin/vendorApproval.js (now fixed to
+   import Subscription.PLANS instead of redeclaring it). A price/limit
+   change would silently go stale on this exact page — the one admin uses
+   to manually activate plans. `GET /admin/subscriptions` now also returns
+   `plans: Subscription.PLANS`; `load()` below merges those live values
+   into this object on every fetch. Kept as a plain mutable object (not
+   React state) so the several sibling components below that read
+   `PLANS[key]` directly (PlanBadge, activation buttons, etc.) don't need
+   prop-drilling — they already re-read it fresh on every render, and
+   `load()` already triggers a re-render via setSubs/setSummary. `tone`
+   stays local — it's a UI color choice, not business data. This object is
+   only ever seeded with these safe defaults for the instant before the
+   first `load()` response arrives. */
 const PLANS = {
   starter: { label: "Starter", price: 0, products: 10, tone: "neutral" },
   basic: { label: "Basic", price: 499, products: 30, tone: "primary" },
@@ -315,6 +328,18 @@ const AdminSubscriptions = () => {
       setSubs(data.subscriptions || []);
       setSummary(data.summary || {});
       setTotalPages(data.totalPages || 1);
+      // Sync the canonical plan pricing/limits from the backend — see the
+      // PLAN CONFIG comment above for why this mutates the shared object
+      // instead of living in React state.
+      if (data.plans) {
+        Object.entries(data.plans).forEach(([key, p]) => {
+          if (PLANS[key]) {
+            PLANS[key].price = p.monthlyFee;
+            PLANS[key].products = p.maxProducts;
+            PLANS[key].label = p.label || PLANS[key].label;
+          }
+        });
+      }
     } catch {
       showMsg("Failed to load subscriptions", "error");
     } finally {
