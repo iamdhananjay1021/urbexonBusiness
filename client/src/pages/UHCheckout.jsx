@@ -24,16 +24,18 @@
  * equivalent. No layout, markup structure, or logic was touched.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
     FiZap, FiMapPin, FiCheckCircle,
     FiHome, FiBriefcase, FiChevronDown, FiChevronUp, FiShield, FiTag,
 } from "react-icons/fi";
 import { useUHCheckout } from "../hooks/useUHCheckout";
-import { validateCoupon } from "../api/orderApi";
+import { useCoupon } from "../hooks/useCoupon";
+import { getEligibleCoupons } from "../api/couponApi";
 import { resolveNearestPincode } from "../api/pincodeApi";
 import BackButton from "../components/BackButton";
+import CouponSuggestions from "../components/checkout/CouponSuggestions";
 import SEO from "../components/SEO";
 import Card from "../design-system/Card";
 import Input from "../design-system/Input";
@@ -116,29 +118,35 @@ const UHCheckout = () => {
 
     const finalTotal = pricing?.finalTotal || 0;
 
-    // BUG FIX: no coupon input UI existed anywhere on this page. Same
-    // self-contained apply/remove pattern as Cart.jsx / Checkout.jsx.
-    const [couponCode, setCouponCode] = useState("");
-    const [couponApplying, setCouponApplying] = useState(false);
-    const [couponErr, setCouponErr] = useState("");
+    // BUG FIX: this used to be a self-contained apply/remove implementation
+    // duplicating Cart.jsx/UHCart.jsx's — now the one shared hook
+    // (useCoupon.js), synced into useUHCheckout's `coupon` state (which
+    // already drives pricing refresh) so nothing else in the hook changes.
+    const {
+        couponCode, setCouponCode, couponData, couponErr,
+        applying: couponApplying, applyCoupon: applyCouponHook, removeCoupon: removeCouponHook, autoApply,
+    } = useCoupon({ orderTotal: pricing?.itemsTotal || 0, orderType: "urbexon_hour", initialCoupon: couponFromCart });
 
-    const applyCoupon = async () => {
-        if (!couponCode.trim()) return;
-        setCouponApplying(true); setCouponErr("");
-        try {
-            const { data } = await validateCoupon({
-                code: couponCode.trim(),
-                orderTotal: pricing?.itemsTotal || 0,
-                orderType: "urbexon_hour",
-            });
-            setCoupon(data);
-            setCouponCode("");
-        } catch (e) {
-            setCouponErr(e.response?.data?.message || "Invalid coupon");
-        } finally { setCouponApplying(false); }
-    };
+    useEffect(() => { setCoupon(couponData); }, [couponData]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const removeCoupon = () => { setCoupon(null); setCouponCode(""); setCouponErr(""); };
+    const applyCoupon = () => applyCouponHook();
+    const removeCoupon = () => removeCouponHook();
+
+    // Auto-apply the best eligible coupon once pricing is known, unless the
+    // user already brought one from UHCart.jsx or has manually acted here.
+    useEffect(() => {
+        if (couponFromCart || !pricing?.itemsTotal) return;
+        let cancelled = false;
+        getEligibleCoupons({ itemsTotal: pricing.itemsTotal, orderMode: "urbexon_hour" })
+            .then(({ data }) => {
+                if (cancelled) return;
+                const best = (data?.coupons || []).find((c) => c.eligible && c.autoApply);
+                if (best) autoApply(best.code);
+            })
+            .catch(() => { });
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [!!pricing?.itemsTotal]);
 
     // BUG FIX: the header back-arrow used to unconditionally exit straight
     // to /uh-cart no matter which step the customer was on — misclicking it
@@ -424,6 +432,7 @@ const UHCheckout = () => {
                                 {couponErr && <p className="text-xs text-error mt-2">⚠️ {couponErr}</p>}
                             </>
                         )}
+                        <CouponSuggestions itemsTotal={pricing?.itemsTotal || 0} orderMode="urbexon_hour" appliedCode={coupon?.code} onApply={(code) => applyCouponHook(code)} />
                     </div>
                 </Card>
 

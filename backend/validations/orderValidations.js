@@ -50,7 +50,6 @@
 
 import Product from "../models/Product.js";
 import Pincode from "../models/vendorModels/Pincode.js";
-import Coupon from "../models/Coupon.js";
 import Vendor from "../models/vendorModels/Vendor.js";
 import { DELIVERY_CONFIG, DELIVERY_TYPES } from "../config/deliveryConfig.js";
 import { haversineKm } from "../services/geoEngine.js";
@@ -445,42 +444,7 @@ export const validateDeliveryServiceability = async (
 };
 
 /* ─────────────────────────────────────────────────────────────
-   VALIDATION 5: Coupon validation
-   (Preserved from original — unchanged)
-───────────────────────────────────────────────────────────── */
-export const validateCoupon = async (couponId, couponCode, userId, orderTotal) => {
-    if (!couponId && !couponCode) return null;
-
-    const coupon = couponId
-        ? await Coupon.findById(couponId).lean()
-        : await Coupon.findOne({ couponCode }).lean();
-
-    if (!coupon || !coupon.isActive)
-        throw new Error("Coupon not found or inactive");
-
-    if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate))
-        throw new Error("Coupon has expired");
-
-    if (coupon.minOrderValue && orderTotal < coupon.minOrderValue)
-        throw new Error(`Order total must be at least ₹${coupon.minOrderValue} to use this coupon.`);
-
-    if (coupon.usageLimit && coupon.usageCount >= coupon.usageLimit)
-        throw new Error("Coupon usage limit reached");
-
-    if (coupon.userUsageLimit) {
-        const userUsage = await Coupon.countDocuments({
-            _id: coupon._id,
-            "usedBy.userId": userId,
-        });
-        if (userUsage >= coupon.userUsageLimit)
-            throw new Error("You have already used this coupon the maximum number of times");
-    }
-
-    return coupon;
-};
-
-/* ─────────────────────────────────────────────────────────────
-   VALIDATION 6: Single vendor enforcement (for UH)
+   VALIDATION 5: Single vendor enforcement (for UH)
    (Preserved from original — only runs for UH orders)
 ───────────────────────────────────────────────────────────── */
 export const validateSingleVendor = (items) => {
@@ -510,10 +474,18 @@ export const validateSingleVendor = (items) => {
    3. Channel-specific item validation
    4. Payment + COD validation (channel-aware)
    5. Delivery serviceability (UH only)
-   6. Coupon validation
+
+   Coupon validation is NOT part of this pipeline — it used to be (a
+   broken implementation checking fields that never existed on the Coupon
+   schema: couponCode/expiryDate/usageCount/userUsageLimit, silently
+   masked because the couponId branch happened to still resolve). All
+   coupon validation now happens exactly once, inside
+   calculateOrderPricing() → couponEngine.validateCouponForContext() —
+   see services/couponEngine.js. Callers pass couponId/couponCode straight
+   through to calculateOrderPricing instead of pre-validating here.
 
    Returns: { formattedItems, itemsTotal, vendorId, realDistanceKm,
-              coupon, paymentMethod, deliveryType, orderMode, orderChannel }
+              paymentMethod, deliveryType, orderMode, orderChannel }
 
    NOTE: realDistanceKm can be `null` when the distance genuinely could
    not be determined (missing GPS / missing vendor coords). Callers
@@ -531,9 +503,6 @@ export const validateOrderParams = async ({
     deliveryType,
     latitude,
     longitude,
-    couponId,
-    couponCode,
-    userId,
     // skipVendorCheck is NO LONGER NEEDED — channel auto-detected from DB
     // kept for backward compat but ignored
     skipVendorCheck,
@@ -591,12 +560,6 @@ export const validateOrderParams = async ({
             pincode
         );
 
-        // ── Step 5: Coupon validation ─────────────────────────────────────
-        let couponDoc = null;
-        if (couponId || couponCode) {
-            couponDoc = await validateCoupon(couponId, couponCode, userId, itemsTotal);
-        }
-
         // ── Return complete validated data ────────────────────────────────
         return {
             isValid: true,
@@ -606,7 +569,6 @@ export const validateOrderParams = async ({
             vendorId,
             // realDistanceKm: null = genuinely unknown, Number = actual computed distance
             realDistanceKm,
-            coupon: couponDoc,
             paymentMethod,
             // Always use effective delivery type (auto-corrected from channel)
             deliveryType: effectiveDeliveryType,

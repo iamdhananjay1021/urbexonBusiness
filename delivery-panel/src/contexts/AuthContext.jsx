@@ -21,7 +21,7 @@
  *   which looked like "submission succeeded but I got bounced back to the
  *   form". Reading localStorage fresh at merge time closes that race.
  */
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import api from "../api/axios";
 
 const AuthContext = createContext(null);
@@ -198,7 +198,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   /* ── Login — accepts email OR phone as identifier ── */
-  const login = async (credentials) => {
+  const login = useCallback(async (credentials) => {
     // Defensive check for credentials. This handles cases where the function
     // might be called incorrectly from the UI, e.g., login(identifier, password)
     // instead of the correct login({ identifier, password }).
@@ -251,12 +251,12 @@ export const AuthProvider = ({ children }) => {
     setRider(riderData);
 
     return data;
-  };
+  }, []);
 
   /* ── Call after a rider successfully submits the apply form, so the
      in-memory rider state reflects "pending" immediately without
      requiring a full page reload. ── */
-  const refreshApplicationStatus = (status) => {
+  const refreshApplicationStatus = useCallback((status) => {
     setRider(prev => {
       if (!prev) return prev;
       const updated = { ...prev, applicationStatus: status };
@@ -269,19 +269,24 @@ export const AuthProvider = ({ children }) => {
       }
       return updated;
     });
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     // Revoke the server-side refresh session (fire-and-forget) — local-only
     // logout left the httpOnly rt_delivery cookie alive on the server.
     api.post("/auth/logout", { scope: "delivery" }).catch(() => { });
     localStorage.removeItem(STORAGE_KEY);
     delete api.defaults.headers.common["Authorization"];
     setRider(null);
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({ rider, loading, login, logout, refreshApplicationStatus }),
+    [rider, loading, login, logout, refreshApplicationStatus]
+  );
 
   return (
-    <AuthContext.Provider value={{ rider, loading, login, logout, refreshApplicationStatus }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -50,8 +50,12 @@ export const restrictTo = (...roles) => {
  * 3. Immutable Audit Logging Middleware
  */
 export const auditLog = (action) => async (req, res, next) => {
-    // Extract target ID before mutation
-    const targetId = req.params.id || req.body.id || req.body.vendorId || null;
+    // Extract target ID before mutation. req.vendor?._id (set by
+    // protectVendor) covers self-mutation routes with no :id param —
+    // e.g. PUT /vendor/me — where params.id/body.id would otherwise be
+    // null and the log entry would carry no reference to which vendor
+    // it was about.
+    const targetId = req.params.id || req.body.id || req.body.vendorId || req.vendor?._id || null;
 
     res.on('finish', async () => {
         if (res.statusCode >= 200 && res.statusCode < 300 && req.user) {

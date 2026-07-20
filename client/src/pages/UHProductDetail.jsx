@@ -29,6 +29,7 @@ import Badge from "../design-system/Badge";
 import Loader from "../design-system/Loader";
 import { EmptyState } from "../design-system/EmptyState";
 import { cn } from "../design-system/utils/cn";
+import { showToast } from "../utils/toast";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
@@ -188,7 +189,7 @@ const UHProductDetail = () => {
   const handleAdd = useCallback(() => {
     if (!product) return;
     if (product.inStock === false || Number(product.stock ?? 0) === 0) {
-      alert("❌ Item out of stock");
+      showToast("Item out of stock", "warning");
       return;
     }
     addItem({

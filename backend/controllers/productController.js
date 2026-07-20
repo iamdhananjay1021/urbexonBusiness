@@ -23,14 +23,16 @@ import { buildDynamicConditions, applyAvailability } from "../utils/filterQueryB
 import { computeFacets } from "../services/filterService.js";
 import { getRecommendedProducts, STRATEGIES } from "../services/recommendationService.js";
 import SearchLog from "../models/SearchLog.js";
+import { clampProductPolicy } from "../config/deliveryConfig.js";
 
 /* Fire-and-forget search analytics — must never slow down or fail a
-   search request. Powers /products/search/trending. */
-const logSearchTerm = (term, resultCount) => {
+   search request. Powers /products/search/trending. `source` keeps
+   ecommerce and Urbexon Hour demand from merging into one bucket. */
+const logSearchTerm = (term, resultCount, source = "ecommerce") => {
     const normalized = String(term || "").trim().toLowerCase().slice(0, 60);
     if (normalized.length < 2) return;
     SearchLog.findOneAndUpdate(
-        { term: normalized },
+        { term: normalized, source },
         { $inc: { count: 1 }, $set: { lastSearchedAt: new Date(), lastResultCount: resultCount } },
         { upsert: true }
     ).catch(() => { /* analytics only */ });
@@ -292,8 +294,10 @@ export const getProducts = async (req, res) => {
             }
 
             // Search analytics (fire-and-forget) — first page only so
-            // pagination doesn't inflate counts.
-            if (searchRaw && page === 1) logSearchTerm(searchRaw, total);
+            // pagination doesn't inflate counts. This endpoint can also be
+            // called with productType=urbexon_hour, so log under whichever
+            // catalog was actually resolved, not a hardcoded "ecommerce".
+            if (searchRaw && page === 1) logSearchTerm(searchRaw, total, filter.productType === "urbexon_hour" ? "urbexon_hour" : "ecommerce");
 
             result = { products, total, page, totalPages: Math.ceil(total / limit) };
             await safeSetCache(cacheKey, result, 60);
@@ -400,11 +404,15 @@ export const getRecommendations = async (req, res) => {
 ════════════════════════════════════════ */
 export const getTrendingSearches = async (req, res) => {
     try {
-        const cacheKey = "search:trending";
+        // Default "ecommerce" preserves existing callers (main search
+        // overlay); pass ?source=urbexon_hour for UH-specific trending chips.
+        const source = req.query.source === "urbexon_hour" ? "urbexon_hour" : "ecommerce";
+        const cacheKey = `search:trending:${source}`;
         const cached = await safeGetCache(cacheKey);
         if (cached) return res.json(cached);
 
         const rows = await SearchLog.find({
+            source,
             lastResultCount: { $gt: 0 },                                  // never suggest dead ends
             lastSearchedAt: { $gte: new Date(Date.now() - 30 * 86400000) },
         })
@@ -431,16 +439,21 @@ export const adminGetSearchAnalytics = async (req, res) => {
     try {
         const days = safeInt(req.query.days, 30, 1, 365);
         const since = new Date(Date.now() - days * 86400000);
+        // "all" merges both catalogs (their combined demand), or scope to
+        // one storefront — ecommerce searches and Urbexon Hour searches are
+        // fundamentally different demand signals for different catalogs.
+        const source = ["ecommerce", "urbexon_hour"].includes(req.query.source) ? req.query.source : "all";
+        const baseMatch = { lastSearchedAt: { $gte: since }, ...(source !== "all" ? { source } : {}) };
 
         const [top, zero, totals] = await Promise.all([
-            SearchLog.find({ lastSearchedAt: { $gte: since } })
+            SearchLog.find(baseMatch)
                 .sort({ count: -1 }).limit(25)
-                .select("term count lastResultCount lastSearchedAt").lean(),
-            SearchLog.find({ lastSearchedAt: { $gte: since }, lastResultCount: 0 })
+                .select("term source count lastResultCount lastSearchedAt").lean(),
+            SearchLog.find({ ...baseMatch, lastResultCount: 0 })
                 .sort({ count: -1 }).limit(25)
-                .select("term count lastSearchedAt").lean(),
+                .select("term source count lastSearchedAt").lean(),
             SearchLog.aggregate([
-                { $match: { lastSearchedAt: { $gte: since } } },
+                { $match: baseMatch },
                 {
                     $group: {
                         _id: null,
@@ -455,6 +468,7 @@ export const adminGetSearchAnalytics = async (req, res) => {
         res.json({
             success: true,
             days,
+            source,
             summary: totals?.[0] || { uniqueTerms: 0, totalSearches: 0, zeroResultTerms: 0 },
             topSearches: top,
             zeroResultSearches: zero,
@@ -700,6 +714,15 @@ export const getUrbexonHourProducts = async (req, res) => {
         const adjustedTotal = filteredProducts.length < products.length ? Math.max(0, total - (products.length - filteredProducts.length)) : total;
 
         const result = { products: filteredProducts, total: adjustedTotal, page, totalPages: Math.ceil(adjustedTotal / limit) };
+
+        // BUG FIX: search analytics worked for regular ecommerce (getProducts
+        // calls logSearchTerm) but never fired here — UH has its own search
+        // filter above and this call was simply missing, so every UH search
+        // was invisible to /products/search/trending and the admin analytics
+        // dashboard. Same fire-and-forget, first-page-only pattern as getProducts,
+        // tagged source="urbexon_hour" so it doesn't merge with ecommerce demand.
+        if (searchRaw && page === 1) logSearchTerm(searchRaw, adjustedTotal, "urbexon_hour");
+
         await safeSetCache(cacheKey, result, 60);
         res.json(result);
     } catch (err) {
@@ -1225,10 +1248,20 @@ export const adminCreateProduct = async (req, res) => {
             isCancellable: body.isCancellable !== "false" && body.isCancellable !== false,
             isReturnable: body.isReturnable !== "false" && body.isReturnable !== false,
             isReplaceable: body.isReplaceable === "true" || body.isReplaceable === true,
-            returnWindow: Math.min(30, Math.max(0, Number(body.returnWindow) || 7)),
-            replacementWindow: Math.min(30, Math.max(0, Number(body.replacementWindow) || 7)),
-            cancelWindow: Math.min(72, Math.max(0, Number(body.cancelWindow) || 0)),
+            // clampProductPolicy enforces the admin-configured bounds
+            // (DeliveryConfig.productPolicyLimits), which can only ever be
+            // equal-or-tighter than the hardcoded 30-day/72-hour ceiling
+            // already on the schema — see config/deliveryConfig.js.
+            ...clampProductPolicy({
+                returnWindow: Number(body.returnWindow) || 7,
+                replacementWindow: Number(body.replacementWindow) || 7,
+                cancelWindow: Number(body.cancelWindow) || 0,
+                returnConditions: body.returnConditions,
+            }),
             nonReturnableReason: (body.nonReturnableReason || "").trim().slice(0, 200),
+            packagingRequired: body.packagingRequired === "true" || body.packagingRequired === true,
+            tagsRequired: body.tagsRequired === "true" || body.tagsRequired === true,
+            returnMethod: body.returnMethod === "pickup" ? "pickup" : "self_ship",
             productType: "ecommerce",
             vendorId: null,
             isActive: true,
@@ -1380,10 +1413,22 @@ export const adminUpdateProduct = async (req, res) => {
         if (body.isCancellable !== undefined) product.isCancellable = parseBool(body.isCancellable);
         if (body.isReturnable !== undefined) product.isReturnable = parseBool(body.isReturnable);
         if (body.isReplaceable !== undefined) product.isReplaceable = parseBool(body.isReplaceable);
-        if (body.returnWindow !== undefined) product.returnWindow = Math.min(30, Math.max(0, safeNumber(body.returnWindow, 7)));
-        if (body.replacementWindow !== undefined) product.replacementWindow = Math.min(30, Math.max(0, safeNumber(body.replacementWindow, 7)));
-        if (body.cancelWindow !== undefined) product.cancelWindow = Math.min(72, Math.max(0, safeNumber(body.cancelWindow, 0)));
+        {
+            const clamped = clampProductPolicy({
+                returnWindow: body.returnWindow !== undefined ? safeNumber(body.returnWindow, 7) : undefined,
+                replacementWindow: body.replacementWindow !== undefined ? safeNumber(body.replacementWindow, 7) : undefined,
+                cancelWindow: body.cancelWindow !== undefined ? safeNumber(body.cancelWindow, 0) : undefined,
+                returnConditions: body.returnConditions,
+            });
+            if (clamped.returnWindow !== undefined) product.returnWindow = clamped.returnWindow;
+            if (clamped.replacementWindow !== undefined) product.replacementWindow = clamped.replacementWindow;
+            if (clamped.cancelWindow !== undefined) product.cancelWindow = clamped.cancelWindow;
+            if (clamped.returnConditions !== undefined) product.returnConditions = clamped.returnConditions;
+        }
         if (body.nonReturnableReason !== undefined) product.nonReturnableReason = (body.nonReturnableReason || "").trim().slice(0, 200);
+        if (body.packagingRequired !== undefined) product.packagingRequired = parseBool(body.packagingRequired);
+        if (body.tagsRequired !== undefined) product.tagsRequired = parseBool(body.tagsRequired);
+        if (body.returnMethod !== undefined) product.returnMethod = body.returnMethod === "pickup" ? "pickup" : "self_ship";
 
         if (body.customizationConfig !== undefined) {
             try {
@@ -1511,15 +1556,10 @@ export const adminDeleteProduct = async (req, res) => {
 export const vendorCreateProduct = async (req, res) => {
     try {
         const vendor = req.vendor;
+        // req.body has already been through validate(createProductSchema) —
+        // sizes/tags/highlightsArray/attributes are already correctly typed
+        // arrays/objects here, not raw FormData strings that need parsing.
         const body = req.body;
-
-        if (!body.name?.trim() || !body.price || !body.category)
-            return res.status(400).json({ success: false, message: "Name, price and category required" });
-
-        // [FIX-P3] Validate price
-        if (isNaN(Number(body.price)) || Number(body.price) <= 0) {
-            return res.status(400).json({ success: false, message: "Invalid price value" });
-        }
 
         const { default: Subscription } = await import("../models/vendorModels/Subscription.js");
         const sub = await Subscription.findOne({ vendorId: vendor._id, status: "active" }).lean();
@@ -1531,40 +1571,43 @@ export const vendorCreateProduct = async (req, res) => {
                 message: `Product limit reached (${maxProducts}/${maxProducts}). Upgrade subscription.`,
             });
 
+        // BUG FIX: same duplicate-SKU guard adminCreateProduct already has —
+        // sku has no DB-level unique constraint (partial index only, see
+        // Product.js), uniqueness is enforced here. Without this, a vendor
+        // could silently collide with another vendor's or admin's SKU.
+        if (body.sku?.trim()) {
+            const skuClash = await Product.findOne({ sku: body.sku.trim() }).select("_id name").lean();
+            if (skuClash) {
+                return res.status(409).json({
+                    success: false,
+                    message: `SKU "${body.sku.trim()}" is already used by "${skuClash.name}"`,
+                    errors: [{ field: "sku", message: "This SKU already exists" }],
+                });
+            }
+        }
+
         const images = [];
         if (req.files?.length) {
             for (const file of req.files.slice(0, 4)) {
                 try {
                     const result = await uploadToCloudinary(file.buffer, `vendor_products/${vendor._id}`);
-                    if (result?.secure_url) images.push({ url: result.secure_url, alt: body.name });
+                    if (result?.secure_url) images.push({ url: result.secure_url, publicId: result.public_id || "", alt: body.name });
                 } catch { /* skip */ }
             }
         }
 
-        let sizes = [];
-        if (body.sizes) {
-            try {
-                const rawSizes = typeof body.sizes === "string" ? JSON.parse(body.sizes) : body.sizes;
-                if (Array.isArray(rawSizes)) {
-                    sizes = rawSizes.map(s => {
-                        if (typeof s === "string") return { size: s, stock: 0 };
-                        if (typeof s === "object" && s.size) return { size: String(s.size).trim(), stock: Number(s.stock) || 0 };
-                        return null;
-                    }).filter(Boolean);
-                }
-            } catch { sizes = []; }
+        // BUG FIX: vendor could previously publish a product with zero
+        // photos — mirrors adminCreateProduct's same guard so every live
+        // product actually has at least one image on the storefront.
+        if (images.length === 0) {
+            return res.status(400).json({ success: false, message: "At least 1 image is required. Check file format and size (max 5MB)." });
         }
 
+        const sizes = Array.isArray(body.sizes) ? body.sizes : [];
         let stock = Number(body.stock) || 0;
         if (sizes.length > 0) {
             stock = sizes.reduce((sum, s) => sum + (s.stock || 0), 0);
         }
-
-        let highlightsArray = [];
-        try {
-            const raw = typeof body.highlightsArray === 'string' ? JSON.parse(body.highlightsArray) : body.highlightsArray;
-            highlightsArray = Array.isArray(raw) ? raw : [];
-        } catch { highlightsArray = []; }
 
         const product = await Product.create({
             name: body.name.trim(),
@@ -1573,12 +1616,22 @@ export const vendorCreateProduct = async (req, res) => {
             mrp: body.mrp ? Number(body.mrp) : null,
             category: body.category,
             subcategory: body.subcategory?.trim() || "",
-            tags: body.tags ? body.tags.split(",").map(t => t.trim()).filter(Boolean) : [],
+            brand: body.brand || "",
+            sku: body.sku || "",
+            hsn: (body.hsn || "").trim().slice(0, 20),
+            barcode: (body.barcode || "").trim().slice(0, 50),
+            gstPercent: Number(body.gstPercent) || 0,
+            lowStockThreshold: Math.min(10000, Math.max(0, Number(body.lowStockThreshold) || 5)),
+            seo: {
+                metaTitle: (body.metaTitle || "").trim().slice(0, 120),
+                metaDescription: (body.metaDesc || "").trim().slice(0, 200),
+            },
+            tags: Array.isArray(body.tags) ? body.tags : [],
             images,
             sizes,
             stock,
             inStock: stock > 0,
-            highlightsArray,
+            highlightsArray: Array.isArray(body.highlightsArray) ? body.highlightsArray : [],
             attributes: sanitizeAttributes(body.attributes),
             prepTimeMinutes: Number(body.prepTimeMinutes) || 10,
             maxOrderQty: Number(body.maxOrderQty) || 10,
@@ -1587,6 +1640,27 @@ export const vendorCreateProduct = async (req, res) => {
             isActive: true,
             isDeal: body.isDeal === "true" || body.isDeal === true,
             dealEndsAt: body.dealEndsAt ? new Date(body.dealEndsAt) : null,
+            // Return/cancel policy — UH sells a lot of perishables (food),
+            // where the model's "returnable, 7-day window" default is
+            // actively wrong. Vendor now controls this per product instead
+            // of every item silently inheriting a policy that doesn't apply.
+            isCancellable: body.isCancellable !== false,
+            isReturnable: body.isReturnable !== false,
+            isReplaceable: body.isReplaceable === true,
+            // Was previously unclamped on this vendor path (unlike the
+            // admin path above, which already had Math.min/Math.max) —
+            // clampProductPolicy now enforces the same admin-configured
+            // bounds here too.
+            ...clampProductPolicy({
+                returnWindow: Number(body.returnWindow ?? 7),
+                replacementWindow: Number(body.replacementWindow ?? 7),
+                cancelWindow: Number(body.cancelWindow ?? 0),
+                returnConditions: body.returnConditions,
+            }),
+            nonReturnableReason: (body.nonReturnableReason || "").trim().slice(0, 200),
+            packagingRequired: body.packagingRequired === "true" || body.packagingRequired === true,
+            tagsRequired: body.tagsRequired === "true" || body.tagsRequired === true,
+            returnMethod: body.returnMethod === "pickup" ? "pickup" : "self_ship",
         });
 
         // [FIX] Invalidate UH caches (Urbexon Hour)
@@ -1647,29 +1721,69 @@ export const vendorUpdateProduct = async (req, res) => {
         const product = await Product.findOne({ _id: req.params.id, vendorId: req.vendor._id });
         if (!product) return res.status(404).json({ success: false, message: "Product not found or not yours" });
 
+        // req.body has already been through validate(updateProductSchema) —
+        // sizes/tags/highlightsArray/attributes arrive as real arrays/objects,
+        // not raw FormData strings.
         const body = req.body;
         const oldPrice = product.price;
-        const fields = ["name", "description", "price", "mrp", "category", "prepTimeMinutes", "maxOrderQty"];
+        const fields = [
+            "name", "description", "price", "mrp", "category", "prepTimeMinutes", "maxOrderQty",
+            "brand", "hsn", "barcode", "gstPercent", "lowStockThreshold",
+        ];
         for (const f of fields) {
             if (body[f] !== undefined) {
-                product[f] = ["price", "mrp", "prepTimeMinutes", "maxOrderQty"].includes(f)
+                product[f] = ["price", "mrp", "prepTimeMinutes", "maxOrderQty", "gstPercent", "lowStockThreshold"].includes(f)
                     ? Number(body[f]) : body[f];
             }
         }
 
-        if (body.sizes !== undefined) {
-            try {
-                const rawSizes = typeof body.sizes === "string" ? JSON.parse(body.sizes) : body.sizes;
-                if (Array.isArray(rawSizes)) {
-                    product.sizes = rawSizes.map(s => {
-                        if (typeof s === "string") return { size: s, stock: 0 };
-                        if (typeof s === "object") return { size: String(s.size || s.label || "").trim(), stock: Number(s.stock) || 0 };
-                        return null;
-                    }).filter(s => s && s.size);
-                } else {
-                    product.sizes = [];
+        // BUG FIX: same duplicate-SKU guard as create — a vendor changing
+        // their SKU could otherwise silently collide with another product.
+        if (body.sku !== undefined && body.sku.trim() !== product.sku) {
+            if (body.sku.trim()) {
+                const skuClash = await Product.findOne({ sku: body.sku.trim(), _id: { $ne: product._id } }).select("_id name").lean();
+                if (skuClash) {
+                    return res.status(409).json({
+                        success: false,
+                        message: `SKU "${body.sku.trim()}" is already used by "${skuClash.name}"`,
+                        errors: [{ field: "sku", message: "This SKU already exists" }],
+                    });
                 }
-            } catch { product.sizes = []; }
+            }
+            product.sku = body.sku.trim();
+        }
+
+        if (body.metaTitle !== undefined || body.metaDesc !== undefined) {
+            product.seo = {
+                metaTitle: (body.metaTitle ?? product.seo?.metaTitle ?? "").trim().slice(0, 120),
+                metaDescription: (body.metaDesc ?? product.seo?.metaDescription ?? "").trim().slice(0, 200),
+            };
+        }
+
+        if (body.isCancellable !== undefined) product.isCancellable = body.isCancellable !== false;
+        if (body.isReturnable !== undefined) product.isReturnable = body.isReturnable !== false;
+        if (body.isReplaceable !== undefined) product.isReplaceable = body.isReplaceable === true;
+        {
+            const clamped = clampProductPolicy({
+                returnWindow: body.returnWindow !== undefined ? Number(body.returnWindow) : undefined,
+                replacementWindow: body.replacementWindow !== undefined ? Number(body.replacementWindow) : undefined,
+                cancelWindow: body.cancelWindow !== undefined ? Number(body.cancelWindow) : undefined,
+                returnConditions: body.returnConditions,
+            });
+            if (clamped.returnWindow !== undefined) product.returnWindow = clamped.returnWindow;
+            if (clamped.replacementWindow !== undefined) product.replacementWindow = clamped.replacementWindow;
+            if (clamped.cancelWindow !== undefined) product.cancelWindow = clamped.cancelWindow;
+            if (clamped.returnConditions !== undefined) product.returnConditions = clamped.returnConditions;
+        }
+        if (body.nonReturnableReason !== undefined) product.nonReturnableReason = body.nonReturnableReason.trim().slice(0, 200);
+        if (body.packagingRequired !== undefined) product.packagingRequired = body.packagingRequired === "true" || body.packagingRequired === true;
+        if (body.tagsRequired !== undefined) product.tagsRequired = body.tagsRequired === "true" || body.tagsRequired === true;
+        if (body.returnMethod !== undefined) product.returnMethod = body.returnMethod === "pickup" ? "pickup" : "self_ship";
+
+        if (body.sizes !== undefined) {
+            product.sizes = Array.isArray(body.sizes)
+                ? body.sizes.map(s => ({ size: String(s.size || "").trim(), stock: Number(s.stock) || 0 })).filter(s => s.size)
+                : [];
         }
 
         if (product.sizes && product.sizes.length > 0) {
@@ -1691,14 +1805,11 @@ export const vendorUpdateProduct = async (req, res) => {
         }
 
         if (body.isActive !== undefined) product.isActive = body.isActive === "true" || body.isActive === true;
-        if (body.tags) product.tags = body.tags.split(",").map(t => t.trim()).filter(Boolean);
+        if (body.tags !== undefined) product.tags = Array.isArray(body.tags) ? body.tags : [];
         if (body.subcategory !== undefined) product.subcategory = body.subcategory?.trim();
 
         if (body.highlightsArray !== undefined) {
-            try {
-                const raw = typeof body.highlightsArray === 'string' ? JSON.parse(body.highlightsArray) : body.highlightsArray;
-                product.highlightsArray = Array.isArray(raw) ? raw : [];
-            } catch { product.highlightsArray = []; }
+            product.highlightsArray = Array.isArray(body.highlightsArray) ? body.highlightsArray : [];
         }
 
         if (body.attributes !== undefined) {

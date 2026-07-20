@@ -6,6 +6,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { captureMessage } from '../config/errorTracking.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,6 +72,14 @@ class Logger {
         const color = LOG_COLORS[level] || LOG_COLORS.INFO;
         this.printLog(level, message, data, color);
         await this.writeToFile(level, message, data);
+        // [FIX] Previously ERROR-level logs only ever reached a local,
+        // ephemeral log file (lost on every restart/redeploy, never
+        // aggregated) — now they also reach the same error tracker as
+        // backend/frontend exceptions (config/errorTracking.js), a no-op
+        // until SENTRY_DSN is set.
+        if (level === LOG_LEVELS.ERROR) {
+            captureMessage(message, data);
+        }
     }
 
     async debug(message, data) {

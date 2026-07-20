@@ -1,7 +1,9 @@
 import {
     createContext,
+    useCallback,
     useContext,
     useEffect,
+    useMemo,
     useState,
 } from "react";
 
@@ -77,7 +79,7 @@ export const AdminAuthProvider = ({ children }) => {
             );
     }, []);
 
-    const login = async (email, password) => {
+    const login = useCallback(async (email, password) => {
         const { data } = await adminApi.post(
             "/auth/admin/login",
             {
@@ -114,9 +116,9 @@ export const AdminAuthProvider = ({ children }) => {
         );
 
         setAdmin(auth);
-    };
+    }, []);
 
-    const logout = async () => {
+    const logout = useCallback(async () => {
         try {
             await adminApi.post("/auth/logout", { scope: "admin" });
         } catch {
@@ -125,18 +127,21 @@ export const AdminAuthProvider = ({ children }) => {
 
         localStorage.removeItem(STORAGE_KEY);
         setAdmin(null);
-    };
+    }, []);
+
+    const value = useMemo(
+        () => ({
+            admin,
+            loading,
+            isAuthenticated: !!admin,
+            login,
+            logout,
+        }),
+        [admin, loading, login, logout]
+    );
 
     return (
-        <AdminAuthContext.Provider
-            value={{
-                admin,
-                loading,
-                isAuthenticated: !!admin,
-                login,
-                logout,
-            }}
-        >
+        <AdminAuthContext.Provider value={value}>
             {children}
         </AdminAuthContext.Provider>
     );

@@ -240,6 +240,21 @@ const Toggle = ({ checked, onChange, disabled }) => (
   </div>
 );
 
+// Status pill for a single KYC document — verified/pending/rejected
+const KYC_STATUS_STYLES = {
+  verified: { bg: T.successBg, color: T.success, Icon: FiCheckCircle, label: "Verified" },
+  pending: { bg: "#fef3c7", color: "#92400e", Icon: FiClock, label: "Pending Review" },
+  rejected: { bg: T.dangerBg, color: T.danger, Icon: FiXCircle, label: "Rejected" },
+};
+const KycStatusPill = ({ status }) => {
+  const s = KYC_STATUS_STYLES[status] || KYC_STATUS_STYLES.pending;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: s.bg, color: s.color }}>
+      <s.Icon size={11} /> {s.label}
+    </span>
+  );
+};
+
 // A single row inside the "Shop Status" card — icon, label + description, control
 const StatusRow = ({ icon: Icon, label, desc, control, last }) => (
   <div style={{
@@ -281,6 +296,9 @@ const Profile = () => {
   const [msg, setMsg] = useState({ text: "", type: "" });
   const [categoryList, setCategoryList] = useState([]);
   const fileRef = useRef();
+  const kycFileRef = useRef();
+  const [kycActiveDoc, setKycActiveDoc] = useState(null);
+  const [kycBusy, setKycBusy] = useState({});
 
   useEffect(() => {
     api.get("/categories", { params: { type: "urbexon_hour" } })
@@ -380,6 +398,47 @@ const Profile = () => {
       setVendor({ ...data.vendor, servicePincodes: data.vendor.servicePincodes || [] });
     } catch (err) {
       setMsg({ text: err.response?.data?.message || "Failed to upload photo", type: "error" });
+      setTimeout(() => setMsg({ text: "", type: "" }), 3000);
+    }
+  };
+
+  // KYC VERIFICATION FIX: re-upload for the 4 real compliance documents.
+  // Deliberately excludes ownerPhoto/shopPhoto — ownerPhoto already has its
+  // own re-upload path above (the profile-picture click), and adding a
+  // second path for the same field would let the two silently diverge
+  // (this new endpoint resets documentStatus, the old PUT /vendor/me path
+  // doesn't touch it at all). shopPhoto stays admin-reviewable but isn't
+  // vendor-re-uploadable through this section for the same reason.
+  const KYC_DOCS = [
+    { key: "gstCertificate", label: "GST Certificate" },
+    { key: "panCard", label: "PAN Card" },
+    { key: "cancelledCheque", label: "Cancelled Cheque" },
+    { key: "addressProof", label: "Address Proof" },
+  ];
+
+  const openKycPicker = (docKey) => {
+    setKycActiveDoc(docKey);
+    kycFileRef.current?.click();
+  };
+
+  const handleKycFileChange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file || !kycActiveDoc) return;
+    const docKey = kycActiveDoc;
+    setKycBusy((p) => ({ ...p, [docKey]: true }));
+    try {
+      const fd = new FormData();
+      fd.append("docKey", docKey);
+      fd.append("document", file);
+      const { data } = await api.post("/vendor/kyc/reupload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setVendor((prev) => ({ ...prev, documents: data.documents, documentStatus: data.documentStatus }));
+      setMsg({ text: "Document re-uploaded — pending review", type: "success" });
+    } catch (err) {
+      setMsg({ text: err.response?.data?.message || "Failed to re-upload document", type: "error" });
+    } finally {
+      setKycBusy((p) => ({ ...p, [docKey]: false }));
+      setKycActiveDoc(null);
       setTimeout(() => setMsg({ text: "", type: "" }), 3000);
     }
   };
@@ -701,6 +760,49 @@ const Profile = () => {
               onChange={(tags) => set("servicePincodes", tags)}
             />
           </Field>
+        </Card>
+
+        <Card title="KYC Documents" icon={FiCheckCircle}>
+          <input ref={kycFileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleKycFileChange} style={{ display: "none" }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {KYC_DOCS.map(({ key, label }) => {
+              const url = vendor.documents?.[key];
+              const status = vendor.documentStatus?.[key] || "pending";
+              const note = vendor.documentNotes?.[key] || "";
+              const busy = kycBusy[key];
+              return (
+                <div key={key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#f8f6fe", borderRadius: 12, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{label}</span>
+                      {url && <KycStatusPill status={status} />}
+                    </div>
+                    {!url && <span style={{ fontSize: 12, color: T.faint }}>Not uploaded</span>}
+                    {status === "rejected" && note && (
+                      <div style={{ fontSize: 11.5, color: T.danger, marginTop: 2 }}>Reason: {note}</div>
+                    )}
+                    {url && (
+                      <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: T.brand, fontWeight: 600, textDecoration: "none", display: "inline-block", marginTop: 2 }}>
+                        View document ↗
+                      </a>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openKycPicker(key)}
+                    disabled={busy}
+                    style={{
+                      padding: "8px 14px", borderRadius: 10, border: `1px solid ${T.border}`,
+                      background: "#fff", color: T.brand, fontSize: 12, fontWeight: 700,
+                      cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1, whiteSpace: "nowrap",
+                    }}
+                  >
+                    {busy ? "Uploading…" : url ? "Re-upload" : "Upload"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </Card>
 
         {/* Save Button — sticky so it's always reachable on long forms */}

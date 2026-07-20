@@ -18,7 +18,7 @@
  * context so every descendant page consumes the same connection instead
  * of opening its own.
  */
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useMemo } from "react";
 import useAdminWs from "../hooks/useAdminWs";
 
 const AdminWsContext = createContext(null);
@@ -29,8 +29,13 @@ export const AdminWsProvider = ({ children }) => {
         setLastMessage(msg);
     }, []));
 
+    const value = useMemo(
+        () => ({ connected, send, lastMessage }),
+        [connected, send, lastMessage]
+    );
+
     return (
-        <AdminWsContext.Provider value={{ connected, send, lastMessage }}>
+        <AdminWsContext.Provider value={value}>
             {children}
         </AdminWsContext.Provider>
     );

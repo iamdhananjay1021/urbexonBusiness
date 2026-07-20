@@ -9,16 +9,23 @@ import UserNotification from "../../models/UserNotification.js";
 import { uploadToCloudinary } from "../../config/cloudinary.js";
 import { broadcastToAdmins } from "../../utils/wsHub.js";
 import { sendNotification as sendToUser } from "../../utils/notificationQueue.js";
+import { notify } from "../../services/notificationEngine.js";
+import { computeSlaDates } from "../../config/slaConfig.js";
 
 const PRIORITIES = ["low", "normal", "high", "urgent"];
 const STATUSES = ["open", "in_progress", "waiting_customer", "resolved", "closed"];
-const CATEGORIES = ["order", "payment", "delivery", "product", "vendor", "account", "other"];
+const CATEGORIES = ["order", "payment", "delivery", "product", "vendor", "account", "payout", "subscription", "other"];
 
 // GET /api/admin/tickets — list + filters
 export const listTickets = async (req, res) => {
     try {
-        const { status, category, priority, customer, orderId, dateFrom, dateTo, search, page = 1, limit = 20 } = req.query;
+        const { status, category, priority, customer, orderId, dateFrom, dateTo, search, requesterType, page = 1, limit = 20 } = req.query;
         const filter = {};
+        // "customer" must be $nin — legacy docs (pre-vendor-support) have no
+        // requesterType field at all, and $eq:"customer" would hide every
+        // one of them.
+        if (requesterType === "vendor" || requesterType === "delivery") filter.requesterType = requesterType;
+        else if (requesterType === "customer") filter.requesterType = { $nin: ["vendor", "delivery"] };
         if (status && STATUSES.includes(status)) filter.status = status;
         if (category && CATEGORIES.includes(category)) filter.category = category;
         if (priority && PRIORITIES.includes(priority)) filter.priority = priority;
@@ -34,6 +41,8 @@ export const listTickets = async (req, res) => {
                 { customerName: { $regex: esc, $options: "i" } },
                 { customerEmail: { $regex: esc, $options: "i" } },
                 { customerPhone: { $regex: esc, $options: "i" } },
+                { vendorShopName: { $regex: esc, $options: "i" } },
+                { vendorEmail: { $regex: esc, $options: "i" } },
             ];
         }
         if (search?.trim()) {
@@ -65,15 +74,21 @@ export const listTickets = async (req, res) => {
 // GET /api/admin/tickets/stats — dashboard counts
 export const getTicketStats = async (req, res) => {
     try {
-        const facets = await Ticket.aggregate([
-            {
-                $facet: {
-                    byStatus: [{ $group: { _id: "$status", count: { $sum: 1 } } }],
-                    highPriority: [{ $match: { priority: { $in: ["high", "urgent"] }, status: { $nin: ["resolved", "closed"] } } }, { $count: "n" }],
-                    total: [{ $count: "n" }],
-                },
+        const { requesterType } = req.query;
+        const pipeline = [];
+        // Same $nin convention as listTickets — legacy docs lack requesterType.
+        if (requesterType === "vendor" || requesterType === "delivery") pipeline.push({ $match: { requesterType } });
+        else if (requesterType === "customer") pipeline.push({ $match: { requesterType: { $nin: ["vendor", "delivery"] } } });
+        pipeline.push({
+            $facet: {
+                byStatus: [{ $group: { _id: "$status", count: { $sum: 1 } } }],
+                highPriority: [{ $match: { priority: { $in: ["high", "urgent"] }, status: { $nin: ["resolved", "closed"] } } }, { $count: "n" }],
+                slaBreached: [{ $match: { slaEscalated: true, status: { $nin: ["resolved", "closed"] } } }, { $count: "n" }],
+                avgCsat: [{ $match: { "csat.rating": { $gte: 1 } } }, { $group: { _id: null, avg: { $avg: "$csat.rating" }, count: { $sum: 1 } } }],
+                total: [{ $count: "n" }],
             },
-        ]);
+        });
+        const facets = await Ticket.aggregate(pipeline);
         const f = facets[0] || {};
         const byStatus = {};
         (f.byStatus || []).forEach((s) => { byStatus[s._id] = s.count; });
@@ -88,6 +103,9 @@ export const getTicketStats = async (req, res) => {
                 resolved: byStatus.resolved || 0,
                 closed: byStatus.closed || 0,
                 highPriority: f.highPriority?.[0]?.n || 0,
+                slaBreached: f.slaBreached?.[0]?.n || 0,
+                avgCsat: f.avgCsat?.[0]?.avg ? Math.round(f.avgCsat[0].avg * 10) / 10 : null,
+                csatCount: f.avgCsat?.[0]?.count || 0,
             },
         });
     } catch (err) {
@@ -104,6 +122,8 @@ export const getTicketDetail = async (req, res) => {
             .populate("orderRef", "invoiceNumber orderStatus totalAmount")
             .populate("productRef", "name slug")
             .populate("vendorRef", "shopName")
+            .populate("vendorId", "shopName email phone status")
+            .populate("deliveryBoyId", "name phone status")
             .populate("deliveryRef", "name phone")
             .lean();
         if (!ticket) return res.status(404).json({ success: false, message: "Ticket not found" });
@@ -146,6 +166,28 @@ const notifyCustomer = async (ticket, message) => {
     }
 };
 
+// Requester-type dispatch: customer tickets keep the exact notifyCustomer
+// path above; vendor/delivery tickets go through notificationEngine.notify
+// — one call that persists a PlatformNotification (feeds each panel's
+// existing bell hydration), pushes WS "ticket_update" with offline
+// queueing, and attempts FCM. ticket.customerId already IS the requester's
+// User id for both roles (see models/Ticket.js identity note) — no lookup.
+const notifyRequester = async (ticket, message) => {
+    if (ticket.requesterType === "vendor" || ticket.requesterType === "delivery") {
+        await notify({
+            recipientId: ticket.customerId,
+            role: ticket.requesterType,
+            type: "ticket_update",
+            title: "Support ticket update",
+            message,
+            priority: "high",
+            meta: { ticketId: String(ticket._id), subject: ticket.subject, status: ticket.status },
+        }).catch((err) => console.warn("[notifyRequester] notify failed:", err.message));
+        return;
+    }
+    await notifyCustomer(ticket, message);
+};
+
 // POST /api/admin/tickets/:id/reply
 export const replyToTicket = async (req, res) => {
     try {
@@ -173,11 +215,14 @@ export const replyToTicket = async (req, res) => {
             ticket.lastReplyAt = new Date();
             ticket.lastReplyBy = "admin";
             if (ticket.status === "open") ticket.status = "in_progress";
+            // SLA first-response marker — internal notes don't count, the
+            // requester never sees them.
+            if (!ticket.firstResponseAt) ticket.firstResponseAt = new Date();
         }
         logActivity(ticket, internal ? "internal_note_added" : "replied", req);
         await ticket.save();
 
-        if (!internal) await notifyCustomer(ticket, `Support replied to your ticket "${ticket.subject}"`);
+        if (!internal) await notifyRequester(ticket, `Support replied to your ticket "${ticket.subject}"`);
         broadcastToAdmins("admin:ticket_event", { ticketId: String(ticket._id), event: "replied", status: ticket.status });
 
         res.json({ success: true, ticket });
@@ -206,10 +251,18 @@ const simpleUpdate = (field, allowed, activityAction) => async (req, res) => {
         ticket[field] = value;
         if (field === "status" && value === "closed") ticket.closedAt = new Date();
         if (field === "status" && previous === "closed" && value !== "closed") ticket.closedAt = null;
+        // resolvedAt anchors the vendor reopen window (a ticket can sit in
+        // "resolved" without ever reaching "closed").
+        if (field === "status" && value === "resolved") ticket.resolvedAt = new Date();
+        // Priority change moves the SLA clock — vendor/delivery tickets only
+        // (customer tickets have null SLA fields and should keep them null).
+        if (field === "priority" && ["vendor", "delivery"].includes(ticket.requesterType) && !["resolved", "closed"].includes(ticket.status)) {
+            Object.assign(ticket, computeSlaDates(value));
+        }
         logActivity(ticket, activityAction, req, { from: previous, to: value });
         await ticket.save();
 
-        if (field === "status") await notifyCustomer(ticket, `Your ticket "${ticket.subject}" status changed to ${value.replace(/_/g, " ")}`);
+        if (field === "status") await notifyRequester(ticket, `Your ticket "${ticket.subject}" status changed to ${value.replace(/_/g, " ")}`);
         broadcastToAdmins("admin:ticket_event", { ticketId: String(ticket._id), event: activityAction, [field]: value });
 
         res.json({ success: true, ticket });

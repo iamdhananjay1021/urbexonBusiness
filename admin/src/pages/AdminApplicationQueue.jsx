@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { useAdminWsContext } from '../contexts/AdminWsContext';
 import axios from 'axios';
+import { showToast } from '../utils/toast';
 import '../styles/AdminApplicationQueue.css';
 
 export default function AdminApplicationQueue() {
@@ -67,12 +68,12 @@ export default function AdminApplicationQueue() {
       });
 
       if (response.data.success) {
-        alert('Application approved successfully');
+        showToast('Application approved successfully', 'success');
         fetchApplications();
         setSelectedApp(null);
       }
     } catch (error) {
-      alert('Error approving application: ' + error.message);
+      showToast('Error approving application: ' + error.message, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -84,7 +85,7 @@ export default function AdminApplicationQueue() {
       const reason = prompt('Enter rejection reason (required):');
 
       if (!reason) {
-        alert('Rejection reason is required');
+        showToast('Rejection reason is required', 'warning');
         return;
       }
 
@@ -93,12 +94,12 @@ export default function AdminApplicationQueue() {
       });
 
       if (response.data.success) {
-        alert('Application rejected');
+        showToast('Application rejected', 'success');
         fetchApplications();
         setSelectedApp(null);
       }
     } catch (error) {
-      alert('Error rejecting application: ' + error.message);
+      showToast('Error rejecting application: ' + error.message, 'error');
     } finally {
       setActionLoading(false);
     }

@@ -18,12 +18,14 @@
  *   underlying DB operation or the HTTP response.
  */
 import Vendor from "../../models/vendorModels/Vendor.js";
+import Product from "../../models/Product.js";
 import Subscription from "../../models/vendorModels/Subscription.js";
 import Pincode from "../../models/vendorModels/Pincode.js";
 import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
 import User from "../../models/User.js";
 import { notifyVendorApplicationApproved, notifyVendorApplicationRejected } from "../../services/notificationService.js";
 import { broadcastToAdmins, VENDOR_WS_EVENTS } from "../../utils/wsHub.js";
+import { notify } from "../../services/notificationEngine.js";
 
 /* ── Get all vendors ───────────────────────────────────── */
 export const getAllVendors = async (req, res) => {
@@ -90,12 +92,42 @@ const notifyAdmins = (type, payload) => {
     );
 };
 
+/**
+ * NOTIFICATION GAP FIX: fire-and-forget wrapper around
+ * notificationEngine.notify() for the vendor-status/subscription events
+ * below — none of these previously reached the vendor's WS/push/bell at
+ * all (approve/reject only ever sent an email via notificationService.js;
+ * suspend/reactivate/subscription-activation were completely silent to
+ * the vendor). Reuses the exact same engine every other notify() call
+ * site in the codebase uses — same channels, same PlatformNotification
+ * persistence, same fire-and-forget discipline as notifyAdmins above.
+ */
+const notifyVendor = (vendorUserId, { title, message, type = "vendor_status_changed", meta = {} }) => {
+    if (!vendorUserId) return;
+    notify({
+        recipientId: vendorUserId,
+        role: "vendor",
+        type,
+        title,
+        message,
+        priority: "high",
+        meta,
+    }).catch((err) => console.error(`[notifyVendor:${type}] Failed:`, err.message));
+};
+
 /* ── Approve vendor ────────────────────────────────────── */
 // FIX #2 + #3 (preserved): atomic status check + idempotency guard
 // [FIX v2] + User.role sync + approval email notification
 // [FIX v3] + real-time admin broadcast
 export const approveVendor = async (req, res) => {
     try {
+        // Read-only pre-check, purely to phrase the vendor-facing notification
+        // correctly ("reactivated" vs "approved"). Does not participate in
+        // the atomic guard below — that stays the sole source of transition
+        // safety, exactly as before.
+        const preState = await Vendor.findById(req.params.id).select("status").lean();
+        const wasReactivation = preState?.status === "suspended";
+
         // FIX #2 — Atomic: only update if currently pending/rejected, not already approved
         // Prevents double-approval race (two admin tabs clicking at once)
         const vendor = await Vendor.findOneAndUpdate(
@@ -151,6 +183,13 @@ export const approveVendor = async (req, res) => {
             console.error("[notifyVendorApplicationApproved]", err.message)
         );
 
+        // NOTIFICATION GAP FIX: WS/push/bell notification alongside the
+        // existing email — same event, second channel, added not swapped.
+        notifyVendor(vendor.userId, wasReactivation
+            ? { title: "Account Reactivated", message: "Your vendor account has been reactivated. You're back online.", type: "vendor_status_changed", meta: { status: "approved" } }
+            : { title: "Application Approved", message: "Your vendor application has been approved. Activate a subscription plan to start selling.", type: "vendor_status_changed", meta: { status: "approved" } }
+        );
+
         // [FIX v3] Real-time push to every connected admin
         notifyAdmins(VENDOR_WS_EVENTS.STATUS_CHANGED, {
             vendorId: vendorObj._id,
@@ -188,6 +227,13 @@ export const rejectVendor = async (req, res) => {
             console.error("[notifyVendorApplicationRejected]", err.message)
         );
 
+        notifyVendor(vendor.userId, {
+            title: "Application Rejected",
+            message: `Your vendor application was not approved.${vendorObj.rejectionReason ? ` Reason: ${vendorObj.rejectionReason}` : ""}`,
+            type: "vendor_status_changed",
+            meta: { status: "rejected" },
+        });
+
         notifyAdmins(VENDOR_WS_EVENTS.STATUS_CHANGED, {
             vendorId: vendorObj._id,
             status: "rejected",
@@ -221,6 +267,15 @@ export const suspendVendor = async (req, res) => {
 
         const vendorObj = vendor.toObject();
 
+        // NOTIFICATION GAP FIX: previously completely silent to the vendor —
+        // suspension only ever showed up as a rejected login attempt.
+        notifyVendor(vendor.userId, {
+            title: "Account Suspended",
+            message: `Your vendor account has been suspended.${vendorObj.rejectionReason ? ` Reason: ${vendorObj.rejectionReason}` : ""} Contact support for details.`,
+            type: "vendor_status_changed",
+            meta: { status: "suspended" },
+        });
+
         notifyAdmins(VENDOR_WS_EVENTS.STATUS_CHANGED, {
             vendorId: vendorObj._id,
             status: "suspended",
@@ -230,6 +285,49 @@ export const suspendVendor = async (req, res) => {
         res.json({ success: true, vendor: vendorObj, message: "Vendor suspended" });
     } catch (err) {
         console.error("[suspendVendor]", err);
+        res.status(500).json({ success: false, message: "Failed" });
+    }
+};
+
+/* ── Update KYC document status ────────────────────────── */
+// KYC VERIFICATION FIX: direct mirror of updateDeliveryDocStatus below
+// (same shape — docKey/status/note in the body — same 3-state model) so
+// admins review vendor documents the exact same way they already review
+// delivery-rider documents. No document-level workflow existed for
+// vendors before this; approval was previously a single whole-vendor
+// status transition with no visibility into individual document quality.
+const KYC_DOC_KEYS = ["gstCertificate", "panCard", "shopPhoto", "ownerPhoto", "cancelledCheque", "addressProof"];
+export const updateVendorDocStatus = async (req, res) => {
+    try {
+        const { docKey, status, note } = req.body;
+        const validStatus = ["pending", "verified", "rejected"];
+        if (!KYC_DOC_KEYS.includes(docKey)) return res.status(400).json({ success: false, message: "Invalid document key" });
+        if (!validStatus.includes(status)) return res.status(400).json({ success: false, message: "Invalid status" });
+
+        const update = { [`documentStatus.${docKey}`]: status };
+        if (note !== undefined) update[`documentNotes.${docKey}`] = note;
+
+        const vendor = await Vendor.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+        if (!vendor) return res.status(404).json({ success: false, message: "Not found" });
+
+        // Only the vendor cares about verified/rejected outcomes — "pending"
+        // (the Reset action) is an internal admin correction, not news.
+        if (status === "verified" || status === "rejected") {
+            notifyVendor(vendor.userId, {
+                title: status === "verified" ? "Document Verified" : "Document Rejected",
+                message: status === "verified"
+                    ? `Your ${docKey} has been verified.`
+                    : `Your ${docKey} was rejected.${note ? ` Reason: ${note}` : ""} Please re-upload it from your Profile page.`,
+                type: "vendor_status_changed",
+                meta: { docKey, status },
+            });
+        }
+
+        notifyAdmins(VENDOR_WS_EVENTS.UPDATED, { vendorId: String(vendor._id), vendor: vendor.toObject() });
+
+        res.json({ success: true, vendor });
+    } catch (err) {
+        console.error("[updateVendorDocStatus]", err);
         res.status(500).json({ success: false, message: "Failed" });
     }
 };
@@ -269,6 +367,15 @@ export const deleteVendor = async (req, res) => {
         // [FIX v2] A deleted vendor must also lose vendor-role access
         if (vendor) {
             await syncUserRole(vendor.userId, "user");
+            // [FIX] Previously only flipped Vendor.isDeleted — the vendor's
+            // own products stayed isActive:true and could still surface in
+            // storefront listings that don't separately re-check vendor
+            // status. Product/Settlement/VendorWalletTransaction records
+            // themselves are still never touched (financial audit trail
+            // preserved), only the public-visibility flag.
+            await Product.updateMany({ vendorId: vendor._id }, { isActive: false }).catch((err) =>
+                console.error("[deleteVendor] Failed to deactivate vendor's products:", err.message)
+            );
             notifyAdmins(VENDOR_WS_EVENTS.DELETED, { vendorId: String(vendor._id) });
         }
         res.json({ success: true, message: "Vendor deleted" });
@@ -313,6 +420,13 @@ export const activateVendorSubscription = async (req, res) => {
                 status: "active", startDate: now,
                 expiryDate: expiry, nextDueDate: expiry,
                 lastPaymentDate: now, isTrialActive: false,
+                // Closes the plan-change-request loop: if this activation is
+                // fulfilling a vendor's self-service request (requestPlanChange
+                // in vendorEarnings.js), clear it so Settings.jsx stops showing
+                // "pending request" forever. Also resets the expiry-reminder
+                // guard so remindExpiringSubscriptions can fire again next cycle.
+                requestedPlan: null, planChangeRequestedAt: null, planChangeNote: "",
+                expiryReminderSentAt: null,
                 $push: {
                     payments: {
                         amount: PLANS[plan].monthlyFee * numMonths,
@@ -326,6 +440,15 @@ export const activateVendorSubscription = async (req, res) => {
 
         vendor.subscription = { plan, startDate: now, expiryDate: expiry, isActive: true, autoRenew: false };
         await vendor.save();
+
+        // NOTIFICATION GAP FIX: previously silent — a vendor only discovered
+        // a manual plan activation by noticing their dashboard changed.
+        notifyVendor(vendor.userId, {
+            title: "Subscription Activated",
+            message: `Your ${PLANS[plan].label || plan} plan is now active until ${expiry.toLocaleDateString("en-IN")}.`,
+            type: "subscription_update",
+            meta: { plan, expiryDate: expiry.toISOString() },
+        });
 
         notifyAdmins(VENDOR_WS_EVENTS.UPDATED, {
             vendorId: String(vendor._id),
@@ -356,6 +479,13 @@ export const deactivateVendorSubscription = async (req, res) => {
 
         vendor.subscription = { ...vendor.subscription?.toObject?.() || {}, isActive: false, expiryDate: new Date() };
         await vendor.save();
+
+        notifyVendor(vendor.userId, {
+            title: "Subscription Deactivated",
+            message: `Your subscription has been deactivated by admin.${reason ? ` Reason: ${reason}` : ""}`,
+            type: "subscription_update",
+            meta: { reason: reason || "" },
+        });
 
         notifyAdmins(VENDOR_WS_EVENTS.UPDATED, {
             vendorId: String(vendor._id),

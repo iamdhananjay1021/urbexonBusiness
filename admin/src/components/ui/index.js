@@ -11,3 +11,4 @@ export { default as Skeleton } from "./Skeleton";
 export { default as Modal } from "./Modal";
 export { default as FormField, Input, Select } from "./FormField";
 export { default as StatTile } from "./StatTile";
+export { default as MultiSelectSearch } from "./MultiSelectSearch";

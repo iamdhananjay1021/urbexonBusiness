@@ -1,5 +1,14 @@
 import Review from "../models/Review.js";
 import Product from "../models/Product.js";
+import Vendor from "../models/vendorModels/Vendor.js";
+import { notify } from "../services/notificationEngine.js";
+import { getCache, setCache, delCache } from "../utils/Cache.js";
+
+// [FIX] getProductReviews previously hit the DB on every single product-page
+// view with no cache at all — mirrors productController.js's cache pattern.
+// getCache/setCache/delCache already never throw (redis.js falls back to
+// NodeCache internally on any error), so no extra try/catch wrapper needed.
+const reviewsCacheKey = (productId) => `reviews:product:${productId}`;
 
 const recalcProductRating = async (productId) => {
     try {
@@ -35,7 +44,11 @@ export const addReview = async (req, res) => {
             return res.status(404).json({ message: "Product not found" });
         }
 
-        const review = await Review.findOneAndUpdate(
+        // rawResult so we can tell a genuine new review apart from a
+        // vendor's existing reviewer editing theirs — only the former
+        // should notify the vendor (ReviewReceived, per the Domain
+        // Blueprint's event map).
+        const rawResult = await Review.findOneAndUpdate(
             { product: productId, user: req.user._id },
             {
                 product: productId,
@@ -44,10 +57,30 @@ export const addReview = async (req, res) => {
                 rating: Number(rating),
                 comment: comment?.trim() || "",
             },
-            { upsert: true, new: true, setDefaultsOnInsert: true }
+            { upsert: true, new: true, setDefaultsOnInsert: true, rawResult: true }
         );
+        const review = rawResult.value;
+        const isNewReview = !!rawResult.lastErrorObject?.upserted;
 
         await recalcProductRating(product._id);
+        await delCache(reviewsCacheKey(product._id));
+
+        if (isNewReview && product.vendorId) {
+            Vendor.findById(product.vendorId).select("userId").lean()
+                .then((vendor) => {
+                    if (!vendor?.userId) return;
+                    return notify({
+                        recipientId: vendor.userId,
+                        role: "vendor",
+                        type: "review_received",
+                        title: "New Review",
+                        message: `${review.name} left a ${review.rating}★ review on "${product.name}".`,
+                        priority: "normal",
+                        meta: { reviewId: String(review._id), productId: String(product._id), rating: review.rating },
+                    });
+                })
+                .catch((err) => console.error("[addReview] vendor notify failed:", err.message));
+        }
 
         res.status(201).json(review);
     } catch (error) {
@@ -58,10 +91,16 @@ export const addReview = async (req, res) => {
 
 export const getProductReviews = async (req, res) => {
     try {
+        const cacheKey = reviewsCacheKey(req.params.productId);
+        const cached = await getCache(cacheKey);
+        if (cached) return res.json(cached);
+
         const reviews = await Review.find({ product: req.params.productId })
             .sort({ createdAt: -1 })
             .limit(50)
             .lean();
+
+        await setCache(cacheKey, reviews, 120);
         res.json(reviews);
     } catch (error) {
         console.error("[getProductReviews]", error);
@@ -80,6 +119,7 @@ export const deleteReview = async (req, res) => {
         const productId = review.product;
         await review.deleteOne();
         await recalcProductRating(productId);
+        await delCache(reviewsCacheKey(productId));
 
         res.json({ message: "Review deleted" });
     } catch (error) {
@@ -126,6 +166,7 @@ export const adminDeleteReview = async (req, res) => {
         const productId = review.product;
         await review.deleteOne();
         await recalcProductRating(productId);
+        await delCache(reviewsCacheKey(productId));
         res.json({ success: true, message: "Review removed" });
     } catch (error) {
         console.error("[adminDeleteReview]", error);

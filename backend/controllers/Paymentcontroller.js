@@ -12,11 +12,14 @@
 
 import Razorpay from "razorpay";
 import crypto from "crypto";
+import logger from "../utils/logger.js";
 import Order, { generateInvoiceNumber } from "../models/Order.js";
 import { sendEmail } from "../utils/emailService.js";
 import { getOrderStatusEmailTemplate } from "../utils/orderStatusEmail.js";
 import { adminOrderEmailHTML } from "../utils/adminOrderEmail.js";
-import { calculateOrderPricing, deductStock, markCouponUsed } from "../services/pricing.js";
+import { calculateOrderPricing, deductStock } from "../services/pricing.js";
+import { markCouponUsage } from "../services/couponEngine.js";
+import { adminDecideRefund } from "../services/refundEngine.js";
 import { kickoffNewOrder } from "../services/orderKickoff.js";
 import { DELIVERY_CONFIG } from "../config/deliveryConfig.js";
 import { createShiprocketOrder } from "../utils/Shiprocketservice.js";
@@ -29,6 +32,10 @@ const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
     key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
+
+const getClientIp = (req) =>
+    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+    req.connection?.remoteAddress || "";
 
 /* ════════════════════════════════════════
    1. CREATE RAZORPAY ORDER
@@ -43,6 +50,7 @@ export const createRazorpayOrder = async (req, res) => {
             currency = "INR",
             deliveryType,
             pincode,
+            state,
             couponId,
             couponCode,
             latitude,
@@ -67,6 +75,7 @@ export const createRazorpayOrder = async (req, res) => {
                 deliveryType: deliveryType || "ECOMMERCE_STANDARD",
                 distanceKm: 0,
                 pincode,
+                state,
                 couponId,
                 couponCode,
                 userId: req.user?._id,
@@ -104,7 +113,7 @@ export const createRazorpayOrder = async (req, res) => {
             },
         });
     } catch (err) {
-        console.error("RAZORPAY CREATE ORDER:", err);
+        logger.error("RAZORPAY CREATE ORDER", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to create payment order" });
     }
 };
@@ -202,8 +211,16 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
                 deliveryType,
                 distanceKm: validatedDistanceKm,
                 pincode,
+                state,
                 couponId,
                 couponCode,
+                // BUG FIX: userId was never passed here, so the per-user
+                // usage-limit check (and any state/userId-scoped targeting)
+                // was silently skipped for every Razorpay verify — a user
+                // could reuse a single-use coupon indefinitely through this
+                // path even though the COD path (orderController.js) always
+                // passed it correctly.
+                userId: req.user?._id,
             });
         } catch (err) {
             return res.status(400).json({ message: err.message, success: false });
@@ -234,7 +251,7 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
             const rpAmount = rpOrder.amount;
             const ourAmount = Math.round(finalTotal * 100);
             if (Math.abs(rpAmount - ourAmount) > 100) {
-                console.error(`[Payment] Amount mismatch: Razorpay=${rpAmount}, Ours=${ourAmount}`);
+                logger.error("[Payment] Amount mismatch", { razorpayAmount: rpAmount, ourAmount });
                 return res.status(400).json({
                     message: "Payment amount mismatch. Please contact support.",
                     success: false,
@@ -286,7 +303,7 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
             latitude,
             longitude,
             coupon: appliedCoupon
-                ? { code: appliedCoupon.couponCode, discount: appliedCoupon.discount || 0 }
+                ? { code: appliedCoupon.couponCode, discount: appliedCoupon.discount || 0, couponId: appliedCoupon.couponId }
                 : undefined,
             orderMode: finalDeliveryType === "URBEXON_HOUR" ? "URBEXON_HOUR" : "ECOMMERCE",
             vendorId: formattedItems[0]?.vendorId || null,
@@ -410,7 +427,17 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
         }
 
         if (pricing?.coupon?.couponId) {
-            await markCouponUsed(pricing.coupon.couponId, req.user?._id).catch(() => { });
+            await markCouponUsage({
+                couponId: pricing.coupon.couponId,
+                userId: req.user?._id,
+                orderId: order._id,
+                module: "ORDER",
+                discountAmount: pricing.coupon.discount || 0,
+                discountType: pricing.coupon.discountType,
+                orderTotal: itemsTotal,
+                ip: req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.connection?.remoteAddress || "",
+                userAgent: req.headers["user-agent"]?.slice(0, 300) || "",
+            }).catch(() => { });
         }
 
         // ✅ Respond immediately
@@ -472,7 +499,7 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
             })();
         }
     } catch (err) {
-        console.error("VERIFY PAYMENT:", err);
+        logger.error("VERIFY PAYMENT", { message: err.message, stack: err.stack });
         res.status(500).json({ message: "Order creation failed after payment", success: false });
     }
 };
@@ -484,7 +511,7 @@ export const razorpayWebhook = async (req, res) => {
     try {
         const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
         if (!secret) {
-            console.error("[Webhook] RAZORPAY_WEBHOOK_SECRET not set");
+            logger.error("[Webhook] RAZORPAY_WEBHOOK_SECRET not set", {});
             return res.status(500).json({ success: false, message: "Webhook not configured" });
         }
 
@@ -554,13 +581,38 @@ export const razorpayWebhook = async (req, res) => {
                     }
                 );
                 break;
+            // RECONCILIATION GAP FIX: Razorpay's refund.create response can
+            // return "processing" and settle asynchronously — a refund this
+            // system already recorded as PROCESSED (based on the synchronous
+            // API response) can still fail later at the bank/network. Without
+            // this, that later failure was silently dropped — payment.status
+            // stayed "REFUNDED" forever with no signal for anyone to retry or
+            // manually settle with the customer. Matched by razorpayRefundId
+            // (set at creation time, unique to this exact refund attempt) so
+            // an unrelated/older refund on the same order is never clobbered.
+            case "refund.failed":
+                await Order.findOneAndUpdate(
+                    { "refund.razorpayRefundId": refundEntity?.id },
+                    {
+                        $set: { "refund.status": "FAILED" },
+                        $push: {
+                            paymentLogs: {
+                                event: "REFUND_FAILED",
+                                paymentId: refundEntity?.payment_id,
+                                meta: { via: "WEBHOOK_ASYNC", refundId: refundEntity?.id },
+                                at: new Date(),
+                            },
+                        },
+                    }
+                );
+                break;
             default:
                 console.log("[Webhook] Unhandled event:", event);
         }
 
         res.json({ received: true });
     } catch (err) {
-        console.error("WEBHOOK:", err);
+        logger.error("WEBHOOK", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Webhook failed" });
     }
 };
@@ -625,14 +677,21 @@ export const requestRefund = async (req, res) => {
             label: "Admin/RefundRequest",
         });
     } catch (err) {
-        console.error("REQUEST REFUND:", err);
+        logger.error("REQUEST REFUND", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Refund request failed" });
     }
 };
 
 /* ════════════════════════════════════════
    5. PROCESS REFUND (ADMIN)
-   ✅ Double-refund guard
+   Thin HTTP wrapper — kept for API-contract stability even though
+   AdminOrders.jsx/AdminRefundReturn.jsx call the orderController.js
+   twin of this route instead. Both used to independently read the order,
+   check refund.status in JS, then call Razorpay — two live, drifted
+   implementations of the same money-moving operation, the exact "3-way
+   drift" bug class this codebase's coupon engine was rebuilt to avoid
+   (see couponEngine.js). Now both delegate to refundEngine.js's atomic
+   claim-then-call, so they can never diverge or double-refund again.
 ════════════════════════════════════════ */
 export const processRefund = async (req, res) => {
     try {
@@ -641,54 +700,19 @@ export const processRefund = async (req, res) => {
         if (!["approve", "reject"].includes(act))
             return res.status(400).json({ success: false, message: "Invalid action" });
 
-        const order = await Order.findById(req.params.orderId);
+        const result = await adminDecideRefund({
+            orderId: req.params.orderId,
+            action: act,
+            adminId: req.user._id,
+            ip: getClientIp(req),
+            adminNote: rejectionReason,
+        });
 
-        if (!order)
-            return res.status(404).json({ success: false, message: "Order not found" });
-        if (!order.refund?.requested)
-            return res.status(400).json({ success: false, message: "No refund request found" });
-        if (order.refund.status !== "REQUESTED")
-            return res.status(400).json({
-                success: false,
-                message: `Refund already ${order.refund.status}`,
-            });
-        if (order.payment.status === "REFUNDED" || order.refund.status === "PROCESSED")
-            return res.status(400).json({ success: false, message: "Refund already processed" });
-
-        if (act === "reject") {
-            order.refund.status = "REJECTED";
-            order.refund.adminNote = rejectionReason;
-            order.refund.processedAt = new Date();
-            order.refund.processedBy = req.user._id;
-            await order.save();
-            return res.json({ success: true, message: "Refund rejected" });
-        }
-
-        const refundAmount = Math.round(
-            Number(order.refund.amount || order.totalAmount) * 100
-        );
-        let rpRefund;
-        try {
-            rpRefund = await razorpay.payments.refund(order.payment.razorpayPaymentId, {
-                amount: refundAmount,
-                notes: { orderId: order._id.toString(), reason: order.refund.reason },
-            });
-        } catch (rpErr) {
-            return res.status(502).json({
-                message: "Razorpay refund failed: " + (rpErr.error?.description || rpErr.message),
-            });
-        }
-
-        order.refund.status = "PROCESSED";
-        order.refund.razorpayRefundId = rpRefund.id;
-        order.refund.processedAt = new Date();
-        order.refund.processedBy = req.user._id;
-        order.payment.status = "REFUNDED";
-        await order.save();
-
-        res.json({ success: true, message: "Refund processed", refundId: rpRefund.id });
+        if (!result.success) return res.status(result.status || 400).json({ success: false, message: result.message });
+        if (act === "reject") return res.json({ success: true, message: "Refund rejected" });
+        return res.json({ success: true, message: "Refund processed", refundId: result.refundId });
     } catch (err) {
-        console.error("PROCESS REFUND:", err);
+        logger.error("PROCESS REFUND", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to process refund" });
     }
 };
@@ -713,7 +737,7 @@ export const getRefundStatus = async (req, res) => {
             paymentMethod: order.payment?.method,
         });
     } catch (err) {
-        console.error("GET REFUND STATUS:", err);
+        logger.error("GET REFUND STATUS", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to fetch refund status" });
     }
 };

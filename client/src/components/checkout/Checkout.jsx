@@ -20,12 +20,14 @@ import {
     FaHome, FaBriefcase, FaBookmark, FaChevronDown, FaChevronUp,
     FaStar, FaShoppingCart, FaBolt, FaTag,
 } from "react-icons/fa";
-import { useState } from "react";
+import { useEffect } from "react";
 import { useCheckout } from "../../hooks/useCheckout";
-import { validateCoupon } from "../../api/orderApi";
+import { useCoupon } from "../../hooks/useCoupon";
+import { getEligibleCoupons } from "../../api/couponApi";
 import BackButton from "../BackButton";
 import PriceSummary from "./PriceSummary";
 import AddressForm from "./AddressForm";
+import CouponSuggestions from "./CouponSuggestions";
 import SEO from "../SEO";
 
 const fmt = n => Number(n || 0).toLocaleString("en-IN");
@@ -151,33 +153,40 @@ const Checkout = () => {
     } = ck;
 
     const finalTotal = pricing?.finalTotal || 0;
+    const checkoutOrderMode = deliveryType === "URBEXON_HOUR" ? "urbexon_hour" : "ecommerce";
 
-    // BUG FIX: there was no way to apply/change/remove a coupon on this
-    // page at all — `coupon` used to arrive read-only from Cart.jsx's nav
-    // state, and "Buy Now" (which bypasses Cart entirely) had no coupon
-    // affordance whatsoever. Self-contained apply/remove logic, same
-    // pattern as Cart.jsx's working coupon UI.
-    const [couponCode, setCouponCode] = useState("");
-    const [couponApplying, setCouponApplying] = useState(false);
-    const [couponErr, setCouponErr] = useState("");
+    // BUG FIX: this used to be a self-contained apply/remove implementation
+    // duplicating Cart.jsx's — now the one shared hook (useCoupon.js),
+    // synced up into useCheckout's `coupon` state (which already drives
+    // refreshPricing) so nothing else in useCheckout.js needs to change.
+    const {
+        couponCode, setCouponCode, couponData, couponErr,
+        applying: couponApplying, applyCoupon: applyCouponHook, removeCoupon: removeCouponHook, autoApply,
+    } = useCoupon({ orderTotal: pricing?.itemsTotal || 0, orderType: checkoutOrderMode, initialCoupon: couponFromCart });
 
-    const applyCoupon = async () => {
-        if (!couponCode.trim()) return;
-        setCouponApplying(true); setCouponErr("");
-        try {
-            const { data } = await validateCoupon({
-                code: couponCode.trim(),
-                orderTotal: pricing?.itemsTotal || 0,
-                orderType: deliveryType === "URBEXON_HOUR" ? "urbexon_hour" : "ecommerce",
-            });
-            setCoupon(data);
-            setCouponCode("");
-        } catch (e) {
-            setCouponErr(e.response?.data?.message || "Invalid coupon");
-        } finally { setCouponApplying(false); }
-    };
+    useEffect(() => { setCoupon(couponData); }, [couponData]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const removeCoupon = () => { setCoupon(null); setCouponCode(""); setCouponErr(""); };
+    const applyCoupon = () => applyCouponHook();
+    const removeCoupon = () => removeCouponHook();
+
+    // Auto-apply the best eligible coupon once pricing is known, unless the
+    // user already brought one from Cart.jsx or has manually acted here.
+    useEffect(() => {
+        if (couponFromCart || !pricing?.itemsTotal) return;
+        let cancelled = false;
+        getEligibleCoupons({ itemsTotal: pricing.itemsTotal, orderMode: checkoutOrderMode })
+            .then(({ data }) => {
+                if (cancelled) return;
+                const best = (data?.coupons || []).find((c) => c.eligible && c.autoApply);
+                if (best) autoApply(best.code);
+            })
+            .catch(() => { });
+        return () => { cancelled = true; };
+        // Deliberately runs once pricing.itemsTotal first becomes available,
+        // not on every recalculation — autoApply() itself is a no-op once
+        // the user (or this effect) has already acted once, per useCoupon.js.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [!!pricing?.itemsTotal]);
 
     /* ── Empty cart guard ── */
     if (!checkoutItems?.length) return (
@@ -844,6 +853,7 @@ const Checkout = () => {
                                             {couponErr && <p className="text-xs text-red-500 mt-2">⚠️ {couponErr}</p>}
                                         </>
                                     )}
+                                    <CouponSuggestions itemsTotal={pricing?.itemsTotal || 0} orderMode={checkoutOrderMode} appliedCode={coupon?.code} onApply={(code) => applyCouponHook(code)} />
                                 </div>
 
                                 {/* Price summary */}

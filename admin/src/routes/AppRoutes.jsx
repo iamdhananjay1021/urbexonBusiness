@@ -35,10 +35,12 @@ const AdminSubscriptions = lazy(() => import("../pages/AdminSubscriptions"));
 const AdminPincodes = lazy(() => import("../pages/AdminPincodes"));
 const AdminSettlements = lazy(() => import("../pages/AdminSettlements"));
 const AdminPayouts = lazy(() => import("../pages/AdminPayouts"));
+const AdminWalletAdjustments = lazy(() => import("../pages/AdminWalletAdjustments"));
 const AdminLocalDelivery = lazy(() => import("../pages/AdminLocalDelivery"));
 const AdminCustomers = lazy(() => import("../pages/AdminCustomers"));
 const AdminRefundReturn = lazy(() => import("../pages/AdminRefundReturn"));
 const AdminCoupons = lazy(() => import("../pages/AdminCoupons"));
+const AdminCouponAnalytics = lazy(() => import("../pages/AdminCouponAnalytics"));
 const AdminMapDashboard = lazy(() => import("../pages/AdminMapDashboard"));
 const AdminOperations = lazy(() => import("../pages/AdminOperations"));
 const AdminCustomerSupport = lazy(() => import("../pages/AdminCustomerSupport"));
@@ -104,8 +106,10 @@ const AppRoutes = () => (
                     <Route path="subscriptions" element={<AdminSubscriptions />} />
                     <Route path="settlements" element={<AdminSettlements />} />
                     <Route path="payouts" element={<AdminPayouts />} />
+                    <Route path="wallet-adjustments" element={<AdminWalletAdjustments />} />
                     <Route path="refunds" element={<AdminRefundReturn />} />
                     <Route path="coupons" element={<AdminCoupons />} />
+                    <Route path="coupon-analytics" element={<AdminCouponAnalytics />} />
 
                     {/* Operations */}
                     <Route path="pincodes" element={<AdminPincodes />} />

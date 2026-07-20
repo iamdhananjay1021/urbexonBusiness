@@ -6,20 +6,21 @@
  */
 import { useEffect, useState } from "react";
 import adminApi from "../api/adminApi";
-import { FiPlus, FiEdit2, FiTrash2, FiExternalLink } from "react-icons/fi";
+import { FiPlus, FiEdit2, FiTrash2, FiExternalLink, FiUpload, FiX, FiSearch } from "react-icons/fi";
 import { Button, Badge, Card, ErrorState, FormField, Input, Select } from "../components/ui";
+import useDebounce from "../hooks/useDebounce";
 
 const SORTS = ["newest", "popularity", "recommended", "rating", "discount", "price_asc", "price_desc"];
 
 const EMPTY = {
-    name: "", description: "", sort: "newest", order: 0, isActive: true,
+    name: "", description: "", sort: "newest", order: 0, limit: 24, isActive: true,
     seoTitle: "", seoDescription: "",
     rules: { category: "", tags: "", brand: "", isDeal: false, isFeatured: false, minRating: 0, minDiscount: 0, maxAgeDays: 0 },
 };
 
 const toForm = (c) => ({
     name: c.name || "", description: c.description || "",
-    sort: c.sort || "newest", order: c.order || 0, isActive: c.isActive !== false,
+    sort: c.sort || "newest", order: c.order || 0, limit: c.limit || 24, isActive: c.isActive !== false,
     seoTitle: c.seo?.title || "", seoDescription: c.seo?.description || "",
     rules: {
         category: c.rules?.category || "",
@@ -40,6 +41,28 @@ const AdminCollections = () => {
     const [editing, setEditing] = useState(null);   // null | "new" | collection._id
     const [form, setForm] = useState(EMPTY);
     const [saving, setSaving] = useState(false);
+    const [imageFile, setImageFile] = useState(null);
+    const [preview, setPreview] = useState("");      // existing image URL or new local preview
+    const [removeImage, setRemoveImage] = useState(false);
+
+    // BUG FIX: this is what actually prevents ever shipping a silently-
+    // empty collection again — a live "N products match" count fetched
+    // from the real rule-matching filter as the admin types, instead of
+    // finding out only after saving and opening the storefront page.
+    const [matchCount, setMatchCount] = useState(null); // null = not checked yet
+    const [matchLoading, setMatchLoading] = useState(false);
+    const debouncedRules = useDebounce(JSON.stringify(form.rules), 400);
+
+    useEffect(() => {
+        if (!editing) return;
+        let cancelled = false;
+        setMatchLoading(true);
+        adminApi.post("/collections/admin/preview", { rules: JSON.parse(debouncedRules) })
+            .then(({ data }) => { if (!cancelled) setMatchCount(data.count); })
+            .catch(() => { if (!cancelled) setMatchCount(null); })
+            .finally(() => { if (!cancelled) setMatchLoading(false); });
+        return () => { cancelled = true; };
+    }, [debouncedRules, editing]);
 
     const load = () => {
         setLoading(true);
@@ -50,22 +73,41 @@ const AdminCollections = () => {
     };
     useEffect(load, []);
 
-    const openNew = () => { setForm(EMPTY); setEditing("new"); setError(""); };
-    const openEdit = (c) => { setForm(toForm(c)); setEditing(c._id); setError(""); };
+    const openNew = () => { setForm(EMPTY); setEditing("new"); setError(""); setImageFile(null); setPreview(""); setRemoveImage(false); setMatchCount(null); };
+    const openEdit = (c) => { setForm(toForm(c)); setEditing(c._id); setError(""); setImageFile(null); setPreview(c.image?.url || ""); setRemoveImage(false); setMatchCount(null); };
+
+    const handleImage = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (file.size / (1024 * 1024) > 5) return setError("Image must be under 5MB");
+        setImageFile(file);
+        setPreview(URL.createObjectURL(file));
+        setRemoveImage(false);
+    };
+
+    const clearImage = () => { setImageFile(null); setPreview(""); setRemoveImage(true); };
 
     const save = async (e) => {
         e.preventDefault();
         if (!form.name.trim()) return setError("Name is required");
         try {
             setSaving(true); setError("");
-            const payload = {
-                name: form.name, description: form.description, sort: form.sort,
-                order: form.order, isActive: form.isActive,
-                seoTitle: form.seoTitle, seoDescription: form.seoDescription,
-                rules: { ...form.rules, tags: form.rules.tags },
-            };
-            if (editing === "new") await adminApi.post("/collections/admin", payload);
-            else await adminApi.put(`/collections/admin/${editing}`, payload);
+            const fd = new FormData();
+            fd.append("name", form.name);
+            fd.append("description", form.description);
+            fd.append("sort", form.sort);
+            fd.append("order", form.order);
+            fd.append("limit", form.limit);
+            fd.append("isActive", form.isActive);
+            fd.append("seoTitle", form.seoTitle);
+            fd.append("seoDescription", form.seoDescription);
+            fd.append("rules", JSON.stringify(form.rules));
+            if (imageFile) fd.append("image", imageFile);
+            if (removeImage) fd.append("removeImage", "true");
+
+            const cfg = { headers: { "Content-Type": "multipart/form-data" } };
+            if (editing === "new") await adminApi.post("/collections/admin", fd, cfg);
+            else await adminApi.put(`/collections/admin/${editing}`, fd, cfg);
             setEditing(null);
             load();
         } catch (err) {
@@ -102,7 +144,7 @@ const AdminCollections = () => {
                         <p style={{ fontSize: 13, fontWeight: 700, color: "var(--adm-text-primary)" }}>
                             {editing === "new" ? "New Collection" : "Edit Collection"}
                         </p>
-                        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12 }}>
                             <FormField label="Name">
                                 <Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Festival Collection" />
                             </FormField>
@@ -114,13 +156,46 @@ const AdminCollections = () => {
                             <FormField label="Order">
                                 <Input type="number" min="0" value={form.order} onChange={e => setForm(p => ({ ...p, order: e.target.value }))} />
                             </FormField>
+                            <FormField label="Page size">
+                                <Input type="number" min="1" max="100" value={form.limit} onChange={e => setForm(p => ({ ...p, limit: e.target.value }))} />
+                            </FormField>
                         </div>
                         <FormField label="Description">
                             <Input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Shown on the collection page" maxLength={300} />
                         </FormField>
 
+                        {/* Banner Image — used on /collections list card + collection page hero */}
+                        <FormField label="Banner Image (optional)">
+                            {!preview ? (
+                                <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", height: 100, border: "2px dashed var(--adm-border)", borderRadius: "var(--adm-radius-md)", cursor: "pointer", background: "var(--adm-surface-alt)" }}>
+                                    <FiUpload size={18} color="var(--adm-muted)" style={{ marginBottom: 6 }} />
+                                    <p style={{ fontSize: 12, color: "var(--adm-text-secondary)" }}>Upload banner image</p>
+                                    <input type="file" accept="image/*" onChange={handleImage} style={{ display: "none" }} />
+                                </label>
+                            ) : (
+                                <div style={{ position: "relative", width: "100%", maxWidth: 280, aspectRatio: "16/7", borderRadius: "var(--adm-radius-md)", overflow: "hidden", border: "1px solid var(--adm-border)" }}>
+                                    <img src={preview} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                    <button type="button" onClick={clearImage}
+                                        style={{ position: "absolute", top: 6, right: 6, width: 22, height: 22, background: "var(--adm-danger)", color: "var(--adm-text-on-accent)", border: "none", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                                        <FiX size={10} />
+                                    </button>
+                                </div>
+                            )}
+                        </FormField>
+
                         {/* Rules */}
-                        <p style={{ fontSize: 11, fontWeight: 700, color: "var(--adm-text-secondary)", textTransform: "uppercase", letterSpacing: ".08em", marginTop: 4 }}>Rules (all optional — combined with AND)</p>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4, flexWrap: "wrap", gap: 8 }}>
+                            <p style={{ fontSize: 11, fontWeight: 700, color: "var(--adm-text-secondary)", textTransform: "uppercase", letterSpacing: ".08em" }}>Rules (all optional — combined with AND)</p>
+                            <span style={{
+                                display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700,
+                                padding: "4px 10px", borderRadius: 20,
+                                background: matchLoading ? "var(--adm-surface-alt)" : matchCount === 0 ? "var(--adm-danger-tint, #fef2f2)" : "var(--adm-success-tint, #f0fdf4)",
+                                color: matchLoading ? "var(--adm-muted)" : matchCount === 0 ? "var(--adm-danger)" : "var(--adm-success)",
+                            }}>
+                                <FiSearch size={11} />
+                                {matchLoading ? "Checking…" : matchCount === null ? "—" : `${matchCount} product${matchCount === 1 ? "" : "s"} match${matchCount === 0 ? " — this collection will show empty" : ""}`}
+                            </span>
+                        </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                             <FormField label="Category (slug)">
                                 <Input value={form.rules.category} onChange={e => setRule("category", e.target.value)} placeholder="e.g. mens-fashion" />

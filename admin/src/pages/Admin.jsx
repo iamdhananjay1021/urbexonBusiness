@@ -9,11 +9,11 @@ import {
     FaImage, FaTags, FaStore, FaMapMarkerAlt, FaMoneyBillWave, FaUndoAlt, FaTruck,
     FaUsers, FaTicketAlt, FaBell, FaCheck, FaShoppingCart, FaExclamationTriangle, FaInfoCircle,
     FaGlobeAsia, FaCog, FaWallet, FaPercentage, FaDrawPolygon, FaTachometerAlt, FaLifeRing,
-    FaLayerGroup, FaBolt, FaStar, FaBullhorn, FaEnvelope, FaChartLine,
+    FaLayerGroup, FaBolt, FaStar, FaBullhorn, FaEnvelope, FaChartLine, FaBalanceScale,
 } from "react-icons/fa";
 
 /* ─── Pages that need zero padding (manage their own layout) ─── */
-const FULLBLEED_ROUTES = ["refunds", "settlements", "payouts", "pincodes", "local-delivery", "map", "delivery-settings"];
+const FULLBLEED_ROUTES = ["refunds", "settlements", "payouts", "wallet-adjustments", "pincodes", "local-delivery", "map", "delivery-settings"];
 
 /* FIX: previously `--admshell-text`, `--admshell-text-main` and
    `--admshell-border` were declared here but never referenced anywhere
@@ -255,6 +255,7 @@ const NAV_SECTIONS = [
             { to: "broadcast", icon: FaBullhorn, label: "Broadcast" },
             { to: "newsletter", icon: FaEnvelope, label: "Newsletter" },
             { to: "search-analytics", icon: FaChartLine, label: "Search Analytics" },
+            { to: "coupon-analytics", icon: FaChartLine, label: "Coupon Analytics" },
         ],
     },
     {
@@ -268,6 +269,7 @@ const NAV_SECTIONS = [
             // two adjacent nav items with the identical icon are hard to
             // tell apart at a glance. Gave Payouts its own icon.
             { to: "payouts", icon: FaWallet, label: "Payouts" },
+            { to: "wallet-adjustments", icon: FaBalanceScale, label: "Wallet Adjustments" },
             { to: "refunds", icon: FaUndoAlt, label: "Refunds" },
             // FIX: Coupons used to share FaTags with Categories (a
             // completely different section) — swapped to FaPercentage so

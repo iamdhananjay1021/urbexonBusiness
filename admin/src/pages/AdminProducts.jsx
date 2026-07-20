@@ -131,8 +131,16 @@ const STYLES = `
 
 const AdminProducts = () => {
     const [products, setProducts] = useState([]);
-    const [filtered, setFiltered] = useState([]);
+    // [FIX] Previously fetched with no page/limit at all — the ENTIRE
+    // catalog was loaded into the browser and held in memory on every
+    // visit to this page, then filtered/paginated client-side. The
+    // backend endpoint (adminGetAllProducts) already fully supports
+    // page/limit/search/inStock server-side — this page just never used
+    // it. Now `products` holds only the current page.
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
     const [loading, setLoading] = useState(true);
+    const [listLoading, setListLoading] = useState(false);
     const [error, setError] = useState(null);
     const [refreshing, setRefreshing] = useState(false);
     const [search, setSearch] = useState("");
@@ -144,62 +152,74 @@ const AdminProducts = () => {
     const [statsFilter, setStatsFilter] = useState(null);
     const [savingStockId, setSavingStockId] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
+    // Whole-catalog counts for the stat tiles — independent of the
+    // current search/page, fetched separately (limit:1, only `total` is
+    // read) so the stat row stays accurate without pulling full lists.
+    const [counts, setCounts] = useState({ total: 0, inStock: 0, oos: 0 });
 
-    const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
     const pageStart = (currentPage - 1) * PAGE_SIZE;
-    const paginated = filtered.slice(pageStart, pageStart + PAGE_SIZE);
 
-    useEffect(() => { setCurrentPage(1); }, [search]);
+    useEffect(() => { setCurrentPage(1); }, [search, statsFilter]);
 
     const showToast = useCallback((type, msg) => {
         setToast({ type, msg });
         setTimeout(() => setToast(null), 3000);
     }, []);
 
-    const fetchProducts = useCallback(async () => {
+    const fetchProducts = useCallback(async (page = currentPage, searchTerm = search, filter = statsFilter) => {
         try {
-            setLoading(true); setError(null);
-            const { data } = await api.get("/products/admin/all");
-            const list = Array.isArray(data) ? data : (data?.products || []);
-            setProducts(list); setFiltered(list);
+            setListLoading(true); setError(null);
+            const params = { page, limit: PAGE_SIZE };
+            if (searchTerm.trim()) params.search = searchTerm.trim();
+            if (filter === "inStock") params.inStock = "true";
+            if (filter === "oos") params.inStock = "false";
+            const { data } = await api.get("/products/admin/all", { params });
+            setProducts(data.products || []);
+            setTotal(data.total || 0);
+            setTotalPages(data.totalPages || 1);
         } catch { setError("Failed to load products"); }
-        finally { setLoading(false); }
+        finally { setLoading(false); setListLoading(false); }
+    }, [currentPage, search, statsFilter]);
+
+    const fetchCounts = useCallback(async () => {
+        try {
+            const [all, inStock, oos] = await Promise.all([
+                api.get("/products/admin/all", { params: { page: 1, limit: 1 } }),
+                api.get("/products/admin/all", { params: { page: 1, limit: 1, inStock: "true" } }),
+                api.get("/products/admin/all", { params: { page: 1, limit: 1, inStock: "false" } }),
+            ]);
+            setCounts({ total: all.data.total || 0, inStock: inStock.data.total || 0, oos: oos.data.total || 0 });
+        } catch { /* stat tiles just show stale/zero counts on failure — non-critical */ }
     }, []);
 
-    useEffect(() => { fetchProducts(); }, [fetchProducts]);
+    useEffect(() => { fetchCounts(); }, [fetchCounts]);
 
     const searchTimer = useRef(null);
     useEffect(() => {
         clearTimeout(searchTimer.current);
-        if (!search.trim() && !statsFilter) return setFiltered(products);
-        if (!search.trim() && statsFilter) {
-            if (statsFilter === "inStock") return setFiltered(products.filter(p => p.inStock));
-            if (statsFilter === "oos") return setFiltered(products.filter(p => !p.inStock));
-            return setFiltered(products);
-        }
         searchTimer.current = setTimeout(() => {
-            const q = search.toLowerCase();
-            let list = products;
-            if (statsFilter === "inStock") list = list.filter(p => p.inStock);
-            else if (statsFilter === "oos") list = list.filter(p => !p.inStock);
-            if (q) list = list.filter(p =>
-                p.name?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q)
-            );
-            setFiltered(list);
+            fetchProducts(1, search, statsFilter);
         }, 300);
         return () => clearTimeout(searchTimer.current);
-    }, [search, products, statsFilter]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [search, statsFilter]);
+
+    useEffect(() => {
+        fetchProducts(currentPage, search, statsFilter);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentPage]);
 
     const deleteHandler = useCallback(async (id) => {
         try {
             setDeletingId(id);
             await api.delete(`/products/admin/${id}`);
             setProducts(prev => prev.filter(x => x._id !== id));
-            setFiltered(prev => prev.filter(x => x._id !== id));
+            setTotal(prev => Math.max(0, prev - 1));
+            fetchCounts();
             showToast("success", "Product deleted");
         } catch { showToast("error", "Failed to delete"); }
         finally { setDeletingId(null); setConfirmId(null); }
-    }, [showToast]);
+    }, [showToast, fetchCounts]);
 
     const handleStockSave = useCallback(async (product) => {
         const newStock = parseInt(stockInput, 10);
@@ -222,19 +242,19 @@ const AdminProducts = () => {
             await api.put(`/products/admin/${product._id}`, fd);
             const updated = { ...product, stock: newStock, inStock: newStock > 0 };
             setProducts(prev => prev.map(x => x._id === product._id ? updated : x));
-            setFiltered(prev => prev.map(x => x._id === product._id ? updated : x));
+            fetchCounts();
             setEditingStockId(null);
             showToast("success", `Stock updated to ${newStock}`);
         } catch { showToast("error", "Failed to update stock"); }
         finally { setSavingStockId(null); }
-    }, [stockInput, showToast]);
+    }, [stockInput, showToast, fetchCounts]);
 
     const refreshProducts = useCallback(async () => {
         setRefreshing(true);
-        await fetchProducts();
+        await Promise.all([fetchProducts(1, search, statsFilter), fetchCounts()]);
         setCurrentPage(1);
         setTimeout(() => setRefreshing(false), 500);
-    }, [fetchProducts]);
+    }, [fetchProducts, fetchCounts, search, statsFilter]);
 
     const formatCat = (cat) =>
         cat?.replace(/-/g, " ").replace(/\b\w/g, l => l.toUpperCase()) || "—";
@@ -356,19 +376,20 @@ const AdminProducts = () => {
         );
     };
 
-    // 🐛 FIX: `s + p.price` had no fallback — a single product with a
-    // missing/undefined price turned the whole sum into NaN, so "Avg Price"
-    // silently showed "₹NaN" instead of just ignoring that one product.
+    // [FIX] "Avg Price" previously averaged over the entire in-memory
+    // catalog; now that `products` only ever holds the current page, this
+    // is deliberately scoped to "this page" (labeled as such) rather than
+    // silently becoming a different, misleading number.
     const validPrices = products.map(p => Number(p.price) || 0);
     const avgPrice = validPrices.length
         ? Math.round(validPrices.reduce((s, v) => s + v, 0) / validPrices.length)
         : 0;
 
     const STATS = [
-        { label: "Total", value: products.length, tone: "primary", icon: "📦", filter: null },
-        { label: "In Stock", value: products.filter(p => p.inStock).length, tone: "success", icon: "✅", filter: "inStock" },
-        { label: "Out of Stock", value: products.filter(p => !p.inStock).length, tone: "danger", icon: "❌", filter: "oos" },
-        { label: "Avg Price", value: `₹${avgPrice.toLocaleString("en-IN")}`, tone: "info", icon: "💰", filter: "avg" },
+        { label: "Total", value: counts.total, tone: "primary", icon: "📦", filter: null },
+        { label: "In Stock", value: counts.inStock, tone: "success", icon: "✅", filter: "inStock" },
+        { label: "Out of Stock", value: counts.oos, tone: "danger", icon: "❌", filter: "oos" },
+        { label: "Avg Price (page)", value: `₹${avgPrice.toLocaleString("en-IN")}`, tone: "info", icon: "💰", filter: "avg" },
     ];
 
     const renderProductRow = (product, idx) => {
@@ -463,7 +484,7 @@ const AdminProducts = () => {
                             letterSpacing: "-0.03em",
                         }}>Products</h1>
                         <p style={{ fontSize: 12, color: "var(--adm-muted)", marginTop: 3 }}>
-                            {products.length} total · {filtered.length} showing
+                            {counts.total} total · {products.length} showing
                             {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
                         </p>
                     </div>
@@ -528,7 +549,7 @@ const AdminProducts = () => {
                 </div>
 
                 {/* Empty */}
-                {filtered.length === 0 ? (
+                {products.length === 0 && !listLoading ? (
                     <EmptyState
                         icon={FaBoxOpen}
                         title={search ? `No results for "${search}"` : "No products yet"}
@@ -544,7 +565,7 @@ const AdminProducts = () => {
                         {/* ── DESKTOP / TABLET TABLE (scrolls horizontally instead of breaking) ── */}
                         <div className="uk-desktop-list">
                             <div className="uk-table-scroll">
-                                <Table columns={COLUMNS} rows={paginated} renderRow={renderProductRow} />
+                                <Table columns={COLUMNS} rows={products} loading={listLoading} renderRow={renderProductRow} />
                             </div>
 
                             <div style={{
@@ -555,9 +576,9 @@ const AdminProducts = () => {
                             }}>
                                 <p style={{ fontSize: 12, color: "var(--adm-muted)", margin: 0 }}>
                                     Showing{" "}
-                                    <b style={{ color: "var(--adm-text-secondary)" }}>{pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, filtered.length)}</b>
+                                    <b style={{ color: "var(--adm-text-secondary)" }}>{pageStart + 1}–{Math.min(pageStart + products.length, total)}</b>
                                     {" "}of{" "}
-                                    <b style={{ color: "var(--adm-text-secondary)" }}>{filtered.length}</b>
+                                    <b style={{ color: "var(--adm-text-secondary)" }}>{total}</b>
                                 </p>
                                 <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                             </div>
@@ -565,7 +586,7 @@ const AdminProducts = () => {
 
                         {/* ── MOBILE / TABLET CARDS ── */}
                         <div className="uk-mobile-cards">
-                            {paginated.map((product, idx) => {
+                            {products.map((product, idx) => {
                                 const img = product.images?.[0]?.url || product.image?.url || product.image || null;
 
                                 return (
@@ -645,9 +666,9 @@ const AdminProducts = () => {
                                     padding: "12px 4px", flexWrap: "wrap", gap: 10,
                                 }}>
                                     <p style={{ fontSize: 12, color: "var(--adm-muted)", margin: 0 }}>
-                                        <b style={{ color: "var(--adm-text-secondary)" }}>{pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, filtered.length)}</b>
+                                        <b style={{ color: "var(--adm-text-secondary)" }}>{pageStart + 1}–{Math.min(pageStart + products.length, total)}</b>
                                         {" "}of{" "}
-                                        <b style={{ color: "var(--adm-text-secondary)" }}>{filtered.length}</b>
+                                        <b style={{ color: "var(--adm-text-secondary)" }}>{total}</b>
                                     </p>
                                     <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                                 </div>

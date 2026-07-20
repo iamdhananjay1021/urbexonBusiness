@@ -9,6 +9,7 @@ import Vendor from "../../models/vendorModels/Vendor.js";
 import Product from "../../models/Product.js";
 import Subscription from "../../models/vendorModels/Subscription.js";
 import { haversineKm } from "../../services/geoEngine.js";
+import { getCache, setCache } from "../../utils/Cache.js";
 
 // Base filter for publicly visible vendors (approved + subscription active)
 const ACTIVE_VENDOR_BASE = {
@@ -25,24 +26,50 @@ export const getVendorStore = async (req, res) => {
         const { slug } = req.params;
         const pincode = req.query.pincode?.trim() || null;
 
-        const vendor = await Vendor.findOne({
-            $or: [{ shopSlug: slug }, { _id: slug.match(/^[0-9a-fA-F]{24}$/) ? slug : undefined }],
-            status: "approved",
-            isDeleted: false,
-        })
-            .select("shopName shopLogo shopBanner shopSlug shopCategory shopDescription rating ratingCount totalOrders isOpen address.city address.state createdAt subscription.isActive subscription.expiryDate servicePincodes")
-            .lean();
+        // [FIX] No caching existed here at all — every storefront visit hit
+        // Vendor.findOne + Product.find. The response is pincode-dependent
+        // (deliverableToYou), so only the pincode-INDEPENDENT parts
+        // (vendor info + product list) are cached; deliverability is always
+        // computed fresh per request against the cached vendor's
+        // servicePincodes. Mirrors productController.js's safeGetCache/
+        // safeSetCache pattern — getCache/setCache already never throw.
+        const cacheKey = `vendorstore:${slug}`;
+        let bundle = await getCache(cacheKey);
 
-        if (!vendor) {
-            return res.status(404).json({ success: false, message: "Vendor not found" });
+        if (!bundle) {
+            const vendor = await Vendor.findOne({
+                $or: [{ shopSlug: slug }, { _id: slug.match(/^[0-9a-fA-F]{24}$/) ? slug : undefined }],
+                status: "approved",
+                isDeleted: false,
+            })
+                .select("shopName shopLogo shopBanner shopSlug shopCategory shopDescription rating ratingCount totalOrders isOpen address.city address.state createdAt subscription.isActive subscription.expiryDate servicePincodes")
+                .lean();
+
+            if (!vendor) {
+                return res.status(404).json({ success: false, message: "Vendor not found" });
+            }
+
+            // Check subscription active
+            const now = new Date();
+            const subActive = vendor.subscription?.isActive && vendor.subscription?.expiryDate && new Date(vendor.subscription.expiryDate) > now;
+            if (!subActive) {
+                return res.status(404).json({ success: false, message: "This store is currently unavailable" });
+            }
+
+            const products = await Product.find({
+                vendorId: vendor._id,
+                isActive: true,
+            })
+                .sort({ createdAt: -1 })
+                .select("name slug images price mrp rating numReviews stock inStock category")
+                .lean();
+
+            bundle = { vendor, products };
+            await setCache(cacheKey, bundle, 60);
         }
 
-        // Check subscription active
-        const now = new Date();
-        const subActive = vendor.subscription?.isActive && vendor.subscription?.expiryDate && new Date(vendor.subscription.expiryDate) > now;
-        if (!subActive) {
-            return res.status(404).json({ success: false, message: "This store is currently unavailable" });
-        }
+        // Shallow-copy so the mutation below never touches the cached object.
+        const vendor = { ...bundle.vendor };
 
         // Deliverability for the visiting user's pincode — same rule as
         // validateDeliveryServiceability, computed here so the store page
@@ -55,15 +82,7 @@ export const getVendorStore = async (req, res) => {
             : vendor.servicePincodes.includes(pincode);
         delete vendor.servicePincodes; // internal list, not needed by the client
 
-        const products = await Product.find({
-            vendorId: vendor._id,
-            isActive: true,
-        })
-            .sort({ createdAt: -1 })
-            .select("name slug images price mrp rating numReviews stock inStock category")
-            .lean();
-
-        res.json({ success: true, vendor, products, deliverableToYou });
+        res.json({ success: true, vendor, products: bundle.products, deliverableToYou });
     } catch (err) {
         res.status(500).json({ success: false, message: "Failed to fetch vendor store" });
     }

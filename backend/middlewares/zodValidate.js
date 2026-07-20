@@ -1,3 +1,6 @@
+// [DECISION] This is the standardized validation system for all new routes
+// — see the matching note in middlewares/validate.js for why the older
+// rule-object middleware is kept but frozen rather than migrated.
 export const validate = (schema) => (req, res, next) => {
     try {
         // Parse and validate

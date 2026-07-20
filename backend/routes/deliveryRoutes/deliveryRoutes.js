@@ -20,6 +20,10 @@ import {
     deliveryUpdateBankDetails, deliveryRequestPayout, deliveryGetPayouts,
 } from "../../controllers/admin/payoutController.js";
 import { getMyNotifications, getMyUnreadCount, markMyNotificationRead, markAllMyNotificationsRead } from "../../controllers/platformNotificationController.js";
+import {
+    createDeliveryTicket, getMyDeliveryTickets, getMyDeliveryTicketDetail,
+    replyToMyDeliveryTicket, rateMyDeliveryTicket, reopenMyDeliveryTicket,
+} from "../../controllers/delivery/deliveryTicketController.js";
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -88,6 +92,15 @@ router.get("/notifications", protect, deliveryOnly, getMyNotifications("delivery
 router.get("/notifications/unread", protect, deliveryOnly, getMyUnreadCount("delivery"));
 router.put("/notifications/read-all", protect, deliveryOnly, markAllMyNotificationsRead("delivery"));
 router.put("/notifications/:id/read", protect, deliveryOnly, markMyNotificationRead("delivery"));
+// ── Delivery Support Tickets (mirror of /api/vendor/tickets) ────────────────
+const ticketAttachments = upload.array("attachments", 3);
+router.post("/tickets", protect, deliveryOnly, ticketAttachments, createDeliveryTicket);
+router.get("/tickets", protect, deliveryOnly, getMyDeliveryTickets);
+router.get("/tickets/:id", protect, deliveryOnly, getMyDeliveryTicketDetail);
+router.post("/tickets/:id/reply", protect, deliveryOnly, ticketAttachments, replyToMyDeliveryTicket);
+router.post("/tickets/:id/rate", protect, deliveryOnly, rateMyDeliveryTicket);
+router.post("/tickets/:id/reopen", protect, deliveryOnly, reopenMyDeliveryTicket);
+
 router.patch("/profile", protect, deliveryOnly, updateDeliveryProfile);
 router.patch("/documents", protect, deliveryOnly, docUpload, updateDeliveryDocuments);
 router.patch("/bank-details", protect, deliveryOnly, deliveryUpdateBankDetails);

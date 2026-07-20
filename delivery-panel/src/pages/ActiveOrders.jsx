@@ -20,6 +20,8 @@ import DeliveryMap from "../components/DeliveryMap";
 import { startAlert, stopAlert, playNotification } from "../utils/notificationSound";
 import useFcm from "../hooks/useFcm";
 import { useLocationTracking } from "../hooks/useLocationTracking";
+import { useDeliveryWs } from "../hooks/useDeliveryWs";
+import { showToast } from "../utils/toast";
 
 // Haversine, meters — used below for the live "distance to target" display.
 const distanceMeters = (lat1, lng1, lat2, lng2) => {
@@ -60,7 +62,6 @@ const ActiveOrders = () => {
   const [orderRequest, setOrderRequest] = useState(null);
   const [isOnline, setIsOnline] = useState(false);
   const countdownRef = useRef(null);
-  const wsRef = useRef(null);
 
   // BUG FIX: only matched OUT_FOR_DELIVERY — meaning no map/tracking existed
   // at all for ASSIGNED/ARRIVING_VENDOR (before pickup). A rider can only
@@ -110,114 +111,75 @@ const ActiveOrders = () => {
   }, []);
 
   /* ── WebSocket ── */
-  useEffect(() => {
-    const authRaw = localStorage.getItem("deliveryAuth");
-    const token = authRaw ? JSON.parse(authRaw)?.token : null;
-    if (!token) return;
+  useDeliveryWs(useCallback((msg) => {
+    if (msg.type === "rider:order_request") {
+      const p = msg.payload || {};
+      const timeoutSec = p.timeout || 30;
+      setOrderRequest({ orderId: p.orderId, amount: p.amount, items: p.items, address: p.address, distanceKm: p.distanceKm, customerName: p.customerName, timeout: timeoutSec, remainingSec: timeoutSec });
+      startAlert();
+      startCountdown(timeoutSec);
+      setTab("available");
+      load();
+    }
+    if (msg.type === "rider:offer_expired" && msg.payload?.orderId === orderRequest?.orderId) {
+      setOrderRequest(null); clearInterval(countdownRef.current); stopAlert();
+    }
+    if (msg.type === "rider:order_taken") {
+      if (msg.payload?.orderId === orderRequest?.orderId) { setOrderRequest(null); clearInterval(countdownRef.current); stopAlert(); }
+      load();
+    }
+    if (msg.type === "rider:order_assigned") { playNotification(); load(); }
 
-    // WebSocket URL: explicit env var → runtime hostname detection → fallback
-    const wsBase = import.meta.env.VITE_WS_URL
-      || (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-        ? "ws://localhost:9000" : "wss://api.urbexon.in");
+    // BUG FIX: admin cancelling an order that was already accepted
+    // by this rider previously had no real-time signal at all — the
+    // rider only found out once the order silently dropped off the
+    // next 15s poll. Alert immediately and refresh the list so the
+    // now-cancelled order (and any live tracking for it) clears
+    // right away instead of the rider driving toward a dead order.
+    if (msg.type === "rider:order_cancelled") {
+      const p = msg.payload || {};
+      stopAlert();
+      showToast(p.message || "An order assigned to you was cancelled by admin.", "warning");
+      load();
+    }
 
-    let ws, pingInterval, retryTimeout, mounted = true, backoff = 3000, retries = 0;
-    const MAX_RETRIES = 15;
+    // BUG FIX: admin broadcasts (POST /admin/broadcast) reached this
+    // socket already — nothing read the type, so it was silently
+    // dropped with zero visible effect.
+    if (msg.type === "admin:broadcast" && msg.payload?.message) {
+      showToast(msg.payload.message, "info");
+    }
 
-    const connect = () => {
-      if (!mounted || retries >= MAX_RETRIES) return;
-      if (document.hidden) return;
-      try {
-        ws = new WebSocket(`${wsBase}/ws?token=${token}`);
-        wsRef.current = ws;
-        ws.onopen = () => { console.log("[Delivery WS] Connected to:", wsBase); backoff = 3000; retries = 0; pingInterval = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: "ping" })); }, 25000); };
-        ws.onmessage = (e) => {
-          try {
-            const msg = JSON.parse(e.data);
-            if (msg.type === "rider:order_request") {
-              const p = msg.payload || {};
-              const timeoutSec = p.timeout || 30;
-              setOrderRequest({ orderId: p.orderId, amount: p.amount, items: p.items, address: p.address, distanceKm: p.distanceKm, customerName: p.customerName, timeout: timeoutSec, remainingSec: timeoutSec });
-              startAlert();
-              startCountdown(timeoutSec);
-              setTab("available");
-              load();
-            }
-            if (msg.type === "rider:offer_expired" && msg.payload?.orderId === orderRequest?.orderId) {
-              setOrderRequest(null); clearInterval(countdownRef.current); stopAlert();
-            }
-            if (msg.type === "rider:order_taken") {
-              if (msg.payload?.orderId === orderRequest?.orderId) { setOrderRequest(null); clearInterval(countdownRef.current); stopAlert(); }
-              load();
-            }
-            if (msg.type === "rider:order_assigned") { playNotification(); load(); }
+    // ✅ NEW: Handle "order_ready" event (when vendor marks order as ready)
+    if (msg.type === "order_ready") {
+      const p = msg.payload || {};
+      setNewAlert({
+        orderId: p.orderId,
+        orderNumber: p.orderNumber,
+        amount: p.amount,
+        items: p.items,
+        address: p.address,
+        distanceKm: p.distanceKm,
+        customerName: p.customerName,
+        customerPhone: p.customerPhone,
+        eta: p.eta,
+        isReady: true,  // Flag to show "Order Ready at Vendor" message
+        at: new Date()
+      });
+      startAlert();
+      load();
+      setTab("available");
+    }
 
-            // BUG FIX: admin cancelling an order that was already accepted
-            // by this rider previously had no real-time signal at all — the
-            // rider only found out once the order silently dropped off the
-            // next 15s poll. Alert immediately and refresh the list so the
-            // now-cancelled order (and any live tracking for it) clears
-            // right away instead of the rider driving toward a dead order.
-            if (msg.type === "rider:order_cancelled") {
-              const p = msg.payload || {};
-              stopAlert();
-              alert(p.message || "An order assigned to you was cancelled by admin.");
-              load();
-            }
+    if (msg.type === "new_delivery_request" || msg.type === "new_order_available") {
+      const p = msg.payload || {};
+      setNewAlert({ orderId: p.orderId, amount: p.amount, items: p.items, address: p.address, distanceKm: p.distanceKm, at: new Date() });
+      startAlert(); load(); setTab("available");
+    }
+  }, [load, startCountdown, orderRequest]));
 
-            // BUG FIX: admin broadcasts (POST /admin/broadcast) reached this
-            // socket already — nothing read the type, so it was silently
-            // dropped with zero visible effect. This panel has no toast
-            // system (order_cancelled above uses alert() too), so reuse that.
-            if (msg.type === "admin:broadcast" && msg.payload?.message) {
-              alert(`📢 ${msg.payload.message}`);
-            }
-
-            // ✅ NEW: Handle "order_ready" event (when vendor marks order as ready)
-            if (msg.type === "order_ready") {
-              const p = msg.payload || {};
-              setNewAlert({
-                orderId: p.orderId,
-                orderNumber: p.orderNumber,
-                amount: p.amount,
-                items: p.items,
-                address: p.address,
-                distanceKm: p.distanceKm,
-                customerName: p.customerName,
-                customerPhone: p.customerPhone,
-                eta: p.eta,
-                isReady: true,  // Flag to show "Order Ready at Vendor" message
-                at: new Date()
-              });
-              startAlert();
-              load();
-              setTab("available");
-            }
-
-            if (msg.type === "new_delivery_request" || msg.type === "new_order_available") {
-              const p = msg.payload || {};
-              setNewAlert({ orderId: p.orderId, amount: p.amount, items: p.items, address: p.address, distanceKm: p.distanceKm, at: new Date() });
-              startAlert(); load(); setTab("available");
-            }
-          } catch { }
-        };
-        ws.onclose = () => {
-          clearInterval(pingInterval);
-          if (mounted && retries < MAX_RETRIES) {
-            retries++;
-            retryTimeout = setTimeout(connect, backoff);
-            backoff = Math.min(backoff * 2, 60000);
-          }
-        };
-        ws.onerror = () => ws.close();
-      } catch (err) { console.error("[Delivery WS] Connection error:", err); }
-    };
-
-    const onVisChange = () => { if (!document.hidden && (!ws || ws.readyState !== WebSocket.OPEN)) { retries = 0; backoff = 3000; clearTimeout(retryTimeout); connect(); } };
-    document.addEventListener("visibilitychange", onVisChange);
-
-    connect();
-    return () => { mounted = false; clearInterval(pingInterval); clearTimeout(retryTimeout); document.removeEventListener("visibilitychange", onVisChange); clearInterval(countdownRef.current); stopAlert(); ws?.close(); };
-  }, [load, startCountdown]);
+  // Stop any in-progress alert/countdown if this page unmounts mid-alert.
+  useEffect(() => () => { clearInterval(countdownRef.current); stopAlert(); }, []);
 
   const dismissAlert = () => { setNewAlert(null); stopAlert(); };
 
@@ -240,7 +202,7 @@ const ActiveOrders = () => {
       playNotification();
       load();
     } catch (err) {
-      alert(err.response?.data?.message || "Action failed");
+      showToast(err.response?.data?.message || "Action failed", "error");
     } finally { setWorking(p => ({ ...p, [orderId]: false })); }
   };
 

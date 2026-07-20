@@ -11,7 +11,8 @@
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useCart } from "../hooks/useCart";
-import { validateCoupon } from "../api/orderApi";
+import { useCoupon } from "../hooks/useCoupon";
+import CouponSuggestions from "../components/checkout/CouponSuggestions";
 import {
     FiZap, FiTrash2, FiPlus, FiMinus,
     FiShoppingCart, FiClock, FiShield, FiTruck, FiTag,
@@ -61,40 +62,10 @@ const UHCart = () => {
     // BUG FIX: this page (the actual /uh-cart route every Urbexon Hour
     // link points to — Cart.jsx's UH tab at /cart is a different, rarely
     // reached page) had no coupon UI at all, unlike Cart.jsx which already
-    // has a fully working one. Mirrors Cart.jsx's coupon state/handlers and
-    // forwards the applied coupon to checkout the same way.
-    const [couponCode, setCouponCode] = useState("");
-    const [couponData, setCouponData] = useState(null);
-    const [couponErr, setCouponErr] = useState("");
-    const [applying, setApplying] = useState(false);
+    // has a fully working one. Now the same shared hook Cart.jsx uses.
+    const { couponCode, setCouponCode, couponData, couponErr, applying, applyCoupon, removeCoupon } =
+        useCoupon({ orderTotal: uhTotal, orderType: "urbexon_hour" });
     const discount = couponData?.discount || 0;
-
-    const applyCoupon = useCallback(async () => {
-        if (!couponCode.trim()) return;
-        setApplying(true); setCouponErr(""); setCouponData(null);
-        try {
-            const { data } = await validateCoupon({
-                code: couponCode.trim(),
-                orderTotal: uhTotal,
-                orderType: "urbexon_hour",
-            });
-            setCouponData(data);
-        } catch (e) {
-            setCouponErr(e.response?.data?.message || "Invalid coupon");
-        } finally { setApplying(false); }
-    }, [couponCode, uhTotal]);
-
-    const removeCoupon = useCallback(() => {
-        setCouponData(null); setCouponCode(""); setCouponErr("");
-    }, []);
-
-    // Reset coupon if cart total drops below its minimum order value
-    useEffect(() => {
-        if (couponData && couponData.minOrderValue && uhTotal < couponData.minOrderValue) {
-            removeCoupon();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [uhTotal]);
 
     const deliveryCharge = uhTotal >= 499 ? 0 : 25;
     const platformFee = 11;
@@ -304,11 +275,12 @@ const UHCart = () => {
                                     onChange={e => setCouponCode(e.target.value.toUpperCase())}
                                     onKeyDown={e => e.key === "Enter" && applyCoupon()}
                                 />
-                                <Button variant="hour" onClick={applyCoupon} loading={applying}>Apply</Button>
+                                <Button variant="hour" onClick={() => applyCoupon()} loading={applying}>Apply</Button>
                             </div>
                             {couponErr && <p className="text-xs text-error mt-2">⚠️ {couponErr}</p>}
                         </>
                     )}
+                    <CouponSuggestions itemsTotal={uhTotal} orderMode="urbexon_hour" appliedCode={couponData?.code} onApply={(code) => applyCoupon(code)} />
                 </Card>
 
                 {/* Price Summary */}

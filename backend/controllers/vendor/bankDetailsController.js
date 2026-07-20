@@ -5,6 +5,7 @@
 
 import Vendor from "../../models/vendorModels/Vendor.js";
 import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
+import { maskBankDetails } from "../../utils/maskBankDetails.js";
 
 // ══════════════════════════════════════════════════════════════
 // VENDOR — Update bank details
@@ -53,10 +54,13 @@ export const updateVendorBankDetails = async (req, res) => {
 
         await vendor.save();
 
+        // [FIX] Was echoing the full, unmasked accountNumber straight back —
+        // same masking payoutController.js already applies to every other
+        // bank-details read path.
         res.json({
             success: true,
             message: "Bank details updated for payouts",
-            bankDetails: vendor.bankDetails
+            bankDetails: maskBankDetails(vendor.bankDetails)
         });
     } catch (err) {
         console.error("[updateVendorBankDetails]", err);
@@ -113,7 +117,7 @@ export const updateDeliveryBankDetails = async (req, res) => {
         res.json({
             success: true,
             message: "Bank details updated for payouts",
-            bankDetails: rider.bankDetails
+            bankDetails: maskBankDetails(rider.bankDetails)
         });
     } catch (err) {
         console.error("[updateDeliveryBankDetails]", err);

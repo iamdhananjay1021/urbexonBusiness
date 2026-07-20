@@ -2,16 +2,33 @@ import Product from "../models/Product.js";
 import Category from "../models/Category.js";
 import Vendor from "../models/vendorModels/Vendor.js";
 import express from "express";
+import { getCache, setCache } from "../utils/Cache.js";
 
 const router = express.Router();
 const BASE = "https://urbexon.in";
+const SITEMAP_CACHE_KEY = "sitemap:xml";
+const SITEMAP_TTL = 3600; // matches the Cache-Control max-age below
 
 router.get("/sitemap.xml", async (_req, res) => {
     try {
+        // [FIX] Previously ran 3 unbounded collection scans on EVERY hit —
+        // the Cache-Control header only cached in the requester's browser,
+        // giving no protection against repeat crawler/scraper traffic.
+        const cached = await getCache(SITEMAP_CACHE_KEY);
+        if (cached) {
+            res.set("Content-Type", "application/xml");
+            res.set("Cache-Control", "public, max-age=3600");
+            return res.send(cached);
+        }
+
         const [products, categories, vendors] = await Promise.all([
             Product.find({ isActive: true }).select("_id updatedAt").lean(),
             Category.find({ isActive: true }).select("slug updatedAt").lean(),
-            Vendor.find({ isApproved: true }).select("shopSlug updatedAt").lean(),
+            // [FIX] Was `isApproved` — Vendor has no such field (see
+            // models/vendorModels/Vendor.js's `status` enum), so this
+            // matched zero vendors ever and no vendor store page has been
+            // in the sitemap since this route was written.
+            Vendor.find({ status: "approved", isDeleted: false }).select("shopSlug updatedAt").lean(),
         ]);
 
         const urls = [
@@ -71,6 +88,7 @@ ${urls
                 .join("\n")}
 </urlset>`;
 
+        await setCache(SITEMAP_CACHE_KEY, xml, SITEMAP_TTL);
         res.set("Content-Type", "application/xml");
         res.set("Cache-Control", "public, max-age=3600");
         res.send(xml);

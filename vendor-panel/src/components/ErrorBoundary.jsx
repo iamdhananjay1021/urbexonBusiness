@@ -15,6 +15,22 @@ class ErrorBoundary extends Component {
 
     componentDidCatch(error, info) {
         console.error("[ErrorBoundary]", error, info);
+        try {
+            const base = import.meta.env.VITE_API_URL || "http://localhost:9000/api";
+            fetch(`${base}/client-errors`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    app: "vendor-panel",
+                    message: error?.message,
+                    stack: error?.stack,
+                    url: window.location.href,
+                }),
+                keepalive: true,
+            }).catch(() => {});
+        } catch {
+            // ignore
+        }
     }
 
     render() {

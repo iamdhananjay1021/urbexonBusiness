@@ -7,6 +7,7 @@ import api from "../api/adminApi";
 import {
     FaTruck, FaSave, FaUndo, FaMapMarkerAlt,
     FaRupeeSign, FaBolt, FaClock, FaShieldAlt, FaToggleOn, FaToggleOff, FaTachometerAlt,
+    FaExchangeAlt,
 } from "react-icons/fa";
 import { Button, Card, ErrorState, Skeleton, FormField, Input } from "../components/ui";
 
@@ -83,6 +84,17 @@ export default function AdminDeliverySettings() {
 
     const handleReset = () => { setConfig({ ...original }); };
     const set = (key, val) => setConfig(prev => ({ ...prev, [key]: val }));
+    const setPolicyLimit = (key, val) => setConfig(prev => ({ ...prev, productPolicyLimits: { ...prev.productPolicyLimits, [key]: val } }));
+    const toggleAllowedReturnCondition = (key) => setConfig(prev => {
+        const current = prev.productPolicyLimits?.allowedReturnConditions || [];
+        return {
+            ...prev,
+            productPolicyLimits: {
+                ...prev.productPolicyLimits,
+                allowedReturnConditions: current.includes(key) ? current.filter(c => c !== key) : [...current, key],
+            },
+        };
+    });
 
     useEffect(() => {
         if (!toast) return;
@@ -228,6 +240,40 @@ export default function AdminDeliverySettings() {
                         </Button>
                     </FormField>
                     <Field label="Return Policy Days" type="number" value={config.returnDays} onChange={v => set("returnDays", v)} suffix="days" />
+                </div>
+            </SectionCard>
+
+            {/* ── Section: Product Return Policy Limits ── */}
+            <SectionCard
+                icon={FaExchangeAlt} iconColor="var(--adm-primary)" title="Product Return Policy Limits"
+                subtitle="Marketplace-wide guardrails for vendor/admin product return policy — vendors can only select windows and conditions within these bounds. These can never exceed the platform's hard ceiling (30 days for return/replacement, 72 hours for cancellation), no matter what is entered here."
+            >
+                <div style={GRID}>
+                    <Field label="Min Return Window" type="number" value={config.productPolicyLimits?.minReturnWindowDays ?? 0} onChange={v => setPolicyLimit("minReturnWindowDays", v)} suffix="days" />
+                    <Field label="Max Return Window" type="number" value={config.productPolicyLimits?.maxReturnWindowDays ?? 30} onChange={v => setPolicyLimit("maxReturnWindowDays", v)} suffix="days" />
+                    <Field label="Min Replacement Window" type="number" value={config.productPolicyLimits?.minReplacementWindowDays ?? 0} onChange={v => setPolicyLimit("minReplacementWindowDays", v)} suffix="days" />
+                    <Field label="Max Replacement Window" type="number" value={config.productPolicyLimits?.maxReplacementWindowDays ?? 30} onChange={v => setPolicyLimit("maxReplacementWindowDays", v)} suffix="days" />
+                    <Field label="Min Cancel Window" type="number" value={config.productPolicyLimits?.minCancelWindowHours ?? 0} onChange={v => setPolicyLimit("minCancelWindowHours", v)} suffix="hrs" />
+                    <Field label="Max Cancel Window" type="number" value={config.productPolicyLimits?.maxCancelWindowHours ?? 72} onChange={v => setPolicyLimit("maxCancelWindowHours", v)} suffix="hrs" />
+                </div>
+                <div style={{ marginTop: 16 }}>
+                    <FormField label="Allowed Return Conditions (marketplace master list)">
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {[["damaged", "Damaged"], ["wrong_product", "Wrong Product"], ["defective", "Defective"], ["missing_items", "Missing Items"], ["other", "Other"]].map(([k, label]) => {
+                                const active = (config.productPolicyLimits?.allowedReturnConditions || []).includes(k);
+                                return (
+                                    <button key={k} type="button" onClick={() => toggleAllowedReturnCondition(k)} style={{
+                                        padding: "6px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                                        border: `1.5px solid ${active ? "var(--adm-primary)" : "var(--adm-border)"}`,
+                                        background: active ? "var(--adm-primary-tint)" : "var(--adm-surface)",
+                                        color: active ? "var(--adm-primary)" : "var(--adm-text-secondary)",
+                                    }}>
+                                        {label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </FormField>
                 </div>
             </SectionCard>
 

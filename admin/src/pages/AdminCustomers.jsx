@@ -5,8 +5,9 @@ import { useState, useEffect, useCallback } from "react";
 import api from "../api/adminApi";
 import { FiUsers, FiShoppingBag, FiTruck, FiUserX, FiUserCheck } from "react-icons/fi";
 import {
-    Button, Badge, Card, Table, Pagination, SearchBar, Modal,
+    Button, Badge, Card, Table, Pagination, SearchBar, Modal, ErrorState,
 } from "../components/ui";
+import { showToast } from "../utils/toast";
 
 const TABS = [
     { value: "user", label: "Customers" },
@@ -24,12 +25,18 @@ const AdminCustomers = ({ defaultRole = "user" }) => {
     const [totalPages, setTotalPages] = useState(1);
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
     const [stats, setStats] = useState({});
     const [actionLoading, setActionLoading] = useState(null);
     const [confirmTarget, setConfirmTarget] = useState(null); // user pending block/unblock
 
+    // [FIX] Previously the catch block only did setUsers([]) with no error
+    // state at all — a genuine network/server failure rendered identically
+    // to "there are zero customers" (Table's own empty state), silently
+    // misleading rather than surfacing the failure.
     const fetchUsers = useCallback(async () => {
         setLoading(true);
+        setError("");
         try {
             const params = new URLSearchParams({ role: activeRole, page, limit: 20 });
             if (search.trim()) params.set("search", search.trim());
@@ -37,8 +44,9 @@ const AdminCustomers = ({ defaultRole = "user" }) => {
             setUsers(data.users || []);
             setTotal(data.total || 0);
             setTotalPages(data.totalPages || 1);
-        } catch {
+        } catch (err) {
             setUsers([]);
+            setError(err.response?.data?.message || "Failed to load users");
         } finally { setLoading(false); }
     }, [activeRole, page, search]);
 
@@ -70,7 +78,7 @@ const AdminCustomers = ({ defaultRole = "user" }) => {
             setUsers(prev => prev.map(u => u._id === userId ? { ...u, isBlocked: data.isBlocked } : u));
             setConfirmTarget(null);
         } catch (e) {
-            alert(e.response?.data?.message || "Action failed");
+            showToast(e.response?.data?.message || "Action failed", "error");
         } finally {
             setActionLoading(null);
         }
@@ -177,6 +185,9 @@ const AdminCustomers = ({ defaultRole = "user" }) => {
             </div>
 
             {/* Table */}
+            {error && !loading ? (
+                <ErrorState message={error} onRetry={fetchUsers} />
+            ) : (
             <Table
                 columns={columns}
                 rows={users}
@@ -223,8 +234,9 @@ const AdminCustomers = ({ defaultRole = "user" }) => {
                     </tr>
                 )}
             />
+            )}
 
-            {!loading && users.length > 0 && (
+            {!loading && !error && users.length > 0 && (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 20, flexWrap: "wrap", gap: 12 }}>
                     <span style={{ fontSize: 13, color: "var(--adm-muted)" }}>Showing {(page - 1) * 20 + 1}–{Math.min(page * 20, total)} of {total}</span>
                     <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} disabled={loading} />

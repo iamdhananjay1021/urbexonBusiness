@@ -2,6 +2,8 @@
  * errorMiddleware.js — Production
  * Proper error responses, no stack traces in production
  */
+import { captureException } from "../config/errorTracking.js";
+
 export const notFound = (req, res) => {
     res.status(404).json({ success: false,  message: `Route not found: ${req.method} ${req.originalUrl}` });
 };
@@ -12,6 +14,7 @@ export const errorHandler = (err, req, res, _next) => {
     // Log server errors
     if (statusCode >= 500) {
         console.error("[ErrorHandler]", err.message, err.stack);
+        captureException(err, { path: req.originalUrl, method: req.method, statusCode });
     }
 
     // Mongoose validation error
@@ -40,6 +43,7 @@ export const errorHandler = (err, req, res, _next) => {
     }
 
     res.status(statusCode).json({
+        success: false,
         message: err.message || "Internal server error",
         ...(process.env.NODE_ENV !== "production" && { stack: err.stack }),
     });

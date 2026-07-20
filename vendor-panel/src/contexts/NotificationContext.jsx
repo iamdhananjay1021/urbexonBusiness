@@ -3,6 +3,7 @@ import {
     useContext,
     useState,
     useEffect,
+    useMemo,
     useRef,
     useCallback,
 } from "react";
@@ -179,6 +180,39 @@ export const NotificationProvider = ({ children }) => {
                             });
                         }
 
+                        // Support ticket updates (admin replied / status
+                        // changed) — pushed by notificationEngine.notify with
+                        // type "ticket_update"; the ticket detail page also
+                        // live-refreshes off lastMessage.
+                        if (msg.type === "ticket_update") {
+                            playSoundRef.current();
+                            addNotification({
+                                title: msg.payload?.title || "Support update",
+                                body: msg.payload?.message || "Your support ticket has an update",
+                                type: "info",
+                                data: msg.payload,
+                            });
+                        }
+
+                        // NOTIFICATION GAP FIX: account status (approve/
+                        // reject/suspend/reactivate), subscription (activate/
+                        // deactivate/expire/expiring-soon), payout (approve/
+                        // reject/complete), and low-stock events — pushed by
+                        // notificationEngine.notify() from vendorApproval.js,
+                        // sellerJobs.js, payoutController.js, and
+                        // orderInventoryJobs.js. These were already persisted
+                        // to the bell via PlatformNotification regardless;
+                        // this adds the live toast+sound.
+                        if (["vendor_status_changed", "subscription_update", "payout_update", "inventory_low", "review_received"].includes(msg.type)) {
+                            playSoundRef.current();
+                            addNotification({
+                                title: msg.payload?.title || "Account update",
+                                body: msg.payload?.message || "Your account has an update",
+                                type: "info",
+                                data: msg.payload,
+                            });
+                        }
+
                         // BUG FIX: admin broadcasts (POST /admin/broadcast,
                         // { type: "admin:broadcast", payload: { message,
                         // from, at } }) reached this exact socket already —
@@ -241,19 +275,22 @@ export const NotificationProvider = ({ children }) => {
         }
     }, []);
 
+    const value = useMemo(
+        () => ({
+            notifications,
+            toast,
+            unreadCount,
+            addNotification,
+            markAllRead,
+            lastMessage,
+            sendWs,
+            connected,
+        }),
+        [notifications, toast, unreadCount, addNotification, markAllRead, lastMessage, sendWs, connected]
+    );
+
     return (
-        <NotificationContext.Provider
-            value={{
-                notifications,
-                toast,
-                unreadCount,
-                addNotification,
-                markAllRead,
-                lastMessage,
-                sendWs,
-                connected,
-            }}
-        >
+        <NotificationContext.Provider value={value}>
             {children}
 
             {toast && (

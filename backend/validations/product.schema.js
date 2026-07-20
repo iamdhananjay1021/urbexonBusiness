@@ -69,6 +69,12 @@ export const createProductSchema = z.object({
     isFeatured: z.preprocess((v) => v === "true" || v === true, z.boolean().default(false)),
     isDeal: z.preprocess((v) => v === "true" || v === true, z.boolean().default(false)),
     isCustomizable: z.preprocess((v) => v === "true" || v === true, z.boolean().default(false)),
+    // BUG FIX: vendor-panel's ProductList.jsx toggles a product's active
+    // status with a bare `PUT /products/vendor/:id { isActive }` JSON body
+    // (no other fields) — isActive wasn't a schema key, so wiring
+    // validate(updateProductSchema) onto that same route would have made
+    // Zod silently strip it, breaking the Active/Inactive toggle entirely.
+    isActive: z.preprocess((v) => v === undefined ? undefined : v === "true" || v === true, z.boolean().optional()),
 
     // Date (only if isDeal is true)
     dealEndsAt: z.preprocess(
@@ -132,6 +138,47 @@ export const createProductSchema = z.object({
         safeJsonParse,
         z.array(z.any()).default([])
     ),
+
+    // Structured highlights (JSON array: [{title, value}])
+    // BUG FIX: this key was missing here even though both adminCreateProduct
+    // and adminUpdateProduct read body.highlightsArray straight from the
+    // (already-validated) req.body — z.object() strips unrecognized keys by
+    // default, so every highlight the admin form submitted was silently
+    // discarded before the controller ever saw it. Same shape is reused for
+    // the vendor product form.
+    highlightsArray: z.preprocess(
+        safeJsonParse,
+        z.array(z.object({ title: z.string(), value: z.string() })).default([])
+    ),
+
+    // Cancellation / Return / Replacement policy — same bug as above: the
+    // admin form's entire policy section (Cancellable/Returnable/Replaceable
+    // toggles + windows + non-returnable reason) was being stripped here,
+    // so every product silently kept the Product model's schema defaults
+    // regardless of what was actually configured.
+    isCancellable: z.preprocess((v) => v === undefined ? undefined : v !== "false" && v !== false, z.boolean().optional()),
+    isReturnable: z.preprocess((v) => v === undefined ? undefined : v !== "false" && v !== false, z.boolean().optional()),
+    isReplaceable: z.preprocess((v) => v === "true" || v === true, z.boolean().default(false)),
+    returnWindow: z.coerce.number().min(0).max(30).optional(),
+    replacementWindow: z.coerce.number().min(0).max(30).optional(),
+    cancelWindow: z.coerce.number().min(0).max(72).optional(),
+    nonReturnableReason: z.string().max(200).optional(),
+    // Same z.object()-strips-unknown-keys risk as above — these must be
+    // declared here or the controller's clampProductPolicy() call never
+    // sees them on any route that runs this validator.
+    returnConditions: z.preprocess(
+        safeJsonParse,
+        z.array(z.enum(["damaged", "wrong_product", "defective", "missing_items", "other"])).optional()
+    ),
+    packagingRequired: z.preprocess((v) => v === undefined ? undefined : v === "true" || v === true, z.boolean().optional()),
+    tagsRequired: z.preprocess((v) => v === undefined ? undefined : v === "true" || v === true, z.boolean().optional()),
+    returnMethod: z.enum(["self_ship", "pickup"]).optional(),
+
+    // Urbexon Hour vendor-specific fields — absent here meant they were
+    // stripped by validate() for any route that used this schema, which is
+    // exactly why vendor product routes never ran it in the first place.
+    prepTimeMinutes: z.coerce.number().min(1).max(180).optional(),
+    maxOrderQty: z.coerce.number().min(1).max(1000).optional(),
 });
 
 /* ─── Update Schema (all fields optional) ─────────────── */

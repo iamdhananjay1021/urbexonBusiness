@@ -167,6 +167,49 @@ export const toggleShopOpen = async (req, res) => {
     }
 };
 
+// POST /api/vendor/kyc/reupload — multipart, single file field "document"
+// KYC VERIFICATION FIX: no re-upload path existed anywhere before this —
+// gstCertificate/panCard/cancelledCheque/addressProof could only ever be
+// set once, at registration (vendorAuth.js::registerVendor). A vendor
+// whose document was rejected had no way to fix it short of contacting
+// support. Resets the doc's status to "pending" (never straight to
+// "verified" — a human still has to review the replacement) and clears
+// any prior rejection note.
+const KYC_DOC_KEYS = ["gstCertificate", "panCard", "shopPhoto", "ownerPhoto", "cancelledCheque", "addressProof"];
+
+export const reuploadKycDocument = async (req, res) => {
+    try {
+        const { docKey } = req.body;
+        if (!KYC_DOC_KEYS.includes(docKey)) {
+            return res.status(400).json({ success: false, message: `Invalid document. Use one of: ${KYC_DOC_KEYS.join(", ")}` });
+        }
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: "No file uploaded" });
+        }
+
+        const vendor = await Vendor.findById(req.vendor._id);
+        if (!vendor) return res.status(404).json({ success: false, message: "Vendor not found" });
+
+        const result = await uploadToCloudinary(req.file.buffer, `vendors/${req.vendor.userId}/${docKey}`);
+
+        if (!vendor.documents) vendor.documents = {};
+        if (!vendor.documentStatus) vendor.documentStatus = {};
+        if (!vendor.documentNotes) vendor.documentNotes = {};
+        vendor.documents[docKey] = result.secure_url;
+        vendor.documentStatus[docKey] = "pending";
+        vendor.documentNotes[docKey] = "";
+        vendor.markModified("documents");
+        vendor.markModified("documentStatus");
+        vendor.markModified("documentNotes");
+        await vendor.save();
+
+        res.json({ success: true, message: "Document re-uploaded, pending review", documents: vendor.documents, documentStatus: vendor.documentStatus });
+    } catch (err) {
+        console.error("[reuploadKycDocument]", err);
+        res.status(500).json({ success: false, message: "Failed to re-upload document" });
+    }
+};
+
 // PATCH /api/vendor/location — update vendor lat/lng
 export const updateLocation = async (req, res) => {
     try {

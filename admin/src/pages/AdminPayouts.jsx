@@ -152,7 +152,7 @@ const AdminPayouts = () => {
             await adminApi.patch(`/admin/payouts/${id}/approve`);
             showToast("success", "Payout approved");
             fetchPayouts();
-        } catch { showToast("error", "Failed to approve"); }
+        } catch (err) { showToast("error", err.response?.data?.message || "Failed to approve"); }
         finally { setActionLoading(null); }
     };
 
@@ -163,7 +163,7 @@ const AdminPayouts = () => {
             showToast("success", "Payout completed");
             setCompleteModal(null);
             fetchPayouts();
-        } catch { showToast("error", "Failed to complete"); }
+        } catch (err) { showToast("error", err.response?.data?.message || "Failed to complete"); }
         finally { setActionLoading(null); }
     };
 
@@ -174,7 +174,7 @@ const AdminPayouts = () => {
             showToast("success", "Payout rejected");
             setRejectModal(null);
             fetchPayouts();
-        } catch { showToast("error", "Failed to reject"); }
+        } catch (err) { showToast("error", err.response?.data?.message || "Failed to reject"); }
         finally { setActionLoading(null); }
     };
 

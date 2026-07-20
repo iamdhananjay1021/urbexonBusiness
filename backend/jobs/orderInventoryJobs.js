@@ -6,9 +6,11 @@
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
 import User from '../models/User.js';
+import Vendor from '../models/vendorModels/Vendor.js';
 import logger from '../utils/logger.js';
 import { sendEmail } from '../utils/emailService.js';
 import { getOrderStatusEmailTemplate } from '../utils/orderStatusEmail.js';
+import { notify } from '../services/notificationEngine.js';
 
 // ══════════════════════════════════════════════════════
 // 0️⃣ AUTO-CANCEL STALE COD ORDERS
@@ -206,36 +208,63 @@ export const autoGenerateInvoices = async () => {
 // ══════════════════════════════════════════════════════
 export const checkLowStockItems = async () => {
     try {
-        const LOW_STOCK_THRESHOLD = 10;
-
+        // BUG FIX: this previously compared stock against `minimumStock`, a
+        // field that has never existed on Product.js — the query's $expr
+        // always evaluated false (missing field ≈ null, which never
+        // satisfies $lt against a real stock number), so this job found
+        // zero low-stock items even before being disabled. The real,
+        // already-fully-wired-in-the-UI reorder threshold field is
+        // Product.lowStockThreshold (ProductForm.jsx's "Low Stock Alert
+        // Below" input, validated by product.schema.js, default 5).
+        // Scoped to vendorId != null — admin/ecommerce products (vendorId
+        // null) have no vendor to notify; that's a separate, non-vendor
+        // concern this job doesn't cover.
         const lowStockProducts = await Product.find({
-            stock: { $lte: LOW_STOCK_THRESHOLD },
-            $expr: { $lt: ['$stock', '$minimumStock'] },
             isActive: true,
-        }).select('name sku stock minimumStock vendorId');
+            vendorId: { $ne: null },
+            $expr: { $lt: ['$stock', '$lowStockThreshold'] },
+        }).select('name sku stock lowStockThreshold vendorId');
 
         if (lowStockProducts.length === 0) {
-            return { lowStockItems: 0 };
+            return { lowStockItemsFound: 0, vendorsNotified: 0 };
         }
 
-        // Group by vendor and send alerts
+        // Group by vendor — one summary notification per vendor, not one
+        // per product, so a vendor whose whole catalog dips at once isn't
+        // spammed with N separate alerts.
         const vendorAlerts = {};
         for (const product of lowStockProducts) {
-            if (!vendorAlerts[product.vendorId]) {
-                vendorAlerts[product.vendorId] = [];
-            }
-            vendorAlerts[product.vendorId].push(product);
+            const vid = String(product.vendorId);
+            if (!vendorAlerts[vid]) vendorAlerts[vid] = [];
+            vendorAlerts[vid].push(product);
         }
 
-        // Send alerts to vendors
+        let vendorsNotified = 0;
         for (const [vendorId, products] of Object.entries(vendorAlerts)) {
-            // Future: Send vendor alert email
-            logger.warn(
-                `⚠️  Vendor ${vendorId} has ${products.length} low-stock products`
-            );
+            try {
+                const vendor = await Vendor.findById(vendorId).select('userId').lean();
+                if (!vendor?.userId) continue;
+
+                const names = products.slice(0, 3).map((p) => p.name).join(', ');
+                const extra = products.length > 3 ? ` and ${products.length - 3} more` : '';
+
+                await notify({
+                    recipientId: vendor.userId,
+                    role: 'vendor',
+                    type: 'inventory_low',
+                    title: 'Low Stock Alert',
+                    message: `${products.length} product${products.length > 1 ? 's are' : ' is'} running low on stock: ${names}${extra}.`,
+                    priority: 'normal',
+                    meta: { count: products.length, productIds: products.map((p) => String(p._id)) },
+                });
+                vendorsNotified++;
+            } catch (err) {
+                logger.warn(`Failed to notify vendor ${vendorId} of low stock: ${err.message}`);
+            }
         }
 
-        return { lowStockItemsFound: lowStockProducts.length };
+        logger.info(`⚠️  Low stock: ${lowStockProducts.length} product(s) across ${vendorsNotified} vendor(s) notified`);
+        return { lowStockItemsFound: lowStockProducts.length, vendorsNotified };
     } catch (err) {
         logger.error('Check Low Stock Error:', err);
         throw { message: err.message };

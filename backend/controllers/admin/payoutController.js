@@ -2,27 +2,42 @@
  * payoutController.js — Unified payout management
  * Handles: vendor payouts, delivery payouts, admin payout management
  */
+import mongoose from "mongoose";
 import Payout from "../../models/Payout.js";
 import Vendor from "../../models/vendorModels/Vendor.js";
 import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
-import { Settlement } from "../../models/vendorModels/Settlement.js";
+import { notify } from "../../services/notificationEngine.js";
+import * as walletService from "../../services/vendorWalletService.js";
+import { maskBankDetails } from "../../utils/maskBankDetails.js";
+
+/**
+ * NOTIFICATION GAP FIX: payout.recipientId is the Vendor/DeliveryBoy
+ * document _id (see recipientModel), not the linked User id that
+ * notificationEngine.notify() needs as recipientId — resolve it once here.
+ * Role-generic on purpose, exactly like notify() itself, so this single
+ * helper serves both recipientType values without forking logic.
+ */
+const notifyPayoutRecipient = async (payout, { title, message, meta = {} }) => {
+    try {
+        const Model = payout.recipientType === "delivery" ? DeliveryBoy : Vendor;
+        const doc = await Model.findById(payout.recipientId).select("userId").lean();
+        if (!doc?.userId) return;
+        await notify({
+            recipientId: doc.userId,
+            role: payout.recipientType,
+            type: "payout_update",
+            title,
+            message,
+            priority: "high",
+            meta: { payoutId: String(payout._id), ...meta },
+        });
+    } catch (err) {
+        console.error("[notifyPayoutRecipient] Failed:", err.message);
+    }
+};
 
 const MIN_PAYOUT_VENDOR = 500;
 const MIN_PAYOUT_DELIVERY = 200;
-
-// Mask bank account number — show only last 4 digits
-const maskAccountNumber = (num) => {
-    if (!num || num.length <= 4) return num || "";
-    return "X".repeat(num.length - 4) + num.slice(-4);
-};
-
-const maskBankDetails = (bd) => {
-    if (!bd) return {};
-    return {
-        ...bd,
-        accountNumber: maskAccountNumber(bd.accountNumber),
-    };
-};
 
 // ══════════════════════════════════════════════════════════════
 // VENDOR — Request Payout
@@ -71,9 +86,11 @@ export const vendorRequestPayout = async (req, res) => {
             console.warn(`[vendorRequestPayout] Vendor ${vendor._id} has account number but no IFSC code`);
         }
 
-        // FIX 1: Atomic duplicate guard — database-level unique constraint using findOneAndUpdate
-        // This is atomic: if a pending payout already exists this insert-style check will catch it
-        // even under concurrent requests, unlike a separate findOne + create which has a race window.
+        // Fast, friendly pre-check — the REAL, race-proof guard is the
+        // unique partial index on Payout{recipientId, recipientType,
+        // blocksNewPayout:true} (see models/Payout.js); this just avoids a
+        // wasted balance calculation and gives a clean message in the
+        // common (non-racing) case.
         const alreadyPending = await Payout.findOne({
             recipientId: vendor._id,
             recipientType: "vendor",
@@ -83,67 +100,63 @@ export const vendorRequestPayout = async (req, res) => {
             return res.status(409).json({ success: false, message: "You already have a pending payout request. Wait for it to be processed or cancel it." });
         }
 
-        // Calculate available balance
-        const [paidSettlements, completedPayouts, pendingPayouts] = await Promise.all([
-            Settlement.aggregate([
-                { $match: { vendorId: vendor._id, status: "paid" } },
-                { $group: { _id: null, total: { $sum: "$vendorEarning" } } },
-            ]),
-            Payout.aggregate([
-                { $match: { recipientId: vendor._id, recipientType: "vendor", status: "completed" } },
-                { $group: { _id: null, total: { $sum: "$amount" } } },
-            ]),
+        // [FIX] "Available" was previously re-derived from Settlement.paid
+        // minus completed Payouts — a parallel calculation that completely
+        // ignored admin manual wallet adjustments (walletAdjustmentController.js
+        // credits/debits the ledger directly, with no corresponding
+        // Settlement/Payout record). A vendor manually credited as
+        // compensation could never withdraw it; conversely a manual debit
+        // (correction/penalty) wasn't reflected either, risking an
+        // overpayment beyond their real balance. Vendor.walletBalance
+        // (via getBalance — a direct field read, never an aggregation) is
+        // the single source of truth for spendable balance; it already
+        // nets out settlement credits, completed-payout debits, AND manual
+        // adjustments atomically. Only the still-pending-payout amount
+        // needs subtracting on top of it.
+        const [walletBalance, pendingPayouts] = await Promise.all([
+            walletService.getBalance(vendor._id),
             Payout.aggregate([
                 { $match: { recipientId: vendor._id, recipientType: "vendor", status: { $in: ["requested", "approved", "processing"] } } },
                 { $group: { _id: null, total: { $sum: "$amount" } } },
             ]),
         ]);
 
-        const totalEarned = paidSettlements[0]?.total || 0;
-        const totalWithdrawn = completedPayouts[0]?.total || 0;
         const totalPending = pendingPayouts[0]?.total || 0;
-        const available = totalEarned - totalWithdrawn - totalPending;
+        const available = walletBalance - totalPending;
 
         if (requestedAmount > available) {
             return res.status(400).json({ success: false, message: `Insufficient balance. Available: ₹${available}` });
         }
 
-        // FIX 2: Atomic payout creation with balance re-check at DB level.
-        // We re-aggregate inside the same logical operation and embed the
-        // balance assertion in the Payout document so a second concurrent
-        // request that passed the check above cannot overdraw the balance.
-        // Strategy: create the payout document only if no other pending payout
-        // was inserted between our check and now (atomic findOneAndUpdate upsert).
-        const payout = await Payout.findOneAndUpdate(
-            // Condition: still no pending payout for this vendor at write time
-            {
-                recipientId: vendor._id,
+        // [FIX] The previous "atomic recheck" (a plain findOneAndUpdate
+        // read with upsert:false right before .create()) still had a
+        // TOCTOU race — two near-simultaneous requests could both observe
+        // "no pending payout" and both insert. The unique partial index on
+        // Payout (recipientId, recipientType, blocksNewPayout:true) is the
+        // actual DB-level guard now; a genuine race surfaces as E11000
+        // here, caught below.
+        let newPayout;
+        try {
+            newPayout = await Payout.create({
                 recipientType: "vendor",
-                status: { $in: ["requested", "approved", "processing"] },
-            },
-            // This update is intentionally a no-op — if a doc matches, we abort below
-            { $setOnInsert: { _noop: true } },
-            { upsert: false, new: false }
-        );
-        if (payout) {
-            // Another concurrent request created a pending payout between our check and now
-            return res.status(409).json({ success: false, message: "You already have a pending payout request. Wait for it to be processed or cancel it." });
+                recipientId: vendor._id,
+                recipientModel: "Vendor",
+                recipientName: vendor.shopName || vendor.ownerName,
+                amount: requestedAmount,
+                bankDetails: {
+                    accountHolder: bd.accountHolder || "",
+                    accountNumber: bd.accountNumber || "",
+                    ifsc: bd.ifsc || "",
+                    bankName: bd.bankName || "",
+                    upiId: bd.upiId || "",
+                },
+            });
+        } catch (err) {
+            if (err.code === 11000) {
+                return res.status(409).json({ success: false, message: "You already have a pending payout request. Wait for it to be processed or cancel it." });
+            }
+            throw err;
         }
-
-        const newPayout = await Payout.create({
-            recipientType: "vendor",
-            recipientId: vendor._id,
-            recipientModel: "Vendor",
-            recipientName: vendor.shopName || vendor.ownerName,
-            amount: requestedAmount,
-            bankDetails: {
-                accountHolder: bd.accountHolder || "",
-                accountNumber: bd.accountNumber || "",
-                ifsc: bd.ifsc || "",
-                bankName: bd.bankName || "",
-                upiId: bd.upiId || "",
-            },
-        });
 
         res.json({ success: true, message: "Payout requested", payout: { ...newPayout.toObject(), bankDetails: maskBankDetails(newPayout.bankDetails) } });
     } catch (err) {
@@ -174,7 +187,7 @@ export const vendorCancelPayout = async (req, res) => {
         }
 
         await Payout.findByIdAndUpdate(payout._id, {
-            $set: { status: "rejected", rejectedAt: new Date(), rejectionReason: "Cancelled by vendor" },
+            $set: { status: "rejected", rejectedAt: new Date(), rejectionReason: "Cancelled by vendor", blocksNewPayout: false },
         });
 
         res.json({ success: true, message: "Payout cancelled" });
@@ -192,11 +205,15 @@ export const vendorGetPayouts = async (req, res) => {
     try {
         const vendor = req.vendor;
 
-        const [paidSettlements, completedPayouts, pendingPayouts, payouts] = await Promise.all([
-            Settlement.aggregate([
-                { $match: { vendorId: vendor._id, status: "paid" } },
-                { $group: { _id: null, total: { $sum: "$vendorEarning" } } },
-            ]),
+        // [FIX] See the matching note in vendorRequestPayout — "available"
+        // must come from the real wallet balance (settlement credits +
+        // completed-payout debits + manual adjustments, all netted
+        // atomically), not a parallel Settlement/Payout re-aggregation that
+        // silently ignores manual wallet adjustments. totalWithdrawn is
+        // still shown from completed Payouts (that's a legitimate "total
+        // paid out so far" figure, distinct from the balance itself).
+        const [walletBalance, completedPayouts, pendingPayouts, payouts] = await Promise.all([
+            walletService.getBalance(vendor._id),
             Payout.aggregate([
                 { $match: { recipientId: vendor._id, recipientType: "vendor", status: "completed" } },
                 { $group: { _id: null, total: { $sum: "$amount" } } },
@@ -211,17 +228,15 @@ export const vendorGetPayouts = async (req, res) => {
                 .lean(),
         ]);
 
-        const totalEarned = paidSettlements[0]?.total || 0;
         const totalWithdrawn = completedPayouts[0]?.total || 0;
         const totalPending = pendingPayouts[0]?.total || 0;
 
         res.json({
             success: true,
             balance: {
-                totalEarned,
                 totalWithdrawn,
                 pendingPayout: totalPending,
-                available: totalEarned - totalWithdrawn - totalPending,
+                available: walletBalance - totalPending,
             },
             payouts: payouts.map(p => ({ ...p, bankDetails: maskBankDetails(p.bankDetails) })),
             minPayout: MIN_PAYOUT_VENDOR,
@@ -320,30 +335,32 @@ export const deliveryRequestPayout = async (req, res) => {
             return res.status(400).json({ success: false, message: `Insufficient balance. Available: ₹${available}` });
         }
 
-        // FIX 2 (delivery): Second atomic race-condition guard before create
-        const raceCheck = await Payout.findOne({
-            recipientId: rider._id,
-            recipientType: "delivery",
-            status: { $in: ["requested", "approved", "processing"] },
-        }).lean();
-        if (raceCheck) {
-            return res.status(409).json({ success: false, message: "You already have a pending payout request. Wait for it to be processed." });
+        // [FIX] Same TOCTOU race as vendorRequestPayout had — the previous
+        // "recheck" was a plain read, not a real guard. The unique partial
+        // index on Payout (recipientId, recipientType, blocksNewPayout:true)
+        // is the actual DB-level guard now; catch its E11000 below.
+        let payout;
+        try {
+            payout = await Payout.create({
+                recipientType: "delivery",
+                recipientId: rider._id,
+                recipientModel: "DeliveryBoy",
+                recipientName: rider.name,
+                amount: requestedAmount,
+                bankDetails: {
+                    accountHolder: bd.accountHolder || "",
+                    accountNumber: bd.accountNumber || "",
+                    ifsc: bd.ifsc || "",
+                    bankName: bd.bankName || "",
+                    upiId: bd.upiId || "",
+                },
+            });
+        } catch (err) {
+            if (err.code === 11000) {
+                return res.status(409).json({ success: false, message: "You already have a pending payout request. Wait for it to be processed." });
+            }
+            throw err;
         }
-
-        const payout = await Payout.create({
-            recipientType: "delivery",
-            recipientId: rider._id,
-            recipientModel: "DeliveryBoy",
-            recipientName: rider.name,
-            amount: requestedAmount,
-            bankDetails: {
-                accountHolder: bd.accountHolder || "",
-                accountNumber: bd.accountNumber || "",
-                ifsc: bd.ifsc || "",
-                bankName: bd.bankName || "",
-                upiId: bd.upiId || "",
-            },
-        });
 
         res.json({ success: true, message: "Payout requested", payout: { ...payout.toObject(), bankDetails: maskBankDetails(payout.bankDetails) } });
     } catch (err) {
@@ -453,6 +470,11 @@ export const adminApprovePayout = async (req, res) => {
             $set: { status: "approved", approvedAt: new Date(), processedBy: req.user._id },
         });
 
+        notifyPayoutRecipient(payout, {
+            title: "Payout Approved",
+            message: `Your withdrawal request of ₹${payout.amount.toLocaleString("en-IN")} has been approved and is being processed.`,
+        });
+
         res.json({ success: true, message: "Payout approved" });
     } catch (err) {
         console.error("[adminApprovePayout]", err);
@@ -479,7 +501,14 @@ export const adminRejectPayout = async (req, res) => {
                 rejectedAt: new Date(),
                 rejectionReason: (reason || "").trim().slice(0, 500),
                 processedBy: req.user._id,
+                blocksNewPayout: false,
             },
+        });
+
+        notifyPayoutRecipient(payout, {
+            title: "Payout Rejected",
+            message: `Your withdrawal request of ₹${payout.amount.toLocaleString("en-IN")} was rejected.${reason ? ` Reason: ${reason}` : ""}`,
+            meta: { reason: reason || "" },
         });
 
         res.json({ success: true, message: "Payout rejected" });
@@ -494,6 +523,13 @@ export const adminRejectPayout = async (req, res) => {
 // PATCH /api/admin/payouts/:id/complete
 // ══════════════════════════════════════════════════════════════
 export const adminCompletePayout = async (req, res) => {
+    // WALLET LEDGER: this handler previously did a single atomic
+    // findOneAndUpdate with no session — extended into a real transaction
+    // now, exactly matching markSettlementPaid's shape, so the payout
+    // status flip and the wallet debit commit or abort together. Never a
+    // second transaction boundary elsewhere for this.
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const { paymentRef, paymentMethod, note } = req.body;
 
@@ -515,21 +551,50 @@ export const adminCompletePayout = async (req, res) => {
                     paymentMethod: paymentMethod || "bank_transfer",
                     adminNote: (note || "").trim().slice(0, 500),
                     processedBy: req.user._id,
+                    blocksNewPayout: false,
                 },
             },
-            { new: true }
+            { new: true, session }
         );
 
         if (!updated) {
             // Either payout not found, or already completed/rejected
+            await session.abortTransaction().catch(() => { });
+            session.endSession();
             const existing = await Payout.findById(req.params.id).select("status").lean();
             if (!existing) return res.status(404).json({ success: false, message: "Payout not found" });
             return res.status(400).json({ success: false, message: `Cannot complete — status is ${existing.status}` });
         }
 
-        res.json({ success: true, message: "Payout completed" });
+        // WALLET LEDGER — vendor payouts only. Delivery-partner payouts
+        // (recipientType:"delivery") keep using their own separate,
+        // pre-existing DeliveryWallet — out of scope for the Vendor Wallet
+        // Ledger and deliberately untouched here.
+        let walletBalance;
+        if (updated.recipientType === "vendor") {
+            ({ walletBalance } = await walletService.debit(session, {
+                vendorId: updated.recipientId,
+                amount: updated.amount,
+                type: "withdrawal_debit",
+                referenceType: "Payout",
+                referenceId: updated._id,
+                description: `Withdrawal completed — ${updated.paymentMethod || "bank_transfer"}`,
+            }));
+        }
+
+        await session.commitTransaction();
+        session.endSession();
+
+        notifyPayoutRecipient(updated, {
+            title: "Payout Completed",
+            message: `₹${updated.amount.toLocaleString("en-IN")} has been transferred to your account.`,
+        });
+
+        res.json({ success: true, message: "Payout completed", walletBalance });
     } catch (err) {
+        await session.abortTransaction().catch(() => { });
+        session.endSession();
         console.error("[adminCompletePayout]", err);
-        res.status(500).json({ success: false, message: "Server error" });
+        res.status(500).json({ success: false, message: err.code === "INSUFFICIENT_BALANCE" ? "Wallet balance is insufficient for this payout — investigate before retrying" : "Server error" });
     }
 };

@@ -7,7 +7,10 @@ import mongoose from "mongoose";
 
 const deliveryWalletSchema = new mongoose.Schema(
     {
-        deliveryBoyId: { type: mongoose.Schema.Types.ObjectId, ref: "DeliveryBoy", required: true, unique: true, index: true },
+        // [FIX] `unique: true` alone already creates an index — the inline
+        // `index: true` and the separate deliveryWalletSchema.index({
+        // deliveryBoyId: 1 }) below were both fully redundant with it.
+        deliveryBoyId: { type: mongoose.Schema.Types.ObjectId, ref: "DeliveryBoy", required: true, unique: true },
 
         // ── Balance ──
         balance: { type: Number, default: 0 }, // Current available balance
@@ -136,7 +139,6 @@ const deliveryWalletSchema = new mongoose.Schema(
 );
 
 // Indexes
-deliveryWalletSchema.index({ deliveryBoyId: 1 });
 deliveryWalletSchema.index({ "transactions.createdAt": -1 });
 deliveryWalletSchema.index({ "withdrawals.status": 1 });
 deliveryWalletSchema.index({ lastEarningAt: -1 });

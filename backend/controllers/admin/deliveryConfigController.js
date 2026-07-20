@@ -96,6 +96,32 @@ const validateDeliveryConfig = (body) => {
         if (isNaN(v) || v < 0 || v > 365) errors.push("returnDays must be 0–365");
     }
 
+    // Product Return Policy Limits — same internal-consistency + hard-ceiling
+    // pattern as the vendor radius bounds above (min <= max, never past the
+    // absolute ceiling already enforced at the schema level: 0-30 days for
+    // return/replacement windows, 0-72 hours for cancel window, matching
+    // Product.js's own field-level bounds).
+    if (body.productPolicyLimits !== undefined) {
+        const ppl = body.productPolicyLimits || {};
+        const HARD_MAX_DAYS = 30;
+        const HARD_MAX_HOURS = 72;
+        const pairs = [
+            ["minReturnWindowDays", "maxReturnWindowDays", HARD_MAX_DAYS],
+            ["minReplacementWindowDays", "maxReplacementWindowDays", HARD_MAX_DAYS],
+            ["minCancelWindowHours", "maxCancelWindowHours", HARD_MAX_HOURS],
+        ];
+        for (const [minKey, maxKey, hardMax] of pairs) {
+            const minV = ppl[minKey] !== undefined ? Number(ppl[minKey]) : undefined;
+            const maxV = ppl[maxKey] !== undefined ? Number(ppl[maxKey]) : undefined;
+            if (minV !== undefined && (isNaN(minV) || minV < 0)) errors.push(`${minKey} must be >= 0`);
+            if (maxV !== undefined && (isNaN(maxV) || maxV > hardMax)) errors.push(`${maxKey} cannot exceed the platform hard limit of ${hardMax}`);
+            if (minV !== undefined && maxV !== undefined && minV > maxV) errors.push(`${minKey} cannot exceed ${maxKey}`);
+        }
+        if (ppl.allowedReturnConditions !== undefined && !Array.isArray(ppl.allowedReturnConditions)) {
+            errors.push("allowedReturnConditions must be an array");
+        }
+    }
+
     return errors;
 };
 
@@ -128,6 +154,7 @@ export const updateDeliveryConfig = async (req, res) => {
             "shiprocketPickupLocation",
             "avgRiderSpeedKmph", "defaultPrepTimeMin",
             "minVendorRadiusKm", "maxVendorRadiusKm", "defaultVendorRadiusKm",
+            "productPolicyLimits",
         ];
 
         const updates = {};
@@ -191,6 +218,9 @@ export const getPublicDeliveryConfig = async (_req, res) => {
             minVendorRadiusKm: config.minVendorRadiusKm,
             maxVendorRadiusKm: config.maxVendorRadiusKm,
             defaultVendorRadiusKm: config.defaultVendorRadiusKm,
+            // Vendor product forms read these bounds from this existing
+            // public endpoint rather than a new route.
+            productPolicyLimits: config.productPolicyLimits,
         };
 
         await safeSetCache(PUBLIC_CACHE_KEY, publicData, CONFIG_TTL);

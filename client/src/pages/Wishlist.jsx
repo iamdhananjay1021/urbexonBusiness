@@ -12,6 +12,7 @@ import Loader from "../design-system/Loader";
 import Button from "../design-system/Button";
 import ProductCard from "../components/ProductCard";
 import { EmptyState } from "../design-system/EmptyState";
+import { showToast } from "../utils/toast";
 
 const Wishlist = () => {
   const navigate = useNavigate();
@@ -58,7 +59,7 @@ const Wishlist = () => {
           {products.length > 0 && (
             <Button
               variant="primary"
-              onClick={() => { products.forEach(p => addToCart(p)); alert("All items added to cart!"); }}
+              onClick={() => { products.forEach(p => addToCart(p)); showToast("All items added to cart!", "success"); }}
             >
               Add All to Cart
             </Button>

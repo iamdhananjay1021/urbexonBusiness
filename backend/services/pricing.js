@@ -13,8 +13,9 @@
  *    downstream, and stops fake "0km" from masking real unknowns.
  */
 import Product from "../models/Product.js";
-import Coupon from "../models/Coupon.js";
 import Vendor from "../models/vendorModels/Vendor.js";
+import logger from "../utils/logger.js";
+import * as couponEngine from "./couponEngine.js";
 import {
     calcDeliveryCharge,
     calcFinalAmount,
@@ -39,7 +40,7 @@ export const validateAndPriceItems = async (frontendItems) => {
         if (!productId) throw new Error("Invalid product in cart");
 
         const product = await Product.findById(productId)
-            .select("name price mrp inStock stock images productType vendorId isCancellable isReturnable isReplaceable returnWindow replacementWindow cancelWindow nonReturnableReason")
+            .select("name price mrp inStock stock images productType vendorId category brand isCancellable isReturnable isReplaceable returnWindow replacementWindow cancelWindow nonReturnableReason returnConditions packagingRequired tagsRequired returnMethod")
             .lean();
 
         if (!product) throw new Error(`Product not found: ${productId}`);
@@ -69,6 +70,11 @@ export const validateAndPriceItems = async (frontendItems) => {
             selectedSize: String(item.selectedSize || "").trim().slice(0, 50),
             productType: product.productType,
             vendorId: product.vendorId || null,
+            // Not persisted onto the Order — carried only long enough for
+            // calculateOrderPricing to build the coupon-eligibility context
+            // (couponEngine.js's applicableCategories/Brands targeting).
+            category: product.category || "",
+            brand: product.brand || "",
             policy: {
                 isCancellable: product.isCancellable !== false,
                 isReturnable: product.isReturnable !== false,
@@ -77,6 +83,10 @@ export const validateAndPriceItems = async (frontendItems) => {
                 replacementWindow: product.replacementWindow ?? 7,
                 cancelWindow: product.cancelWindow ?? 0,
                 nonReturnableReason: product.nonReturnableReason || "",
+                returnConditions: product.returnConditions || [],
+                packagingRequired: product.packagingRequired === true,
+                tagsRequired: product.tagsRequired === true,
+                returnMethod: product.returnMethod || "self_ship",
             },
         });
     }
@@ -156,17 +166,27 @@ export const deductStock = async (items) => {
             // on any .save(), silently UNDOING every base deduction.
             // Guarded $gte so a drifted/unmaintained entry never goes negative
             // (base guard above already blocked a true oversell).
+            // [FIX] These were fire-and-forget with a fully silent .catch —
+            // a failure here means the variant/size stock drifts out of
+            // sync with the just-decremented base stock (an oversell risk
+            // on the NEXT order for that variant) and nobody would ever
+            // know. Still non-blocking (an order must never fail because
+            // of a logging problem), but the failure is now recorded.
             if (item.selectedColor) {
                 await Product.updateOne(
                     { _id: item.productId, colorVariants: { $elemMatch: { name: item.selectedColor, stock: { $gte: qty } } } },
                     { $inc: { "colorVariants.$.stock": -qty } }
-                ).catch(() => { });
+                ).catch((err) => logger.error("[deductStock] colorVariant stock update failed", {
+                    productId: String(item.productId), selectedColor: item.selectedColor, qty, message: err.message,
+                }));
             }
             if (item.selectedSize) {
                 await Product.updateOne(
                     { _id: item.productId, sizes: { $elemMatch: { size: item.selectedSize, stock: { $gte: qty } } } },
                     { $inc: { "sizes.$.stock": -qty } }
-                ).catch(() => { });
+                ).catch((err) => logger.error("[deductStock] size stock update failed", {
+                    productId: String(item.productId), selectedSize: item.selectedSize, qty, message: err.message,
+                }));
             }
 
             // Keep inStock flag in sync
@@ -179,92 +199,6 @@ export const deductStock = async (items) => {
         await restoreStock(deducted);
         throw err;
     }
-};
-
-/**
- * Validate and apply coupon
- * Returns { discount, couponCode, couponId } or null
- */
-export const applyCoupon = async ({ couponId, couponCode, userId, itemsTotal, orderType }) => {
-    if (!couponId && !couponCode) return null;
-
-    const query = couponId
-        ? { _id: couponId, isActive: true }
-        : { code: String(couponCode).toUpperCase(), isActive: true };
-
-    const coupon = await Coupon.findOne(query).lean();
-    if (!coupon) return null;
-
-    // Expiry check
-    if (coupon.expiresAt && new Date() > new Date(coupon.expiresAt)) return null;
-
-    // Usage limit
-    if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) return null;
-
-    // Per-user usage
-    if (userId && coupon.usedBy?.some(u => String(u.userId) === String(userId))) return null;
-
-    // Min order check
-    if (itemsTotal < (coupon.minOrderValue || 0)) return null;
-
-    // Applicable to check
-    if (coupon.applicableTo !== "ALL") {
-        const type = orderType === "urbexon_hour" ? "URBEXON_HOUR" : "ECOMMERCE";
-        if (coupon.applicableTo !== type) return null;
-    }
-
-    // Calculate discount
-    let discount = 0;
-    if (coupon.discountType === "PERCENT") {
-        discount = Math.round((itemsTotal * coupon.discountValue) / 100);
-        if (coupon.maxDiscount) discount = Math.min(discount, coupon.maxDiscount);
-    } else {
-        discount = Math.min(coupon.discountValue, itemsTotal);
-    }
-
-    return { discount, couponCode: coupon.code, couponId: coupon._id };
-};
-
-/**
- * Mark coupon as used by userId
- */
-export const markCouponUsed = async (couponId, userId) => {
-    if (!couponId || !userId) return;
-    // Atomic: only increment if usage limit not yet reached AND user hasn't used it
-    const result = await Coupon.findOneAndUpdate(
-        {
-            _id: couponId,
-            $or: [{ usageLimit: null }, { $expr: { $lt: ["$usedCount", "$usageLimit"] } }],
-            "usedBy.userId": { $ne: userId },
-        },
-        {
-            $inc: { usedCount: 1 },
-            $push: { usedBy: { userId, at: new Date() } },
-        },
-        { new: true }
-    );
-    if (!result) console.warn(`[CouponUsed] Could not mark coupon ${couponId} as used for user ${userId}`);
-};
-
-/**
- * Rollback a coupon's usage on order cancellation. No counterpart to this
- * existed anywhere in the codebase before — a cancelled order permanently
- * burned the customer's one-time coupon use and the coupon's global
- * usedCount. Atomic and safe to call even if the coupon was never actually
- * marked used for this user (no-op in that case).
- */
-export const unmarkCouponUsed = async ({ couponId, couponCode, userId }) => {
-    if (!userId || (!couponId && !couponCode)) return;
-    // Order.coupon only stores the code snapshot, not the coupon's _id, so
-    // this accepts either — most callers (cancellation) only have the code.
-    const filter = couponId
-        ? { _id: couponId, "usedBy.userId": userId }
-        : { code: String(couponCode).toUpperCase(), "usedBy.userId": userId };
-    const result = await Coupon.findOneAndUpdate(
-        filter,
-        { $inc: { usedCount: -1 }, $pull: { usedBy: { userId } } }
-    );
-    if (!result) console.warn(`[CouponUsed] Could not unmark coupon ${couponId || couponCode} for user ${userId} (not found or already unmarked)`);
 };
 
 /**
@@ -309,20 +243,58 @@ export const calculateOrderPricing = async (frontendItems, paymentMethod, option
     }
     const vendorDeliveryMode = vendor?.deliveryMode;
 
-    const deliveryCharge = calcDeliveryCharge(itemsTotal, paymentMethod, { deliveryType, distanceKm: distanceKmForCalc, vendor });
+    let deliveryCharge = calcDeliveryCharge(itemsTotal, paymentMethod, { deliveryType, distanceKm: distanceKmForCalc, vendor });
 
-    // Coupon
+    // Coupon — routed through the single canonical engine (couponEngine.js)
+    // instead of a locally-duplicated validate+discount implementation.
+    // This is the authoritative path: on ANY ineligibility (expired,
+    // inactive, wrong module/channel, limit reached, doesn't match
+    // targeting, etc.) validateCouponForContext returns valid:false and
+    // the order simply proceeds with no discount — never throws — exactly
+    // matching this function's pre-existing silent-failure contract.
     const orderType = deliveryType === DELIVERY_TYPES.URBEXON_HOUR ? "urbexon_hour" : "ecommerce";
-    const couponResult = await applyCoupon({
-        couponId: options.couponId,
-        couponCode: options.couponCode,
+    const couponContext = {
         userId: options.userId,
+        module: "ORDER",
+        orderMode: orderType,
+        items: formattedItems.map((i) => ({
+            productId: i.productId, category: i.category, brand: i.brand,
+            vendorId: i.vendorId, qty: i.qty, price: i.price,
+        })),
         itemsTotal,
-        orderType,
+        state: options.state,
+        pincode: options.pincode,
+    };
+    const couponValidation = await couponEngine.validateCouponForContext({
+        code: options.couponCode,
+        couponId: options.couponId,
+        context: couponContext,
     });
 
+    // Response shape kept identical to the old applyCoupon()'s return
+    // value ({discount, couponCode, couponId} or null) — every caller
+    // (orderController.js, Paymentcontroller.js) reads pricing.coupon in
+    // exactly this shape, so this mapping is what keeps them unchanged.
+    let couponResult = null;
+    if (couponValidation.valid) {
+        const c = couponValidation.coupon;
+        if (c.discountType === "FREE_SHIPPING") {
+            // The "discount" shown to the customer for FREE_SHIPPING is the
+            // delivery charge they're no longer paying — zero it here
+            // rather than subtracting it from itemsTotal below, since it
+            // was never an itemsTotal-level discount to begin with.
+            couponResult = { discount: deliveryCharge, couponCode: c.code, couponId: c._id, discountType: c.discountType };
+            deliveryCharge = 0;
+        } else {
+            couponResult = { discount: couponValidation.discount, couponCode: c.code, couponId: c._id, discountType: c.discountType };
+        }
+    }
+
+    // FREE_SHIPPING's saving is already reflected in deliveryCharge being
+    // zeroed above — don't subtract couponResult.discount a second time.
     const couponDiscount = couponResult?.discount || 0;
-    const finalTotal = Math.max(0, calcFinalAmount(itemsTotal, deliveryCharge) - couponDiscount);
+    const itemsLevelDiscount = couponResult?.discountType === "FREE_SHIPPING" ? 0 : couponDiscount;
+    const finalTotal = Math.max(0, calcFinalAmount(itemsTotal, deliveryCharge) - itemsLevelDiscount);
 
     return {
         formattedItems,

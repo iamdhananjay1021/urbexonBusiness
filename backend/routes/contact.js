@@ -9,6 +9,13 @@ import { createNotification } from "../controllers/admin/notificationController.
 
 const router = express.Router();
 
+// [FIX] name/email/phone/subject/message below come straight from an
+// anonymous, unauthenticated POST body and were interpolated directly into
+// an HTML email sent to the admin inbox — a guest could inject arbitrary
+// HTML/script into that email (rendered in whatever mail client opens it).
+const escapeHtml = (str) =>
+    String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
 /* ==============================================
    POST /api/contact
    User se contact form submit
@@ -72,14 +79,14 @@ router.post("/", optionalAuth, async (req, res) => {
                         <h2 style="color:white; margin:0;">New Contact Form Submission</h2>
                     </div>
                     <div style="padding:24px; background:#fff;">
-                        <p><strong>Name:</strong> ${name}</p>
-                        <p><strong>Email:</strong> ${email}</p>
-                        <p><strong>Phone:</strong> ${phone || "Not provided"}</p>
-                        <p><strong>Subject:</strong> ${subject || "Not provided"}</p>
+                        <p><strong>Name:</strong> ${escapeHtml(name)}</p>
+                        <p><strong>Email:</strong> ${escapeHtml(email)}</p>
+                        <p><strong>Phone:</strong> ${escapeHtml(phone) || "Not provided"}</p>
+                        <p><strong>Subject:</strong> ${escapeHtml(subject) || "Not provided"}</p>
                         <hr style="border:none; border-top:1px solid #eee; margin:16px 0;" />
                         <p><strong>Message:</strong></p>
                         <p style="background:#f0fdf4; padding:12px; border-radius:8px;">
-                            ${message}
+                            ${escapeHtml(message)}
                         </p>
                     </div>
                     <div style="background:#f0fdf4; padding:12px 24px; text-align:center;">

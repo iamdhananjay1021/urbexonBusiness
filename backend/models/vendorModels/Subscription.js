@@ -52,12 +52,28 @@ const subscriptionSchema = new mongoose.Schema({
         months: { type: Number, default: null },
         amount: { type: Number, default: null },
         createdAt: { type: Date, default: null },
+        // Coupon Phase 1 — additive. couponId/couponCode/discountAmount are
+        // only ever set when a vendor applied a coupon at checkout
+        // (createSubscriptionOrder); amount above is already net of the
+        // discount (see vendorSubscriptionPayment.js), these three fields
+        // just carry the coupon reference through to the post-payment
+        // markCouponUsage() call in verifySubscriptionPayment.
+        couponId: { type: mongoose.Schema.Types.ObjectId, ref: "Coupon", default: null },
+        couponCode: { type: String, default: null },
+        discountAmount: { type: Number, default: 0 },
+        discountType: { type: String, default: null },
     },
 
     // Plan change request (vendor self-service)
     requestedPlan: { type: String, enum: ["starter", "basic", "standard", "premium", null], default: null },
     planChangeRequestedAt: { type: Date, default: null },
     planChangeNote: { type: String, maxlength: 300, default: "" },
+
+    // One-shot guard for the "expiring soon" reminder job — same pattern as
+    // Ticket.slaReminderSentAt. Reset to null on every successful
+    // activation/renewal (admin manual or self-serve Razorpay) so the next
+    // expiry cycle can remind again.
+    expiryReminderSentAt: { type: Date, default: null },
 
     // Trial
     isTrialActive: { type: Boolean, default: false },

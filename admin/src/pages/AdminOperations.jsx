@@ -263,7 +263,7 @@ const AdminOperations = () => {
                 api.get("/admin/map-data?days=1"),
                 api.get("/admin/scheduler/status"),
                 api.get("/admin/assignments/active"),
-                api.get("/orders/admin/refunds"),
+                api.get("/orders/admin/refunds", { params: { limit: 20 } }),
                 api.get("/orders/admin/local-delivery?limit=10"),
                 api.get("/admin/delivery-boys/online"),
                 api.get("/admin/vendors?status=approved&limit=8"),
@@ -273,7 +273,7 @@ const AdminOperations = () => {
             setMapData(mapRes.data);
             setSchedulerStats(schedRes.data.data);
             setAssignments(assignRes.data.assignments || []);
-            setRefunds(Array.isArray(refundRes.data) ? refundRes.data : []);
+            setRefunds(Array.isArray(refundRes.data?.orders) ? refundRes.data.orders : []);
             setLiveOrders(liveRes.data.orders || []);
             setOnlineRiders(ridersRes.data.riders || []);
             setActiveVendors(vendorsRes.data.vendors || []);

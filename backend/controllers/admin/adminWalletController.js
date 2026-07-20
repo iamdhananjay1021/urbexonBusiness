@@ -3,8 +3,9 @@
  */
 
 import DeliveryWallet from "../../models/deliveryModels/DeliveryWallet.js";
+import DeliveryWalletTransaction from "../../models/deliveryModels/DeliveryWalletTransaction.js";
 import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
-import { creditEarnings, applyPenalty, addBonus } from "../../services/deliveryWalletService.js";
+import { creditEarnings, applyPenalty, addBonus, writeLedgerEntry } from "../../services/deliveryWalletService.js";
 import { sendNotification } from "../../utils/notificationQueue.js";
 
 export const listWallets = async (req, res) => {
@@ -83,6 +84,10 @@ export const adjustWalletBalance = async (req, res) => {
                 balance: wallet.balance,
             });
             await wallet.save();
+            await writeLedgerEntry({
+                deliveryBoyId: wallet.deliveryBoyId, type: "debit", amount,
+                balanceAfter: wallet.balance, description: reason,
+            });
             result = { success: true, data: wallet };
         } else if (type === "bonus") {
             result = await addBonus(wallet.deliveryBoyId, amount, reason);
@@ -107,27 +112,32 @@ export const adjustWalletBalance = async (req, res) => {
     }
 };
 
+// [FIX] Previously loaded the entire embedded wallet.transactions array
+// into memory just to sort+slice it in JS on every request — unbounded
+// for a high-volume rider. Now a real indexed, paginated query against the
+// DeliveryWalletTransaction ledger (see that model's header comment).
+// Response shape is unchanged so no frontend caller needs to change.
 export const getWalletTransactions = async (req, res) => {
     try {
         const { id } = req.params;
-        const { limit = 50, offset = 0 } = req.query;
+        const limit = Math.min(200, Number(req.query.limit) || 50);
+        const offset = Number(req.query.offset) || 0;
 
-        const wallet = await DeliveryWallet.findById(id);
+        const wallet = await DeliveryWallet.findById(id).select("deliveryBoyId").lean();
         if (!wallet) {
             return res.status(404).json({ success: false, message: "Wallet not found" });
         }
 
-        const transactions = wallet.transactions
-            .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(offset, Number(offset) + Number(limit));
+        const [transactions, total] = await Promise.all([
+            DeliveryWalletTransaction.find({ deliveryBoyId: wallet.deliveryBoyId })
+                .sort({ createdAt: -1 })
+                .skip(offset)
+                .limit(limit)
+                .lean(),
+            DeliveryWalletTransaction.countDocuments({ deliveryBoyId: wallet.deliveryBoyId }),
+        ]);
 
-        res.json({
-            success: true,
-            data: transactions,
-            total: wallet.transactions.length,
-            limit,
-            offset,
-        });
+        res.json({ success: true, data: transactions, total, limit, offset });
     } catch (err) {
         console.error("[getWalletTransactions]", err);
         res.status(500).json({ success: false, message: "Failed to fetch transactions" });

@@ -144,6 +144,7 @@ export const useCheckout = (buyNowItem = null, couponFromCart = null) => {
                     deliveryType,
                     distanceKm: codDistance || 0,
                     pincode: selectedAddress?.pincode,
+                    state: selectedAddress?.state,
                     ...(coupon?.couponId && { couponId: coupon.couponId }),
                     ...(coupon?.code && { couponCode: coupon.code }),
                 });

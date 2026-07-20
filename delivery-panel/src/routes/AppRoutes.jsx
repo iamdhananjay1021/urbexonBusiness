@@ -28,6 +28,8 @@ const ActiveOrders = lazy(() => import("../pages/ActiveOrders"));
 const Earnings = lazy(() => import("../pages/Earnings"));
 const OrderHistory = lazy(() => import("../pages/OrderHistory"));
 const Profile = lazy(() => import("../pages/Profile"));
+const Support = lazy(() => import("../pages/Support"));
+const SupportTicketDetail = lazy(() => import("../pages/SupportTicketDetail"));
 
 const Loader = () => (
   <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: G.bg }}>
@@ -81,6 +83,7 @@ const NAV = [
   { to: "/orders", label: "Active", icon: "📦" },
   { to: "/earnings", label: "Earnings", icon: "📈" },
   { to: "/history", label: "History", icon: "🕐" },
+  { to: "/support", label: "Support", icon: "🎧" },
   { to: "/profile", label: "Profile", icon: "👤" },
 ];
 
@@ -202,7 +205,9 @@ const RequireAuth = ({ children }) => {
 
 const PublicOnly = ({ children }) => {
   const { rider, loading } = useAuth();
-  if (loading) return null;
+  // [FIX] Was `return null` — a blank white flash before /login rendered,
+  // inconsistent with every other guard in this file already using Loader.
+  if (loading) return <Loader />;
   return rider ? <Navigate to="/dashboard" replace /> : children;
 };
 
@@ -229,6 +234,8 @@ const AppRoutes = () => (
       <Route path="/orders" element={<Protected><PrivateLayout><ActiveOrders /></PrivateLayout></Protected>} />
       <Route path="/earnings" element={<Protected><PrivateLayout><Earnings /></PrivateLayout></Protected>} />
       <Route path="/history" element={<Protected><PrivateLayout><OrderHistory /></PrivateLayout></Protected>} />
+      <Route path="/support" element={<Protected><PrivateLayout><Support /></PrivateLayout></Protected>} />
+      <Route path="/support/:id" element={<Protected><PrivateLayout><SupportTicketDetail /></PrivateLayout></Protected>} />
       <Route path="/profile" element={<Protected><PrivateLayout><Profile /></PrivateLayout></Protected>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

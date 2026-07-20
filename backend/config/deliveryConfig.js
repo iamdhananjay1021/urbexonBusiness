@@ -43,10 +43,21 @@ const DEFAULTS = {
     },
 
     SHIPROCKET_PICKUP_LOCATION: process.env.SHIPROCKET_PICKUP_LOCATION || "Primary",
+
+    // ── Product Return Policy Limits (marketplace-wide guardrails) ──
+    PRODUCT_POLICY: {
+        MIN_RETURN_WINDOW_DAYS: 0,
+        MAX_RETURN_WINDOW_DAYS: 30,
+        MIN_REPLACEMENT_WINDOW_DAYS: 0,
+        MAX_REPLACEMENT_WINDOW_DAYS: 30,
+        MIN_CANCEL_WINDOW_HOURS: 0,
+        MAX_CANCEL_WINDOW_HOURS: 72,
+        ALLOWED_RETURN_CONDITIONS: ["damaged", "wrong_product", "defective", "missing_items", "other"],
+    },
 };
 
 // Mutable config — starts with defaults, updated from DB
-export const DELIVERY_CONFIG = { ...DEFAULTS, URBEXON_HOUR: { ...DEFAULTS.URBEXON_HOUR }, DELIVERY_ETA: { ...DEFAULTS.DELIVERY_ETA } };
+export const DELIVERY_CONFIG = { ...DEFAULTS, URBEXON_HOUR: { ...DEFAULTS.URBEXON_HOUR }, DELIVERY_ETA: { ...DEFAULTS.DELIVERY_ETA }, PRODUCT_POLICY: { ...DEFAULTS.PRODUCT_POLICY } };
 
 export const DELIVERY_TYPES = {
     ECOMMERCE_STANDARD: "ECOMMERCE_STANDARD",
@@ -162,8 +173,53 @@ export const refreshDeliveryConfig = async () => {
 
         DELIVERY_CONFIG.SHIPROCKET_PICKUP_LOCATION = doc.shiprocketPickupLocation ?? DEFAULTS.SHIPROCKET_PICKUP_LOCATION;
 
+        const ppl = doc.productPolicyLimits || {};
+        DELIVERY_CONFIG.PRODUCT_POLICY.MIN_RETURN_WINDOW_DAYS = ppl.minReturnWindowDays ?? DEFAULTS.PRODUCT_POLICY.MIN_RETURN_WINDOW_DAYS;
+        DELIVERY_CONFIG.PRODUCT_POLICY.MAX_RETURN_WINDOW_DAYS = ppl.maxReturnWindowDays ?? DEFAULTS.PRODUCT_POLICY.MAX_RETURN_WINDOW_DAYS;
+        DELIVERY_CONFIG.PRODUCT_POLICY.MIN_REPLACEMENT_WINDOW_DAYS = ppl.minReplacementWindowDays ?? DEFAULTS.PRODUCT_POLICY.MIN_REPLACEMENT_WINDOW_DAYS;
+        DELIVERY_CONFIG.PRODUCT_POLICY.MAX_REPLACEMENT_WINDOW_DAYS = ppl.maxReplacementWindowDays ?? DEFAULTS.PRODUCT_POLICY.MAX_REPLACEMENT_WINDOW_DAYS;
+        DELIVERY_CONFIG.PRODUCT_POLICY.MIN_CANCEL_WINDOW_HOURS = ppl.minCancelWindowHours ?? DEFAULTS.PRODUCT_POLICY.MIN_CANCEL_WINDOW_HOURS;
+        DELIVERY_CONFIG.PRODUCT_POLICY.MAX_CANCEL_WINDOW_HOURS = ppl.maxCancelWindowHours ?? DEFAULTS.PRODUCT_POLICY.MAX_CANCEL_WINDOW_HOURS;
+        DELIVERY_CONFIG.PRODUCT_POLICY.ALLOWED_RETURN_CONDITIONS = ppl.allowedReturnConditions?.length ? ppl.allowedReturnConditions : DEFAULTS.PRODUCT_POLICY.ALLOWED_RETURN_CONDITIONS;
+
         console.log("✅ Delivery config loaded from DB");
     } catch (err) {
         console.warn("⚠️  Could not load delivery config from DB, using defaults:", err.message);
     }
+};
+
+/**
+ * clampProductPolicy(input) — the one place that enforces admin-configured
+ * return/replacement/cancel-window bounds and the return-conditions master
+ * list against a product create/update payload. Reused by every write site
+ * in productController.js (admin ecommerce create/update, vendor
+ * urbexon_hour create/update) instead of each one hand-rolling its own
+ * Math.min/Math.max — mirrors venderProfile.js's existing vendor-radius
+ * clamp (`Math.min(Math.max(num, adminMin), adminMax)`) applied to product
+ * policy fields instead. Only returns keys present on `input`, so callers
+ * can merge the result without clobbering untouched fields.
+ */
+export const clampProductPolicy = (input = {}) => {
+    const p = DELIVERY_CONFIG.PRODUCT_POLICY;
+    const out = {};
+
+    if (input.returnWindow !== undefined) {
+        out.returnWindow = Math.min(p.MAX_RETURN_WINDOW_DAYS, Math.max(p.MIN_RETURN_WINDOW_DAYS, Number(input.returnWindow) || 0));
+    }
+    if (input.replacementWindow !== undefined) {
+        out.replacementWindow = Math.min(p.MAX_REPLACEMENT_WINDOW_DAYS, Math.max(p.MIN_REPLACEMENT_WINDOW_DAYS, Number(input.replacementWindow) || 0));
+    }
+    if (input.cancelWindow !== undefined) {
+        out.cancelWindow = Math.min(p.MAX_CANCEL_WINDOW_HOURS, Math.max(p.MIN_CANCEL_WINDOW_HOURS, Number(input.cancelWindow) || 0));
+    }
+    if (input.returnConditions !== undefined) {
+        let arr = input.returnConditions;
+        if (typeof arr === "string") {
+            try { arr = JSON.parse(arr); } catch { arr = arr.split(","); }
+        }
+        out.returnConditions = (Array.isArray(arr) ? arr : [])
+            .map((c) => String(c).trim())
+            .filter((c) => p.ALLOWED_RETURN_CONDITIONS.includes(c));
+    }
+    return out;
 };

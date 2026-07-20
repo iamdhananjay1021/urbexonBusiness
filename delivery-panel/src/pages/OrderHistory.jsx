@@ -9,15 +9,23 @@ import { G, fmt, fmtDate } from "../utils/theme";
 const OrderHistory = () => {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
     const [search, setSearch] = useState("");
 
+    // [FIX] Previously a failed fetch just set orders to [] with no error
+    // state — indistinguishable from "you genuinely have zero delivered
+    // orders." Consequential here specifically: a rider checking this page
+    // for an earnings dispute needs to know "we couldn't load your
+    // history" is a different situation from "you have no history."
     const load = useCallback(async () => {
+        setError("");
         try {
             const { data } = await api.get("/delivery/orders");
             setOrders((data.orders || []).filter(o => o.orderStatus === "DELIVERED"));
         } catch (err) {
             console.error("[OrderHistory]", err.message);
             setOrders([]);
+            setError(err.response?.data?.message || "Failed to load your order history");
         }
         finally { setLoading(false); }
     }, []);
@@ -77,7 +85,18 @@ const OrderHistory = () => {
             </div>
 
             {/* ── Orders List ── */}
-            {filtered.length === 0 ? (
+            {error ? (
+                <div style={{ textAlign: "center", padding: "60px 20px" }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+                    <div style={{ fontWeight: 600, color: "#b91c1c", marginBottom: 10 }}>{error}</div>
+                    <button
+                        onClick={load}
+                        style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: G.brand, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                    >
+                        Try Again
+                    </button>
+                </div>
+            ) : filtered.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "60px 20px" }}>
                     <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
                     <div style={{ fontWeight: 600, color: G.textSub }}>

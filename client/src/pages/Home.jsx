@@ -20,9 +20,11 @@ import ProductCard from "../components/ProductCard";
 import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
 import {
     FaArrowRight, FaBolt, FaChevronLeft, FaChevronRight,
-    FaSearch, FaStore, FaThLarge, FaTag,
+    FaSearch, FaStore, FaThLarge, FaTag, FaLayerGroup,
     FaShippingFast, FaLock, FaMedal, FaHeadset,
 } from "react-icons/fa";
+import { fetchCollections } from "../api/collectionApi";
+import { imgUrl, imgSrcSet } from "../utils/imageUrl";
 
 /* ─── Constants ─── */
 const CACHE_TTL = 3 * 60 * 1000;
@@ -310,6 +312,70 @@ const AllProductsSection = () => {
     );
 };
 
+/* ─── COLLECTIONS SECTION ───
+   BUG FIX: the Collection Engine (admin creates/edits collections with
+   rules, image, SEO — see AdminCollections.jsx) has always had its own
+   dedicated pages (/collections, /collections/:slug), but nothing on the
+   homepage ever linked to them — the only way a customer would ever see
+   one was by already knowing the direct URL or clicking a Footer link.
+   Every collection an admin creates was invisible on the page that
+   actually gets traffic. Self-fetches (same pattern as AllProductsSection
+   above) so it degrades to rendering nothing if there are no active
+   collections yet, instead of needing to thread collections through the
+   homepage's bulk endpoint. */
+const CollectionsSection = () => {
+    const [collections, setCollections] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const ctrl = new AbortController();
+        fetchCollections({ signal: ctrl.signal })
+            .then(({ data }) => setCollections(data?.collections || []))
+            .catch((err) => { if (err.name !== "CanceledError" && err.code !== "ERR_CANCELED") setCollections([]); })
+            .finally(() => setLoading(false));
+        return () => ctrl.abort();
+    }, []);
+
+    if (!loading && collections.length === 0) return null;
+
+    return (
+        <section className="bg-white border-t border-[var(--color-graphite-100)] py-6 sm:py-8">
+            <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16">
+                <SecHead eyebrow="Curated" title="Collections" sub="Hand-picked themes that update themselves"
+                    to="/collections" label="View all"
+                    icon={<FaLayerGroup size={15} className="text-accent" />} />
+                <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
+                    {loading
+                        ? Array.from({ length: 3 }).map((_, i) => (
+                            <div key={i} className="flex-shrink-0 w-[260px] sm:w-[300px] aspect-[16/9] rounded-xl bg-[var(--color-graphite-100)] animate-pulse" />
+                        ))
+                        : collections.map((c) => (
+                            <Link key={c.slug} to={`/collections/${c.slug}`}
+                                className="group no-underline flex-shrink-0 w-[260px] sm:w-[300px] relative aspect-[16/9]
+                                           rounded-xl overflow-hidden bg-[var(--color-graphite-900)]
+                                           shadow-[var(--shadow-xs)] hover:shadow-[var(--shadow-md)] hover:-translate-y-0.5
+                                           transition-all duration-200">
+                                {c.image ? (
+                                    <img src={c.image} alt={c.name} loading="lazy"
+                                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.04]" />
+                                ) : (
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <FaLayerGroup size={26} className="text-white/20" />
+                                    </div>
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-[rgba(20,21,26,0.6)] to-transparent" />
+                                <p className="absolute bottom-3 left-4 right-4 text-white font-display font-bold text-base leading-tight">
+                                    {c.name}
+                                </p>
+                            </Link>
+                        ))
+                    }
+                </div>
+            </div>
+        </section>
+    );
+};
+
 /* ─── FLASH DEALS SECTION ─── */
 const FlashDealsSection = ({ deals, loading, nearestDealEnd }) => {
     if (!loading && deals.length === 0) return null;
@@ -370,7 +436,7 @@ const HeroSlide = ({ slide, active, isFirst, stats, navigate }) => {
                     priority so the browser fetches it before anything else,
                     instead of discovering it late via the default scanner
                     priority every other image gets. */}
-                <img src={bg} alt={slide.title || "Banner"}
+                <img src={imgUrl.zoom(bg)} srcSet={imgSrcSet(bg, 1200)} alt={slide.title || "Banner"}
                     loading={isFirst ? "eager" : "lazy"}
                     decoding={isFirst ? "sync" : "async"}
                     fetchPriority={isFirst ? "high" : "auto"}
@@ -891,6 +957,9 @@ const Home = () => {
                     </div>
                 </section>
             )}
+
+            {/* ━━ COLLECTIONS ━━ */}
+            <CollectionsSection />
 
             {/* ━━ ALL PRODUCTS ━━ */}
             <AllProductsSection />

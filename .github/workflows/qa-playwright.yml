@@ -8,6 +8,42 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ── Backend unit tests (Jest) — independent of the E2E suite below, runs
+  # in parallel since it needs no frontend/browser at all. ──
+  backend-unit-tests:
+    name: Backend Jest Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand(\"ping\").ok' --quiet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend deps
+        working-directory: backend
+        run: npm ci
+
+      - name: Run Jest suite
+        working-directory: backend
+        run: npm test
+        env:
+          MONGO_URI: mongodb://127.0.0.1:27017/urbexon_ci_test
+
   playwright:
     name: Playwright E2E + API
     runs-on: ubuntu-latest
@@ -23,6 +59,16 @@ jobs:
       MONGO_URI: ${{ secrets.QA_MONGO_URI }}
       JWT_SECRET: ${{ secrets.QA_JWT_SECRET }}
       NODE_ENV: test
+      # [FIX] server.js fails fast (process.exit(1)) at boot if any of these
+      # are unset — this job's "Start backend" step was silently unable to
+      # ever succeed without them. Dummy values are fine: nothing in the
+      # E2E suite exercises a real Razorpay/Cloudinary call against these.
+      RAZORPAY_KEY_ID: ${{ secrets.QA_RAZORPAY_KEY_ID || 'qa_test_key_id' }}
+      RAZORPAY_KEY_SECRET: ${{ secrets.QA_RAZORPAY_KEY_SECRET || 'qa_test_key_secret' }}
+      CLOUDINARY_CLOUD_NAME: ${{ secrets.QA_CLOUDINARY_CLOUD_NAME || 'qa-test' }}
+      CLOUDINARY_API_KEY: ${{ secrets.QA_CLOUDINARY_API_KEY || 'qa_test_key' }}
+      CLOUDINARY_API_SECRET: ${{ secrets.QA_CLOUDINARY_API_SECRET || 'qa_test_secret' }}
+      VITE_API_URL: http://localhost:9000/api
 
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +103,38 @@ jobs:
       - name: Run API-level suites
         working-directory: testing
         run: npx playwright test --project=api
+        env:
+          SEED: 1
+
+      # ── Frontend apps — the chromium project below drives real UI across
+      # all 4, so all 4 need to be up first. Dev servers (not a production
+      # build+serve) to match this repo's existing local-dev convention and
+      # keep this step simple; the vite.config.js port for each app is
+      # fixed and matches the DEV_*_URL env vars above exactly.
+      - name: Install client deps
+        working-directory: client
+        run: npm ci
+      - name: Install admin deps
+        working-directory: admin
+        run: npm ci
+      - name: Install vendor-panel deps
+        working-directory: vendor-panel
+        run: npm ci
+      - name: Install delivery-panel deps
+        working-directory: delivery-panel
+        run: npm ci
+
+      - name: Start frontend apps
+        run: |
+          (cd client && npm run dev -- --port 5173 --strictPort &)
+          (cd admin && npm run dev -- --port 5174 --strictPort &)
+          (cd vendor-panel && npm run dev -- --port 5175 --strictPort &)
+          (cd delivery-panel && npm run dev -- --port 5176 --strictPort &)
+          npx --yes wait-on http://localhost:5173 http://localhost:5174 http://localhost:5175 http://localhost:5176 --timeout 60000
+
+      - name: Run UI (chromium) suite
+        working-directory: testing
+        run: npx playwright test --project=chromium
         env:
           SEED: 1
 

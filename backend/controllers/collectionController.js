@@ -16,6 +16,13 @@ import Collection from "../models/Collection.js";
 import Product from "../models/Product.js";
 import { getCache, setCache, delCacheByPrefix } from "../utils/Cache.js";
 import { buildCollectionFilter, resolveSort, SORT_MAP } from "../services/collectionService.js";
+import cloudinary, { uploadToCloudinary } from "../config/cloudinary.js";
+
+const safeDestroyImage = async (publicId) => {
+    if (!publicId) return;
+    try { await cloudinary.uploader.destroy(publicId); }
+    catch (e) { console.warn("[Cloudinary] Collection image delete failed:", e.message); }
+};
 
 const safeGetCache = async (key) => { try { return await getCache(key); } catch { return null; } };
 const safeSetCache = async (key, val, ttl) => { try { await setCache(key, val, ttl); } catch { /* cache down */ } };
@@ -29,6 +36,18 @@ const clampInt = (v, def, min, max) => {
 const PRODUCT_FIELDS =
     "name slug category brand price mrp images rating numReviews inStock stock isDeal dealEndsAt isFeatured tags productType vendorId colorVariants sizes";
 
+// Same convention as getUrbexonHourHomepage's filterValidVendor
+// (productController.js): ecommerce products (vendorId: null) always pass
+// — this check only matters for Urbexon Hour products, whose vendor can
+// go unapproved/closed/deleted after the product itself stays isActive.
+const filterValidVendor = (p) => {
+    if (!p.vendorId) return true;
+    if (p.vendorId.isDeleted) return false;
+    if (p.vendorId.status && p.vendorId.status !== "approved") return false;
+    if (p.vendorId.isOpen === false) return false;
+    return true;
+};
+
 /* ── PUBLIC — list active collections ── */
 export const getCollections = async (req, res) => {
     try {
@@ -41,7 +60,14 @@ export const getCollections = async (req, res) => {
             .sort({ order: 1, createdAt: -1 })
             .lean();
 
-        const result = { success: true, collections };
+        // BUG FIX: this used to return the raw { url, public_id } image
+        // object straight from the DB. getCollectionProducts (the detail
+        // endpoint) already flattens it to collection.image?.url — this list
+        // endpoint didn't, so CollectionsIndex.jsx's <img src={c.image}>
+        // received an object, not a string (renders as a broken image).
+        const flattened = collections.map((c) => ({ ...c, image: c.image?.url || "" }));
+
+        const result = { success: true, collections: flattened };
         await safeSetCache(cacheKey, result, 300);
         res.json(result);
     } catch (err) {
@@ -69,10 +95,24 @@ export const getCollectionProducts = async (req, res) => {
         const sortObj = resolveSort(sortOverride || collection.sort);
         const skip = (page - 1) * limit;
 
-        const [products, total] = await Promise.all([
-            Product.find(filter).select(PRODUCT_FIELDS).sort(sortObj).skip(skip).limit(limit).lean(),
+        const [productsRaw, total] = await Promise.all([
+            Product.find(filter)
+                .select(PRODUCT_FIELDS)
+                .populate("vendorId", "shopName shopLogo isOpen status isDeleted")
+                .sort(sortObj).skip(skip).limit(limit).lean(),
             Product.countDocuments(filter),
         ]);
+
+        // Now that collections can include Urbexon Hour products, filter out
+        // any whose vendor went unapproved/closed/deleted since the product
+        // was last touched — same safety net getUrbexonHourProducts/
+        // getUrbexonHourHomepage already apply. Best-effort total adjustment
+        // (same convention as getUrbexonHourProducts) since re-counting
+        // exactly would need a second aggregation.
+        const products = productsRaw.filter(filterValidVendor);
+        const adjustedTotal = products.length < productsRaw.length
+            ? Math.max(0, total - (productsRaw.length - products.length))
+            : total;
 
         const result = {
             success: true,
@@ -88,8 +128,8 @@ export const getCollectionProducts = async (req, res) => {
                         (collection.description || `Shop the ${collection.name} collection on Urbexon.`),
                 },
             },
-            products, total, page,
-            totalPages: Math.ceil(total / limit),
+            products, total: adjustedTotal, page,
+            totalPages: Math.ceil(adjustedTotal / limit),
         };
 
         await safeSetCache(cacheKey, result, 120);
@@ -134,6 +174,26 @@ const applyBody = (doc, body) => {
     }
 };
 
+/* ── ADMIN — live "how many products match these rules right now" count.
+   Takes UNSAVED rules straight from the editor form so admin sees the
+   real number BEFORE saving — this is what actually prevents ever
+   shipping a silently-empty collection again, rather than just fixing
+   this one instance of it. Deliberately a plain countDocuments (no vendor-
+   validity populate/filter like getCollectionProducts does) — this is a
+   live-typing preview, not the storefront result; a small over-count from
+   an occasional closed vendor's product is an acceptable trade-off for
+   staying fast on every keystroke. ── */
+export const adminPreviewCollectionCount = async (req, res) => {
+    try {
+        const filter = buildCollectionFilter(parseRules(req.body.rules));
+        const count = await Product.countDocuments(filter);
+        res.json({ success: true, count });
+    } catch (err) {
+        console.error("[adminPreviewCollectionCount]", err);
+        res.status(500).json({ success: false, message: "Failed to preview" });
+    }
+};
+
 /* ── ADMIN — list all (incl. inactive) ── */
 export const adminGetCollections = async (req, res) => {
     try {
@@ -145,7 +205,11 @@ export const adminGetCollections = async (req, res) => {
     }
 };
 
-/* ── ADMIN — create ── */
+/* ── ADMIN — create ──
+   BUG FIX: the Collection model and both public pages (list banner +
+   detail hero) have always supported an `image`, but nothing here ever
+   accepted an upload — admin had no way to set one, so every collection
+   silently stayed image-less no matter what the UI implied. */
 export const adminCreateCollection = async (req, res) => {
     try {
         if (!req.body.name?.trim()) {
@@ -153,6 +217,10 @@ export const adminCreateCollection = async (req, res) => {
         }
         const doc = new Collection({});
         applyBody(doc, req.body);
+        if (req.file) {
+            const result = await uploadToCloudinary(req.file.buffer, "urbexon/collections");
+            doc.image = { url: result.secure_url, public_id: result.public_id };
+        }
         await doc.save();
         await safeDelPrefix("collections:");
         res.status(201).json({ success: true, collection: doc });
@@ -171,6 +239,14 @@ export const adminUpdateCollection = async (req, res) => {
         const doc = await Collection.findById(req.params.id);
         if (!doc) return res.status(404).json({ success: false, message: "Collection not found" });
         applyBody(doc, req.body);
+        if (req.file) {
+            await safeDestroyImage(doc.image?.public_id);
+            const result = await uploadToCloudinary(req.file.buffer, "urbexon/collections");
+            doc.image = { url: result.secure_url, public_id: result.public_id };
+        } else if (req.body.removeImage === "true" || req.body.removeImage === true) {
+            await safeDestroyImage(doc.image?.public_id);
+            doc.image = { url: "", public_id: "" };
+        }
         await doc.save();
         await safeDelPrefix("collections:");
         res.json({ success: true, collection: doc });
@@ -185,6 +261,7 @@ export const adminDeleteCollection = async (req, res) => {
     try {
         const doc = await Collection.findByIdAndDelete(req.params.id);
         if (!doc) return res.status(404).json({ success: false, message: "Collection not found" });
+        await safeDestroyImage(doc.image?.public_id);
         await safeDelPrefix("collections:");
         res.json({ success: true, message: "Collection deleted" });
     } catch (err) {

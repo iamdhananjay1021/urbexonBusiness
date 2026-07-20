@@ -24,18 +24,19 @@
  * ✅ processReturn: transition guard + double-refund safe
  */
 
-import Razorpay from "razorpay";
 import jwt from "jsonwebtoken";
+import logger from "../utils/logger.js";
 import Order, { generateInvoiceNumber } from "../models/Order.js";
 import Product from "../models/Product.js";
 import { sendEmail } from "../utils/emailService.js";
 import { getOrderStatusEmailTemplate } from "../utils/orderStatusEmail.js";
 import { adminOrderEmailHTML } from "../utils/adminOrderEmail.js";
 import { generateInvoiceBuffer } from "../utils/invoiceEmailHelper.js";
-import { calculateOrderPricing, deductStock, restoreStock, markCouponUsed, unmarkCouponUsed } from "../services/pricing.js";
+import { calculateOrderPricing, deductStock, restoreStock } from "../services/pricing.js";
+import { markCouponUsage, unmarkCouponUsage } from "../services/couponEngine.js";
 import { applyOrderTransition, buildTimelineEntry, notifyOrderStakeholders } from "../services/orderEngine.js";
 import { settleAllVendorsForOrder } from "../services/settlementEngine.js";
-import { refundOrderPayment } from "../services/refundEngine.js";
+import { refundOrderPayment, adminDecideRefund, retryFailedRefund, executeReturnRefund } from "../services/refundEngine.js";
 import { kickoffNewOrder } from "../services/orderKickoff.js";
 import { DELIVERY_CONFIG } from "../config/deliveryConfig.js";
 import { validateOrderParams } from "../validations/orderValidations.js";
@@ -52,10 +53,8 @@ import { createShiprocketOrder } from "../utils/Shiprocketservice.js";
 import { fetchLatLng } from "./addressController.js"; // ✅ NEW import
 
 
-const razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+const MS_PER_HOUR = 60 * 60 * 1000;
+const MS_PER_DAY = 24 * MS_PER_HOUR;
 
 const getClientIp = (req) =>
     req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
@@ -66,7 +65,7 @@ const getClientIp = (req) =>
 ────────────────────────────────────────────── */
 const checkFraud = async ({ userId, ip, amount, paymentId }) => {
     const reasons = [];
-    const oneHour = new Date(Date.now() - 60 * 60 * 1000);
+    const oneHour = new Date(Date.now() - MS_PER_HOUR);
 
     if (paymentId) {
         const dup = await Order.findOne({ "payment.razorpayPaymentId": paymentId }).lean();
@@ -83,9 +82,13 @@ const checkFraud = async ({ userId, ip, amount, paymentId }) => {
 
     const totalUserOrders = await Order.countDocuments({ user: userId });
     if (totalUserOrders >= 5) {
+        // BUG FIX: "APPROVED" is a return.status value, not a refund.status
+        // one (refund.status enum is NONE/REQUESTED/PROCESSING/PROCESSED/
+        // FAILED/REJECTED) — this clause never matched anything, silently
+        // under-counting every user's actual refund rate.
         const refundedCount = await Order.countDocuments({
             user: userId,
-            "refund.status": { $in: ["APPROVED", "PROCESSED"] },
+            "refund.status": "PROCESSED",
         });
         if (refundedCount / totalUserOrders > 0.3) reasons.push("HIGH_REFUND_RATE");
     }
@@ -138,7 +141,7 @@ export const streamMyOrderEvents = (req, res) => {
         });
 
     } catch (err) {
-        console.error("SSE ERROR:", err);
+        logger.error("SSE ERROR", { message: err.message });
         res.end();
     }
 };
@@ -388,20 +391,24 @@ export const createOrder = async (req, res) => {
             itemsTotal,
             vendorId,
             realDistanceKm,
-            coupon: validatedCoupon,
             paymentMethod: method,
         } = validation;
 
         const finalVendorId = orderChannel === "ecommerce" ? null : (vendorId || null);
 
+        // Coupon validation now happens exactly once, inside
+        // calculateOrderPricing() → couponEngine.js — couponId/couponCode
+        // are passed straight through from the request instead of being
+        // pre-validated by the now-deleted orderValidations.js::validateCoupon.
         let pricing;
         try {
             pricing = await calculateOrderPricing(formattedItems, method, {
                 deliveryType: orderChannel === "ecommerce" ? "ECOMMERCE_STANDARD" : (deliveryType || "URBEXON_HOUR"),
                 distanceKm: realDistanceKm,
                 pincode,
-                couponId: validatedCoupon?._id,
-                couponCode: validatedCoupon?.couponCode,
+                state,
+                couponId,
+                couponCode,
                 userId: req.user._id,
                 vendorId: finalVendorId,
             });
@@ -467,7 +474,7 @@ export const createOrder = async (req, res) => {
                 at: now,
             }],
             coupon: appliedCoupon
-                ? { code: appliedCoupon.couponCode, discount: appliedCoupon.discount || 0 }
+                ? { code: appliedCoupon.couponCode, discount: appliedCoupon.discount || 0, couponId: appliedCoupon.couponId }
                 : undefined,
             // ✅ FIX-1: orderMode correctly set from detected channel
             orderMode: orderChannel === "ecommerce" ? "ECOMMERCE" : "URBEXON_HOUR",
@@ -505,7 +512,17 @@ export const createOrder = async (req, res) => {
         }
 
         if (appliedCoupon?.couponId) {
-            await markCouponUsed(appliedCoupon.couponId, req.user._id).catch(() => { });
+            await markCouponUsage({
+                couponId: appliedCoupon.couponId,
+                userId: req.user._id,
+                orderId: savedOrder._id,
+                module: "ORDER",
+                discountAmount: appliedCoupon.discount || 0,
+                discountType: appliedCoupon.discountType,
+                orderTotal: itemsTotal,
+                ip,
+                userAgent: req.headers["user-agent"]?.slice(0, 300) || "",
+            }).catch(() => { });
         }
 
         kickoffNewOrder({ order: savedOrder, items: formattedItems }).catch(() => { });
@@ -565,7 +582,7 @@ export const createOrder = async (req, res) => {
             console.warn(`[FRAUD] Order ${savedOrder._id} flagged:`, fraudCheck.reasons);
 
     } catch (err) {
-        console.error("CREATE ORDER:", err);
+        logger.error("CREATE ORDER", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Order placement failed. Please try again." });
     }
 };
@@ -575,7 +592,7 @@ export const createOrder = async (req, res) => {
 ══════════════════════════════════════════════ */
 export const getCheckoutPricing = async (req, res) => {
     try {
-        const { items, paymentMethod, deliveryType, distanceKm, pincode, couponId, couponCode } = req.body;
+        const { items, paymentMethod, deliveryType, distanceKm, pincode, state, couponId, couponCode } = req.body;
 
         if (!items?.length)
             return res.status(400).json({ success: false, message: "Cart is empty" });
@@ -602,6 +619,7 @@ export const getCheckoutPricing = async (req, res) => {
                 deliveryType: pricingDeliveryType,
                 distanceKm,
                 pincode,
+                state,
                 couponId,
                 couponCode,
                 userId: req.user._id,
@@ -625,7 +643,7 @@ export const getCheckoutPricing = async (req, res) => {
             res.status(400).json({ success: false, message: err.message });
         }
     } catch (err) {
-        console.error("GET PRICING:", err);
+        logger.error("GET PRICING", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to calculate pricing" });
     }
 };
@@ -653,7 +671,7 @@ export const cancelOrder = async (req, res) => {
             });
 
         const placedAt = order.statusTimeline?.placedAt || order.createdAt;
-        const hoursSincePlaced = (Date.now() - new Date(placedAt).getTime()) / (1000 * 60 * 60);
+        const hoursSincePlaced = (Date.now() - new Date(placedAt).getTime()) / MS_PER_HOUR;
         const maxCancelWindow = Math.max(...order.items.map(i => i.policy?.cancelWindow || 0));
         if (maxCancelWindow > 0 && hoursSincePlaced > maxCancelWindow) {
             return res.status(400).json({
@@ -700,7 +718,12 @@ export const cancelOrder = async (req, res) => {
         // codebase before — a cancelled order permanently consumed the
         // customer's one-time coupon use and the coupon's global usedCount.
         if (cancelledOrder.coupon?.code) {
-            await unmarkCouponUsed({ couponCode: cancelledOrder.coupon.code, userId: cancelledOrder.user }).catch(() => { });
+            await unmarkCouponUsage({
+                couponId: cancelledOrder.coupon.couponId,
+                couponCode: cancelledOrder.coupon.code,
+                userId: cancelledOrder.user,
+                orderId: cancelledOrder._id,
+            }).catch(() => { });
         }
 
         if (cancelledOrder.orderMode === "URBEXON_HOUR") {
@@ -739,7 +762,7 @@ export const cancelOrder = async (req, res) => {
         });
 
     } catch (err) {
-        console.error("CANCEL ORDER:", err);
+        logger.error("CANCEL ORDER", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to cancel order" });
     }
 };
@@ -781,9 +804,9 @@ export const getOrderById = async (req, res) => {
         const now = Date.now();
         const placedAt = order.statusTimeline?.placedAt || order.createdAt;
         const deliveredAt = order.statusTimeline?.deliveredAt;
-        const hoursSincePlaced = (now - new Date(placedAt).getTime()) / (1000 * 60 * 60);
+        const hoursSincePlaced = (now - new Date(placedAt).getTime()) / MS_PER_HOUR;
         const daysSinceDelivered = deliveredAt
-            ? (now - new Date(deliveredAt).getTime()) / (1000 * 60 * 60 * 24)
+            ? (now - new Date(deliveredAt).getTime()) / MS_PER_DAY
             : null;
         const isUH = order.orderMode === "URBEXON_HOUR";
 
@@ -929,7 +952,7 @@ export const updateOrderStatus = async (req, res) => {
 
             if (!otpStillLive) {
                 update["deliveryOtp.code"] = String(Math.floor(1000 + Math.random() * 9000));
-                update["deliveryOtp.expiresAt"] = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                update["deliveryOtp.expiresAt"] = new Date(Date.now() + MS_PER_DAY);
                 update["deliveryOtp.verified"] = false;
             }
             update["delivery.status"] = "OUT_FOR_DELIVERY";
@@ -963,7 +986,12 @@ export const updateOrderStatus = async (req, res) => {
         if (status === "CANCELLED") {
             await restoreStock(order.items);
             if (order.coupon?.code) {
-                await unmarkCouponUsed({ couponCode: order.coupon.code, userId: order.user });
+                await unmarkCouponUsage({
+                    couponId: order.coupon.couponId,
+                    couponCode: order.coupon.code,
+                    userId: order.user,
+                    orderId: order._id,
+                });
             }
             // Admin force-cancel previously never triggered a refund at all —
             // a PAID Razorpay order stayed payment.status:"PAID" forever.
@@ -1131,7 +1159,7 @@ export const updateOrderStatus = async (req, res) => {
         // being a third independent copy of this exact calculation.
         if (status === "DELIVERED" && order.orderMode === "URBEXON_HOUR") {
             settleAllVendorsForOrder(order).catch((err) =>
-                console.error("[Settlement] Auto-create failed:", order._id, err.message)
+                logger.error("[Settlement] Auto-create failed", { orderId: order._id, message: err.message })
             );
         }
 
@@ -1196,7 +1224,7 @@ export const updateOrderStatus = async (req, res) => {
         }
 
     } catch (err) {
-        console.error("UPDATE STATUS:", err);
+        logger.error("UPDATE STATUS", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to update status" });
     }
 };
@@ -1253,7 +1281,7 @@ export const getLocalDeliveryQueue = async (req, res) => {
 
         res.json({ orders, total, page, totalPages: Math.ceil(total / limit), limit });
     } catch (err) {
-        console.error("LOCAL DELIVERY QUEUE:", err);
+        logger.error("LOCAL DELIVERY QUEUE", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to fetch local delivery queue" });
     }
 };
@@ -1345,145 +1373,36 @@ export const assignLocalDelivery = async (req, res) => {
 
         res.json({ success: true, order });
     } catch (err) {
-        console.error("ASSIGN LOCAL DELIVERY:", err);
+        logger.error("ASSIGN LOCAL DELIVERY", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to assign local delivery" });
     }
 };
 
 /* ══════════════════════════════════════════════
-   REFUND — REQUEST (USER)
-══════════════════════════════════════════════ */
-export const requestRefund = async (req, res) => {
-    try {
-        const order = await Order.findById(req.params.id);
-        if (!order) return res.status(404).json({ success: false, message: "Order not found" });
-        if (order.user.toString() !== req.user._id.toString())
-            return res.status(403).json({ success: false, message: "Not authorized" });
-        if (order.payment.method !== "RAZORPAY")
-            return res.status(400).json({ success: false, message: "Refund only for online payments" });
-        if (order.payment.status !== "PAID")
-            return res.status(400).json({ success: false, message: "Payment not completed" });
-        if (order.refund?.status && order.refund.status !== "NONE")
-            return res.status(400).json({ message: `Refund already ${order.refund.status.toLowerCase()}` });
-
-        order.refund = {
-            requested: true,
-            requestedAt: new Date(),
-            reason: (req.body.reason || "Requested by customer").trim().slice(0, 500),
-            status: "REQUESTED",
-            amount: order.totalAmount,
-        };
-        order.paymentLogs.push({
-            event: "REFUND_REQUESTED",
-            amount: order.totalAmount,
-            method: "RAZORPAY",
-            ip: getClientIp(req),
-            at: new Date(),
-        });
-        order.markModified("refund");
-        await order.save();
-
-        res.json({ success: true, message: "Refund request submitted", refund: order.refund });
-
-        const safeName = (order.customerName || "").replace(
-            /[<>&"']/g,
-            c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" })[c]
-        );
-        sendEmail({
-            to: process.env.ADMIN_EMAIL,
-            subject: `💰 Refund Request #${order._id.toString().slice(-6).toUpperCase()} — ₹${order.totalAmount}`,
-            html: `<p>Refund requested by <b>${safeName}</b>. Amount: ₹${order.totalAmount}</p>`,
-            label: "Admin/RefundRequest",
-        });
-    } catch (err) {
-        console.error("REQUEST REFUND:", err);
-        res.status(500).json({ success: false, message: "Failed to submit refund request" });
-    }
-};
-
-/* ══════════════════════════════════════════════
    REFUND — PROCESS (ADMIN)
-   ✅ Double-refund guard
-   ✅ PROCESSING state prevents concurrent duplicate calls
+   Thin HTTP wrapper — all the atomicity/double-refund-guard logic lives
+   in refundEngine.js::adminDecideRefund, shared with Paymentcontroller.js's
+   equivalent route so the two can never drift into different behavior.
 ══════════════════════════════════════════════ */
 export const processRefund = async (req, res) => {
     try {
-        const order = await Order.findById(req.params.id);
-        if (!order) return res.status(404).json({ success: false, message: "Order not found" });
-
-        const alreadyRefunded =
-            order.payment?.status === "REFUNDED" ||
-            order.refund?.status === "PROCESSED";
-        if (alreadyRefunded) {
-            return res.status(400).json({
-                success: false,
-                message: "Refund already processed",
-                currentStatus: order.refund?.status || order.payment?.status,
-            });
-        }
-
         const { action, adminNote } = req.body;
         if (!["approve", "reject"].includes(action))
             return res.status(400).json({ success: false, message: "Action must be approve or reject" });
 
-        if (!order.refund?.requested || order.refund?.status !== "REQUESTED")
-            return res.status(400).json({ success: false, message: "No pending refund request" });
+        const result = await adminDecideRefund({
+            orderId: req.params.id,
+            action,
+            adminId: req.user._id,
+            ip: getClientIp(req),
+            adminNote: adminNote?.trim() || "",
+        });
 
-        if (action === "reject") {
-            order.refund.status = "REJECTED";
-            order.refund.adminNote = adminNote?.trim() || "";
-            order.paymentLogs.push({
-                event: "REFUND_REJECTED",
-                amount: order.refund.amount,
-                method: "RAZORPAY",
-                ip: getClientIp(req),
-                at: new Date(),
-            });
-            order.markModified("refund");
-            await order.save();
-            return res.json({ success: true, message: "Refund rejected" });
-        }
-
-        const refundAmount = order.refund.amount || order.totalAmount;
-        const paymentId = order.payment.razorpayPaymentId;
-        if (!paymentId)
-            return res.status(400).json({ success: false, message: "No Razorpay payment ID found" });
-
-        order.refund.status = "PROCESSING";
-        order.markModified("refund");
-        await order.save();
-
-        try {
-            const rzRef = await razorpay.payments.refund(paymentId, {
-                amount: Math.round(refundAmount * 100),
-                notes: { orderId: order._id.toString() },
-            });
-            order.refund.status = "PROCESSED";
-            order.refund.razorpayRefundId = rzRef.id;
-            order.refund.processedAt = new Date();
-            order.refund.processedBy = req.user._id;
-            order.payment.status = "REFUNDED";
-            order.paymentLogs.push({
-                event: "REFUND_PROCESSED",
-                amount: refundAmount,
-                method: "RAZORPAY",
-                paymentId,
-                meta: { refundId: rzRef.id },
-                at: new Date(),
-            });
-            order.markModified("refund");
-            await order.save();
-            res.json({ success: true, message: `₹${refundAmount} refunded`, refundId: rzRef.id });
-        } catch (rzErr) {
-            order.refund.status = "FAILED";
-            order.markModified("refund");
-            await order.save();
-            return res.status(500).json({
-                message: "Razorpay refund failed: " + (rzErr.error?.description || rzErr.message),
-            });
-        }
+        if (!result.success) return res.status(result.status || 400).json({ success: false, message: result.message });
+        if (action === "reject") return res.json({ success: true, message: "Refund rejected" });
+        return res.json({ success: true, message: `₹${result.amount} refunded`, refundId: result.refundId });
     } catch (err) {
-        console.error("PROCESS REFUND:", err);
+        logger.error("PROCESS REFUND", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Refund processing failed" });
     }
 };
@@ -1493,15 +1412,9 @@ export const processRefund = async (req, res) => {
 ══════════════════════════════════════════════ */
 export const retryRefund = async (req, res) => {
     try {
-        const order = await Order.findById(req.params.id);
-        if (!order) return res.status(404).json({ success: false, message: "Order not found" });
-        if (order.refund?.status !== "FAILED")
-            return res.status(400).json({ success: false, message: "Only failed refunds can be retried" });
-        order.refund.status = "REQUESTED";
-        order.markModified("refund");
-        await order.save();
-        req.body.action = "approve";
-        return processRefund(req, res);
+        const result = await retryFailedRefund({ orderId: req.params.id, adminId: req.user._id, ip: getClientIp(req) });
+        if (!result.success) return res.status(result.status || 400).json({ success: false, message: result.message });
+        return res.json({ success: true, message: `₹${result.amount} refunded`, refundId: result.refundId });
     } catch {
         res.status(500).json({ success: false, message: "Retry failed" });
     }
@@ -1512,9 +1425,16 @@ export const retryRefund = async (req, res) => {
 ══════════════════════════════════════════════ */
 export const getFlaggedOrders = async (req, res) => {
     try {
-        const orders = await Order.find({ "payment.flagged": true }).sort({ createdAt: -1 }).lean();
-        res.json(orders);
-    } catch {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(200, parseInt(req.query.limit) || 100);
+        const filter = { "payment.flagged": true };
+        const [orders, total] = await Promise.all([
+            Order.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+            Order.countDocuments(filter),
+        ]);
+        res.json({ success: true, orders, total, page, pages: Math.ceil(total / limit) });
+    } catch (err) {
+        logger.error("GET FLAGGED ORDERS", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed" });
     }
 };
@@ -1548,7 +1468,7 @@ export const requestReturn = async (req, res) => {
 
         const deliveredAt = order.statusTimeline?.deliveredAt;
         const returnDays = Math.min(...returnableItems.map(i => i.policy?.returnWindow ?? 7));
-        if (deliveredAt && Date.now() - new Date(deliveredAt).getTime() > returnDays * 24 * 60 * 60 * 1000)
+        if (deliveredAt && Date.now() - new Date(deliveredAt).getTime() > returnDays * MS_PER_DAY)
             return res.status(400).json({ success: false, message: `Return window of ${returnDays} days has expired` });
 
         const reason = (req.body.reason || "").trim().slice(0, 500);
@@ -1561,7 +1481,7 @@ export const requestReturn = async (req, res) => {
             reason,
             images: Array.isArray(req.body.images) ? req.body.images.slice(0, 5) : [],
             requestedAt: new Date(),
-            deadlineAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            deadlineAt: new Date(Date.now() + 7 * MS_PER_DAY),
         };
         order.orderStatus = "RETURN_REQUESTED";
         order.statusTimeline = { ...order.statusTimeline, returnRequestedAt: new Date() };
@@ -1611,7 +1531,7 @@ export const requestReturn = async (req, res) => {
             });
         }
     } catch (err) {
-        console.error("REQUEST RETURN:", err);
+        logger.error("REQUEST RETURN", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to submit return request" });
     }
 };
@@ -1633,7 +1553,7 @@ const recalcVendorRating = async (vendorId) => {
             });
         }
     } catch (err) {
-        console.error("[recalcVendorRating]", err);
+        logger.error("[recalcVendorRating]", { message: err.message });
     }
 };
 
@@ -1662,7 +1582,7 @@ export const submitOrderReview = async (req, res) => {
 
         res.json({ success: true, message: "Thanks for rating your order!", review: order.review });
     } catch (err) {
-        console.error("SUBMIT ORDER REVIEW:", err);
+        logger.error("SUBMIT ORDER REVIEW", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to submit review" });
     }
 };
@@ -1672,11 +1592,16 @@ export const submitOrderReview = async (req, res) => {
 ══════════════════════════════════════════════ */
 export const getRefundQueue = async (req, res) => {
     try {
-        const orders = await Order.find({ "refund.status": "REQUESTED" })
-            .sort({ "refund.requestedAt": -1 })
-            .lean();
-        res.json(orders);
-    } catch {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(200, parseInt(req.query.limit) || 100);
+        const filter = { "refund.status": "REQUESTED" };
+        const [orders, total] = await Promise.all([
+            Order.find(filter).sort({ "refund.requestedAt": -1 }).skip((page - 1) * limit).limit(limit).lean(),
+            Order.countDocuments(filter),
+        ]);
+        res.json({ success: true, orders, total, page, pages: Math.ceil(total / limit) });
+    } catch (err) {
+        logger.error("GET REFUND QUEUE", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed" });
     }
 };
@@ -1686,12 +1611,16 @@ export const getRefundQueue = async (req, res) => {
 ══════════════════════════════════════════════ */
 export const getReturnQueue = async (req, res) => {
     try {
-        const orders = await Order.find({
-            "return.status": { $in: ["REQUESTED", "APPROVED", "PICKED_UP"] },
-        }).sort({ "return.requestedAt": -1 }).lean();
-        res.json({ success: true, data: orders });
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(200, parseInt(req.query.limit) || 100);
+        const filter = { "return.status": { $in: ["REQUESTED", "APPROVED", "PICKED_UP"] } };
+        const [orders, total] = await Promise.all([
+            Order.find(filter).sort({ "return.requestedAt": -1 }).skip((page - 1) * limit).limit(limit).lean(),
+            Order.countDocuments(filter),
+        ]);
+        res.json({ success: true, orders, total, page, pages: Math.ceil(total / limit) });
     } catch (err) {
-        console.error("GET RETURN QUEUE:", err);
+        logger.error("GET RETURN QUEUE", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to fetch return queue" });
     }
 };
@@ -1712,9 +1641,9 @@ export const processReturn = async (req, res) => {
                 message: "Invalid action. Use: approve | reject | pickup | refund",
             });
 
-        const order = await Order.findById(req.params.id);
-        if (!order) return res.status(404).json({ success: false, message: "Order not found" });
-        if (!order.return?.status || order.return.status === "NONE")
+        const existing = await Order.findById(req.params.id);
+        if (!existing) return res.status(404).json({ success: false, message: "Order not found" });
+        if (!existing.return?.status || existing.return.status === "NONE")
             return res.status(400).json({ success: false, message: "No return request found on this order" });
 
         const statusMap = {
@@ -1724,7 +1653,7 @@ export const processReturn = async (req, res) => {
             refund: "REFUNDED",
         };
 
-        const currentReturnStatus = order.return.status;
+        const currentReturnStatus = existing.return.status;
         const allowedFromCurrent = {
             REQUESTED: ["APPROVED", "REJECTED"],
             APPROVED: ["PICKED_UP", "REFUNDED"],
@@ -1741,71 +1670,64 @@ export const processReturn = async (req, res) => {
             });
         }
 
-        order.return.status = nextStatus;
-        order.return.adminNote = adminNote?.trim() || order.return.adminNote || "";
-        order.return.processedAt = new Date();
-        order.return.processedBy = req.user._id;
-        if (refundAmount) order.return.refundAmount = Number(refundAmount);
-        if (trackingUrl) order.return.trackingUrl = String(trackingUrl).trim();
+        const setFields = {
+            "return.status": nextStatus,
+            "return.adminNote": adminNote?.trim() || existing.return.adminNote || "",
+            "return.processedAt": new Date(),
+            "return.processedBy": req.user._id,
+        };
+        if (refundAmount) setFields["return.refundAmount"] = Number(refundAmount);
+        if (trackingUrl) setFields["return.trackingUrl"] = String(trackingUrl).trim();
+
+        // Atomic compare-and-swap on return.status (same technique as
+        // refundEngine.js's refund.status claim) — closes a real gap: two
+        // concurrent requests hitting this route for the same order (an
+        // admin double-clicking, or two admins working the same queue)
+        // previously both passed the in-memory allowedNext check above
+        // and both saved, which could double-restore stock or — worse —
+        // both fall into the refund branch below at once.
+        const order = await Order.findOneAndUpdate(
+            { _id: req.params.id, "return.status": currentReturnStatus },
+            { $set: setFields },
+            { new: true }
+        );
+        if (!order) {
+            return res.status(409).json({ success: false, message: "Return status changed by another request — please refresh" });
+        }
 
         if (action === "refund") {
-            const amount = Number(order.return.refundAmount || refundAmount || order.totalAmount);
-            if (!Number.isFinite(amount) || amount <= 0)
+            const requestedAmount = Number(order.return.refundAmount || refundAmount || order.totalAmount);
+            if (!Number.isFinite(requestedAmount) || requestedAmount <= 0)
                 return res.status(400).json({ success: false, message: "Invalid refund amount" });
 
-            const alreadyRefunded =
-                order.payment?.status === "REFUNDED" ||
-                order.refund?.status === "PROCESSED";
+            // Capped at order.totalAmount — that's already net of any coupon
+            // discount (set at order creation from pricing.js's finalTotal),
+            // so it's the true ceiling on what the customer actually paid.
+            const amount = Math.min(requestedAmount, order.totalAmount);
+            const alreadyRefunded = order.payment?.status === "REFUNDED" || order.refund?.status === "PROCESSED";
 
             if (order.payment?.method === "RAZORPAY" && order.payment?.status === "PAID" && !alreadyRefunded) {
-                const paymentId = order.payment.razorpayPaymentId;
-                if (!paymentId)
-                    return res.status(400).json({ success: false, message: "No Razorpay payment ID on order" });
-
-                try {
-                    const rpRefund = await razorpay.payments.refund(paymentId, {
-                        amount: Math.round(amount * 100),
-                        notes: { orderId: order._id.toString(), reason: "Return refund" },
-                    });
-                    order.refund = order.refund || {};
-                    order.refund.status = "PROCESSED";
-                    order.refund.amount = amount;
-                    order.refund.razorpayRefundId = rpRefund.id;
-                    order.refund.processedAt = new Date();
-                    order.refund.processedBy = req.user._id;
-                    order.refund.requested = true;
-                    order.refund.requestedAt = order.refund.requestedAt || new Date();
-                    order.refund.reason = order.refund.reason || "Return refund";
-                    order.payment.status = "REFUNDED";
-                    order.paymentLogs = order.paymentLogs || [];
-                    order.paymentLogs.push({
-                        event: "REFUND_PROCESSED",
-                        amount,
-                        method: "RAZORPAY",
-                        paymentId,
-                        meta: { refundId: rpRefund.id, via: "RETURN_FLOW" },
-                        at: new Date(),
-                    });
-                    order.markModified("refund");
-                    order.markModified("payment");
-                    order.markModified("paymentLogs");
-                } catch (rzErr) {
-                    order.return.status = currentReturnStatus;
-                    order.markModified("return");
-                    await order.save().catch(() => { });
-                    return res.status(502).json({
-                        success: false,
-                        message: "Razorpay refund failed: " + (rzErr.error?.description || rzErr.message || "Unknown error"),
-                    });
+                // Delegates to refundEngine.js so this Razorpay call shares
+                // the same atomic refund.status claim as every other refund
+                // trigger in the app — see refundEngine.js's doc-comment for
+                // the double-refund race this closes.
+                const result = await executeReturnRefund({
+                    order, amount, reason: "Return refund", adminId: req.user._id, ip: getClientIp(req),
+                });
+                if (!result.success) {
+                    await Order.findByIdAndUpdate(order._id, { $set: { "return.status": currentReturnStatus } }).catch(() => { });
+                    return res.status(result.status || 502).json({ success: false, message: result.message });
                 }
             } else if (!alreadyRefunded && order.payment?.method === "COD") {
-                order.refund = order.refund || {};
-                order.refund.status = order.refund.status || "REQUESTED";
-                order.refund.amount = amount;
-                order.refund.requested = true;
-                order.refund.requestedAt = order.refund.requestedAt || new Date();
-                order.refund.reason = order.refund.reason || "Return refund (COD — manual)";
-                order.markModified("refund");
+                await Order.findByIdAndUpdate(order._id, {
+                    $set: {
+                        "refund.status": order.refund?.status && order.refund.status !== "NONE" ? order.refund.status : "REQUESTED",
+                        "refund.amount": amount,
+                        "refund.requested": true,
+                        "refund.requestedAt": order.refund?.requestedAt || new Date(),
+                        "refund.reason": order.refund?.reason || "Return refund (COD — manual)",
+                    },
+                });
             }
         }
 
@@ -1813,29 +1735,28 @@ export const processReturn = async (req, res) => {
         if ((action === "pickup" || action === "refund") && !order.return.stockRestored) {
             try {
                 await restoreStock(order.items);
-                order.return.stockRestored = true;
+                await Order.findByIdAndUpdate(order._id, { $set: { "return.stockRestored": true } });
             } catch (stockErr) {
                 console.warn("[Return] Stock restore failed:", stockErr.message);
             }
         }
 
-        order.markModified("return");
-        await order.save();
+        const finalOrder = await Order.findById(order._id);
 
         try {
-            publishToUser(order.user, "order_status_updated", {
-                orderId: order._id,
-                returnStatus: order.return.status,
+            publishToUser(finalOrder.user, "order_status_updated", {
+                orderId: finalOrder._id,
+                returnStatus: finalOrder.return.status,
                 at: new Date().toISOString(),
             });
         } catch { /* ignore */ }
 
-        if (order.email && !order.email.includes("@placeholder.com")) {
+        if (finalOrder.email && !finalOrder.email.includes("@placeholder.com")) {
             const actionText = { approve: "approved", reject: "rejected", pickup: "picked up", refund: "refunded" }[action];
             sendEmail({
-                to: order.email,
-                subject: `Return ${actionText.charAt(0).toUpperCase() + actionText.slice(1)} — #${order._id.toString().slice(-6).toUpperCase()} | Urbexon`,
-                html: `<p>Hi ${order.customerName || "Customer"}, your return request has been <b>${actionText}</b>.${adminNote ? `<br>Note: ${adminNote}` : ""}</p>`,
+                to: finalOrder.email,
+                subject: `Return ${actionText.charAt(0).toUpperCase() + actionText.slice(1)} — #${finalOrder._id.toString().slice(-6).toUpperCase()} | Urbexon`,
+                html: `<p>Hi ${finalOrder.customerName || "Customer"}, your return request has been <b>${actionText}</b>.${adminNote ? `<br>Note: ${adminNote}` : ""}</p>`,
                 label: `User/Return_${action}`,
             });
         }
@@ -1843,11 +1764,11 @@ export const processReturn = async (req, res) => {
         res.json({
             success: true,
             message: `Return ${action}d successfully`,
-            return: order.return,
-            refund: order.refund || null,
+            return: finalOrder.return,
+            refund: finalOrder.refund || null,
         });
     } catch (err) {
-        console.error("PROCESS RETURN:", err);
+        logger.error("PROCESS RETURN", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to process return" });
     }
 };
@@ -1876,7 +1797,7 @@ export const requestReplacement = async (req, res) => {
 
         const deliveredAt = order.statusTimeline?.deliveredAt;
         const replacementDays = Math.min(...replaceableItems.map(i => i.policy?.replacementWindow ?? 7));
-        if (deliveredAt && Date.now() - new Date(deliveredAt).getTime() > replacementDays * 24 * 60 * 60 * 1000)
+        if (deliveredAt && Date.now() - new Date(deliveredAt).getTime() > replacementDays * MS_PER_DAY)
             return res.status(400).json({ success: false, message: `Replacement window of ${replacementDays} days has expired` });
 
         const reason = (req.body.reason || "").trim().slice(0, 500);
@@ -1926,7 +1847,7 @@ export const requestReplacement = async (req, res) => {
             });
         }
     } catch (err) {
-        console.error("REQUEST REPLACEMENT:", err);
+        logger.error("REQUEST REPLACEMENT", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to submit replacement request" });
     }
 };
@@ -1980,7 +1901,7 @@ export const processReplacement = async (req, res) => {
 
         res.json({ success: true, message: `Replacement ${action}d successfully`, replacement: order.replacement });
     } catch (err) {
-        console.error("PROCESS REPLACEMENT:", err);
+        logger.error("PROCESS REPLACEMENT", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to process replacement" });
     }
 };
@@ -1990,15 +1911,20 @@ export const processReplacement = async (req, res) => {
 ══════════════════════════════════════════════ */
 export const getReplacementQueue = async (req, res) => {
     try {
-        const orders = await Order.find({
-            "replacement.status": { $in: ["REQUESTED", "APPROVED", "SHIPPED"] },
-        })
-            .sort({ "replacement.requestedAt": -1 })
-            .select("orderId customerName phone totalAmount items replacement orderStatus createdAt")
-            .lean();
-        res.json({ success: true, data: orders });
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(200, parseInt(req.query.limit) || 100);
+        const filter = { "replacement.status": { $in: ["REQUESTED", "APPROVED", "SHIPPED"] } };
+        const [orders, total] = await Promise.all([
+            Order.find(filter)
+                .sort({ "replacement.requestedAt": -1 })
+                .skip((page - 1) * limit).limit(limit)
+                .select("orderId customerName phone totalAmount items replacement orderStatus createdAt")
+                .lean(),
+            Order.countDocuments(filter),
+        ]);
+        res.json({ success: true, orders, total, page, pages: Math.ceil(total / limit) });
     } catch (err) {
-        console.error("GET REPLACEMENT QUEUE:", err);
+        logger.error("GET REPLACEMENT QUEUE", { message: err.message, stack: err.stack });
         res.status(500).json({ success: false, message: "Failed to fetch replacement queue" });
     }
 };

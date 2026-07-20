@@ -3,8 +3,34 @@
  */
 
 import DeliveryWallet from "../models/deliveryModels/DeliveryWallet.js";
+import DeliveryWalletTransaction from "../models/deliveryModels/DeliveryWalletTransaction.js";
 import DeliveryBoy from "../models/deliveryModels/DeliveryBoy.js";
 import Order from "../models/Order.js";
+import logger from "../utils/logger.js";
+
+/**
+ * Best-effort ledger write, parallel to the embedded wallet.transactions
+ * push every function below still does. Never throws — a ledger-write
+ * failure must not roll back or block the balance change itself (the
+ * embedded array + DeliveryBoy.wallet counters remain the durable source
+ * of truth during this transitional dual-write period).
+ */
+export const writeLedgerEntry = async ({ deliveryBoyId, type, amount, balanceAfter, description, orderId, referenceType, referenceId }) => {
+    try {
+        await DeliveryWalletTransaction.create({
+            deliveryBoyId, type, amount, balanceAfter, description: description || "",
+            orderId: orderId || null,
+            referenceType: referenceType || null,
+            referenceId: referenceId || null,
+        });
+    } catch (err) {
+        // E11000 here means this exact order/type was already ledgered —
+        // expected and harmless on a retried call, not worth logging.
+        if (err.code !== 11000) {
+            logger.error("[DeliveryWalletTransaction] ledger write failed", { deliveryBoyId, type, message: err.message });
+        }
+    }
+};
 
 const DELIVERY_EARNING_BASE = 25;
 const DELIVERY_EARNING_PER_KM = 5;
@@ -36,6 +62,11 @@ export const creditEarnings = async (deliveryBoyId, orderId, amount, description
         });
 
         await wallet.save();
+        await writeLedgerEntry({
+            deliveryBoyId, type: "credit", amount, balanceAfter: wallet.balance,
+            description: description || `Order delivery: ${orderId}`, orderId,
+            referenceType: orderId ? "Order" : null, referenceId: orderId || null,
+        });
 
         // Update DeliveryBoy stats
         await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
@@ -76,6 +107,11 @@ export const debitForRefund = async (deliveryBoyId, amount, orderId, reason) => 
         });
 
         await wallet.save();
+        await writeLedgerEntry({
+            deliveryBoyId, type: "debit", amount, balanceAfter: wallet.balance,
+            description: reason || `Refund for order: ${orderId}`, orderId,
+            referenceType: orderId ? "Order" : null, referenceId: orderId || null,
+        });
 
         await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
             $inc: { "wallet.balance": -amount },
@@ -103,6 +139,10 @@ export const addBonus = async (deliveryBoyId, amount, description) => {
         });
 
         await wallet.save();
+        await writeLedgerEntry({
+            deliveryBoyId, type: "bonus", amount, balanceAfter: wallet.balance,
+            description: description || "Performance bonus",
+        });
 
         await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
             $inc: { "wallet.balance": amount, "wallet.totalEarned": amount },
@@ -129,6 +169,10 @@ export const applyPenalty = async (deliveryBoyId, amount, reason) => {
         });
 
         await wallet.save();
+        await writeLedgerEntry({
+            deliveryBoyId, type: "penalty", amount, balanceAfter: wallet.balance,
+            description: reason || "Penalty applied",
+        });
 
         await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
             $inc: { "wallet.balance": -amount },
@@ -219,19 +263,32 @@ export const getWalletStatus = async (deliveryBoyId) => {
     }
 };
 
+// [FIX] Previously loaded the ENTIRE embedded wallet.transactions array
+// into memory on every call just to sort+slice it in JS — for a
+// high-volume rider that's an unbounded in-memory sort on every page
+// load. Now reads from the DeliveryWalletTransaction ledger with a real
+// indexed, paginated query (see DeliveryWalletTransaction.js's header for
+// why this ledger exists in parallel with the embedded array).
 export const getTransactionHistory = async (deliveryBoyId, limit = 50, offset = 0) => {
     try {
-        const wallet = await DeliveryWallet.findOne({ deliveryBoyId });
+        const wallet = await DeliveryWallet.findOne({ deliveryBoyId }).select("_id").lean();
         if (!wallet) {
             return { success: false, message: "Wallet not found" };
         }
 
-        const transactions = wallet.transactions.sort((a, b) => b.timestamp - a.timestamp).slice(offset, offset + limit);
+        const [transactions, total] = await Promise.all([
+            DeliveryWalletTransaction.find({ deliveryBoyId })
+                .sort({ createdAt: -1 })
+                .skip(offset)
+                .limit(Math.min(200, limit))
+                .lean(),
+            DeliveryWalletTransaction.countDocuments({ deliveryBoyId }),
+        ]);
 
         return {
             success: true,
             data: transactions,
-            total: wallet.transactions.length,
+            total,
             limit,
             offset,
         };
@@ -271,4 +328,5 @@ export default {
     getWalletStatus,
     getTransactionHistory,
     calculateDailyEarnings,
+    writeLedgerEntry,
 };

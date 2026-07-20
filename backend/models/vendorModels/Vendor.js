@@ -50,6 +50,15 @@ const vendorSchema = new mongoose.Schema(
         website: { type: String, trim: true },
 
         // ── Business Details ─────────────────────────────────
+        // [FIX] No uniqueness constraint existed at all — multiple vendor
+        // accounts could register with an identical GST/PAN, undermining
+        // the identity guarantee these fields are meant to provide.
+        // vendorAuth.js's registration defaults both to "" (not undefined)
+        // when a vendor skips them — a plain `sparse` index does NOT skip
+        // empty strings, only genuinely-missing fields, so it would have
+        // broken registration for every GST-less vendor after the first.
+        // A partial filter on non-empty values is the correct guard here
+        // (same pattern as Product.sku's index just below).
         gstNumber: { type: String, trim: true, uppercase: true },
         panNumber: { type: String, trim: true, uppercase: true },
         businessType: {
@@ -98,12 +107,38 @@ const vendorSchema = new mongoose.Schema(
             addressProof: { type: String, default: null },
         },
 
+        // KYC verification lifecycle — direct structural mirror of
+        // DeliveryBoy.js's documentStatus/documentNotes (same pattern,
+        // already proven in production for delivery riders). Re-upload
+        // (venderProfile.js::reuploadKycDocument) resets a key back to
+        // "pending"; admin review (vendorApproval.js::updateVendorDocStatus)
+        // sets "verified"/"rejected" + an optional reviewer note.
+        documentStatus: {
+            gstCertificate: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
+            panCard: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
+            shopPhoto: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
+            ownerPhoto: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
+            cancelledCheque: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
+            addressProof: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
+        },
+        documentNotes: {
+            gstCertificate: { type: String, default: "" },
+            panCard: { type: String, default: "" },
+            shopPhoto: { type: String, default: "" },
+            ownerPhoto: { type: String, default: "" },
+            cancelledCheque: { type: String, default: "" },
+            addressProof: { type: String, default: "" },
+        },
+
         // ── Status ───────────────────────────────────────────
+        // [FIX] Standalone `index: true` removed — the compound
+        // vendorSchema.index({status:1, isDeleted:1}) below already covers
+        // any query that filters on status alone (status is its prefix
+        // field), so the standalone index was pure redundant overhead.
         status: {
             type: String,
             enum: ["pending", "under_review", "approved", "rejected", "suspended"],
             default: "pending",
-            index: true,
         },
         rejectionReason: { type: String, default: null },
         adminNote: { type: String, default: null },
@@ -166,6 +201,19 @@ const vendorSchema = new mongoose.Schema(
         totalRevenue: { type: Number, default: 0 },
         totalEarnings: { type: Number, default: 0 },
         pendingSettlement: { type: Number, default: 0 },
+
+        // ── Wallet Ledger (approved design) ───────────────────
+        // Materialized cache of VendorWalletTransaction's running sum —
+        // the Immutable Ledger + Calculated Balance strategy (Step 3).
+        // Reconstructable at any time by summing the ledger; the
+        // reconciliation job (sellerJobs.js::reconcileVendorWallets)
+        // checks the two never drift, without ever auto-correcting.
+        // Distinct from totalEarnings above: totalEarnings is a
+        // historical lifetime-paid counter that only ever grows;
+        // walletBalance is the vendor's actual current spendable
+        // balance (goes up on credit, down on withdrawal/adjustment).
+        walletBalance: { type: Number, default: 0 },
+
         rating: { type: Number, default: 0, min: 0, max: 5 },
         ratingCount: { type: Number, default: 0 },
 
@@ -181,11 +229,15 @@ const vendorSchema = new mongoose.Schema(
 );
 
 // ── Indexes ──────────────────────────────────────────────────
-vendorSchema.index({ userId: 1 });
+// [FIX] userId already gets a unique index from `unique: true` on the
+// field itself above — the duplicate `.index({userId:1})` created a
+// second, redundant index on the same field.
 vendorSchema.index({ status: 1, isDeleted: 1 });
 vendorSchema.index({ servicePincodes: 1 });
 vendorSchema.index({ "subscription.expiryDate": 1 });
 vendorSchema.index({ location: "2dsphere" });
+vendorSchema.index({ gstNumber: 1 }, { unique: true, partialFilterExpression: { gstNumber: { $gt: "" } } });
+vendorSchema.index({ panNumber: 1 }, { unique: true, partialFilterExpression: { panNumber: { $gt: "" } } });
 
 // ── Virtual: subscription expired? ───────────────────────────
 vendorSchema.virtual("isSubscriptionExpired").get(function () {

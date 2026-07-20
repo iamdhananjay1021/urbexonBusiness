@@ -1,5 +1,6 @@
 import express from "express";
 import { createServer } from "http";
+import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
 import helmet from "helmet";
@@ -43,7 +44,6 @@ import stockNotificationRoutes from "./routes/stockNotificationRoutes.js";
 import userNotificationRoutes from "./routes/userNotificationRoutes.js";
 import sitemapRoutes from "./routes/sitemapRoutes.js";
 import deliveryConfigRoutes from "./routes/deliveryConfigRoutes.js";
-import vendorAuthRoutes from "./routes//VendorRoutes/vendorRoutes.js";
 // [FIX] schedulerRoutes was imported here but never mounted directly —
 // it's already correctly mounted inside adminRoutes.js via router.use(schedulerRoutes).
 // Removed the dead top-level import to avoid confusion about where it lives.
@@ -51,6 +51,8 @@ import vendorAuthRoutes from "./routes//VendorRoutes/vendorRoutes.js";
 import { notFound, errorHandler } from "./middlewares/errorMiddleware.js";
 import scheduler from "./jobs/scheduler.js";
 import logger from "./utils/logger.js";
+import { initErrorTracking, captureException } from "./config/errorTracking.js";
+import clientErrorRoutes from "./routes/clientErrorRoutes.js";
 import { refreshDeliveryConfig } from "./config/deliveryConfig.js";
 import { getEmailStatus } from "./utils/emailService.js";
 
@@ -95,6 +97,7 @@ const app = express();
 const server = createServer(app);
 
 /* ───────── SERVICES ───────── */
+initErrorTracking();
 connectDB();
 connectRedis();
 initFirebase();
@@ -182,11 +185,18 @@ app.use(morgan("dev"));
 /* ───────── HEALTH ───────── */
 app.get("/", (_req, res) => res.json({ status: "ok" }));
 
-app.get("/health", (_req, res) => res.json({
-    status: "ok",
-    cache: getCacheStats(),
-    realtime: { sse: getStreamStats(), ws: getWsStats() }
-}));
+// [FIX] Previously always returned 200 regardless of DB state — a platform
+// health check or uptime monitor would see "healthy" during a real Mongo
+// outage, since nothing here ever consulted mongoose.connection.readyState.
+app.get("/health", (_req, res) => {
+    const dbConnected = mongoose.connection.readyState === 1;
+    res.status(dbConnected ? 200 : 503).json({
+        status: dbConnected ? "ok" : "degraded",
+        db: dbConnected ? "connected" : "disconnected",
+        cache: getCacheStats(),
+        realtime: { sse: getStreamStats(), ws: getWsStats() },
+    });
+});
 
 /* ───────── ROUTES ───────── */
 app.use("/api/auth", authLimiter, authRoutes);
@@ -216,9 +226,27 @@ app.use("/api/vendor", generalLimiter, vendorRoutes);
 app.use("/api/addresses", generalLimiter, addressRoutes);
 app.use("/api/pincode", publicLimiter, pincodeRoutes);
 app.use("/api/admin", adminLimiter, adminRoutes);
-app.use("/api", sitemapRoutes);
-app.use("/api", deliveryConfigRoutes);
-app.use("/api/auth/vendor", authLimiter, vendorAuthRoutes);
+// [FIX] Neither router had ANY rate limiter — every other mount in this
+// file does. sitemapRoutes now also self-caches its output (see the route
+// itself), but a limiter is still the right backstop against scraping;
+// deliveryConfigRoutes' /delivery/estimate calls out to Shiprocket per
+// request, so unlimited traffic there is a real external-cost/rate-limit
+// exposure, not just a DB-load one.
+app.use("/api", publicLimiter, sitemapRoutes);
+app.use("/api", publicLimiter, deliveryConfigRoutes);
+// Client-side error reporting from all 4 frontend apps — one aggregation
+// point (forwards into the same Sentry integration as backend errors)
+// instead of a separate SDK/DSN per app.
+app.use("/api/client-errors", publicLimiter, clientErrorRoutes);
+// BUG FIX: this used to re-mount the ENTIRE vendor router (products,
+// orders, payouts, tickets — everything) a second time here under
+// authLimiter, duplicating the whole vendor API surface at
+// /api/auth/vendor/*. It was almost certainly meant to be a slim
+// login-only router. The two paths vendor-panel actually calls under
+// this prefix — POST /api/auth/vendor/forgot-password and
+// /reset-password/:token — are already fully served by authRoutes.js
+// (mounted above, at /api/auth) via vendorForgotPassword/
+// vendorResetPassword, so removing this duplicate mount breaks nothing.
 
 
 /* ───────── ERROR HANDLING ───────── */
@@ -259,10 +287,66 @@ server.listen(PORT, async () => {
     }
 });
 
-/* ───────── SHUTDOWN ───────── */
-// [NOTE] Kept as-is for now — Day 3 (crash safety) will replace this with
-// a graceful shutdown that drains in-flight requests, closes the Mongo
-// connection, and adds uncaughtException/unhandledRejection handlers.
-// Not touching it today to keep Day 1 scoped to security only.
-process.on("SIGINT", () => process.exit(0));
-process.on("SIGTERM", () => process.exit(0));
+/* ───────── CRASH SAFETY ─────────
+ * Previously nothing caught these — a thrown error or rejected promise
+ * outside Express's own middleware chain (a raw WebSocket callback, an
+ * un-awaited promise in a cron handler) killed the process immediately
+ * with no log line anywhere. Both handlers log with full context, flush
+ * the logger, then exit — the process state after an uncaught exception
+ * is not trustworthy enough to keep running (matches the SIGINT/SIGTERM
+ * pattern below: log, then exit, and let the platform restart).
+ */
+process.on("uncaughtException", (err) => {
+    console.error("💥 UNCAUGHT EXCEPTION — shutting down:", err);
+    captureException(err, { source: "uncaughtException" });
+    logger.error("Uncaught exception", { message: err.message, stack: err.stack })
+        .catch(() => {})
+        .finally(() => process.exit(1));
+    // Hard fallback in case the async log write itself hangs.
+    setTimeout(() => process.exit(1), 3000).unref();
+});
+
+process.on("unhandledRejection", (reason) => {
+    const err = reason instanceof Error ? reason : new Error(String(reason));
+    console.error("💥 UNHANDLED REJECTION — shutting down:", err);
+    captureException(err, { source: "unhandledRejection" });
+    logger.error("Unhandled rejection", { message: err.message, stack: err.stack })
+        .catch(() => {})
+        .finally(() => process.exit(1));
+    setTimeout(() => process.exit(1), 3000).unref();
+});
+
+/* ───────── GRACEFUL SHUTDOWN ─────────
+ * Previously both signals called process.exit(0) immediately — every
+ * routine deploy/restart on the host platform dropped in-flight requests
+ * and tore down the Mongo connection uncleanly. Now: stop accepting new
+ * connections, let existing ones finish, close Mongo, then exit — with a
+ * hard timeout so a stuck connection can never block shutdown forever.
+ */
+let shuttingDown = false;
+const shutdown = (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n🛑 ${signal} received — draining connections...`);
+
+    const forceExit = setTimeout(() => {
+        console.warn("⚠️  Graceful shutdown timed out — forcing exit");
+        process.exit(1);
+    }, 10000);
+    forceExit.unref();
+
+    server.close(async (err) => {
+        if (err) console.error("Error closing HTTP server:", err.message);
+        try {
+            await mongoose.connection.close(false);
+            console.log("✅ MongoDB connection closed");
+        } catch (closeErr) {
+            console.error("Error closing MongoDB connection:", closeErr.message);
+        }
+        clearTimeout(forceExit);
+        process.exit(0);
+    });
+};
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

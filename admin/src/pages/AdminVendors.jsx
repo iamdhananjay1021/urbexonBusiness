@@ -10,7 +10,7 @@ import {
     FiCheckCircle, FiXCircle,
     FiAlertCircle, FiChevronDown, FiShoppingBag,
     FiUser, FiPhone, FiMail, FiMapPin, FiEye, FiTrash2,
-    FiPauseCircle, FiPercent,
+    FiPauseCircle, FiPercent, FiRefreshCw,
 } from "react-icons/fi";
 import {
     Button, StatusBadge, Card, EmptyState, ErrorState,
@@ -215,6 +215,16 @@ const AdminVendors = () => {
         else showToast("error", res.message);
     }, [suspendVendor, showToast]);
 
+    // Reactivation reuses the same approve endpoint the pending→approved
+    // flow already calls — its atomic guard (status !== "approved") and
+    // notification wording ("reactivated" vs "approved") already handle
+    // the suspended→approved case correctly; only this button was missing.
+    const handleReactivate = useCallback(async (vendor) => {
+        const res = await approveVendor(vendor._id, {});
+        if (res.success) showToast("success", "Vendor reactivated.");
+        else showToast("error", res.message);
+    }, [approveVendor, showToast]);
+
     const handleCommission = useCallback(async (rate) => {
         if (!modal?.vendor?._id) return;
         const res = await updateCommission(modal.vendor._id, rate);
@@ -385,6 +395,12 @@ const AdminVendors = () => {
                                         {vendor.status === "approved" && (
                                             <Button variant="secondary" size="sm" icon={FiPauseCircle} loading={isActing} onClick={() => handleSuspend(vendor)}>
                                                 Suspend
+                                            </Button>
+                                        )}
+
+                                        {vendor.status === "suspended" && (
+                                            <Button variant="success" size="sm" icon={FiRefreshCw} loading={isActing} onClick={() => handleReactivate(vendor)}>
+                                                Reactivate
                                             </Button>
                                         )}
 

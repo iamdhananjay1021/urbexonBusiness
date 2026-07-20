@@ -28,6 +28,7 @@ import Card from "../design-system/Card";
 import Button from "../design-system/Button";
 import Loader from "../design-system/Loader";
 import { cn } from "../design-system/utils/cn";
+import { showToast } from "../utils/toast";
 
 /* ─── Status Config (with icons) — tokens instead of hex ────── */
 const STATUS = {
@@ -400,10 +401,11 @@ const OrderDetails = () => {
             a.remove();
             window.URL.revokeObjectURL(url);
         } catch (e) {
-            alert(
+            showToast(
                 e.response?.status === 403 ? "Access denied." :
                     e.response?.status === 404 ? "Invoice not found." :
-                        "Download failed."
+                        "Download failed.",
+                "error"
             );
         } finally {
             setDownloadingInvoice(false);

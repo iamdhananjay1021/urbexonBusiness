@@ -9,15 +9,19 @@ import { useNotifications } from "../contexts/NotificationContext";
 import {
   FiGrid, FiPackage, FiShoppingCart, FiDollarSign,
   FiUser, FiSettings, FiLogOut, FiMenu, FiX, FiBell,
-  FiSearch, FiCreditCard,
+  FiSearch, FiCreditCard, FiLifeBuoy, FiStar, FiPocket, FiRotateCcw,
 } from "react-icons/fi";
 
 const NAV = [
   { to: "/dashboard", icon: FiGrid, label: "Dashboard" },
   { to: "/products", icon: FiPackage, label: "My Products" },
   { to: "/orders", icon: FiShoppingCart, label: "Orders" },
+  { to: "/returns", icon: FiRotateCcw, label: "Returns" },
   { to: "/earnings", icon: FiDollarSign, label: "Earnings" },
+  { to: "/wallet", icon: FiPocket, label: "Wallet" },
+  { to: "/reviews", icon: FiStar, label: "Reviews" },
   { to: "/subscription", icon: FiCreditCard, label: "Subscription" },
+  { to: "/support", icon: FiLifeBuoy, label: "Support" },
   { to: "/profile", icon: FiUser, label: "Profile" },
   { to: "/settings", icon: FiSettings, label: "Settings" },
 ];

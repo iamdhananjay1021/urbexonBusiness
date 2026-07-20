@@ -217,8 +217,12 @@ export const requestPlanChange = async (req, res) => {
         }
 
         // Get vendor name for notification
-        const vendor = await Vendor.findById(vendorId).select("businessName").lean();
-        const vendorName = vendor?.businessName || "A vendor";
+        // [FIX] Vendor has no `businessName` field (the schema's field is
+        // `shopName`) — this select always returned nothing but `_id`, so
+        // every plan-change admin notification read "A vendor requested..."
+        // regardless of which vendor actually made the request.
+        const vendor = await Vendor.findById(vendorId).select("shopName").lean();
+        const vendorName = vendor?.shopName || "A vendor";
         const planLabel = Subscription.PLANS[plan]?.label || plan;
         const currentLabel = subscription.plan ? (Subscription.PLANS[subscription.plan]?.label || subscription.plan) : "None";
 

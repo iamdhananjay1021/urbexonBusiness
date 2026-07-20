@@ -202,11 +202,11 @@ export const sendDeliveryBoyReports = async () => {
 // able to drift from the real count on a process crash or interrupted
 // deploy between the two paired writes, a replica-set rollover that
 // commits one write but not the other, or a direct manual DB edit.
-// backend/fixRiderCounter.js — a leftover one-off manual-fix script for a
-// specific rider — is standing evidence this has already happened once in
-// production. This job does NOT run per-assignment and does not touch the
-// assignment engine or any order/business logic — it only re-derives the
-// counter from ground truth on a schedule and repairs drift if found.
+// A one-off manual-fix script for a specific rider (since removed) is
+// standing evidence this has already happened once in production. This
+// job does NOT run per-assignment and does not touch the assignment
+// engine or any order/business logic — it only re-derives the counter
+// from ground truth on a schedule and repairs drift if found.
 const RECONCILIATION_ALERT_THRESHOLD = 0; // any mismatch is notified — MAX_ACTIVE_ORDERS is 1, so even a single stuck rider is a full outage for that rider
 export const reconcileActiveOrders = async () => {
     const startedAt = Date.now();

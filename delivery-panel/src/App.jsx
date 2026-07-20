@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { BrowserRouter as Router } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import AppRoutes from "./routes/AppRoutes";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./index.css";
 
 export default function App() {
@@ -15,14 +16,14 @@ export default function App() {
   }, [showToast]);
 
   return (
-    <>
+    <ErrorBoundary>
       <Router>
         <AuthProvider>
           <AppRoutes />
         </AuthProvider>
       </Router>
 
-      <Toast toast={toast} /> {/* ✅ अब valid */}
-    </>
+      <Toast toast={toast} />
+    </ErrorBoundary>
   );
 }

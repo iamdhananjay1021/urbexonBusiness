@@ -5,6 +5,7 @@
  * client ("all") or only admin dashboards ("admins").
  */
 import { useState, useEffect, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import adminApi from "../api/adminApi";
 import { FiRadio, FiSend, FiMail, FiMessageCircle, FiClock } from "react-icons/fi";
 import { Button, Card, ErrorState, FormField } from "../components/ui";
@@ -12,7 +13,11 @@ import { Button, Card, ErrorState, FormField } from "../components/ui";
 const MAX = 500;
 
 const AdminBroadcast = () => {
-    const [message, setMessage] = useState("");
+    // Lets other admin pages (e.g. AdminCoupons.jsx's "Announce" button)
+    // hand off a ready-made message instead of duplicating any send logic —
+    // this stays the one place a broadcast actually gets sent from.
+    const location = useLocation();
+    const [message, setMessage] = useState(location.state?.prefillMessage?.slice(0, MAX) || "");
     const [audience, setAudience] = useState("all");
     const [channels, setChannels] = useState({ email: false, whatsapp: false });
     const [sending, setSending] = useState(false);

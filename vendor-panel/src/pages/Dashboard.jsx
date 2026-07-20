@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, memo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "../api/axios";
+import { useNotifications } from "../contexts/NotificationContext";
 import {
     FiPackage, FiClock, FiDollarSign, FiTrendingUp,
     FiToggleLeft, FiToggleRight, FiAlertCircle,
@@ -71,6 +72,7 @@ const QuickCard = memo(({ icon: Icon, label, sub, color, onClick }) => (
 const OrderRow = memo(({ order, onRefresh }) => {
     const cfg = STATUS_CFG[order.orderStatus] || STATUS_CFG.PLACED;
     const [updating, setUpdating] = useState(false);
+    const { addNotification } = useNotifications();
     const next = { PLACED: "CONFIRMED", CONFIRMED: "PACKED", PACKED: "READY_FOR_PICKUP" };
     const nextStatus = next[order.orderStatus];
 
@@ -80,7 +82,7 @@ const OrderRow = memo(({ order, onRefresh }) => {
             await api.patch(`/vendor/orders/${order._id}/status`, { status: nextStatus });
             onRefresh?.();
         } catch (err) {
-            alert(err.response?.data?.message || "Failed");
+            addNotification({ title: "Update failed", body: err.response?.data?.message || "Failed", type: "error" });
         } finally { setUpdating(false); }
     };
 
@@ -124,6 +126,7 @@ const OrderRow = memo(({ order, onRefresh }) => {
 
 const Dashboard = () => {
     const navigate = useNavigate();
+    const { addNotification } = useNotifications();
     const [vendor, setVendor] = useState(null);
     const [orders, setOrders] = useState([]);
     const [stats, setStats] = useState({});
@@ -177,7 +180,7 @@ const Dashboard = () => {
             const { data } = await api.patch("/vendor/toggle-shop");
             setVendor(prev => prev ? { ...prev, isOpen: data.isOpen } : prev);
         } catch (err) {
-            alert(err.response?.data?.message || "Failed to toggle shop");
+            addNotification({ title: "Action failed", body: err.response?.data?.message || "Failed to toggle shop", type: "error" });
         } finally { setToggling(false); }
     };
 

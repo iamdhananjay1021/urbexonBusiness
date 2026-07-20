@@ -99,19 +99,26 @@ export const markAllAsRead = async (_req, res) => {
     }
 };
 
+// [FIX] Extracted the delete logic so jobs/notificationCleanupJob.js can run
+// it on a schedule instead of relying solely on an admin manually hitting
+// this DELETE route — read-only notifications older than 30 days were
+// otherwise unbounded and only ever cleaned up on-demand.
+export const purgeOldNotifications = async () => {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const result = await Notification.deleteMany({
+        createdAt: { $lt: cutoff },
+        isRead: true,
+    });
+    return result.deletedCount;
+};
+
 /* ── DELETE old notifications ── */
 export const cleanOldNotifications = async (_req, res) => {
     try {
-        const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-        const result = await Notification.deleteMany({
-            createdAt: { $lt: cutoff },
-            isRead: true,
-        });
-
+        const deleted = await purgeOldNotifications();
         res.json({
             success: true,
-            deleted: result.deletedCount,
+            deleted,
         });
     } catch (err) {
         console.error("[cleanOldNotifications]", err);

@@ -107,6 +107,7 @@ export const useUHCheckout = (buyNowItem = null, couponFromCart = null) => {
                     {
                         deliveryType,
                         pincode: selectedAddress?.pincode,
+                        state: selectedAddress?.state,
                         ...(coupon?.couponId && { couponId: coupon.couponId }),
                         ...(coupon?.code && { couponCode: coupon.code }),
                     }

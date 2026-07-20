@@ -85,6 +85,17 @@ const productSchema = new mongoose.Schema({
     replacementWindow: { type: Number, default: 7, min: 0, max: 30 },
     cancelWindow: { type: Number, default: 0, min: 0, max: 72 },
     nonReturnableReason: { type: String, default: "" },
+    // ── Return conditions — vendor selects within the admin-configured
+    // marketplace master list (DeliveryConfig.productPolicyLimits.
+    // allowedReturnConditions), clamped/filtered server-side in
+    // productController.js via config/deliveryConfig.js::clampProductPolicy ──
+    returnConditions: {
+        type: [{ type: String, enum: ["damaged", "wrong_product", "defective", "missing_items", "other"] }],
+        default: ["damaged", "wrong_product", "defective"],
+    },
+    packagingRequired: { type: Boolean, default: false },
+    tagsRequired: { type: Boolean, default: false },
+    returnMethod: { type: String, enum: ["self_ship", "pickup"], default: "self_ship" },
     isCustomizable: { type: Boolean, default: false },
     customizationConfig: {
         allowText: { type: Boolean, default: true },
@@ -227,6 +238,11 @@ productSchema.index({ brand: 1, isActive: 1 });
 // SKU lookups (duplicate-check + admin search). Sparse-style partial: only
 // docs that actually have a non-empty sku. Uniqueness enforced in the
 // controller (409) so legacy duplicates never crash writes.
-productSchema.index({ sku: 1 }, { partialFilterExpression: { sku: { $gt: "" } } });
+// [FIX] Was a non-unique index — SKU uniqueness was enforced only by a
+// findOne-then-write check in the controller, a real TOCTOU race between
+// two concurrent creates/edits with the same SKU. The partial filter keeps
+// products with no SKU set (the common default) from colliding with each
+// other under a blanket unique constraint.
+productSchema.index({ sku: 1 }, { unique: true, partialFilterExpression: { sku: { $gt: "" } } });
 
 export default mongoose.model("Product", productSchema);

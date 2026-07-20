@@ -25,6 +25,7 @@ import { useCart } from "../hooks/useCart";
 import { useAuth } from "../contexts/AuthContext";
 import { useRecentlyViewed } from "../hooks/useRecentlyViewed";
 import { imgUrl, imgSrcSet } from "../utils/imageUrl";
+import { showToast } from "../utils/toast";
 import SEO, { JsonLd } from "../components/SEO";
 import DeliveryEstimate from "../components/DeliveryEstimate";
 import BackButton from "./BackButton";
@@ -325,14 +326,14 @@ const ProductDetails = () => {
     const handleCustomImageChange = useCallback(async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (file.size / 1024 / 1024 > 5) return alert("Max 5MB");
+        if (file.size / 1024 / 1024 > 5) return showToast("Max 5MB", "warning");
         setCustomImagePreview(URL.createObjectURL(file));
         try {
             setUploadingImage(true);
             const fd = new FormData(); fd.append("image", file);
             const { data } = await uploadCustomImage(fd);
             setCustomImageUrl(data.url);
-        } catch { alert("Upload failed."); setCustomImagePreview(""); }
+        } catch { showToast("Upload failed.", "error"); setCustomImagePreview(""); }
         finally { setUploadingImage(false); }
     }, []);
 
@@ -347,8 +348,8 @@ const ProductDetails = () => {
         !!product?.vendorId;
 
     const handleAddToCart = useCallback(() => {
-        if (normalizedSizes.length > 0 && !selectedSize) return alert("Please select a size!");
-        if (product?.colorVariants?.length > 0 && !selectedColor) return alert("Please select a color!");
+        if (normalizedSizes.length > 0 && !selectedSize) return showToast("Please select a size!", "warning");
+        if (product?.colorVariants?.length > 0 && !selectedColor) return showToast("Please select a color!", "warning");
         const cartItemId = `${product._id}-${selectedSize || 'nosize'}-${selectedColor || 'nocolor'}`;
         addItem({
             ...product,
@@ -380,8 +381,8 @@ const ProductDetails = () => {
     }, [product, selectedSize, selectedColor, normalizedSizes, addItem, getCustomization, displayPrice, displayMrp, activeVariant, isUrbexonHourProduct]);
 
     const handleBuyNow = useCallback(() => {
-        if (normalizedSizes.length > 0 && !selectedSize) return alert("Please select a size!");
-        if (product?.colorVariants?.length > 0 && !selectedColor) return alert("Please select a color!");
+        if (normalizedSizes.length > 0 && !selectedSize) return showToast("Please select a size!", "warning");
+        if (product?.colorVariants?.length > 0 && !selectedColor) return showToast("Please select a color!", "warning");
         const cartItemId = `${product._id}-${selectedSize || 'nosize'}-${selectedColor || 'nocolor'}`;
         const buyNowItem = {
             ...product,

@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../../api/axios";
-import { FaUpload, FaArrowLeft, FaTrash, FaBolt } from "react-icons/fa";
+import { FaUpload, FaArrowLeft, FaTrash, FaBolt, FaPlus } from "react-icons/fa";
 
-const Field = ({ label, required, children }) => (
+const Field = ({ label, required, children, hint }) => (
   <div style={{ marginBottom: 16 }}>
-    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 7 }}>{label}{required && <span style={{ color: "#ef4444" }}> *</span>}</label>
+    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 7 }}>
+      {label}{required && <span style={{ color: "#ef4444" }}> *</span>}
+      {hint && <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0, color: "#94a3b8" }}> {hint}</span>}
+    </label>
     {children}
   </div>
 );
@@ -26,7 +29,25 @@ const ProductForm = () => {
     name: "", description: "", price: "", mrp: "", category: "", subcategory: "", tags: "",
     stock: "", prepTimeMinutes: "10", maxOrderQty: "10",
     isDeal: false, dealEndsAt: "",
+    brand: "", sku: "", gstPercent: "0", hsn: "", barcode: "", lowStockThreshold: "5",
+    metaTitle: "", metaDesc: "",
+    isCancellable: true, isReturnable: true, isReplaceable: false,
+    returnWindow: "7", replacementWindow: "7", cancelWindow: "0", nonReturnableReason: "",
+    returnConditions: ["damaged", "wrong_product", "defective"],
+    packagingRequired: false, tagsRequired: false, returnMethod: "self_ship",
   });
+  // Marketplace-wide guardrails (admin-configured) — vendor can only pick
+  // values within these bounds. Falls back to the schema's own hard
+  // ceiling if the config hasn't loaded yet, so the inputs are never
+  // unbounded even for a moment.
+  const [policyLimits, setPolicyLimits] = useState({
+    minReturnWindowDays: 0, maxReturnWindowDays: 30,
+    minReplacementWindowDays: 0, maxReplacementWindowDays: 30,
+    minCancelWindowHours: 0, maxCancelWindowHours: 72,
+    allowedReturnConditions: ["damaged", "wrong_product", "defective", "missing_items", "other"],
+  });
+  const [sizes, setSizes] = useState([]); // [{ size, stock }] — optional, for apparel/footwear-style UH categories
+  const [newSize, setNewSize] = useState({ size: "", stock: "" });
   const [highlights, setHighlights] = useState([]); // [{ title, value }]
   const [highlightTemplate, setHighlightTemplate] = useState([]); // from category
   const [customHighlight, setCustomHighlight] = useState({ title: "", value: "" });
@@ -41,6 +62,18 @@ const ProductForm = () => {
       .then(({ data }) => {
         const cats = Array.isArray(data) ? data : data.categories || [];
         setCategoryList(cats.filter(c => c.isActive !== false));
+      })
+      .catch(() => { });
+  }, []);
+
+  // Marketplace-wide return/replacement/cancel window bounds — reuses the
+  // existing public delivery-config endpoint rather than a new route.
+  useEffect(() => {
+    api.get("/delivery-config/public")
+      .then(({ data }) => {
+        if (data?.productPolicyLimits) {
+          setPolicyLimits((p) => ({ ...p, ...data.productPolicyLimits }));
+        }
       })
       .catch(() => { });
   }, []);
@@ -78,8 +111,23 @@ const ProductForm = () => {
     if (!isEdit) return;
     setLoading(true);
     api.get(`/products/${id}`).then(({ data }) => {
-      setForm({ name: data.name || "", description: data.description || "", price: data.price || "", mrp: data.mrp || "", category: data.category || "", subcategory: data.subcategory || "", tags: (data.tags || []).join(", "), stock: data.stock || "", prepTimeMinutes: data.prepTimeMinutes || "10", maxOrderQty: data.maxOrderQty || "10", isDeal: !!data.isDeal, dealEndsAt: data.dealEndsAt ? new Date(data.dealEndsAt).toISOString().slice(0, 16) : "" });
+      setForm({
+        name: data.name || "", description: data.description || "", price: data.price || "", mrp: data.mrp || "",
+        category: data.category || "", subcategory: data.subcategory || "", tags: (data.tags || []).join(", "),
+        stock: data.stock || "", prepTimeMinutes: data.prepTimeMinutes || "10", maxOrderQty: data.maxOrderQty || "10",
+        isDeal: !!data.isDeal, dealEndsAt: data.dealEndsAt ? new Date(data.dealEndsAt).toISOString().slice(0, 16) : "",
+        brand: data.brand || "", sku: data.sku || "", gstPercent: data.gstPercent ?? "0", hsn: data.hsn || "", barcode: data.barcode || "",
+        lowStockThreshold: data.lowStockThreshold ?? "5",
+        metaTitle: data.seo?.metaTitle || "", metaDesc: data.seo?.metaDescription || "",
+        isCancellable: data.isCancellable !== false, isReturnable: data.isReturnable !== false, isReplaceable: !!data.isReplaceable,
+        returnWindow: String(data.returnWindow ?? 7), replacementWindow: String(data.replacementWindow ?? 7), cancelWindow: String(data.cancelWindow ?? 0),
+        nonReturnableReason: data.nonReturnableReason || "",
+        returnConditions: Array.isArray(data.returnConditions) && data.returnConditions.length ? data.returnConditions : ["damaged", "wrong_product", "defective"],
+        packagingRequired: !!data.packagingRequired, tagsRequired: !!data.tagsRequired,
+        returnMethod: data.returnMethod === "pickup" ? "pickup" : "self_ship",
+      });
       setExistingImages(data.images || []);
+      if (Array.isArray(data.sizes) && data.sizes.length > 0) setSizes(data.sizes);
       if (Array.isArray(data.highlightsArray) && data.highlightsArray.length > 0) {
         setHighlights(data.highlightsArray);
       }
@@ -89,20 +137,47 @@ const ProductForm = () => {
     }).catch(() => setError("Failed to load product")).finally(() => setLoading(false));
   }, [id]);
 
-  const onChange = e => setForm(p => ({ ...p, [e.target.name]: e.target.value }));
+  const onChange = e => {
+    const { name, type, checked, value } = e.target;
+    setForm(p => ({ ...p, [name]: type === "checkbox" ? checked : value }));
+  };
+  const toggleReturnCondition = (key) => {
+    setForm(p => ({
+      ...p,
+      returnConditions: p.returnConditions.includes(key)
+        ? p.returnConditions.filter(c => c !== key)
+        : [...p.returnConditions, key],
+    }));
+  };
   const onImages = e => {
     const files = Array.from(e.target.files);
     const previews = files.map(f => ({ file: f, url: URL.createObjectURL(f) }));
     setImages(p => [...p, ...previews].slice(0, 4));
   };
 
+  const addSize = () => {
+    if (!newSize.size.trim()) return;
+    setSizes(p => [...p, { size: newSize.size.trim(), stock: Number(newSize.stock) || 0 }]);
+    setNewSize({ size: "", stock: "" });
+  };
+  const removeSize = (i) => setSizes(p => p.filter((_, j) => j !== i));
+
   const submit = async (e) => {
     e.preventDefault();
     if (!form.name || !form.price || !form.category) return setError("Name, price and category required");
+    if (existingImages.length + images.length === 0) return setError("At least 1 product photo is required");
     try {
       setSaving(true); setError("");
       const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      // Plain scalar fields — everything except tags/sizes/returnConditions,
+      // which the backend's Zod schema expects as JSON, not raw comma/
+      // FormData strings (a raw array appended via fd.append would
+      // serialize as "damaged,wrong_product" — not valid JSON).
+      const { tags, returnConditions, ...scalars } = form;
+      Object.entries(scalars).forEach(([k, v]) => fd.append(k, v));
+      fd.append("tags", JSON.stringify(tags.split(",").map(t => t.trim()).filter(Boolean)));
+      fd.append("returnConditions", JSON.stringify(returnConditions));
+      fd.append("sizes", JSON.stringify(sizes));
       // Add structured highlights
       const validHighlights = highlights.filter(h => h.title.trim() && h.value.trim());
       fd.append("highlightsArray", JSON.stringify(validHighlights));
@@ -173,6 +248,102 @@ const ProductForm = () => {
           <Field label="Available Stock" required><Inp name="stock" type="number" value={form.stock} onChange={onChange} placeholder="50" /></Field>
           <Field label="Max Order Qty"><Inp name="maxOrderQty" type="number" value={form.maxOrderQty} onChange={onChange} /></Field>
           <Field label="Prep Time (mins)"><Inp name="prepTimeMinutes" type="number" value={form.prepTimeMinutes} onChange={onChange} /></Field>
+          <Field label="Brand"><Inp name="brand" value={form.brand} onChange={onChange} placeholder="e.g. Haldiram's" /></Field>
+          <Field label="SKU" hint="(unique — leave blank to skip)"><Inp name="sku" value={form.sku} onChange={onChange} placeholder="e.g. VEN-SNK-001" /></Field>
+          <Field label="GST %"><Inp name="gstPercent" type="number" min="0" max="100" value={form.gstPercent} onChange={onChange} /></Field>
+          <Field label="HSN Code"><Inp name="hsn" value={form.hsn} onChange={onChange} placeholder="e.g. 21069099" /></Field>
+          <Field label="Barcode"><Inp name="barcode" value={form.barcode} onChange={onChange} /></Field>
+          <Field label="Low Stock Alert Below"><Inp name="lowStockThreshold" type="number" min="0" value={form.lowStockThreshold} onChange={onChange} /></Field>
+        </div>
+
+        {/* Sizes — optional per-size stock, for apparel/footwear-style UH categories. When set, total stock is the sum of these instead of "Available Stock" above. */}
+        <div style={{ background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", marginTop: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            📏 Sizes <span style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>(optional — e.g. S/M/L, or shoe sizes, each with its own stock)</span>
+          </div>
+          {sizes.map((s, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+              <Inp value={s.size} readOnly style={{ flex: "0 0 35%", fontSize: 12, padding: "8px 10px", background: "#fff" }} />
+              <Inp value={s.stock} readOnly style={{ flex: 1, fontSize: 12, padding: "8px 10px", background: "#fff" }} />
+              <button type="button" onClick={() => removeSize(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 4 }}>
+                <FaTrash size={11} />
+              </button>
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+            <Inp value={newSize.size} onChange={e => setNewSize(p => ({ ...p, size: e.target.value }))} placeholder="Size, e.g. M" style={{ flex: "0 0 35%", fontSize: 12, padding: "8px 10px" }} />
+            <Inp value={newSize.stock} onChange={e => setNewSize(p => ({ ...p, stock: e.target.value }))} type="number" min="0" placeholder="Stock" style={{ flex: 1, fontSize: 12, padding: "8px 10px" }} />
+            <button type="button" onClick={addSize} style={{ background: "#1a1740", color: "#c9a84c", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
+              <FaPlus size={9} /> Add
+            </button>
+          </div>
+        </div>
+
+        {/* Return / Cancel / Replace Policy — matters a lot for UH: most
+            items are perishable food, where "returnable, 7-day window" (the
+            schema default) is wrong. Vendor sets this per product instead of
+            every item silently inheriting a policy that doesn't apply. */}
+        <div style={{ background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", marginTop: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 10 }}>📋 Return / Cancel Policy</div>
+          <div style={{ display: "flex", gap: 18, marginBottom: 12, flexWrap: "wrap" }}>
+            {[["isCancellable", "Cancellable"], ["isReturnable", "Returnable"], ["isReplaceable", "Replaceable"]].map(([k, label]) => (
+              <label key={k} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#334155", cursor: "pointer" }}>
+                <input type="checkbox" name={k} checked={form[k]} onChange={onChange} /> {label}
+              </label>
+            ))}
+          </div>
+          <div className="product-form-grid">
+            <Field label="Cancel Window (hrs)" hint={`(${policyLimits.minCancelWindowHours}-${policyLimits.maxCancelWindowHours} allowed)`}>
+              <Inp name="cancelWindow" type="number" min={policyLimits.minCancelWindowHours} max={policyLimits.maxCancelWindowHours} value={form.cancelWindow} onChange={onChange} />
+            </Field>
+            <Field label="Return Window (days)" hint={`(${policyLimits.minReturnWindowDays}-${policyLimits.maxReturnWindowDays} allowed)`}>
+              <Inp name="returnWindow" type="number" min={policyLimits.minReturnWindowDays} max={policyLimits.maxReturnWindowDays} value={form.returnWindow} onChange={onChange} />
+            </Field>
+            <Field label="Replacement Window (days)" hint={`(${policyLimits.minReplacementWindowDays}-${policyLimits.maxReplacementWindowDays} allowed)`}>
+              <Inp name="replacementWindow" type="number" min={policyLimits.minReplacementWindowDays} max={policyLimits.maxReplacementWindowDays} value={form.replacementWindow} onChange={onChange} />
+            </Field>
+          </div>
+          {!form.isReturnable && (
+            <Field label="Non-returnable reason"><Inp name="nonReturnableReason" value={form.nonReturnableReason} onChange={onChange} placeholder="e.g. Perishable food item" /></Field>
+          )}
+
+          {form.isReturnable && (
+            <>
+              <Field label="Return Conditions" hint="(select all that apply)">
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[["damaged", "Damaged"], ["wrong_product", "Wrong Product"], ["defective", "Defective"], ["missing_items", "Missing Items"], ["other", "Other"]]
+                    .filter(([k]) => policyLimits.allowedReturnConditions.includes(k))
+                    .map(([k, label]) => {
+                      const active = form.returnConditions.includes(k);
+                      return (
+                        <button key={k} type="button" onClick={() => toggleReturnCondition(k)} style={{
+                          padding: "6px 12px", borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                          border: `1px solid ${active ? "#1a1740" : "#e2e8f0"}`,
+                          background: active ? "#1a1740" : "#fff",
+                          color: active ? "#c9a84c" : "#64748b",
+                        }}>
+                          {label}
+                        </button>
+                      );
+                    })}
+                </div>
+              </Field>
+              <div style={{ display: "flex", gap: 18, marginBottom: 12, flexWrap: "wrap", marginTop: 4 }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#334155", cursor: "pointer" }}>
+                  <input type="checkbox" name="packagingRequired" checked={form.packagingRequired} onChange={onChange} /> Original Packaging Required
+                </label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#334155", cursor: "pointer" }}>
+                  <input type="checkbox" name="tagsRequired" checked={form.tagsRequired} onChange={onChange} /> Tags Required
+                </label>
+              </div>
+              <Field label="Return Method">
+                <select name="returnMethod" value={form.returnMethod} onChange={onChange} style={{ width: "100%", padding: "10px 13px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box", background: "#fafafe" }}>
+                  <option value="self_ship">Customer Self-Ships</option>
+                  <option value="pickup">We Arrange Pickup</option>
+                </select>
+              </Field>
+            </>
+          )}
         </div>
 
         {/* Product Highlights */}
@@ -295,6 +466,15 @@ const ProductForm = () => {
               </Field>
             </div>
           )}
+        </div>
+
+        {/* SEO — falls back to name/description on the storefront if left blank */}
+        <div style={{ background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "14px 16px", marginTop: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 10 }}>🔍 SEO (optional)</div>
+          <div className="product-form-grid">
+            <Field label="Meta Title"><Inp name="metaTitle" value={form.metaTitle} onChange={onChange} maxLength={120} /></Field>
+            <Field label="Meta Description"><Inp name="metaDesc" value={form.metaDesc} onChange={onChange} maxLength={200} /></Field>
+          </div>
         </div>
 
         {/* Images */}

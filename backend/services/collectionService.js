@@ -23,9 +23,20 @@ export const SORT_MAP = {
     recommended: { isFeatured: -1, sales: -1, rating: -1 },
 };
 
-/** rules → mongo filter (always scoped to active, in-stock ecommerce products) */
+/**
+ * rules → mongo filter (always scoped to active, in-stock products).
+ *
+ * BUG FIX: this used to hardcode productType:"ecommerce", so a Collection
+ * could NEVER match Urbexon Hour (vendor) products no matter what the
+ * rules said — on a catalog that's mostly UH products (no ecommerce seed
+ * data exists anywhere in this codebase), every collection was silently
+ * empty by construction. Collections now span both catalogs; the caller
+ * (getCollectionProducts) is responsible for the extra "is this vendor
+ * actually live" check that UH products specifically need — see its
+ * filterValidVendor, same convention as getUrbexonHourHomepage's.
+ */
 export const buildCollectionFilter = (rules = {}) => {
-    const filter = { isActive: true, inStock: true, productType: "ecommerce" };
+    const filter = { isActive: true, inStock: true };
     const and = [];
 
     if (rules.category) {

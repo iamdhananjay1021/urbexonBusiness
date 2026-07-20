@@ -36,7 +36,7 @@ const OrderDetail = () => {
     // even leaflet/react-leaflet installed. Reuses the app's ONE existing
     // WebSocket connection (NotificationContext's socket) instead of
     // opening a second one just for this map.
-    const { lastMessage, sendWs, connected } = useNotifications();
+    const { lastMessage, sendWs, connected, addNotification } = useNotifications();
     const isRiderAssigned = !!order?.delivery?.assignedTo && !["DELIVERED", "CANCELLED"].includes(order?.orderStatus);
     const joinRoom = useCallback(() => {
         if (id) sendWs("join_room", { room: `order:${id}` });
@@ -76,7 +76,7 @@ const OrderDetail = () => {
             if (status === "DELIVERED") setDeliveryOtp("");
             await loadOrder();
         } catch (err) {
-            alert(err.response?.data?.message || "Failed to update status");
+            addNotification({ title: "Update failed", body: err.response?.data?.message || "Failed to update status", type: "error" });
         }
     };
 

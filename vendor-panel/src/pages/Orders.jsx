@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { FiSearch, FiEye, FiPackage } from "react-icons/fi";
+import { useNotifications } from "../contexts/NotificationContext";
 
 const STATUS_CFG = {
   PLACED: { bg: "#fef3c7", c: "#92400e", l: "Pending", dot: "#f59e0b" },
@@ -40,6 +41,7 @@ const TABS = [
 
 const Orders = () => {
   const navigate = useNavigate();
+  const { addNotification } = useNotifications();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -112,7 +114,7 @@ const Orders = () => {
       await api.patch(`/vendor/orders/${id}/status`, { status, ...extra });
       load(true); // silent refresh — see BUG FIX note on load() above
     } catch (err) {
-      alert(err.response?.data?.message || "Failed");
+      addNotification({ title: "Update failed", body: err.response?.data?.message || "Failed", type: "error" });
     }
   };
 

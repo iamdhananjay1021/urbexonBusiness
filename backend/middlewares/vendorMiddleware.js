@@ -38,12 +38,38 @@ export const protectVendor = async (req, res, next) => {
             return res.status(404).json({ success: false, message: "Vendor profile not found. Please apply first." });
 
         req.vendor = vendor;
-        req.user = { _id: userId };
+        // role added so shared middleware that reads req.user.role (e.g.
+        // adminSecurityMiddleware.js's auditLog) works identically whether
+        // it runs after protect (full User doc) or protectVendor (this
+        // partial stand-in) — req.user otherwise stays intentionally
+        // minimal, see the doc-comment above.
+        req.user = { _id: userId, role: "vendor" };
         next();
     } catch (err) {
         console.error("[protectVendor]", err);
         return res.status(500).json({ success: false, message: "Server error" });
     }
+};
+
+// SECURITY FIX: protectVendor alone never checks Vendor.status — it only
+// verifies the JWT and attaches req.vendor. A handful of routes
+// (notifications, settings, subscription-read) were gated by protectVendor
+// alone, so an already-suspended vendor's still-valid token kept working
+// on them until natural JWT expiry. This blocks only "suspended"
+// (deliberately NOT pending/rejected/under_review — those pre-approval
+// statuses are legitimate and routes needing full approval already use
+// requireApprovedVendor). GET /vendor/me and GET /vendor/status must NOT
+// use this — a suspended vendor still needs to fetch their own status so
+// the panel can render the "suspended" screen instead of erroring.
+export const blockSuspendedVendor = (req, res, next) => {
+    if (req.vendor?.status === "suspended") {
+        return res.status(403).json({
+            success: false,
+            message: "Your vendor account has been suspended. Contact support for details.",
+            vendorStatus: "suspended",
+        });
+    }
+    next();
 };
 
 export const requireApprovedVendor = (req, res, next) => {

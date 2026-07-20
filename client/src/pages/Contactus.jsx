@@ -14,6 +14,7 @@ import StatusBadge from "../design-system/StatusBadge";
 import { EmptyState, ErrorState } from "../design-system/EmptyState";
 import { SkeletonText } from "../design-system/Skeleton";
 import Loader from "../design-system/Loader";
+import { showToast } from "../utils/toast";
 import { FiPaperclip, FiSend } from "react-icons/fi";
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -191,7 +192,7 @@ export default function ContactUs() {
 
     const handleSubmit = async () => {
         if (!form.name || !form.email || !form.message) {
-            alert("Please fill in Name, Email, and Message.");
+            showToast("Please fill in Name, Email, and Message.", "warning");
             return;
         }
         setStatus("loading");

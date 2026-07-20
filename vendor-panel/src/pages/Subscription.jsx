@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../api/axios";
 import { useAuth } from "../contexts/AuthContext";
+import Modal from "../components/Modal";
 import {
     FiCheck, FiClock, FiAlertCircle, FiCreditCard,
     FiPackage, FiRefreshCw, FiShield, FiStar, FiZap,
@@ -50,9 +51,23 @@ const Subscription = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [selectedPlan, setSelectedPlan] = useState(null);
+    // [FIX] Clicking "Upgrade"/"Subscribe Now" used to call handlePayment()
+    // directly — Razorpay's checkout popped up the instant the button was
+    // clicked, with zero "are you sure" step for a real-money charge. This
+    // holds the plan key pending confirmation; handlePayment() only fires
+    // after the vendor explicitly confirms in the modal below.
+    const [confirmPlan, setConfirmPlan] = useState(null);
     const [months, setMonths] = useState(1);
     const [paying, setPaying] = useState(false);
     const [msg, setMsg] = useState({ text: "", type: "" });
+    // Coupon Phase 1 — vendor subscription coupons. No separate preview step
+    // (unlike the customer checkout flow) to keep this addition small: the
+    // code is validated server-side at create-order time (POST /vendor/
+    // subscription/create-order already accepts it — see
+    // vendorSubscriptionPayment.js), same silent-if-ineligible contract as
+    // order checkout. The resulting discount (if any) is confirmed back via
+    // orderData.plan.discount before Razorpay opens.
+    const [couponCode, setCouponCode] = useState("");
 
     const showMsg = (text, type = "info") => {
         setMsg({ text, type });
@@ -80,6 +95,12 @@ const Subscription = () => {
     // ── Razorpay Payment Flow ──────────────────────────
     const handlePayment = async (plan) => {
         if (!plan || paying) return;
+        // [FIX] Previously only ever set by the card's own onClick, which
+        // the button's e.stopPropagation() prevented from firing on the
+        // realistic click path — `paying && selectedPlan === key` could
+        // never be true, so the "Processing..." label never actually
+        // appeared on the button being paid for.
+        setSelectedPlan(plan);
         setPaying(true);
 
         try {
@@ -87,6 +108,7 @@ const Subscription = () => {
             const { data: orderData } = await api.post("/vendor/subscription/create-order", {
                 plan,
                 months,
+                ...(couponCode.trim() && { couponCode: couponCode.trim() }),
             });
 
             if (!orderData.success) {
@@ -95,13 +117,19 @@ const Subscription = () => {
                 return;
             }
 
+            if (orderData.plan.discount > 0) {
+                showMsg(`Coupon applied — you saved ${fmt(orderData.plan.discount)}!`, "success");
+            } else if (couponCode.trim()) {
+                showMsg("Coupon code wasn't applied — proceeding at full price.", "info");
+            }
+
             // Step 2: Open Razorpay checkout
             const options = {
                 key: import.meta.env.VITE_RAZORPAY_KEY_ID,
                 amount: orderData.order.amount,
                 currency: orderData.order.currency,
                 name: "Urbexon Hour",
-                description: `${orderData.plan.label} Plan - ${orderData.plan.months} Month${orderData.plan.months > 1 ? "s" : ""}`,
+                description: `${orderData.plan.label} Plan - ${orderData.plan.months} Month${orderData.plan.months > 1 ? "s" : ""}${orderData.plan.discount > 0 ? ` (₹${orderData.plan.discount} off)` : ""}`,
                 order_id: orderData.order.id,
                 handler: async (response) => {
                     try {
@@ -310,6 +338,17 @@ const Subscription = () => {
                 ))}
             </div>
 
+            {/* Coupon Code — optional, applied at payment time for whichever plan is chosen below */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>Coupon:</span>
+                <input
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                    placeholder="Have a code? (optional)"
+                    style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, minWidth: 180, fontFamily: "inherit" }}
+                />
+            </div>
+
             {/* Plan Cards */}
             {plans && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginBottom: 32 }}>
@@ -334,7 +373,7 @@ const Subscription = () => {
                                     position: "relative",
                                     cursor: "pointer",
                                 }}
-                                onClick={() => !isCurrent && !isStarter && setSelectedPlan(key)}
+                                onClick={() => !isCurrent && !isStarter && !paying && setConfirmPlan(key)}
                             >
                                 {isCurrent && (
                                     <div style={{
@@ -384,7 +423,7 @@ const Subscription = () => {
                                     disabled={isCurrent || isStarter || paying}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        handlePayment(key);
+                                        setConfirmPlan(key);
                                     }}
                                     style={{
                                         width: "100%", padding: "10px 0", borderRadius: 10,
@@ -416,6 +455,56 @@ const Subscription = () => {
                     })}
                 </div>
             )}
+
+            {/* Confirm & Pay Modal — see [FIX] note above confirmPlan */}
+            <Modal
+                open={!!confirmPlan}
+                onClose={() => !paying && setConfirmPlan(null)}
+                closeOnOverlayClick={!paying}
+                title="Confirm Subscription Payment"
+                width={420}
+            >
+                {confirmPlan && plans?.[confirmPlan] && (() => {
+                    const plan = plans[confirmPlan];
+                    const colors = PLAN_COLORS[confirmPlan] || PLAN_COLORS.basic;
+                    const total = plan.monthlyFee * months;
+                    return (
+                        <>
+                            <h3 style={{ fontSize: 16, fontWeight: 700, color: "#111827", marginBottom: 6 }}>
+                                Confirm Subscription Payment
+                            </h3>
+                            <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20, lineHeight: 1.6 }}>
+                                You're about to pay{" "}
+                                <strong style={{ color: colors.accent }}>{fmt(total)}</strong>{" "}
+                                for the <strong style={{ textTransform: "capitalize" }}>{plan.label}</strong> plan
+                                ({months} month{months > 1 ? "s" : ""}, up to {plan.maxProducts} products)
+                                {couponCode.trim() ? <> with coupon <strong>{couponCode.trim()}</strong> applied at checkout</> : ""}.
+                                Razorpay's secure checkout will open next.
+                            </p>
+                            <div style={{ display: "flex", gap: 10 }}>
+                                <button
+                                    onClick={() => setConfirmPlan(null)}
+                                    disabled={paying}
+                                    style={{
+                                        flex: 1, padding: 11, border: "1px solid #e5e7eb", background: "#fff",
+                                        borderRadius: 8, fontSize: 13, fontWeight: 600, color: "#6b7280",
+                                        cursor: paying ? "not-allowed" : "pointer", opacity: paying ? 0.5 : 1,
+                                    }}
+                                >Cancel</button>
+                                <button
+                                    onClick={() => { const planKey = confirmPlan; setConfirmPlan(null); handlePayment(planKey); }}
+                                    disabled={paying}
+                                    style={{
+                                        flex: 1, padding: 11, border: "none", background: "#111827",
+                                        borderRadius: 8, fontSize: 13, fontWeight: 700, color: "#fff",
+                                        cursor: paying ? "not-allowed" : "pointer", opacity: paying ? 0.6 : 1,
+                                    }}
+                                >Confirm & Pay</button>
+                            </div>
+                        </>
+                    );
+                })()}
+            </Modal>
 
             {/* Payment History */}
             <div style={{

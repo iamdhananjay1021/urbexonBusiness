@@ -19,6 +19,12 @@ const Profile = lazy(() => import("../pages/Profile"));
 const Settings = lazy(() => import("../pages/Settings"));
 const Subscription = lazy(() => import("../pages/Subscription"));
 const BankDetails = lazy(() => import("../pages/BankDetails"));
+const Support = lazy(() => import("../pages/Support"));
+const SupportTicketDetail = lazy(() => import("../pages/SupportTicketDetail"));
+const Reviews = lazy(() => import("../pages/Reviews"));
+const Wallet = lazy(() => import("../pages/Wallet"));
+const Returns = lazy(() => import("../pages/Returns"));
+const ReturnDetail = lazy(() => import("../pages/ReturnDetail"));
 
 const Loader = () => (
   <div style={{
@@ -132,6 +138,12 @@ const AppRoutes = () => (
         <Route path="products/:id/edit" element={<SubscriptionRoute><ProductForm /></SubscriptionRoute>} />
         <Route path="orders" element={<SubscriptionRoute><Orders /></SubscriptionRoute>} />
         <Route path="orders/:id" element={<SubscriptionRoute><OrderDetail /></SubscriptionRoute>} />
+
+        {/* Returns — same gate as Orders (SubscriptionRoute): returns are a
+            view over order data, matching the backend's own
+            requireActiveSubscription gate on /vendor/returns. */}
+        <Route path="returns" element={<SubscriptionRoute><Returns /></SubscriptionRoute>} />
+        <Route path="returns/:id" element={<SubscriptionRoute><ReturnDetail /></SubscriptionRoute>} />
         <Route path="earnings" element={<SubscriptionRoute><Earnings /></SubscriptionRoute>} />
 
         {/* Profile and settings always accessible */}
@@ -139,6 +151,22 @@ const AppRoutes = () => (
 
         <Route path="settings" element={<Settings />} />
         <Route path="bank-details" element={<ApprovedRoute><BankDetails /></ApprovedRoute>} />
+
+        {/* Support — approved vendor only, deliberately NOT SubscriptionRoute:
+            vendors must be able to raise tickets (incl. about billing) even
+            when their subscription has lapsed. */}
+        <Route path="support" element={<ApprovedRoute><Support /></ApprovedRoute>} />
+        <Route path="support/:id" element={<ApprovedRoute><SupportTicketDetail /></ApprovedRoute>} />
+
+        {/* Reviews — approved only, no subscription gate (same reasoning as Support) */}
+        <Route path="reviews" element={<ApprovedRoute><Reviews /></ApprovedRoute>} />
+
+        {/* Wallet — approved only, deliberately NOT SubscriptionRoute: the
+            backend wallet routes themselves have no subscription gate
+            (protectVendor + requireApprovedVendor only, see
+            vendorRoutes.js) — a vendor's earned money must stay visible
+            even if their subscription has lapsed. */}
+        <Route path="wallet" element={<ApprovedRoute><Wallet /></ApprovedRoute>} />
       </Route>
 
       {/* Catch All */}

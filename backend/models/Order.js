@@ -39,6 +39,12 @@ const orderSchema = new mongoose.Schema(
         coupon: {
             code: { type: String, default: "" },
             discount: { type: Number, default: 0 },
+            // Additive — old orders simply lack this. couponEngine.js's
+            // unmarkCouponUsage/cancellation-reversal path prefers this when
+            // present (unambiguous) and falls back to the code+user lookup
+            // for pre-migration orders that don't have it, exactly as
+            // cancellation rollback already worked before this field existed.
+            couponId: { type: mongoose.Schema.Types.ObjectId, ref: "Coupon", default: null },
         },
 
         invoiceNumber: {
@@ -73,6 +79,14 @@ const orderSchema = new mongoose.Schema(
                     replacementWindow: { type: Number, default: 7 },
                     cancelWindow: { type: Number, default: 0 },
                     nonReturnableReason: { type: String, default: "" },
+                    // Snapshotted from Product at order time (pricing.js) —
+                    // same immutability guarantee as the fields above: a
+                    // later product-policy edit never changes what applies
+                    // to an already-placed order.
+                    returnConditions: { type: [String], default: ["damaged", "wrong_product", "defective"] },
+                    packagingRequired: { type: Boolean, default: false },
+                    tagsRequired: { type: Boolean, default: false },
+                    returnMethod: { type: String, default: "self_ship" },
                 },
             },
         ],
@@ -218,6 +232,21 @@ const orderSchema = new mongoose.Schema(
             processedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
             refundAmount: { type: Number, default: 0 },
             adminNote: { type: String, default: "" },
+            // BUG FIX: missing on this subdocument even though the sibling
+            // `replacement` subdocument below has the identical field —
+            // processReturn accepts a trackingUrl for the return pickup but,
+            // same strict-mode issue as stockRestored, it was silently
+            // dropped on every save and never actually persisted.
+            trackingUrl: { type: String, default: "" },
+            // BUG FIX: this path didn't exist on the schema before — under
+            // Mongoose's default strict mode, both order.save() and
+            // findByIdAndUpdate() silently drop writes to undeclared nested
+            // paths. processReturn's "restore stock exactly once" guard
+            // read/wrote this flag but it could never actually persist as
+            // true, so a return that goes APPROVED→PICKED_UP→REFUNDED (stock
+            // restore is triggered on both the "pickup" and "refund" actions)
+            // silently double-restored stock on every such return.
+            stockRestored: { type: Boolean, default: false },
         },
 
         /* ── REPLACEMENT ── */
@@ -255,6 +284,13 @@ const orderSchema = new mongoose.Schema(
             ],
             default: "PLACED",
         },
+
+        // [FIX] Backing fields for jobs/databaseJobs.js::archiveOldOrders —
+        // previously unset by any schema path, so Mongoose's default strict
+        // mode silently dropped both fields on every updateMany() the job
+        // ran, on top of the job also querying the wrong field name.
+        isArchived: { type: Boolean, default: false },
+        archivedAt: { type: Date, default: null },
 
         /* ── SHIPPING (Shiprocket) ── */
         shipping: {
@@ -343,6 +379,12 @@ orderSchema.index({ "delivery.status": 1 });
 // admin/vendor listing screens filter on together constantly.
 orderSchema.index({ orderMode: 1, orderStatus: 1 });
 orderSchema.index({ orderStatus: 1, "delivery.status": 1 });
+// [FIX] The single most common vendor-scoping query in the app
+// ({"items.productId": {$in: vendorProductIds}} — vendorOrders.js,
+// vendorEarnings.js, vendorReturnController.js, vendorReviewController.js)
+// had no supporting index and was a full collection scan on every vendor
+// dashboard/earnings/returns load.
+orderSchema.index({ "items.productId": 1, createdAt: -1 });
 
 /* ─────────────────────────────────────────────
    INVOICE NUMBER GENERATOR

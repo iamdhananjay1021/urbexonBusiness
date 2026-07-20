@@ -73,6 +73,7 @@ const FIELD_TAB = {
     images: "images",
     isCancellable: "policy", isReturnable: "policy", isReplaceable: "policy",
     returnWindow: "policy", replacementWindow: "policy", cancelWindow: "policy",
+    returnConditions: "policy", packagingRequired: "policy", tagsRequired: "policy", returnMethod: "policy",
     returnPolicy: "seo", shippingInfo: "seo", metaTitle: "seo", metaDesc: "seo",
     hsn: "pricing", barcode: "pricing", lowStockThreshold: "pricing",
     shipLength: "seo", shipWidth: "seo", shipHeight: "seo",
@@ -127,6 +128,8 @@ const DEFAULT_FORM = {
     isCancellable: true, isReturnable: true, isReplaceable: false,
     returnWindow: "7", replacementWindow: "7", cancelWindow: "0",
     nonReturnableReason: "",
+    returnConditions: ["damaged", "wrong_product", "defective"],
+    packagingRequired: false, tagsRequired: false, returnMethod: "self_ship",
     prepTimeMinutes: "10", maxOrderQty: "10", vendorId: "",
 };
 
@@ -364,6 +367,19 @@ const AdminAddProduct = () => {
     const [toast, setToast] = useState(null);
     const [categories, setCategories] = useState([]);
     const [hlTemplate, setHlTemplate] = useState([]);
+    // Marketplace-wide return/replacement/cancel window bounds — same
+    // public endpoint the vendor panel's ProductForm.jsx reads.
+    const [policyLimits, setPolicyLimits] = useState({
+        minReturnWindowDays: 0, maxReturnWindowDays: 30,
+        minReplacementWindowDays: 0, maxReplacementWindowDays: 30,
+        minCancelWindowHours: 0, maxCancelWindowHours: 72,
+        allowedReturnConditions: ["damaged", "wrong_product", "defective", "missing_items", "other"],
+    });
+    useEffect(() => {
+        api.get("/delivery-config/public")
+            .then(({ data }) => { if (data?.productPolicyLimits) setPolicyLimits((p) => ({ ...p, ...data.productPolicyLimits })); })
+            .catch(() => { });
+    }, []);
 
     const [selSizes, setSelSizes] = useState([]);
     const selSizesRef = useRef([]);
@@ -691,6 +707,10 @@ const AdminAddProduct = () => {
             fd.append("returnWindow", String(+form.returnWindow || 7));
             fd.append("replacementWindow", String(+form.replacementWindow || 7));
             fd.append("cancelWindow", String(+form.cancelWindow || 0));
+            fd.append("returnConditions", JSON.stringify(form.returnConditions));
+            fd.append("packagingRequired", form.packagingRequired ? "true" : "false");
+            fd.append("tagsRequired", form.tagsRequired ? "true" : "false");
+            fd.append("returnMethod", form.returnMethod);
 
             if (form.isDeal && form.dealEndsAt?.trim()) {
                 const d = new Date(form.dealEndsAt);
@@ -1381,20 +1401,54 @@ const AdminAddProduct = () => {
                                         ))}
                                     </div>
                                     <div className="g3">
-                                        <FormField label="Cancel Window (hours)">
-                                            <Input name="cancelWindow" value={form.cancelWindow} onChange={hc} type="number" min="0" max="72" placeholder="0" />
+                                        <FormField label={`Cancel Window (hours, ${policyLimits.minCancelWindowHours}-${policyLimits.maxCancelWindowHours})`}>
+                                            <Input name="cancelWindow" value={form.cancelWindow} onChange={hc} type="number" min={policyLimits.minCancelWindowHours} max={policyLimits.maxCancelWindowHours} placeholder="0" />
                                         </FormField>
-                                        <FormField label="Return Window (days)">
-                                            <Input name="returnWindow" value={form.returnWindow} onChange={hc} type="number" min="0" max="30" placeholder="7" />
+                                        <FormField label={`Return Window (days, ${policyLimits.minReturnWindowDays}-${policyLimits.maxReturnWindowDays})`}>
+                                            <Input name="returnWindow" value={form.returnWindow} onChange={hc} type="number" min={policyLimits.minReturnWindowDays} max={policyLimits.maxReturnWindowDays} placeholder="7" />
                                         </FormField>
-                                        <FormField label="Replacement Window (days)">
-                                            <Input name="replacementWindow" value={form.replacementWindow} onChange={hc} type="number" min="0" max="30" placeholder="7" />
+                                        <FormField label={`Replacement Window (days, ${policyLimits.minReplacementWindowDays}-${policyLimits.maxReplacementWindowDays})`}>
+                                            <Input name="replacementWindow" value={form.replacementWindow} onChange={hc} type="number" min={policyLimits.minReplacementWindowDays} max={policyLimits.maxReplacementWindowDays} placeholder="7" />
                                         </FormField>
                                     </div>
                                     {!form.isReturnable && (
                                         <FormField label="Non-Returnable Reason">
                                             <Input name="nonReturnableReason" value={form.nonReturnableReason} onChange={hc} placeholder="e.g. Hygiene product" />
                                         </FormField>
+                                    )}
+                                    {form.isReturnable && (
+                                        <>
+                                            <FormField label="Return Conditions (select all that apply)">
+                                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                                    {[["damaged", "Damaged"], ["wrong_product", "Wrong Product"], ["defective", "Defective"], ["missing_items", "Missing Items"], ["other", "Other"]]
+                                                        .filter(([k]) => policyLimits.allowedReturnConditions.includes(k))
+                                                        .map(([k, label]) => {
+                                                            const active = form.returnConditions.includes(k);
+                                                            return (
+                                                                <button key={k} type="button"
+                                                                    onClick={() => setForm(p => ({ ...p, returnConditions: p.returnConditions.includes(k) ? p.returnConditions.filter(c => c !== k) : [...p.returnConditions, k] }))}
+                                                                    style={{ padding: "6px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${active ? "var(--adm-primary)" : "var(--adm-border)"}`, background: active ? "var(--adm-primary-tint)" : "var(--adm-surface)", color: active ? "var(--adm-primary)" : "var(--adm-text-secondary)" }}>
+                                                                    {label}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                </div>
+                                            </FormField>
+                                            <div className="g3">
+                                                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                                                    <input type="checkbox" name="packagingRequired" checked={form.packagingRequired} onChange={hc} /> Original Packaging Required
+                                                </label>
+                                                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                                                    <input type="checkbox" name="tagsRequired" checked={form.tagsRequired} onChange={hc} /> Tags Required
+                                                </label>
+                                                <FormField label="Return Method">
+                                                    <Select name="returnMethod" value={form.returnMethod} onChange={hc}>
+                                                        <option value="self_ship">Customer Self-Ships</option>
+                                                        <option value="pickup">We Arrange Pickup</option>
+                                                    </Select>
+                                                </FormField>
+                                            </div>
+                                        </>
                                     )}
                                 </div>
                             )}

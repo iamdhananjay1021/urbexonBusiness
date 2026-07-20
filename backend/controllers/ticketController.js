@@ -61,7 +61,11 @@ export const createTicket = async (req, res) => {
 // GET /api/tickets/my
 export const getMyTickets = async (req, res) => {
     try {
-        const tickets = await Ticket.find({ customerId: req.user._id })
+        // requesterType $nin (not $eq "customer"): legacy docs have no
+        // requesterType field at all, and a vendor's/rider's User account
+        // can also shop on the storefront — their vendor/delivery tickets
+        // must never appear in the storefront "my tickets" list.
+        const tickets = await Ticket.find({ customerId: req.user._id, requesterType: { $nin: ["vendor", "delivery"] } })
             .select("-messages.attachments -activityLog")
             .sort({ createdAt: -1 })
             .lean();
@@ -75,7 +79,7 @@ export const getMyTickets = async (req, res) => {
 // GET /api/tickets/:id — own ticket only
 export const getMyTicketDetail = async (req, res) => {
     try {
-        const ticket = await Ticket.findOne({ _id: req.params.id, customerId: req.user._id })
+        const ticket = await Ticket.findOne({ _id: req.params.id, customerId: req.user._id, requesterType: { $nin: ["vendor", "delivery"] } })
             .select("-messages.isInternalNote") // belt-and-braces; customer query below also filters these out
             .lean();
         if (!ticket) return res.status(404).json({ success: false, message: "Ticket not found" });
@@ -95,7 +99,7 @@ export const replyToMyTicket = async (req, res) => {
         const { message } = req.body;
         if (!message?.trim()) return res.status(400).json({ success: false, message: "message is required" });
 
-        const ticket = await Ticket.findOne({ _id: req.params.id, customerId: req.user._id });
+        const ticket = await Ticket.findOne({ _id: req.params.id, customerId: req.user._id, requesterType: { $nin: ["vendor", "delivery"] } });
         if (!ticket) return res.status(404).json({ success: false, message: "Ticket not found" });
         if (["resolved", "closed"].includes(ticket.status)) {
             return res.status(400).json({ success: false, message: "This ticket is closed. Please open a new one." });

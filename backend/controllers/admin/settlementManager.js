@@ -1,6 +1,7 @@
 import { Settlement } from "../../models/vendorModels/Settlement.js";
 import Vendor from "../../models/vendorModels/Vendor.js";
 import mongoose from "mongoose";
+import * as walletService from "../../services/vendorWalletService.js";
 
 // ══════════════════════════════════════════════════════════════
 // ADMIN — Get all settlements
@@ -36,7 +37,12 @@ export const getAllSettlements = async (req, res) => {
 export const processWeeklySettlements = async (req, res) => {
     try {
         const batchId = `BATCH-${Date.now()}`;
-        const pending = await Settlement.find({ status: "pending" });
+        // [FIX] Was a full, unbounded Settlement.find() with no projection
+        // — at scale (10k+ vendors) this loads every pending settlement's
+        // entire document into memory just to read 3 fields. .lean() +
+        // .select() cuts the memory footprint substantially without
+        // changing the batch-processing behavior itself.
+        const pending = await Settlement.find({ status: "pending" }).select("vendorId vendorEarning").lean();
 
         if (!pending.length) {
             return res.json({ success: true, message: "No pending settlements to process", count: 0 });
@@ -113,15 +119,31 @@ export const markSettlementPaid = async (req, res) => {
             { session }
         );
 
+        // WALLET LEDGER — one credit, exactly once, inside the SAME
+        // session/transaction as the status flip above. Never a second
+        // transaction boundary. The unique {referenceType, referenceId,
+        // type} index on VendorWalletTransaction guarantees this Settlement
+        // can never be credited twice even if this handler is somehow
+        // re-entered — the anti-race findOneAndUpdate above already
+        // prevents that in practice, this is defense-in-depth.
+        const { walletBalance } = await walletService.credit(session, {
+            vendorId: settlement.vendorId,
+            amount: settlement.vendorEarning,
+            type: "settlement_credit",
+            referenceType: "Settlement",
+            referenceId: settlement._id,
+            description: `Settlement paid — order ${settlement.orderId}`,
+        });
+
         await session.commitTransaction();
         session.endSession();
 
-        res.json({ success: true, message: "Settlement marked as paid", settlement });
+        res.json({ success: true, message: "Settlement marked as paid", settlement, walletBalance });
     } catch (err) {
-        await session.abortTransaction();
+        await session.abortTransaction().catch(() => { });
         session.endSession();
         console.error("[markSettlementPaid]", err);
-        res.status(500).json({ success: false, message: "Server error" });
+        res.status(500).json({ success: false, message: err.code === "VENDOR_NOT_FOUND" ? "Vendor not found" : "Server error" });
     }
 };
 
@@ -174,6 +196,22 @@ export const markBatchPaid = async (req, res) => {
             )
         );
 
+        // WALLET LEDGER — one credit per Settlement (not one per vendor
+        // per batch) so "Settlement Paid → One Ledger Credit → Exactly
+        // once" holds true whether a settlement is paid individually or
+        // as part of a batch. Sequential, not Promise.all — a single
+        // mongoose ClientSession must not run concurrent operations.
+        for (const s of settlements) {
+            await walletService.credit(session, {
+                vendorId: s.vendorId,
+                amount: s.vendorEarning,
+                type: "settlement_credit",
+                referenceType: "Settlement",
+                referenceId: s._id,
+                description: `Settlement paid — batch ${batchId}`,
+            });
+        }
+
         await session.commitTransaction();
         session.endSession();
 
@@ -183,7 +221,7 @@ export const markBatchPaid = async (req, res) => {
             totalSettlements: settlements.length,
         });
     } catch (err) {
-        await session.abortTransaction();
+        await session.abortTransaction().catch(() => { });
         session.endSession();
         console.error("[markBatchPaid]", err);
         res.status(500).json({ success: false, message: "Server error" });

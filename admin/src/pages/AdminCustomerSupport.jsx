@@ -18,18 +18,39 @@ import {
 } from "../components/ui";
 import {
     FiInbox, FiClock, FiRefreshCw, FiCheckCircle, FiXCircle, FiAlertTriangle,
-    FiSend, FiPaperclip, FiLock,
+    FiSend, FiPaperclip, FiLock, FiStar, FiUsers, FiShoppingBag, FiTruck,
 } from "react-icons/fi";
 
 const POLL_MS = 30000;
 const STATUSES = ["open", "in_progress", "waiting_customer", "resolved", "closed"];
-const CATEGORIES = ["order", "payment", "delivery", "product", "vendor", "account", "other"];
+const CATEGORIES = ["order", "payment", "delivery", "product", "vendor", "account", "payout", "subscription", "other"];
 const PRIORITIES = ["low", "normal", "high", "urgent"];
 
 const notify = (message, type = "success") => {
     window.dispatchEvent(new CustomEvent("api:error", { detail: { message, type } }));
 };
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
+
+/* SLA state badge for vendor tickets: red once escalated, amber while the
+   first response is overdue but not yet escalated, nothing otherwise. */
+const SlaBadge = ({ t }) => {
+    if (["resolved", "closed"].includes(t.status)) return null;
+    if (t.slaEscalated) {
+        return <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 10, background: "var(--adm-danger-tint, #fee2e2)", color: "var(--adm-danger, #b91c1c)" }}>ESCALATED</span>;
+    }
+    if (!t.firstResponseAt && t.slaFirstResponseDueAt && new Date(t.slaFirstResponseDueAt) < new Date()) {
+        return <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 10, background: "var(--adm-warning-tint, #fef3c7)", color: "var(--adm-warning, #92400e)" }}>SLA DUE</span>;
+    }
+    return null;
+};
+
+const CsatStars = ({ rating }) => rating ? (
+    <span style={{ display: "inline-flex", gap: 1, verticalAlign: "middle" }}>
+        {[1, 2, 3, 4, 5].map((n) => (
+            <FiStar key={n} size={11} fill={rating >= n ? "#f59e0b" : "none"} color={rating >= n ? "#f59e0b" : "var(--adm-border)"} />
+        ))}
+    </span>
+) : null;
 
 /* ─── Ticket Detail Modal ─── */
 const TicketDetailModal = ({ ticketId, onClose, onChanged }) => {
@@ -40,6 +61,7 @@ const TicketDetailModal = ({ ticketId, onClose, onChanged }) => {
     const [isInternal, setIsInternal] = useState(false);
     const [files, setFiles] = useState([]);
     const [sending, setSending] = useState(false);
+    const [canned, setCanned] = useState([]);
 
     const load = useCallback(async () => {
         if (!ticketId) return;
@@ -58,6 +80,7 @@ const TicketDetailModal = ({ ticketId, onClose, onChanged }) => {
     useEffect(() => {
         if (!ticketId) return;
         api.get("/auth/users?role=admin&limit=50").then(({ data }) => setAdmins(data.users || [])).catch(() => setAdmins([]));
+        api.get("/admin/canned-responses?active=1").then(({ data }) => setCanned(data.responses || [])).catch(() => setCanned([]));
     }, [ticketId]);
 
     const runAction = async (fn, successMsg) => {
@@ -99,11 +122,29 @@ const TicketDetailModal = ({ ticketId, onClose, onChanged }) => {
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     {/* Header info + references */}
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "var(--adm-muted)" }}>
-                        <span>{ticket.customerName} · {ticket.customerEmail} · {ticket.customerPhone || "—"}</span>
+                        {ticket.requesterType === "vendor" ? (
+                            <span>
+                                <strong style={{ color: "var(--adm-primary)" }}>Vendor:</strong> {ticket.vendorShopName || ticket.vendorId?.shopName} · {ticket.vendorEmail || ticket.vendorId?.email} · {ticket.customerPhone || "—"}
+                            </span>
+                        ) : ticket.requesterType === "delivery" ? (
+                            <span>
+                                <strong style={{ color: "var(--adm-primary)" }}>Rider:</strong> {ticket.customerName} · {ticket.customerEmail} · {ticket.customerPhone || "—"}
+                            </span>
+                        ) : (
+                            <span>{ticket.customerName} · {ticket.customerEmail} · {ticket.customerPhone || "—"}</span>
+                        )}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         <StatusBadge status={ticket.status} />
                         <StatusBadge status={ticket.priority} />
+                        {ticket.slaEscalated && !["resolved", "closed"].includes(ticket.status) && (
+                            <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 9px", borderRadius: 10, background: "var(--adm-danger-tint, #fee2e2)", color: "var(--adm-danger, #b91c1c)", alignSelf: "center" }}>SLA ESCALATED</span>
+                        )}
+                        {ticket.csat?.rating && (
+                            <span style={{ alignSelf: "center", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--adm-muted)" }}>
+                                CSAT: <CsatStars rating={ticket.csat.rating} />
+                            </span>
+                        )}
                         <span style={{ fontSize: 11, color: "var(--adm-muted)", alignSelf: "center" }}>Category: {ticket.category}</span>
                         {ticket.orderRef && <span style={{ fontSize: 11, color: "var(--adm-muted)", alignSelf: "center" }}>Order: #{(ticket.orderRef._id || ticket.orderRef).toString().slice(-6).toUpperCase()}</span>}
                         {ticket.vendorRef?.shopName && <span style={{ fontSize: 11, color: "var(--adm-muted)", alignSelf: "center" }}>Vendor: {ticket.vendorRef.shopName}</span>}
@@ -153,6 +194,8 @@ const TicketDetailModal = ({ ticketId, onClose, onChanged }) => {
                                 }}>
                                     <div style={{ fontSize: 10, color: "var(--adm-muted)", marginBottom: 3, display: "flex", alignItems: "center", gap: 4 }}>
                                         {m.isInternalNote && <FiLock size={9} />}
+                                        {m.sender === "vendor" && <span style={{ fontWeight: 800, color: "var(--adm-primary)" }}>VENDOR</span>}
+                                        {m.sender === "delivery" && <span style={{ fontWeight: 800, color: "var(--adm-primary)" }}>RIDER</span>}
                                         {m.senderName || m.sender} · {fmtDate(m.createdAt)}
                                     </div>
                                     <div style={{ fontSize: 13, color: "var(--adm-text-primary)", whiteSpace: "pre-wrap" }}>{m.message}</div>
@@ -172,6 +215,21 @@ const TicketDetailModal = ({ ticketId, onClose, onChanged }) => {
 
                     {/* Reply box */}
                     <div>
+                        {canned.length > 0 && (
+                            <div style={{ marginBottom: 8 }}>
+                                <Select value="" onChange={(e) => {
+                                    const c = canned.find((x) => x._id === e.target.value);
+                                    // Insert into the textarea, never auto-send —
+                                    // admin reviews/edits before hitting Send.
+                                    if (c) setReply((prev) => (prev ? `${prev}\n\n${c.body}` : c.body));
+                                }}>
+                                    <option value="">📋 Insert canned response…</option>
+                                    {[...canned].sort((a, b) => (a.category === ticket.category ? -1 : 0) - (b.category === ticket.category ? -1 : 0)).map((c) => (
+                                        <option key={c._id} value={c._id}>{c.title}{c.category === ticket.category ? " ★" : ""}</option>
+                                    ))}
+                                </Select>
+                            </div>
+                        )}
                         <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={3}
                             placeholder="Type a reply…" className="adm-field-input"
                             style={{ width: "100%", boxSizing: "border-box", resize: "vertical" }} disabled={sending} />
@@ -213,6 +271,11 @@ const AdminCustomerSupport = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [filters, setFilters] = useState({ status: "", category: "", priority: "", customer: "", orderId: "", search: "", dateFrom: "", dateTo: "" });
+    // customer | vendor | delivery — partitions the queue via the
+    // requesterType query param (backend maps "customer" to
+    // $nin:["vendor","delivery"] so legacy tickets stay visible on the
+    // customer tab).
+    const [tab, setTab] = useState("customer");
     const [activeTicketId, setActiveTicketId] = useState(null);
     // Guest (not-logged-in) contact-form submissions — these never become
     // Tickets (no customerId to attach), so they're read from the existing
@@ -230,10 +293,10 @@ const AdminCustomerSupport = () => {
         abortRef.current = controller;
         setLoading(true);
         try {
-            const params = new URLSearchParams({ page: pageArg, limit: 20 });
+            const params = new URLSearchParams({ page: pageArg, limit: 20, requesterType: tab });
             Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
             const [statsRes, listRes, contactRes] = await Promise.all([
-                api.get("/admin/tickets/stats", { signal: controller.signal }),
+                api.get(`/admin/tickets/stats?requesterType=${tab}`, { signal: controller.signal }),
                 api.get(`/admin/tickets?${params.toString()}`, { signal: controller.signal }),
                 api.get("/contact", { signal: controller.signal }),
             ]);
@@ -250,7 +313,7 @@ const AdminCustomerSupport = () => {
         } finally {
             setLoading(false);
         }
-    }, [filters]);
+    }, [filters, tab]);
 
     useEffect(() => { load(1); }, [load]);
     useEffect(() => {
@@ -283,8 +346,23 @@ const AdminCustomerSupport = () => {
     return (
         <div style={{ fontFamily: "'DM Sans',-apple-system,sans-serif", background: "var(--adm-bg)", minHeight: "100vh", padding: "16px 16px 40px" }}>
             <div style={{ marginBottom: 18 }}>
-                <h1 style={{ fontSize: "clamp(17px,3vw,21px)", fontWeight: 900, margin: 0, color: "var(--adm-text-primary)" }}>Customer Support</h1>
-                <p style={{ fontSize: 11, color: "var(--adm-muted)", margin: "3px 0 0" }}>Support ticket queue and case management</p>
+                <h1 style={{ fontSize: "clamp(17px,3vw,21px)", fontWeight: 900, margin: 0, color: "var(--adm-text-primary)" }}>Support Center</h1>
+                <p style={{ fontSize: 11, color: "var(--adm-muted)", margin: "3px 0 0" }}>Customer, vendor and delivery-partner support ticket queues</p>
+            </div>
+
+            {/* Customer / Vendor / Delivery tabs */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+                {[["customer", "Customer Tickets", FiUsers], ["vendor", "Vendor Tickets", FiShoppingBag], ["delivery", "Delivery Tickets", FiTruck]].map(([val, label, Icon]) => (
+                    <button key={val} onClick={() => setTab(val)} style={{
+                        display: "flex", alignItems: "center", gap: 7, padding: "9px 18px", borderRadius: "var(--adm-radius-md, 10px)",
+                        border: `2px solid ${tab === val ? "var(--adm-primary)" : "var(--adm-border)"}`,
+                        background: tab === val ? "var(--adm-primary-tint)" : "var(--adm-surface)",
+                        color: tab === val ? "var(--adm-primary)" : "var(--adm-text-secondary)",
+                        fontSize: 12.5, fontWeight: tab === val ? 800 : 600, cursor: "pointer", fontFamily: "inherit",
+                    }}>
+                        <Icon size={14} /> {label}
+                    </button>
+                ))}
             </div>
 
             {/* Dashboard */}
@@ -292,10 +370,16 @@ const AdminCustomerSupport = () => {
                 <StatTile icon={FiInbox} label="Total Tickets" value={loading ? "…" : stats?.total ?? "—"} tone="primary" />
                 <StatTile icon={FiInbox} label="Open" value={loading ? "…" : stats?.open ?? "—"} tone="info" />
                 <StatTile icon={FiClock} label="In Progress" value={loading ? "…" : stats?.inProgress ?? "—"} tone="primary" />
-                <StatTile icon={FiClock} label="Waiting Customer" value={loading ? "…" : stats?.waitingCustomer ?? "—"} tone="warning" />
+                <StatTile icon={FiClock} label={tab === "vendor" ? "Awaiting Vendor" : tab === "delivery" ? "Awaiting Rider" : "Waiting Customer"} value={loading ? "…" : stats?.waitingCustomer ?? "—"} tone="warning" />
                 <StatTile icon={FiCheckCircle} label="Resolved" value={loading ? "…" : stats?.resolved ?? "—"} tone="success" />
                 <StatTile icon={FiXCircle} label="Closed" value={loading ? "…" : stats?.closed ?? "—"} tone="neutral" />
                 <StatTile icon={FiAlertTriangle} label="High Priority" value={loading ? "…" : stats?.highPriority ?? "—"} tone="danger" />
+                {tab !== "customer" && (
+                    <>
+                        <StatTile icon={FiAlertTriangle} label="SLA Breached" value={loading ? "…" : stats?.slaBreached ?? "—"} tone="danger" />
+                        <StatTile icon={FiStar} label="Avg CSAT" value={loading ? "…" : stats?.avgCsat != null ? `${stats.avgCsat} ★ (${stats.csatCount})` : "—"} tone="success" />
+                    </>
+                )}
             </div>
 
             {/* Filters */}
@@ -341,8 +425,11 @@ const AdminCustomerSupport = () => {
                 <CardHeader title="Tickets" action={<span style={{ fontSize: 11, color: "var(--adm-muted)" }}>{total} total</span>} />
                 <Table
                     columns={[
-                        { key: "id", label: "Ticket ID" }, { key: "customer", label: "Customer" }, { key: "subject", label: "Subject" },
+                        { key: "id", label: "Ticket ID" },
+                        { key: "customer", label: tab === "vendor" ? "Vendor" : tab === "delivery" ? "Rider" : "Customer" },
+                        { key: "subject", label: "Subject" },
                         { key: "category", label: "Category" }, { key: "priority", label: "Priority" }, { key: "status", label: "Status" },
+                        ...(tab !== "customer" ? [{ key: "sla", label: "SLA" }, { key: "csat", label: "CSAT" }] : []),
                         { key: "created", label: "Created" }, { key: "lastReply", label: "Last Reply" }, { key: "assigned", label: "Assigned" },
                     ]}
                     rows={tickets}
@@ -352,13 +439,28 @@ const AdminCustomerSupport = () => {
                         <tr key={t._id} className="db-row-hover" onClick={() => setActiveTicketId(t._id)}>
                             <td style={{ fontWeight: 700, fontSize: 12.5 }}>#{t._id.slice(-6).toUpperCase()}</td>
                             <td>
-                                <div style={{ fontSize: 12.5, fontWeight: 600 }}>{t.customerName}</div>
-                                <div style={{ fontSize: 11, color: "var(--adm-muted)" }}>{t.customerEmail} · {t.customerPhone || "—"}</div>
+                                {t.requesterType === "vendor" ? (
+                                    <>
+                                        <div style={{ fontSize: 12.5, fontWeight: 600 }}>{t.vendorShopName || t.customerName}</div>
+                                        <div style={{ fontSize: 11, color: "var(--adm-muted)" }}>{t.vendorEmail || t.customerEmail}</div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div style={{ fontSize: 12.5, fontWeight: 600 }}>{t.customerName}</div>
+                                        <div style={{ fontSize: 11, color: "var(--adm-muted)" }}>{t.customerEmail} · {t.customerPhone || "—"}</div>
+                                    </>
+                                )}
                             </td>
                             <td style={{ fontSize: 12.5, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.subject}</td>
                             <td style={{ fontSize: 12 }}>{t.category}</td>
                             <td><StatusBadge status={t.priority} /></td>
                             <td><StatusBadge status={t.status} /></td>
+                            {tab !== "customer" && (
+                                <>
+                                    <td><SlaBadge t={t} /></td>
+                                    <td><CsatStars rating={t.csat?.rating} /></td>
+                                </>
+                            )}
                             <td style={{ fontSize: 11.5, color: "var(--adm-muted)" }}>{fmtDate(t.createdAt)}</td>
                             <td style={{ fontSize: 11.5, color: "var(--adm-muted)" }}>{fmtDate(t.lastReplyAt)}</td>
                             <td style={{ fontSize: 12 }}>{t.assignedAdmin?.name || <span style={{ color: "var(--adm-muted)" }}>Unassigned</span>}</td>
@@ -374,7 +476,9 @@ const AdminCustomerSupport = () => {
 
             {/* Guest (not-logged-in) contact-form submissions — these can't
                 become Tickets (no account to attach them to), so they're
-                shown read-only here instead of being invisible. */}
+                shown read-only here instead of being invisible. Customer
+                tab only — vendors always have accounts. */}
+            {tab === "customer" && (
             <Card padded={false} style={{ marginTop: 14 }}>
                 <CardHeader title="Guest Messages" action={<span style={{ fontSize: 11, color: "var(--adm-muted)" }}>{guestMessages.filter((m) => !m.isRead).length} unread</span>} />
                 <Table
@@ -398,6 +502,7 @@ const AdminCustomerSupport = () => {
                     )}
                 />
             </Card>
+            )}
 
             <TicketDetailModal ticketId={activeTicketId} onClose={() => setActiveTicketId(null)} onChanged={() => load(page)} />
         </div>

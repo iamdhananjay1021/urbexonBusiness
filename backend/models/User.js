@@ -182,7 +182,10 @@ const userSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-userSchema.index({ email: 1 });
+// [FIX] email already gets a unique index from `unique: true` on the field
+// itself above — this duplicate `.index({email:1})` created a second,
+// redundant non-unique index on the same field (extra write-path overhead
+// for zero query benefit).
 userSchema.index({ role: 1 });
 userSchema.index({ createdAt: -1 });
 // Refresh lookup happens on every token refresh — must be indexed.

@@ -28,7 +28,7 @@
  *      treated as success — a malformed 200 response no longer gets
  *      treated as a valid refresh.
  */
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import api from "../api/axios";
 
 const STORAGE_KEY = "vendorAuth";
@@ -220,7 +220,7 @@ export const AuthProvider = ({ children }) => {
    *   login(identifier, password)
    * so it doesn't matter which convention the Login page component uses.
    */
-  const login = async (identifierOrCreds, maybePassword) => {
+  const login = useCallback(async (identifierOrCreds, maybePassword) => {
     let identifier;
     let password;
 
@@ -282,24 +282,24 @@ export const AuthProvider = ({ children }) => {
     }
 
     return vendorProfile;
-  };
+  }, []);
 
   /**
    * [FIX] LOGOUT — now also tells the backend to clear the httpOnly
    * refreshToken cookie (POST /auth/logout), not just local state. Fire-
    * and-forget: local logout must succeed instantly regardless of network.
    */
-  const logout = () => {
+  const logout = useCallback(() => {
     api.post("/auth/logout", { scope: "vendor" }).catch(() => {
       // Non-fatal — local session is cleared below either way
     });
     localStorage.removeItem(STORAGE_KEY);
     delete api.defaults.headers.common["Authorization"];
     setVendor(null);
-  };
+  }, []);
 
   /* ── REFRESH VENDOR (after profile updates) ── */
-  const refreshVendor = async () => {
+  const refreshVendor = useCallback(async () => {
     try {
       const { data } = await api.get("/vendor/me");
       if (data.success && data.vendor) {
@@ -313,10 +313,15 @@ export const AuthProvider = ({ children }) => {
       console.error("[Auth] Refresh failed:", err);
       if (err.response?.status === 401) logout();
     }
-  };
+  }, [logout]);
+
+  const value = useMemo(
+    () => ({ vendor, loading, login, logout, refreshVendor }),
+    [vendor, loading, login, logout, refreshVendor]
+  );
 
   return (
-    <AuthContext.Provider value={{ vendor, loading, login, logout, refreshVendor }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

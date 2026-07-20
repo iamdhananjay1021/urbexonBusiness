@@ -23,6 +23,7 @@ import crypto from "crypto";
 import Subscription from "../../models/vendorModels/Subscription.js";
 import Vendor from "../../models/vendorModels/Vendor.js";
 import Notification from "../../models/Notification.js";
+import * as couponEngine from "../../services/couponEngine.js";
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -49,11 +50,55 @@ export const getSubscriptionPlans = async (req, res) => {
 };
 
 // ══════════════════════════════════════════════════════
+// 1b. VALIDATE COUPON — preview-only, same split as couponController.js's
+//     /coupons/validate vs the authoritative apply-at-payment path below.
+//     Kept separate so a fourth drifted coupon implementation never gets a
+//     chance to happen — this is a thin wrapper over the one engine.
+// ══════════════════════════════════════════════════════
+export const validateSubscriptionCoupon = async (req, res) => {
+    try {
+        const { code, plan, months = 1 } = req.body;
+        if (!code?.trim()) return res.status(400).json({ success: false, message: "Coupon code required" });
+        if (!plan || !PLANS[plan]) return res.status(400).json({ success: false, message: "Invalid plan" });
+
+        const monthCount = Math.min(Math.max(Number(months) || 1, 1), 12);
+        const amount = PLANS[plan].monthlyFee * monthCount;
+
+        const result = await couponEngine.validateCouponForContext({
+            code,
+            context: {
+                userId: req.vendor.userId,
+                module: "VENDOR_SUBSCRIPTION",
+                subscriptionPlan: plan,
+                subscriptionMonths: monthCount,
+                itemsTotal: amount,
+            },
+        });
+
+        if (!result.valid) {
+            return res.status(result.coupon ? 400 : 404).json({ success: false, message: result.reason || "Invalid coupon code" });
+        }
+
+        res.json({
+            success: true,
+            valid: true,
+            couponId: result.coupon._id,
+            code: result.coupon.code,
+            discount: result.discount,
+            finalAmount: Math.max(0, amount - result.discount),
+        });
+    } catch (err) {
+        console.error("[validateSubscriptionCoupon]", err);
+        res.status(500).json({ success: false, message: "Failed to validate coupon" });
+    }
+};
+
+// ══════════════════════════════════════════════════════
 // 2. CREATE RAZORPAY ORDER for subscription payment
 // ══════════════════════════════════════════════════════
 export const createSubscriptionOrder = async (req, res) => {
     try {
-        const { plan, months = 1 } = req.body;
+        const { plan, months = 1, couponCode } = req.body;
         const vendorId = req.vendor._id;
 
         // Validate plan
@@ -75,7 +120,33 @@ export const createSubscriptionOrder = async (req, res) => {
             });
         }
 
-        const amount = planConfig.monthlyFee * monthCount;
+        const originalAmount = planConfig.monthlyFee * monthCount;
+
+        // Renewal/upgrade/extension all flow through this same function
+        // (they're just different `plan`/`months` combinations) — so a
+        // single couponModule:"VENDOR_SUBSCRIPTION" + applicableSubscriptionPlans
+        // coupon covers all of them uniformly, no extra plumbing needed.
+        let couponResult = null;
+        if (couponCode?.trim()) {
+            const validation = await couponEngine.validateCouponForContext({
+                code: couponCode,
+                context: {
+                    userId: req.vendor.userId,
+                    module: "VENDOR_SUBSCRIPTION",
+                    subscriptionPlan: plan,
+                    subscriptionMonths: monthCount,
+                    itemsTotal: originalAmount,
+                },
+            });
+            if (validation.valid) {
+                couponResult = { couponId: validation.coupon._id, couponCode: validation.coupon.code, discountAmount: validation.discount, discountType: validation.coupon.discountType };
+            }
+            // Invalid/ineligible coupon at this stage silently just doesn't
+            // apply — same silent-failure contract as the order checkout
+            // path (calculateOrderPricing), so a stale/expired code typed
+            // here never blocks the vendor from paying at the original price.
+        }
+        const amount = Math.max(0, originalAmount - (couponResult?.discountAmount || 0));
 
         // Create Razorpay order — server-side amount calculation
         // BUG FIX: Razorpay rejects `receipt` over 40 chars ("input_validation_failed").
@@ -97,7 +168,11 @@ export const createSubscriptionOrder = async (req, res) => {
             },
         });
 
-        // Store pending payment on subscription doc
+        // Store pending payment on subscription doc — couponId/couponCode/
+        // discountAmount carried through so verifySubscriptionPayment can
+        // call markCouponUsage() only once the payment is actually confirmed
+        // (never before — same "no usage without verified success" rule
+        // this file already applies to subscription activation itself).
         await Subscription.findOneAndUpdate(
             { vendorId },
             {
@@ -108,6 +183,10 @@ export const createSubscriptionOrder = async (req, res) => {
                     months: monthCount,
                     amount,
                     createdAt: new Date(),
+                    couponId: couponResult?.couponId || null,
+                    couponCode: couponResult?.couponCode || null,
+                    discountAmount: couponResult?.discountAmount || 0,
+                    discountType: couponResult?.discountType || null,
                 },
             },
             { upsert: true, new: true }
@@ -125,6 +204,8 @@ export const createSubscriptionOrder = async (req, res) => {
                 label: planConfig.label,
                 monthlyFee: planConfig.monthlyFee,
                 months: monthCount,
+                originalAmount,
+                discount: couponResult?.discountAmount || 0,
                 totalAmount: amount,
                 maxProducts: planConfig.maxProducts,
             },
@@ -230,7 +311,7 @@ export const verifySubscriptionPayment = async (req, res) => {
         }
 
         // ── Step 5: ACTIVATE SUBSCRIPTION ────────────────────
-        const { plan, months, amount } = sub.pendingPayment;
+        const { plan, months, amount, couponId, discountAmount, discountType } = sub.pendingPayment;
         const planConfig = PLANS[plan];
         const now = new Date();
         const expiry = new Date(now);
@@ -245,6 +326,9 @@ export const verifySubscriptionPayment = async (req, res) => {
         sub.nextDueDate = expiry;
         sub.lastPaymentDate = now;
         sub.isTrialActive = false;
+        // Reset the expiry-reminder guard so remindExpiringSubscriptions can
+        // fire again for this new cycle (sellerJobs.js).
+        sub.expiryReminderSentAt = null;
 
         // Record payment
         sub.payments.push({
@@ -259,12 +343,31 @@ export const verifySubscriptionPayment = async (req, res) => {
         });
 
         // Clear pending payment & plan change request
-        sub.pendingPayment = { razorpayOrderId: null, plan: null, months: null, amount: null, createdAt: null };
+        sub.pendingPayment = { razorpayOrderId: null, plan: null, months: null, amount: null, createdAt: null, couponId: null, couponCode: null, discountAmount: 0, discountType: null };
         sub.requestedPlan = null;
         sub.planChangeRequestedAt = null;
         sub.planChangeNote = "";
 
         await sub.save();
+
+        // Usage is only ever marked AFTER a verified, successful payment —
+        // mirrors this file's own "no activation without verified payment"
+        // rule, and the exact same post-success timing orderController.js/
+        // Paymentcontroller.js already use for order coupons.
+        if (couponId) {
+            await couponEngine.markCouponUsage({
+                couponId,
+                userId: req.vendor.userId,
+                vendorId,
+                subscriptionId: sub._id,
+                module: "VENDOR_SUBSCRIPTION",
+                discountAmount: discountAmount || 0,
+                discountType: discountType || undefined,
+                orderTotal: amount + (discountAmount || 0),
+                ip: req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.connection?.remoteAddress || "",
+                userAgent: req.headers["user-agent"]?.slice(0, 300) || "",
+            }).catch(() => { });
+        }
 
         // ── Step 6: Sync embedded subscription on vendor doc ─
         await Vendor.findByIdAndUpdate(vendorId, {

@@ -661,6 +661,16 @@ const UrbexonHour = () => {
     const [pincode, setPincode] = useState(""); // last CONFIRMED pincode only
     const [pinData, setPinData] = useState(null);
     const [products, setProducts] = useState([]);
+    // BUG FIX: search used to be a pure client-side .filter() over `products`
+    // above, which is capped at 60 items (see checkPincodeInner) — any match
+    // outside that first batch silently read as "0 results" even though it
+    // existed in the catalog, AND the backend never saw the search term at
+    // all, so it was invisible to /products/admin/search-analytics no matter
+    // what was typed. Now backed by a real, debounced GET
+    // /products/urbexon-hour?search=... call — same endpoint the category
+    // rails use, which already logs analytics server-side.
+    const [searchResults, setSearchResults] = useState(null); // null = no active backend search
+    const [searchLoading, setSearchLoading] = useState(false);
     const [loading, setLoading] = useState(false);
     const [locationLoading, setLocationLoading] = useState(false);
     const [error, setError] = useState("");
@@ -997,6 +1007,23 @@ const UrbexonHour = () => {
         return Object.values(map);
     };
 
+    // Debounced backend search — see the searchResults state comment above.
+    // Only fires once a pincode is confirmed (search only makes sense against
+    // a servable catalog) and clears itself when the query is emptied.
+    useEffect(() => {
+        const q = searchQuery.trim();
+        if (!q || !pincode) { setSearchResults(null); setSearchLoading(false); return; }
+        let cancelled = false;
+        setSearchLoading(true);
+        const t = setTimeout(() => {
+            productApi.getUHProducts({ pincode, search: q, limit: 60, productType: "urbexon_hour" })
+                .then(({ data }) => { if (!cancelled) setSearchResults(data?.products || data || []); })
+                .catch(() => { if (!cancelled) setSearchResults([]); })
+                .finally(() => { if (!cancelled) setSearchLoading(false); });
+        }, 350);
+        return () => { cancelled = true; clearTimeout(t); };
+    }, [searchQuery, pincode]);
+
     const groupedCategories = useMemo(() => {
         if (searchQuery || activeCategory || !products.length) return {};
         const grouped = {};
@@ -1009,7 +1036,10 @@ const UrbexonHour = () => {
     }, [products, searchQuery, activeCategory]);
 
     const filteredProducts = useMemo(() => {
-        let prods = products;
+        // Prefer real backend search results once they've landed; until then
+        // (or if the request failed), fall back to filtering whatever's
+        // already loaded so the UI isn't blank during the debounce window.
+        let prods = (searchQuery.trim() && searchResults !== null) ? searchResults : products;
         if (activeCategory) {
             const activeCatObject = apiCategories.find(c => c.name === activeCategory || c.slug?.toLowerCase() === slug?.toLowerCase() || c.name?.toLowerCase().replace(/\s+/g, "-") === slug?.toLowerCase());
             const activeCatName = activeCatObject?.name || activeCategory;
@@ -1026,12 +1056,12 @@ const UrbexonHour = () => {
             }
         }
         if (activeSubcategory) prods = prods.filter((p) => p.subcategory === activeSubcategory || p.subcategory?.toLowerCase() === activeSubcategory.toLowerCase());
-        if (searchQuery.trim()) {
+        if (searchQuery.trim() && searchResults === null) {
             const q = searchQuery.trim().toLowerCase();
             prods = prods.filter((p) => p.name?.toLowerCase().includes(q) || p.brand?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q));
         }
         return prods;
-    }, [products, activeCategory, activeSubcategory, searchQuery, apiCategories, slug]);
+    }, [products, searchResults, activeCategory, activeSubcategory, searchQuery, apiCategories, slug]);
 
     const vendorGroups = useMemo(() => groupByVendor(filteredProducts), [filteredProducts]);
     const cartSavings = useMemo(() => calculateEstimatedSavings(uhItems), [uhItems]);
@@ -1133,7 +1163,9 @@ const UrbexonHour = () => {
                         <div className="max-w-[1280px] mx-auto px-4 lg:px-12 flex items-center gap-2 py-3">
                             <FaSearch size={13} className="text-[var(--accent-hour)] flex-shrink-0" />
                             <span className="text-[13px] text-[var(--accent-hour-hover)] font-medium flex-1 min-w-0 truncate">
-                                Found <strong className="font-bold">{filteredProducts.length}</strong> product{filteredProducts.length !== 1 ? "s" : ""} matching "<strong className="font-bold">{searchQuery || activeSubcategory}</strong>"
+                                {searchQuery && searchLoading
+                                    ? "Searching…"
+                                    : <>Found <strong className="font-bold">{filteredProducts.length}</strong> product{filteredProducts.length !== 1 ? "s" : ""} matching "<strong className="font-bold">{searchQuery || activeSubcategory}</strong>"</>}
                             </span>
                             <button
                                 className="flex items-center gap-1.5 bg-error-tint border border-[var(--color-error-100)] text-error px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer hover:bg-error-tint transition-colors flex-shrink-0"

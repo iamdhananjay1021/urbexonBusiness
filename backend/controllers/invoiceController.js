@@ -76,6 +76,23 @@ export const downloadInvoiceByNumber = async (req, res) => {
    GET /api/invoice/:invoiceNumber/verify
    No auth required — QR on printed invoice links here
 ══════════════════════════════════════════════════════ */
+// [FIX] Invoice numbers are sequential (INV-{year}-{month}-{5-digit seq}),
+// so this endpoint's own reachability makes it a realistic PII-enumeration
+// target — a script iterating the sequence range could harvest customer
+// names and order values for a whole month of orders. Doesn't change the
+// public "verify this invoice is real" purpose the QR code exists for;
+// just stops it from also being a bulk customer-data lookup. Masking here
+// rather than removing the fields entirely, since a customer scanning
+// their own invoice still needs to recognize it as theirs.
+const maskName = (name) => {
+    if (!name) return "";
+    const parts = name.trim().split(/\s+/);
+    const first = parts[0];
+    const maskedFirst = first.length > 2 ? `${first.slice(0, 2)}${"*".repeat(first.length - 2)}` : first;
+    const rest = parts.slice(1).map((p) => `${p[0]}${"*".repeat(Math.max(0, p.length - 1))}`);
+    return [maskedFirst, ...rest].join(" ");
+};
+
 export const verifyInvoice = async (req, res) => {
     try {
         const order = await Order.findOne({
@@ -95,7 +112,7 @@ export const verifyInvoice = async (req, res) => {
             valid: true,
             invoiceNumber: order.invoiceNumber,
             orderId: `#${order._id.toString().slice(-8).toUpperCase()}`,
-            customerName: order.customerName,
+            customerName: maskName(order.customerName),
             orderStatus: order.orderStatus,
             paymentStatus: order.payment?.status,
             totalAmount: order.totalAmount,

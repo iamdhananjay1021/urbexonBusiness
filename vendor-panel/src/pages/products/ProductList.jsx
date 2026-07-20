@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/axios";
 import { FaPlus, FaEdit, FaTrash, FaToggleOn, FaToggleOff, FaSearch } from "react-icons/fa";
+import { useNotifications } from "../../contexts/NotificationContext";
 
 const fmt = n => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
 const ProductList = () => {
   const navigate = useNavigate();
+  const { addNotification } = useNotifications();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -36,13 +38,13 @@ const ProductList = () => {
     try {
       await api.put(`/products/vendor/${id}`, { isActive: !current });
       load();
-    } catch { alert("Failed"); }
+    } catch { addNotification({ title: "Update failed", body: "Failed to update product", type: "error" }); }
   };
 
   const deleteProduct = async (id) => {
     if (!confirm("Remove this product?")) return;
     try { await api.delete(`/products/vendor/${id}`); load(); }
-    catch { alert("Failed"); }
+    catch { addNotification({ title: "Delete failed", body: "Failed to remove product", type: "error" }); }
   };
 
   const S = {

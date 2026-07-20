@@ -36,6 +36,8 @@ import {
 
 import { validate } from "../middlewares/zodValidate.js";
 import { createProductSchema, updateProductSchema } from "../validations/product.schema.js";
+import { auditLog } from "../validations/adminSecurityMiddleware.js";
+import { imageFileFilter } from "../middlewares/imageFileFilter.js";
 
 /* ───────────────────────────────────────────────
    📦 MULTER CONFIG (SECURE)
@@ -46,18 +48,17 @@ const upload = multer({
         fileSize: 5 * 1024 * 1024, // 5MB
         files: 20, // Increased limit to allow variant images
     },
-    fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.startsWith("image/")) {
-            return cb(new Error("Only image files allowed"), false);
-        }
-        cb(null, true);
-    },
+    fileFilter: imageFileFilter,
 });
 
 /* ───────────────────────────────────────────────
    🔍 FILE LOGGING MIDDLEWARE (DEBUGGING)
 ─────────────────────────────────────────────── */
+// [FIX] Was unconditional — logged every uploaded file's name/mimetype/size
+// on every product create/edit request in production too, pure noise on a
+// high-traffic write path.
 const logFiles = (req, res, next) => {
+    if (process.env.NODE_ENV === "production") return next();
     if (req.files && req.files.length > 0) {
         console.log(`[🖼️ Files Parsed] ${req.files.length} file(s):`);
         req.files.forEach((f, i) => {
@@ -150,6 +151,7 @@ router.post(
     requireActiveSubscription,
     writeLimiter,
     upload.any(),
+    validate(createProductSchema),
     vendorCreateProduct
 );
 
@@ -160,6 +162,8 @@ router.put(
     requireActiveSubscription,
     writeLimiter,
     upload.any(),
+    validate(updateProductSchema),
+    auditLog("vendor_product_updated"),
     vendorUpdateProduct
 );
 

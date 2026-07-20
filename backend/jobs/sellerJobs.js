@@ -10,7 +10,9 @@ import Vendor from '../models/vendorModels/Vendor.js';
 import Order from '../models/Order.js';
 import Subscription from '../models/vendorModels/Subscription.js';
 import { Settlement } from '../models/vendorModels/Settlement.js';
+import VendorWalletTransaction from '../models/vendorModels/VendorWalletTransaction.js';
 import logger from '../utils/logger.js';
+import { notify } from '../services/notificationEngine.js';
 
 // ══════════════════════════════════════════════════════
 // 1️⃣ CALCULATE SELLER COMMISSIONS (monthly summary)
@@ -148,10 +150,25 @@ export const autoExpireSubscriptions = async () => {
                 await Subscription.findByIdAndUpdate(sub._id, { status: 'expired' });
 
                 // ✅ FIX: Sync BOTH embedded subscription fields on Vendor
-                await Vendor.findByIdAndUpdate(sub.vendorId, {
+                const vendor = await Vendor.findByIdAndUpdate(sub.vendorId, {
                     'subscription.isActive': false,
                     'subscription.expiryDate': sub.expiryDate,
-                });
+                }).select('userId');
+
+                // NOTIFICATION GAP FIX: this job flipped the status silently —
+                // a vendor only found out their subscription lapsed when a
+                // gated action started 403-ing.
+                if (vendor?.userId) {
+                    notify({
+                        recipientId: vendor.userId,
+                        role: 'vendor',
+                        type: 'subscription_update',
+                        title: 'Subscription Expired',
+                        message: `Your ${sub.plan} plan has expired. Renew to keep selling on Urbexon Hour.`,
+                        priority: 'high',
+                        meta: { plan: sub.plan, status: 'expired' },
+                    }).catch((err) => logger.warn(`[autoExpireSubscriptions] notify failed for vendor ${sub.vendorId}: ${err.message}`));
+                }
 
                 logger.info(`⏰ Subscription expired: vendor ${sub.vendorId} (plan: ${sub.plan}, expired: ${sub.expiryDate.toISOString().slice(0, 10)})`);
                 count++;
@@ -189,6 +206,118 @@ export const autoExpireSubscriptions = async () => {
         return { expiredCount: count, trialsExpired: expiredTrials.length };
     } catch (err) {
         logger.error('Auto-Expire Subscriptions Error:', err);
+        throw { message: err.message };
+    }
+};
+
+// ══════════════════════════════════════════════════════
+// 5️⃣ REMIND EXPIRING SUBSCRIPTIONS
+// NOTIFICATION GAP FIX — the "subscription expiring soon" event named in
+// the audit had no producer at all. One-shot per expiry cycle, guarded by
+// expiryReminderSentAt (same idempotency pattern as Ticket.slaReminderSentAt),
+// which is reset to null on every renewal/activation so the next cycle can
+// remind again (see activateVendorSubscription and verifySubscriptionPayment).
+// ══════════════════════════════════════════════════════
+const REMINDER_WINDOW_DAYS = 3;
+
+export const remindExpiringSubscriptions = async () => {
+    try {
+        const now = new Date();
+        const windowEnd = new Date(now.getTime() + REMINDER_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+        const dueSoon = await Subscription.find({
+            status: 'active',
+            expiryDate: { $gte: now, $lte: windowEnd },
+            expiryReminderSentAt: null,
+        }).select('vendorId plan expiryDate').lean();
+
+        let reminded = 0;
+        for (const sub of dueSoon) {
+            try {
+                const vendor = await Vendor.findById(sub.vendorId).select('userId').lean();
+                if (!vendor?.userId) continue;
+
+                await notify({
+                    recipientId: vendor.userId,
+                    role: 'vendor',
+                    type: 'subscription_update',
+                    title: 'Subscription Expiring Soon',
+                    message: `Your ${sub.plan} plan expires on ${sub.expiryDate.toLocaleDateString('en-IN')}. Renew now to avoid interruption.`,
+                    priority: 'high',
+                    meta: { plan: sub.plan, expiryDate: sub.expiryDate.toISOString() },
+                });
+
+                await Subscription.findByIdAndUpdate(sub._id, { expiryReminderSentAt: now });
+                reminded++;
+            } catch (err) {
+                logger.warn(`Failed to remind vendor ${sub.vendorId}: ${err.message}`);
+            }
+        }
+
+        if (reminded > 0) logger.info(`⏰ Reminded ${reminded} vendor(s) of upcoming subscription expiry`);
+        return { reminded };
+    } catch (err) {
+        logger.error('Remind Expiring Subscriptions Error:', err);
+        throw { message: err.message };
+    }
+};
+
+// ══════════════════════════════════════════════════════
+// 6️⃣ RECONCILE VENDOR WALLETS
+// WALLET LEDGER — compares each vendor's materialized Vendor.walletBalance
+// against SUM(VendorWalletTransaction) for that vendor. Read-only: this
+// job NEVER writes to walletBalance or the ledger — a mismatch means
+// something upstream (a bug, a partial deploy, manual DB surgery) broke
+// the "credit/debit and balance update commit together in one
+// transaction" guarantee vendorWalletService.js is supposed to provide,
+// and that deserves a human looking at it, not a silent auto-correction
+// that could paper over a real bug or, worse, a real fraud attempt.
+// ══════════════════════════════════════════════════════
+export const reconcileVendorWallets = async () => {
+    try {
+        const sums = await VendorWalletTransaction.aggregate([
+            {
+                $group: {
+                    _id: '$vendorId',
+                    credited: { $sum: { $cond: [{ $in: ['$type', ['settlement_credit', 'manual_credit', 'opening_balance']] }, '$amount', 0] } },
+                    debited: { $sum: { $cond: [{ $in: ['$type', ['withdrawal_debit', 'manual_debit', 'refund_adjustment', 'chargeback']] }, '$amount', 0] } },
+                },
+            },
+            { $project: { ledgerBalance: { $subtract: ['$credited', '$debited'] } } },
+        ]);
+
+        if (!sums.length) return { vendorsChecked: 0, mismatches: [] };
+
+        const vendorIds = sums.map((s) => s._id);
+        const vendors = await Vendor.find({ _id: { $in: vendorIds } }).select('walletBalance shopName').lean();
+        const vendorMap = new Map(vendors.map((v) => [String(v._id), v]));
+
+        const TOLERANCE = 0.01; // paise-level float rounding, not a real mismatch
+        const mismatches = [];
+        for (const s of sums) {
+            const vendor = vendorMap.get(String(s._id));
+            if (!vendor) continue; // vendor deleted after transactions existed — not this job's concern
+            const diff = Math.round((vendor.walletBalance - s.ledgerBalance) * 100) / 100;
+            if (Math.abs(diff) > TOLERANCE) {
+                mismatches.push({
+                    vendorId: String(s._id),
+                    shopName: vendor.shopName,
+                    walletBalance: vendor.walletBalance,
+                    ledgerBalance: Math.round(s.ledgerBalance * 100) / 100,
+                    diff,
+                });
+            }
+        }
+
+        if (mismatches.length > 0) {
+            logger.error(`🚨 WALLET RECONCILIATION: ${mismatches.length} vendor(s) with balance/ledger mismatch`, mismatches);
+        } else {
+            logger.info(`✅ Wallet reconciliation clean — ${sums.length} vendor(s) checked, 0 mismatches`);
+        }
+
+        return { vendorsChecked: sums.length, mismatches };
+    } catch (err) {
+        logger.error('Reconcile Vendor Wallets Error:', err);
         throw { message: err.message };
     }
 };

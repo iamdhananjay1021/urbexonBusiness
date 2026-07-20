@@ -8,6 +8,7 @@ export const rejectVendor = (id, payload) => api.patch(`/admin/vendors/${id}/rej
 export const suspendVendor = (id, payload) => api.patch(`/admin/vendors/${id}/suspend`, payload);
 export const updateCommission = (id, payload) => api.patch(`/admin/vendors/${id}/commission`, payload);
 export const deleteVendor = (id) => api.delete(`/admin/vendors/${id}`);
+export const updateVendorDocStatus = (id, payload) => api.patch(`/admin/vendors/${id}/document-status`, payload);
 
 // ── Pincodes ──────────────────────────────────────────────────
 export const fetchPincodes = (params) => api.get("/admin/pincodes", { params });
@@ -21,3 +22,10 @@ export const fetchSettlements = (params) => api.get("/admin/settlements", { para
 export const processSettlements = () => api.post("/admin/settlements/process");
 export const markSettlementPaid = (id, payload) => api.patch(`/admin/settlements/${id}/paid`, payload);
 export const markBatchPaid = (batchId, payload) => api.patch(`/admin/settlements/batch/${batchId}/paid`, payload);
+
+// ── Vendor Wallet Ledger ─────────────────────────────────────
+export const fetchVendorWallet = (id, params) => api.get(`/admin/vendors/${id}/wallet`, { params });
+export const fetchWalletAdjustments = (params) => api.get("/admin/wallet-adjustments", { params });
+export const createWalletAdjustment = (payload) => api.post("/admin/wallet-adjustments", payload);
+export const approveWalletAdjustment = (id) => api.patch(`/admin/wallet-adjustments/${id}/approve`);
+export const rejectWalletAdjustment = (id, payload) => api.patch(`/admin/wallet-adjustments/${id}/reject`, payload);

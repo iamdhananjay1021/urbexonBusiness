@@ -21,7 +21,8 @@ import {
   clearUHCart,
 } from "../features/cart/cartSlice";
 import { getProductById } from "../api/productApi";
-import { validateCoupon } from "../api/orderApi";
+import { useCoupon } from "../hooks/useCoupon";
+import CouponSuggestions from "../components/checkout/CouponSuggestions";
 import { FiTrash2, FiShoppingBag, FiZap, FiTag, FiArrowRight, FiX, FiPlus, FiMinus, FiSlash } from "react-icons/fi";
 import BackButton from "../components/BackButton";
 import Card from "../design-system/Card";
@@ -31,6 +32,7 @@ import Alert from "../design-system/Alert";
 import Tabs from "../design-system/Tabs";
 import { EmptyState } from "../design-system/EmptyState";
 import { cn } from "../design-system/utils/cn";
+import { imgUrl } from "../utils/imageUrl";
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
@@ -111,10 +113,9 @@ const Cart = () => {
   const inStockPrice = useMemo(() => inStockItems.reduce((s, i) => s + (i.price || 0) * (i.quantity || 0), 0), [inStockItems]);
   const inStockCount = useMemo(() => inStockItems.reduce((s, i) => s + (i.quantity || 0), 0), [inStockItems]);
 
-  const [couponCode, setCouponCode] = useState("");
-  const [couponData, setCouponData] = useState(null);
-  const [couponErr, setCouponErr] = useState("");
-  const [applying, setApplying] = useState(false);
+  const orderMode = isUH ? "urbexon_hour" : "ecommerce";
+  const { couponCode, setCouponCode, couponData, couponErr, applying, applyCoupon, removeCoupon } =
+    useCoupon({ orderTotal: inStockPrice, orderType: orderMode });
 
   const discount = couponData?.discount || 0;
 
@@ -125,32 +126,8 @@ const Cart = () => {
     return { delivery: d, platform: p, total: itemsTotal + d + p, estimated: true };
   }, [inStockPrice, discount, isUH]);
 
-  const applyCoupon = useCallback(async () => {
-    if (!couponCode.trim()) return;
-    setApplying(true); setCouponErr(""); setCouponData(null);
-    try {
-      const { data } = await validateCoupon({
-        code: couponCode.trim(),
-        orderTotal: inStockPrice,
-        orderType: isUH ? "urbexon_hour" : "ecommerce",
-      });
-      setCouponData(data);
-    } catch (e) {
-      setCouponErr(e.response?.data?.message || "Invalid coupon");
-    } finally { setApplying(false); }
-  }, [couponCode, inStockPrice, isUH]);
-
-  const removeCoupon = () => { setCouponData(null); setCouponCode(""); setCouponErr(""); };
-
   // Switch tab resets coupon
   const switchTab = (tab) => { setActiveTab(tab); removeCoupon(); };
-
-  // Reset coupon when cart total changes significantly (items added/removed)
-  useEffect(() => {
-    if (couponData && couponData.minOrderValue && inStockPrice < couponData.minOrderValue) {
-      removeCoupon();
-    }
-  }, [inStockPrice]); // eslint-disable-line
 
   if (!hasEc && !hasUh) {
     return (
@@ -232,7 +209,7 @@ const Cart = () => {
                     <Link to={`/products/${item.slug || item.productId || item._id}`} className={oos ? "pointer-events-none" : ""}>
                       <img
                         className={cn("w-20 h-20 object-cover rounded-[var(--radius-md)] bg-canvas", oos && "grayscale-[.6]")}
-                        src={item?.images?.[0]?.url || item?.image || "/placeholder.png"}
+                        src={imgUrl.thumbnail(item?.images?.[0]?.url || item?.image || "/placeholder.png")}
                         alt={item.name}
                         loading="lazy"
                         onError={e => { e.target.src = "/placeholder.png"; }}
@@ -316,11 +293,12 @@ const Cart = () => {
                       onChange={e => setCouponCode(e.target.value.toUpperCase())}
                       onKeyDown={e => e.key === "Enter" && applyCoupon()}
                     />
-                    <Button variant="primary" onClick={applyCoupon} loading={applying}>Apply</Button>
+                    <Button variant="primary" onClick={() => applyCoupon()} loading={applying}>Apply</Button>
                   </div>
                   {couponErr && <p className="text-xs text-error mt-2">⚠️ {couponErr}</p>}
                 </>
               )}
+              <CouponSuggestions itemsTotal={inStockPrice} orderMode={orderMode} appliedCode={couponData?.code} onApply={(code) => applyCoupon(code)} />
             </Card>
 
             {/* Price Summary */}

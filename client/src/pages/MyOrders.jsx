@@ -13,6 +13,7 @@ import Tabs from "../design-system/Tabs";
 import Loader from "../design-system/Loader";
 import { EmptyState } from "../design-system/EmptyState";
 import { cn } from "../design-system/utils/cn";
+import { showToast } from "../utils/toast";
 
 const STATUS_CONFIG = {
     PLACED: { label: "Order Placed", color: "text-[var(--color-warning-700)]", bg: "bg-warning-tint", border: "border-[var(--color-warning-100)]", dot: "bg-[var(--color-warning-500)]" },
@@ -148,7 +149,7 @@ const MyOrders = () => {
             dispatch(getMyOrders());
             if (isMounted.current) setConfirmCancelId(null);
         } catch (err) {
-            alert(err.response?.data?.message || "Cancel failed");
+            showToast(err.response?.data?.message || "Cancel failed", "error");
         } finally {
             // BUG FIX #7: guard before setState
             if (isMounted.current) setCancellingId(null);
@@ -168,7 +169,7 @@ const MyOrders = () => {
             link.remove();
             window.URL.revokeObjectURL(url);
         } catch {
-            alert("Failed to download invoice. Please try again.");
+            showToast("Failed to download invoice. Please try again.", "error");
         } finally {
             // BUG FIX #7: guard before setState
             if (isMounted.current) setDownloadingId(null);

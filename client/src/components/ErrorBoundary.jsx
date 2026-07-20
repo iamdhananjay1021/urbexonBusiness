@@ -15,6 +15,24 @@ class ErrorBoundary extends Component {
 
     componentDidCatch(error, info) {
         console.error("[ErrorBoundary]", error, info);
+        // Best-effort report to the backend's error-tracking sink — never
+        // throws, never blocks the fallback UI from rendering.
+        try {
+            const base = import.meta.env.VITE_API_URL || "http://localhost:9000/api";
+            fetch(`${base}/client-errors`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    app: "client",
+                    message: error?.message,
+                    stack: error?.stack,
+                    url: window.location.href,
+                }),
+                keepalive: true,
+            }).catch(() => {});
+        } catch {
+            // ignore
+        }
     }
 
     render() {

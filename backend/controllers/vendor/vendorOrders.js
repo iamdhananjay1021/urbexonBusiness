@@ -7,7 +7,8 @@
 import Order from "../../models/Order.js";
 import Product from "../../models/Product.js";
 import DeliveryBoy from "../../models/deliveryModels/DeliveryBoy.js";
-import { restoreStock, unmarkCouponUsed } from "../../services/pricing.js";
+import { restoreStock } from "../../services/pricing.js";
+import { unmarkCouponUsage } from "../../services/couponEngine.js";
 import { sendNotification as sendToUser } from "../../utils/notificationQueue.js";
 import { publishToUser } from "../../utils/realtimeHub.js";
 import { startAssignment, cancelAssignment, releaseRiderSlot } from "../../services/assignmentEngine.js";
@@ -480,7 +481,7 @@ export const updateOrderStatus = async (req, res) => {
         if (status === "CANCELLED") {
             await restoreStock(order.items);
             if (order.coupon?.code) {
-                await unmarkCouponUsed({ couponCode: order.coupon.code, userId: order.user }).catch(() => { });
+                await unmarkCouponUsage({ couponId: order.coupon.couponId, couponCode: order.coupon.code, userId: order.user, orderId: order._id }).catch(() => { });
             }
             // Vendor-initiated cancel previously never triggered a refund —
             // a PAID Razorpay order stayed "PAID" with no refund started.

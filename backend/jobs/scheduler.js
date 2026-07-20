@@ -38,6 +38,8 @@ import {
     autoGeneratePayouts,
     updateVendorRatings,
     autoExpireSubscriptions,
+    remindExpiringSubscriptions,
+    reconcileVendorWallets,
 } from './sellerJobs.js';
 
 import {
@@ -45,6 +47,7 @@ import {
     archiveOldOrders,
     cleanupTemporaryFiles,
     refreshCacheData,
+    cleanOldNotificationsJob,
 } from './databaseJobs.js';
 
 import {
@@ -59,6 +62,8 @@ import {
     checkNewDeals,
     sendWishlistReminders,
 } from '../services/productReminders.js';
+
+import { sweepTicketSla } from './ticketSlaJobs.js';
 
 // ══════════════════════════════════════════════════════
 // 🎯 JOB REGISTRY
@@ -100,8 +105,8 @@ const JOBS = [
         name: 'Check Low Stock Items',
         schedule: '0 9 * * *', // Daily at 9 AM
         handler: checkLowStockItems,
-        enabled: false, // DISABLED: Only logs warnings, no vendor email alerts wired
-        description: 'Alerts when product stock falls below threshold',
+        enabled: true,
+        description: 'Notifies vendors when a product\'s stock falls below its configured lowStockThreshold',
     },
     {
         name: 'Send Pending Order Emails',
@@ -153,6 +158,20 @@ const JOBS = [
         description: 'Expires vendor subscriptions past their expiry date',
     },
     {
+        name: 'Remind Expiring Subscriptions',
+        schedule: '0 10 * * *', // Daily at 10 AM — before the midnight expiry job, so a reminder always precedes expiry
+        handler: remindExpiringSubscriptions,
+        enabled: true,
+        description: 'Notifies vendors whose subscription expires within 3 days',
+    },
+    {
+        name: 'Reconcile Vendor Wallets',
+        schedule: '0 4 * * *', // Daily at 4 AM — off-peak, after the previous day's settlement/payout activity has settled
+        handler: reconcileVendorWallets,
+        enabled: true,
+        description: 'Compares each vendor\'s walletBalance against the ledger sum and logs any mismatch — never auto-corrects',
+    },
+    {
         name: 'Cleanup Expired Sessions',
         schedule: '0 3 * * *', // Daily at 3 AM
         handler: cleanupExpiredSessions,
@@ -163,7 +182,12 @@ const JOBS = [
         name: 'Archive Old Orders',
         schedule: '0 4 * * 0', // Weekly on Sunday at 4 AM
         handler: archiveOldOrders,
-        enabled: false, // DISABLED: Cosmetic flag, not needed early-stage
+        // [FIX] Was disabled because it also silently never worked — it
+        // queried a nonexistent `status` field and set isArchived/archivedAt
+        // paths that weren't declared on the schema (see databaseJobs.js +
+        // models/Order.js). Both bugs are now fixed; nothing in the codebase
+        // currently reads isArchived, so enabling this is purely additive.
+        enabled: true,
         description: 'Archives delivered orders older than 90 days',
     },
     {
@@ -179,6 +203,16 @@ const JOBS = [
         handler: refreshCacheData,
         enabled: true,
         description: 'Refreshes Redis cache for banners, categories, products',
+    },
+    {
+        name: 'Cleanup Old Notifications',
+        schedule: '0 5 * * *', // Daily at 5 AM
+        handler: cleanOldNotificationsJob,
+        // [FIX] Previously only reachable via an admin manually hitting
+        // DELETE /admin/notifications/clean — the Notification collection
+        // had no automatic TTL and grew unbounded otherwise.
+        enabled: true,
+        description: 'Deletes read notifications older than 30 days',
     },
     {
         name: 'Auto-Assign Delivery Boys',
@@ -230,6 +264,13 @@ const JOBS = [
         description: 'Reminds users about items sitting in their wishlist',
     },
     {
+        name: 'Ticket SLA Sweep',
+        schedule: '*/15 * * * *', // Every 15 minutes
+        handler: sweepTicketSla,
+        enabled: true,
+        description: 'Sends first-response reminders and escalates SLA-breached vendor support tickets',
+    },
+    {
         name: 'Send Admin Daily Summary',
         schedule: '0 21 * * *', // Daily at 9 PM IST
         handler: sendAdminDailySummary,
@@ -245,6 +286,15 @@ const JOBS = [
 class Scheduler {
     constructor() {
         this.jobs = new Map();
+        // [FIX] No per-job overlap protection previously existed — several
+        // jobs run every 5-10 minutes (auto-assign delivery boys, update
+        // delivery status, etc.), and a run that takes longer than its own
+        // interval (e.g. during a DB slowdown) could start a second,
+        // overlapping instance of the same job, risking concurrent writes
+        // to the same DeliveryBoy/Order documents. This tracks in-flight
+        // job names so a new tick for a still-running job is skipped
+        // rather than started.
+        this.runningJobNames = new Set();
         this.stats = {
             total: 0,
             running: 0,
@@ -288,6 +338,15 @@ class Scheduler {
 
     async executeJob(job) {
         const jobKey = job.name;
+
+        // Overlap guard — a still-running instance of this exact job skips
+        // this tick entirely rather than starting a concurrent second run.
+        if (this.runningJobNames.has(jobKey)) {
+            logger.warn(`⏭️  SKIPPED (still running): ${jobKey}`);
+            return;
+        }
+        this.runningJobNames.add(jobKey);
+
         const startTime = Date.now();
 
         logger.info(`▶️  EXECUTING: ${jobKey}`);
@@ -320,6 +379,8 @@ class Scheduler {
             if (err.critical) {
                 await this.alertAdmin(jobKey, err);
             }
+        } finally {
+            this.runningJobNames.delete(jobKey);
         }
     }
 

@@ -8,6 +8,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import logger from '../utils/logger.js';
 import { getCache, setCache, delCacheByPrefix } from '../utils/Cache.js';
+import { purgeOldNotifications } from '../controllers/admin/notificationController.js';
 
 // ══════════════════════════════════════════════════════
 // 1️⃣ CLEANUP EXPIRED SESSIONS (DISABLED - NO SESSION MODEL)
@@ -33,7 +34,11 @@ export const archiveOldOrders = async () => {
 
         const archived = await Order.updateMany(
             {
-                status: 'DELIVERED',
+                // [FIX] Was `status`, a field that doesn't exist at the top
+                // level of the Order schema (only nested subdocuments have
+                // a `status` path) — this query matched zero documents ever.
+                // The real order-lifecycle field is `orderStatus`.
+                orderStatus: 'DELIVERED',
                 createdAt: { $lt: archiveDate },
                 isArchived: { $ne: true },
             },
@@ -153,6 +158,20 @@ export const refreshCacheData = async () => {
         return { cacheRefreshed: refreshed };
     } catch (err) {
         logger.error('Refresh Cache Error:', err);
+        throw { message: err.message };
+    }
+};
+
+// ══════════════════════════════════════════════════════
+// 5️⃣ CLEANUP OLD NOTIFICATIONS (>30 days, read only)
+// ══════════════════════════════════════════════════════
+export const cleanOldNotificationsJob = async () => {
+    try {
+        const deleted = await purgeOldNotifications();
+        logger.info(`🔔 Cleaned up ${deleted} old read notifications (>30 days old)`);
+        return { notificationsDeleted: deleted };
+    } catch (err) {
+        logger.error('Cleanup Notifications Error:', err);
         throw { message: err.message };
     }
 };

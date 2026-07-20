@@ -19,6 +19,7 @@ export const fetchCheckoutPricing = async (items, paymentMethod = "RAZORPAY", op
         deliveryType: options.deliveryType,
         distanceKm: options.distanceKm,
         pincode: options.pincode,
+        state: options.state,
         ...(options.couponId && { couponId: options.couponId }),
         ...(options.couponCode && { couponCode: options.couponCode }),
     });

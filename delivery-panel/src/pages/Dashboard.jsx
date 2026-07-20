@@ -2,7 +2,7 @@
  * Delivery Partner Dashboard — Production v4.0
  * Urbexon design + real-time WebSocket, FCM push, GPS tracking
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../api/axios";
@@ -11,6 +11,8 @@ import DeliveryMap from "../components/DeliveryMap";
 import { startAlert, stopAlert, playNotification } from "../utils/notificationSound";
 import useFcm from "../hooks/useFcm";
 import { useLocationTracking } from "../hooks/useLocationTracking";
+import { useDeliveryWs } from "../hooks/useDeliveryWs";
+import { showToast } from "../utils/toast";
 
 // Haversine, meters — used below for the live "distance to target" display.
 const distanceMeters = (lat1, lng1, lat2, lng2) => {
@@ -34,7 +36,6 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
   const [newOrderAlert, setNewOrderAlert] = useState(null);
-  const wsRef = useRef(null);
 
   // Matches ActiveOrders.jsx's definition: a rider can only ever have one
   // non-delivered assigned order at a time (MAX_ACTIVE_ORDERS = 1 server-side),
@@ -83,79 +84,34 @@ const Dashboard = () => {
   });
 
   /* ── WebSocket ── */
-  useEffect(() => {
-    const authRaw = localStorage.getItem("deliveryAuth");
-    const token = authRaw ? JSON.parse(authRaw)?.token : null;
-    if (!token) return;
+  useDeliveryWs(useCallback((msg) => {
+    if (msg.type === "rider:order_request" || msg.type === "new_order_available" || msg.type === "new_delivery_request") {
+      const p = msg.payload || {};
+      setNewOrderAlert({ orderId: p.orderId, amount: p.amount, items: p.items, address: p.address, distanceKm: p.distanceKm, at: new Date() });
+      startAlert();
+      load();
+    }
+    if (msg.type === "rider:order_assigned") { playNotification(); load(); }
 
-    // WebSocket URL: explicit env var → runtime hostname detection → fallback
-    const wsBase = import.meta.env.VITE_WS_URL
-      || (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-        ? "ws://localhost:9000" : "wss://api.urbexon.in");
+    // BUG FIX: same gap as ActiveOrders.jsx — admin cancelling an
+    // already-accepted order had no real-time signal here either.
+    if (msg.type === "rider:order_cancelled") {
+      const p = msg.payload || {};
+      stopAlert();
+      showToast(p.message || "An order assigned to you was cancelled by admin.", "warning");
+      load();
+    }
 
-    let ws, pingInterval, retryTimeout, mounted = true, backoff = 3000, retries = 0;
-    const MAX_RETRIES = 15;
+    // BUG FIX: admin broadcasts (POST /admin/broadcast) reached this
+    // socket already — nothing read the type, so it was silently
+    // dropped with zero visible effect.
+    if (msg.type === "admin:broadcast" && msg.payload?.message) {
+      showToast(msg.payload.message, "info");
+    }
+  }, [load]));
 
-    const connect = () => {
-      if (!mounted || retries >= MAX_RETRIES) return;
-      if (document.hidden) return; // don't connect when tab is hidden
-      try {
-        ws = new WebSocket(`${wsBase}/ws?token=${token}`);
-        wsRef.current = ws;
-        ws.onopen = () => {
-          console.log("[Delivery WS] Connected to:", wsBase);
-          backoff = 3000;
-          retries = 0;
-          pingInterval = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: "ping" })); }, 25000);
-        };
-        ws.onmessage = (e) => {
-          try {
-            const msg = JSON.parse(e.data);
-            if (msg.type === "rider:order_request" || msg.type === "new_order_available" || msg.type === "new_delivery_request") {
-              const p = msg.payload || {};
-              setNewOrderAlert({ orderId: p.orderId, amount: p.amount, items: p.items, address: p.address, distanceKm: p.distanceKm, at: new Date() });
-              startAlert();
-              load();
-            }
-            if (msg.type === "rider:order_assigned") { playNotification(); load(); }
-
-            // BUG FIX: same gap as ActiveOrders.jsx — admin cancelling an
-            // already-accepted order had no real-time signal here either.
-            if (msg.type === "rider:order_cancelled") {
-              const p = msg.payload || {};
-              stopAlert();
-              alert(p.message || "An order assigned to you was cancelled by admin.");
-              load();
-            }
-
-            // BUG FIX: admin broadcasts (POST /admin/broadcast) reached this
-            // socket already — nothing read the type, so it was silently
-            // dropped with zero visible effect. No toast system here
-            // (order_cancelled above uses alert() too), so reuse that.
-            if (msg.type === "admin:broadcast" && msg.payload?.message) {
-              alert(`📢 ${msg.payload.message}`);
-            }
-          } catch { }
-        };
-        ws.onclose = () => {
-          clearInterval(pingInterval);
-          if (mounted && retries < MAX_RETRIES) {
-            retries++;
-            retryTimeout = setTimeout(connect, backoff);
-            backoff = Math.min(backoff * 2, 60000);
-          }
-        };
-        ws.onerror = () => ws.close();
-      } catch (err) { console.error("[Delivery WS] Connection error:", err); }
-    };
-
-    // Reconnect when tab becomes visible again
-    const onVisChange = () => { if (!document.hidden && (!ws || ws.readyState !== WebSocket.OPEN)) { retries = 0; backoff = 3000; clearTimeout(retryTimeout); connect(); } };
-    document.addEventListener("visibilitychange", onVisChange);
-
-    connect();
-    return () => { mounted = false; clearInterval(pingInterval); clearTimeout(retryTimeout); document.removeEventListener("visibilitychange", onVisChange); stopAlert(); ws?.close(); };
-  }, [load]);
+  // Stop any in-progress alert sound if this page unmounts mid-alert.
+  useEffect(() => () => stopAlert(), []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -165,7 +121,7 @@ const Dashboard = () => {
       const { data } = await api.patch("/delivery/toggle-status");
       setIsOnline(data.isOnline);
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to update status");
+      showToast(err.response?.data?.message || "Failed to update status", "error");
     } finally { setToggling(false); }
   };
 

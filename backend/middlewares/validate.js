@@ -1,4 +1,17 @@
 // middlewares/validate.js
+//
+// [DECISION] Two parallel request-validation systems exist in this codebase:
+// this legacy rule-object middleware (validateBody) and the newer
+// zod-schema-based one in middlewares/zodValidate.js. Zod is the
+// standardized target for all NEW routes going forward — it gives real
+// type coercion/inference instead of string-matched rules, and is already
+// the pattern used across every admin-finance and product route added
+// since. This file is intentionally left as-is (not migrated) because its
+// 5 existing call sites (authRoutes.js, orderRoutes.js, addressRoutes.js,
+// VendorRoutes/vendorRoutes.js, deliveryRoutes/deliveryRoutes.js) are
+// working in production and migrating them carries real regression risk
+// for zero functional gain — do not add new call sites here; use
+// zodValidate.js's validate(schema) instead.
 
 export const validateBody = (rules) => (req, res, next) => {
     const errors = [];
@@ -20,6 +33,16 @@ export const validateBody = (rules) => (req, res, next) => {
         }
 
         if (isEmpty) continue;
+
+        // Normalize case before any pattern check below runs — e.g. GSTIN/PAN,
+        // which are stored uppercase on the model (Vendor.gstNumber/panNumber
+        // already have `uppercase: true`), so validation should judge the
+        // same normalized form that ends up persisted, not whatever case the
+        // user happened to type.
+        if (rule.uppercase && typeof val === "string") {
+            val = val.toUpperCase();
+            req.body[field] = val;
+        }
 
         // TYPE VALIDATION
         if (rule.type === "string" && typeof val !== "string") {

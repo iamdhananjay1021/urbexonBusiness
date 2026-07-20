@@ -16,6 +16,7 @@ import {
     Skeleton, FormField, Input,
 } from "../components/ui";
 import { useAdminWsContext } from "../contexts/AdminWsContext";
+import { showToast } from "../utils/toast";
 
 /* icon-wrap tone per underlying status, so the icon reflects state at a
    glance — the statuses themselves now resolve through the shared
@@ -106,13 +107,13 @@ const RefundCard = ({ order, onAction }) => {
     const doAction = async (action) => {
         if (action === "approve" && !window.confirm(`Approve refund of ₹${Number(refund.amount).toLocaleString("en-IN")}?`)) return;
         try { setBusy(true); await api.put(`/orders/${order._id}/refund/process`, { action, adminNote: note }); onAction(); }
-        catch (e) { alert(e.response?.data?.message || "Action failed"); }
+        catch (e) { showToast(e.response?.data?.message || "Action failed", "error"); }
         finally { setBusy(false); }
     };
     const doRetry = async () => {
         if (!window.confirm("Retry this failed refund?")) return;
         try { setRetrying(true); await api.put(`/orders/${order._id}/refund/retry`); onAction(); }
-        catch (e) { alert(e.response?.data?.message || "Retry failed"); }
+        catch (e) { showToast(e.response?.data?.message || "Retry failed", "error"); }
         finally { setRetrying(false); }
     };
 
@@ -186,7 +187,7 @@ const ReturnCard = ({ order, onAction }) => {
                 refundAmount: refundAmt ? Number(refundAmt) : order.totalAmount,
             });
             onAction();
-        } catch (e) { alert(e.response?.data?.message || "Action failed"); }
+        } catch (e) { showToast(e.response?.data?.message || "Action failed", "error"); }
         finally { setBusy(false); }
     };
 
@@ -328,7 +329,7 @@ const ReplacementCard = ({ order, onAction }) => {
             setBusy(true);
             await api.put(`/orders/${order._id}/replacement/process`, { action, adminNote });
             onAction();
-        } catch (err) { alert(err.response?.data?.message || "Action failed"); }
+        } catch (err) { showToast(err.response?.data?.message || "Action failed", "error"); }
         finally { setBusy(false); }
     };
 
@@ -435,15 +436,20 @@ const AdminRefundReturn = () => {
             setLoading(true);
             setError(null);
             const [r1, r2, r3, r4] = await Promise.all([
-                api.get("/orders/admin/refunds"),
-                api.get("/orders/admin/returns"),
-                api.get("/orders/admin/flagged"),
-                api.get("/orders/admin/replacements").catch(() => ({ data: [] })),
+                api.get("/orders/admin/refunds", { params: { limit: 100 } }),
+                api.get("/orders/admin/returns", { params: { limit: 100 } }),
+                api.get("/orders/admin/flagged", { params: { limit: 100 } }),
+                api.get("/orders/admin/replacements", { params: { limit: 100 } }).catch(() => ({ data: { orders: [] } })),
             ]);
-            setRefunds(Array.isArray(r1.data) ? r1.data : []);
-            setReturns(Array.isArray(r2.data) ? r2.data : []);
-            setFlagged(Array.isArray(r3.data) ? r3.data : []);
-            setReplacements(Array.isArray(r4.data) ? r4.data : []);
+            // [FIX] All 4 endpoints now consistently return {success, orders,
+            // total, page, pages} instead of a mix of bare arrays and
+            // {success, data} — returns/replacements previously always
+            // rendered empty here because Array.isArray(r.data) was false
+            // for the {success, data:[...]} shape those two used to return.
+            setRefunds(Array.isArray(r1.data?.orders) ? r1.data.orders : []);
+            setReturns(Array.isArray(r2.data?.orders) ? r2.data.orders : []);
+            setFlagged(Array.isArray(r3.data?.orders) ? r3.data.orders : []);
+            setReplacements(Array.isArray(r4.data?.orders) ? r4.data.orders : []);
         } catch (e) {
             console.error(e);
             setError(e.response?.data?.message || "Couldn't load data. Check your connection and try again.");

@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useAuth } from "../contexts/AuthContext";
+import Modal from "../components/Modal";
 import {
   FiLock, FiAlertTriangle, FiKey, FiLogOut,
   FiCheckCircle, FiClock, FiAlertCircle, FiPackage, FiCalendar, FiCreditCard,
@@ -65,16 +66,27 @@ const Settings = () => {
   const [planNote, setPlanNote] = useState("");
   const [planLoading, setPlanLoading] = useState(false);
   const [planMsg, setPlanMsg] = useState({ text: "", type: "" });
+  const [subError, setSubError] = useState("");
 
-  useEffect(() => {
+  const loadSubscription = () => {
+    setLoading(true);
+    setSubError("");
     api.get("/vendor/subscription")
       .then(r => {
         setSub(r.data.subscription);
         setPlans(r.data.plans || {});
       })
-      .catch(() => { })
+      // [FIX] Was a silent no-op catch — a suspended vendor (blocked here by
+      // blockSuspendedVendor, which returns a clear 403 message) or any
+      // other failure just left the whole Subscription & Plans section
+      // blank with zero explanation and no way to retry.
+      .catch(err => setSubError(err.response?.data?.message || "Failed to load subscription details"))
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { loadSubscription(); }, []);
+
+  const { logout } = useAuth();
 
   const changePassword = async () => {
     if (!pwForm.current || !pwForm.newPw) return setPwMsg({ text: "All fields required", type: "error" });
@@ -83,15 +95,24 @@ const Settings = () => {
     try {
       setPwLoading(true);
       await api.put("/auth/change-password", { currentPassword: pwForm.current, newPassword: pwForm.newPw });
-      setPwMsg({ text: "Password changed successfully!", type: "success" });
+      // [FIX] The backend bumps the user's tokenVersion AND wipes all
+      // refreshSessions on a successful change (see authController.js::
+      // changePassword) — that invalidates THIS session's own access token
+      // too, not just other devices, and the wiped refresh token means the
+      // silent-refresh flow can't save it either. Previously this just
+      // closed the modal and left the vendor looking "still logged in"
+      // until their next click 401'd and force-logged them out with no
+      // explanation. Now the logout is immediate and intentional instead.
+      setPwMsg({ text: "Password changed! Logging you out for security — please log in again.", type: "success" });
       setPwForm({ current: "", newPw: "", confirm: "" });
-      setTimeout(() => setPwModal(false), 1500);
+      // pwLoading stays true so the modal can't be reopened/interacted with
+      // during the redirect countdown — no `finally` reset on this path.
+      setTimeout(() => { logout(); navigate("/login"); }, 1800);
     } catch (err) {
       setPwMsg({ text: err.response?.data?.message || "Failed to change password", type: "error" });
-    } finally { setPwLoading(false); }
+      setPwLoading(false);
+    }
   };
-
-  const { logout } = useAuth();
 
   const handleLogout = () => {
     logout();
@@ -179,62 +200,77 @@ const Settings = () => {
       </Card>
 
       {/* Change Password Modal */}
-      {pwModal && (
-        <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,.4)",
-          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999,
-        }} onClick={e => { if (e.target === e.currentTarget) setPwModal(false); }}>
+      <Modal
+        open={pwModal}
+        onClose={() => setPwModal(false)}
+        closeOnOverlayClick={!pwLoading}
+        title="Change Password"
+        width={420}
+      >
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: "#111827", marginBottom: 20 }}>Change Password</h3>
+        {pwMsg.text && (
           <div style={{
-            background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 420,
-            boxShadow: "0 20px 60px rgba(0,0,0,.15)", animation: "fadeUp .2s ease",
-          }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "#111827", marginBottom: 20 }}>Change Password</h3>
-            {pwMsg.text && (
-              <div style={{
-                background: pwMsg.type === "success" ? "#f0fdf4" : "#fef2f2",
-                border: `1px solid ${pwMsg.type === "success" ? "#bbf7d0" : "#fecaca"}`,
-                color: pwMsg.type === "success" ? "#065f46" : "#b91c1c",
-                padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13,
-              }}>{pwMsg.text}</div>
-            )}
-            {[
-              { label: "Current Password", key: "current" },
-              { label: "New Password", key: "newPw" },
-              { label: "Confirm Password", key: "confirm" },
-            ].map(f => (
-              <div key={f.key} style={{ marginBottom: 14 }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6 }}>{f.label}</label>
-                <input
-                  type="password"
-                  value={pwForm[f.key]}
-                  onChange={e => setPwForm(p => ({ ...p, [f.key]: e.target.value }))}
-                  style={{
-                    width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb",
-                    borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box",
-                  }}
-                  onFocus={e => e.target.style.borderColor = "#7c3aed"}
-                  onBlur={e => e.target.style.borderColor = "#e5e7eb"}
-                />
-              </div>
-            ))}
-            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-              <button onClick={() => setPwModal(false)} style={{
-                flex: 1, padding: 11, border: "1px solid #e5e7eb", background: "#fff",
-                borderRadius: 8, fontSize: 13, fontWeight: 600, color: "#6b7280", cursor: "pointer",
-              }}>Cancel</button>
-              <button onClick={changePassword} disabled={pwLoading} style={{
-                flex: 1, padding: 11, border: "none",
-                background: "linear-gradient(135deg, #7c3aed, #4f46e5)",
-                borderRadius: 8, fontSize: 13, fontWeight: 700, color: "#fff",
-                cursor: pwLoading ? "not-allowed" : "pointer", opacity: pwLoading ? 0.6 : 1,
-              }}>{pwLoading ? "Changing..." : "Change Password"}</button>
-            </div>
+            background: pwMsg.type === "success" ? "#f0fdf4" : "#fef2f2",
+            border: `1px solid ${pwMsg.type === "success" ? "#bbf7d0" : "#fecaca"}`,
+            color: pwMsg.type === "success" ? "#065f46" : "#b91c1c",
+            padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13,
+          }}>{pwMsg.text}</div>
+        )}
+        {[
+          { label: "Current Password", key: "current", autoComplete: "current-password" },
+          { label: "New Password", key: "newPw", autoComplete: "new-password" },
+          { label: "Confirm Password", key: "confirm", autoComplete: "new-password" },
+        ].map(f => (
+          <div key={f.key} style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6 }}>{f.label}</label>
+            <input
+              type="password"
+              autoComplete={f.autoComplete}
+              value={pwForm[f.key]}
+              onChange={e => setPwForm(p => ({ ...p, [f.key]: e.target.value }))}
+              style={{
+                width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb",
+                borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box",
+              }}
+              onFocus={e => e.target.style.borderColor = "#7c3aed"}
+              onBlur={e => e.target.style.borderColor = "#e5e7eb"}
+            />
           </div>
+        ))}
+        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+          <button onClick={() => setPwModal(false)} disabled={pwLoading} style={{
+            flex: 1, padding: 11, border: "1px solid #e5e7eb", background: "#fff",
+            borderRadius: 8, fontSize: 13, fontWeight: 600, color: "#6b7280",
+            cursor: pwLoading ? "not-allowed" : "pointer", opacity: pwLoading ? 0.5 : 1,
+          }}>Cancel</button>
+          <button onClick={changePassword} disabled={pwLoading} style={{
+            flex: 1, padding: 11, border: "none",
+            background: "linear-gradient(135deg, #7c3aed, #4f46e5)",
+            borderRadius: 8, fontSize: 13, fontWeight: 700, color: "#fff",
+            cursor: pwLoading ? "not-allowed" : "pointer", opacity: pwLoading ? 0.6 : 1,
+          }}>{pwLoading ? "Changing..." : "Change Password"}</button>
         </div>
-      )}
+      </Modal>
 
       {/* Subscription */}
-      {(() => {
+      {subError ? (
+        <div style={{
+          background: "#fff", borderRadius: 16,
+          boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+          padding: 24, marginBottom: 16,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <FiAlertCircle size={18} color="#dc2626" />
+            <span style={{ fontSize: 13, color: "#374151" }}>{subError}</span>
+          </div>
+          <button onClick={loadSubscription} style={{
+            padding: "7px 16px", border: "1.5px solid #e5e7eb",
+            background: "#fff", borderRadius: 8,
+            fontSize: 13, fontWeight: 600, color: "#374151", cursor: "pointer",
+          }}>Retry</button>
+        </div>
+      ) : (() => {
         const status = sub?.status || "pending_payment";
         const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending_payment;
         const StatusIcon = statusCfg.icon;
@@ -537,16 +573,14 @@ const Settings = () => {
       })()}
 
       {/* Plan Change Confirmation Modal */}
-      {planModal && (
-        <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,.4)",
-          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999,
-        }} onClick={e => { if (e.target === e.currentTarget && !planLoading) { setPlanModal(null); setPlanMsg({ text: "", type: "" }); } }}>
-          <div style={{
-            background: "#fff", borderRadius: 16, padding: 28, width: "100%", maxWidth: 420,
-            boxShadow: "0 20px 60px rgba(0,0,0,.15)", animation: "fadeUp .2s ease",
-          }}>
-            {(() => {
+      <Modal
+        open={!!planModal}
+        onClose={() => { setPlanModal(null); setPlanMsg({ text: "", type: "" }); }}
+        closeOnOverlayClick={!planLoading}
+        title="Request Plan Change"
+        width={420}
+      >
+        {planModal && (() => {
               const targetPlan = plans[planModal];
               const currentLabel = sub?.plan ? (plans[sub.plan]?.label || sub.plan) : "None";
               const targetLabel = targetPlan?.label || planModal;
@@ -616,10 +650,8 @@ const Settings = () => {
                   </div>
                 </>
               );
-            })()}
-          </div>
-        </div>
-      )}
+        })()}
+      </Modal>
 
       {/* Danger Zone */}
       <div style={{

@@ -54,6 +54,26 @@ const deliveryConfigSchema = new mongoose.Schema(
         codEnabledGlobally: { type: Boolean, default: true },
         returnDays: { type: Number, default: 7 },
 
+        // ── Product Return Policy Limits (marketplace-wide guardrails) ──
+        // Same shape as minVendorRadiusKm/maxVendorRadiusKm above: admin
+        // can tighten these, but the schema-level min/max here is the
+        // absolute hard ceiling — matches Product.js's own field-level
+        // bounds (returnWindow/replacementWindow: 0-30, cancelWindow:
+        // 0-72), so admin can never configure a bound wider than what a
+        // single product could already accept.
+        productPolicyLimits: {
+            minReturnWindowDays: { type: Number, default: 0, min: 0, max: 30 },
+            maxReturnWindowDays: { type: Number, default: 30, min: 0, max: 30 },
+            minReplacementWindowDays: { type: Number, default: 0, min: 0, max: 30 },
+            maxReplacementWindowDays: { type: Number, default: 30, min: 0, max: 30 },
+            minCancelWindowHours: { type: Number, default: 0, min: 0, max: 72 },
+            maxCancelWindowHours: { type: Number, default: 72, min: 0, max: 72 },
+            allowedReturnConditions: {
+                type: [{ type: String, enum: ["damaged", "wrong_product", "defective", "missing_items", "other"] }],
+                default: ["damaged", "wrong_product", "defective", "missing_items", "other"],
+            },
+        },
+
         // ── Shiprocket ──
         shiprocketPickupLocation: { type: String, default: "Primary" },
     },

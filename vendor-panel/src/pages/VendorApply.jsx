@@ -292,6 +292,16 @@ const VendorApply = () => {
         if (!form.address.state.trim()) { setError("State is required"); return false; }
         if (!form.address.pincode.trim()) { setError("Pincode is required"); return false; }
         if (!/^\d{6}$/.test(form.address.pincode)) { setError("Enter a valid 6-digit pincode"); return false; }
+        // Both optional — only checked when provided, mirrors the backend's
+        // validateBody isEmpty-skips-pattern behavior exactly.
+        if (form.gstNumber.trim() && !/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}\d{1}Z[A-Z\d]{1}$/.test(form.gstNumber.trim())) {
+            setError("GST number format looks incorrect — expected format like 22AAAAA0000A1Z5");
+            return false;
+        }
+        if (form.panNumber.trim() && !/^[A-Z]{5}\d{4}[A-Z]{1}$/.test(form.panNumber.trim())) {
+            setError("PAN number format looks incorrect — expected format like ABCDE1234F");
+            return false;
+        }
         return true;
     };
 
@@ -649,7 +659,8 @@ const VendorApply = () => {
                                             <span style={{ color: C.textSm, fontWeight: 400 }}>(optional)</span>
                                         </label>
                                         <input type="text" name="gstNumber" value={form.gstNumber}
-                                            onChange={handleChange} style={S.input}
+                                            onChange={(e) => handleChange({ target: { name: "gstNumber", value: e.target.value.toUpperCase() } })}
+                                            style={S.input}
                                             placeholder="22AAAAA0000A1Z5" maxLength={15} />
                                     </div>
 
@@ -659,7 +670,8 @@ const VendorApply = () => {
                                             <span style={{ color: C.textSm, fontWeight: 400 }}>(optional)</span>
                                         </label>
                                         <input type="text" name="panNumber" value={form.panNumber}
-                                            onChange={handleChange} style={S.input}
+                                            onChange={(e) => handleChange({ target: { name: "panNumber", value: e.target.value.toUpperCase() } })}
+                                            style={S.input}
                                             placeholder="ABCDE1234F" maxLength={10} />
                                     </div>
                                 </div>
