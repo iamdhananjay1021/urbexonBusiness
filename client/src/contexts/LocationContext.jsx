@@ -302,10 +302,13 @@ export const LocationProvider = ({ children }) => {
 
     /**
      * Fetch location from browser.
-     * 
-     * Mobile: GPS with accuracy filter + retry logic
-     * Desktop: IP/WiFi based — accuracy check SKIPPED (can be 200km+),
-     *          first result accepted directly for city-level detection.
+     *
+     * Mobile: GPS — accuracy filtered against CONFIG.ACCURACY_THRESHOLD.mobile.
+     * Desktop: WiFi/network-based (navigator.geolocation still works without
+     *          GPS hardware, resolved via the browser's own location service)
+     *          — accuracy filtered against the more relaxed
+     *          CONFIG.ACCURACY_THRESHOLD.desktop instead of skipped outright.
+     * Both retry up to CONFIG.MAX_RETRIES before falling back to pincode entry.
      */
     const fetchAccurateLocation = useCallback(
         (attempt = 1) => {
@@ -329,9 +332,8 @@ export const LocationProvider = ({ children }) => {
 
             const isMobile = isMobileDevice();
 
-            // ──── Retry exhausted → show pincode fallback (mobile only) ────
-            // Desktop: retries not needed since we accept any accuracy
-            if (isMobile && attempt > CONFIG.MAX_RETRIES) {
+            // ──── Retry exhausted → show pincode fallback ────
+            if (attempt > CONFIG.MAX_RETRIES) {
                 setStatus("failed");
                 setLoading(false);
                 isDetectingRef.current = false;
@@ -363,15 +365,13 @@ export const LocationProvider = ({ children }) => {
                         `(device: ${isMobile ? "mobile" : "desktop"})`
                     );
 
-                    // ──── Accuracy filter: Only for mobile (GPS devices) ────
-                    // Desktop IP-based accuracy can be 100km+ — skip check entirely
-                    if (isMobile) {
-                        const accuracyThreshold = CONFIG.ACCURACY_THRESHOLD.mobile;
-                        if (accuracy > accuracyThreshold) {
-                            console.log(`Mobile accuracy too low (${accuracy}m > ${accuracyThreshold}m). Retrying...`);
-                            fetchAccurateLocation(attempt + 1);
-                            return;
-                        }
+                    // ──── Accuracy filter — mobile uses the tight GPS threshold,
+                    // desktop uses the relaxed WiFi/network threshold ────
+                    const accuracyThreshold = isMobile ? CONFIG.ACCURACY_THRESHOLD.mobile : CONFIG.ACCURACY_THRESHOLD.desktop;
+                    if (accuracy > accuracyThreshold) {
+                        console.log(`Accuracy too low (${accuracy}m > ${accuracyThreshold}m, device: ${isMobile ? "mobile" : "desktop"}). Retrying...`);
+                        fetchAccurateLocation(attempt + 1);
+                        return;
                     }
 
                     // ──── Success: Reverse geocode ────
@@ -402,6 +402,18 @@ export const LocationProvider = ({ children }) => {
                             source: isMobile ? "gps" : "ip",
                             ...parsed,
                         };
+
+                        // Verification log — confirms both halves of the feature
+                        // (GPS coordinates AND the resolved pincode) actually
+                        // landed in state together, not just one silently.
+                        console.log("[LocationContext] Location + pincode resolved:", {
+                            device: isMobile ? "mobile" : "desktop",
+                            lat: locationPayload.lat,
+                            lng: locationPayload.lng,
+                            accuracy: locationPayload.accuracy,
+                            pincode: locationPayload.pincode || "(none returned)",
+                            label: locationPayload.label,
+                        });
 
                         setLocationData(locationPayload);
                         saveToStorage(locationPayload);
@@ -454,9 +466,14 @@ export const LocationProvider = ({ children }) => {
     /**
      * User-facing function to initiate location detection.
      *
-     * Desktop: IP-based location is ISP-dependent and can be 200km+ off.
-     *          Show pincode modal directly — accurate and instant.
-     * Mobile:  GPS is reliable. Try GPS first, show pincode on failure.
+     * Attempts real browser geolocation on EVERY device — mobile resolves via
+     * GPS, desktop resolves via the browser's own WiFi/network location
+     * service (navigator.geolocation works on desktop too; it does not
+     * require GPS hardware). Only falls back to manual pincode entry if
+     * detection genuinely fails (denied/unsupported/insecure context/too
+     * inaccurate after retries) — it no longer skips detection outright for
+     * non-mobile devices, which previously meant "Detect my location" did
+     * nothing on desktop besides showing an error.
      */
     const detectLocation = useCallback(() => {
         // ──── Guard: Already detecting ────
@@ -465,16 +482,7 @@ export const LocationProvider = ({ children }) => {
             return;
         }
 
-        // ──── Desktop: Show pincode modal directly ────
-        // IP geolocation on desktop is unreliable (ISP server can be 200km+ away).
-        if (!isMobileDevice()) {
-            setStatus("failed");
-            setError("Please enter your pincode for accurate delivery location.");
-            setModalOpen(true);
-            return;
-        }
-
-        // ──── Mobile: Preliminary checks ────
+        // ──── Preliminary checks (all devices) ────
         if (!window.isSecureContext) {
             setError("Location requires HTTPS connection");
             setStatus("failed");
@@ -489,7 +497,7 @@ export const LocationProvider = ({ children }) => {
             return;
         }
 
-        // ──── Begin GPS detection (mobile only) ────
+        // ──── Begin detection (GPS on mobile, WiFi/network-based on desktop) ────
         isDetectingRef.current = true;
         setStatus("detecting");
         setLoading(true);
