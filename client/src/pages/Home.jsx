@@ -386,9 +386,13 @@ const FlashDealsSection = ({ deals, loading, nearestDealEnd }) => {
                     <SecHead eyebrow="Limited time" title="Flash Deals"
                         sub="Stock is running out — grab yours now" to="/deals" label="All deals" />
                     <div className="relative overflow-hidden bg-[var(--color-graphite-900)]
-                                    rounded-2xl px-5 py-4 sm:px-6 flex items-center justify-between flex-wrap gap-4 mb-6">
-                        <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-white/10 border border-white/15
+                                    rounded-2xl px-5 py-4 sm:px-6 flex items-center justify-between flex-wrap gap-4 mb-6
+                                    border border-white/5">
+                        {/* subtle accent glow, not a loud gradient */}
+                        <div className="absolute -right-10 -top-10 w-40 h-40 bg-[var(--accent-hour)]/20
+                                        rounded-full blur-3xl pointer-events-none" />
+                        <div className="flex items-center gap-4 relative">
+                            <div className="w-10 h-10 bg-[var(--accent-hour)]/15 border border-[var(--accent-hour)]/25
                                             rounded-xl flex items-center justify-center flex-shrink-0">
                                 <FaBolt size={15} className="text-[var(--accent-hour)]" />
                             </div>
@@ -397,7 +401,7 @@ const FlashDealsSection = ({ deals, loading, nearestDealEnd }) => {
                                 <p className="text-xs text-white/60 mt-0.5 m-0">Deep discounts · Limited quantities</p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 relative">
                             <span className="text-[9px] font-bold text-white/50 uppercase tracking-[0.16em]">Ends in</span>
                             <FlashTimer endsAt={nearestDealEnd} />
                         </div>
@@ -423,7 +427,7 @@ const FlashDealsSection = ({ deals, loading, nearestDealEnd }) => {
    ★  HERO SLIDE COMPONENT  ★
    — Light-mode-first, vibrant gradient bg, animated
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-const HeroSlide = ({ slide, active, isFirst, stats, navigate }) => {
+const HeroSlide = ({ slide, active, isFirst, navigate }) => {
     const bg = slide.image?.url || (typeof slide.image === "string" ? slide.image : null) || "/banner-fallback.jpg";
 
     return (
@@ -453,12 +457,12 @@ const HeroSlide = ({ slide, active, isFirst, stats, navigate }) => {
 
             {/* ── Content ── */}
             <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16
-                            relative z-10 w-full h-full flex items-center py-10">
+                            relative z-10 w-full h-full flex items-center py-6 sm:py-10">
                 <div className="max-w-[520px] flex flex-col items-start">
 
                     {/* Tag */}
                     {slide.tag && (
-                        <div className="inline-flex items-center gap-2 mb-4
+                        <div className="inline-flex items-center gap-2 mb-2.5 sm:mb-4
                                         text-[11px] font-bold text-white/90 tracking-[0.16em] uppercase
                                         animate-[fadeSlideDown_0.5s_ease_both]">
                             <span className="w-6 h-px bg-white/60" />
@@ -467,9 +471,9 @@ const HeroSlide = ({ slide, active, isFirst, stats, navigate }) => {
                     )}
 
                     {/* Headline */}
-                    <h1 className="text-[clamp(28px,4.5vw,56px)] font-extrabold
+                    <h1 className="text-[clamp(24px,4.5vw,56px)] font-extrabold
                                    text-white leading-[1.06] tracking-[-0.03em]
-                                   m-0 mb-3.5 [text-shadow:0_1px_2px_rgba(20,21,26,0.2)]
+                                   m-0 mb-2.5 sm:mb-3.5 [text-shadow:0_1px_2px_rgba(20,21,26,0.2)]
                                    animate-[fadeSlideUp_0.5s_ease_0.1s_both]">
                         {slide.title}
                         {slide.highlight && (
@@ -481,15 +485,16 @@ const HeroSlide = ({ slide, active, isFirst, stats, navigate }) => {
 
                     {/* Subtitle */}
                     {(slide.subtitle || slide.desc || slide.description) && (
-                        <p className="text-[clamp(13px,1.3vw,15px)] text-white/80
-                                      leading-relaxed mb-7 max-w-[420px]
+                        <p className="text-[clamp(12px,1.3vw,15px)] text-white/80
+                                      leading-relaxed mb-3 sm:mb-7 max-w-[420px]
+                                      line-clamp-2 sm:line-clamp-none
                                       animate-[fadeSlideUp_0.5s_ease_0.2s_both]">
                             {slide.subtitle || slide.desc || slide.description}
                         </p>
                     )}
 
                     {/* CTA Buttons */}
-                    <div className="flex gap-3 flex-wrap mb-8 animate-[fadeSlideUp_0.5s_ease_0.3s_both]">
+                    <div className="flex gap-3 flex-wrap animate-[fadeSlideUp_0.5s_ease_0.3s_both]">
                         <button
                             onClick={() => {
                                 const t = slide.link || slide.ctaLink || "/";
@@ -514,28 +519,6 @@ const HeroSlide = ({ slide, active, isFirst, stats, navigate }) => {
                             </button>
                         )}
                     </div>
-
-                    {/* Trust indicators */}
-                    <div className="flex items-center flex-wrap gap-x-5 gap-y-2
-                                    animate-[fadeSlideUp_0.5s_ease_0.4s_both]">
-                        {[
-                            { Icon: FaShippingFast, v: "Free delivery", l: "on orders over ₹499" },
-                            { Icon: FaLock, v: "Secure checkout", l: "100% encrypted" },
-                            { Icon: FaMedal, v: stats.products ? `${stats.products.toLocaleString()}+ products` : "500+ products", l: "verified sellers" },
-                        ].map(({ Icon, v, l }, i) => ( // eslint-disable-line no-unused-vars -- Icon rendered as <Icon/>
-                            <div key={v} className="flex items-center gap-2.5">
-                                {i > 0 && <span className="hidden sm:block w-px h-6 bg-white/20 mr-2.5" />}
-                                <span className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm border border-white/20
-                                                 flex items-center justify-center flex-shrink-0">
-                                    <Icon size={12} className="text-white" />
-                                </span>
-                                <div>
-                                    <div className="text-[12px] font-bold text-white leading-none">{v}</div>
-                                    <div className="text-[10px] text-white/70 font-medium mt-1 leading-none whitespace-nowrap">{l}</div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
                 </div>
             </div>
         </div>
@@ -547,7 +530,7 @@ const HeroSlide = ({ slide, active, isFirst, stats, navigate }) => {
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 const HeroSkeleton = () => (
     <div className="w-full bg-white border-b border-[var(--color-graphite-100)]
-                    h-[260px] sm:h-[360px] md:h-[440px] lg:h-[500px]
+                    h-[340px] sm:h-[380px] md:h-[440px] lg:h-[500px]
                     flex items-center relative overflow-hidden">
         <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16 w-full">
             <div className="max-w-[520px] flex flex-col gap-4 animate-pulse">
@@ -578,7 +561,6 @@ const Home = () => {
     const [featured, setFeatured] = useState(() => _homeCache?.featured || []);
     const [newArrivals, setNewArrivals] = useState(() => _homeCache?.newArrivals || []);
     const [deals, setDeals] = useState(() => _homeCache?.deals || []);
-    const [stats, setStats] = useState(() => _homeCache?.stats || { products: 0, categories: 0 });
     const [nearestDealEnd, setNearestDealEnd] = useState(() => _homeCache?.nearestDealEnd || null);
     const [loading, setLoading] = useState(() => !_homeCache || Date.now() - (_homeCache?._ts || 0) > CACHE_TTL);
     const [nlEmail, setNlEmail] = useState("");
@@ -616,7 +598,6 @@ const Home = () => {
                     const f = d.featured || [], na = d.newArrivals || [], dl = d.deals || [];
                     setFeatured(f); setNewArrivals(na); setDeals(dl);
                     cache.featured = f; cache.newArrivals = na; cache.deals = dl;
-                    if (d.stats) { setStats(d.stats); cache.stats = d.stats; }
                     const ends = dl.map(p => p.dealEndsAt).filter(Boolean).map(x => new Date(x)).filter(x => x > new Date());
                     if (ends.length) { const nd = new Date(Math.min(...ends)).toISOString(); setNearestDealEnd(nd); cache.nearestDealEnd = nd; }
                 }
@@ -724,7 +705,7 @@ const Home = () => {
             ) : slides.length > 0 ? (
 
                 <div className="relative w-full overflow-hidden
-                                h-[260px] sm:h-[360px] md:h-[440px] lg:h-[500px] xl:h-[540px]
+                                h-[340px] sm:h-[380px] md:h-[440px] lg:h-[500px] xl:h-[540px]
                                 bg-white border-b border-[var(--color-graphite-100)]
                                 group">
 
@@ -735,7 +716,6 @@ const Home = () => {
                             slide={slide}
                             active={i === heroIdx}
                             isFirst={i === 0}
-                            stats={stats}
                             navigate={navigate}
                         />
                     ))}
