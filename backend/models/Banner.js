@@ -12,6 +12,24 @@ const bannerSchema = new mongoose.Schema(
             trim: true,
             maxlength: 400,
         },
+        // Small uppercase pill shown above the title (e.g. "COMING SOON",
+        // "LIMITED TIME") — client's HeroSlide already renders slide.tag,
+        // this just gives admins a field to actually set it.
+        tag: {
+            type: String,
+            trim: true,
+            maxlength: 40,
+            default: "",
+        },
+        // Second heading line rendered in the accent color below the title
+        // (client's HeroSlide already renders slide.highlight) — e.g.
+        // title "Something Big is" + highlight "Launching Soon".
+        highlight: {
+            type: String,
+            trim: true,
+            maxlength: 100,
+            default: "",
+        },
         description: {
             type: String,
             trim: true,
@@ -54,6 +72,15 @@ const bannerSchema = new mongoose.Schema(
             type: String,
             enum: ["hero", "mid"],
             default: "hero",
+        },
+        // Tile width for `mid` (editorial-grid) banners on the homepage.
+        // Controls how many columns the tile spans in the Myntra-style
+        // banner grid: full = whole row, half = 1/2, third = 1/3.
+        // Ignored for `hero` banners (they are always full-bleed).
+        span: {
+            type: String,
+            enum: ["full", "half", "third"],
+            default: "half",
         },
         startDate: {
             type: Date,

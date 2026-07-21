@@ -97,3 +97,5 @@ config/secrets.json
 # =========================
 *.tgz
 *.zip
+
+client-mobile/

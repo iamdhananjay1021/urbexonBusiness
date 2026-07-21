@@ -37,12 +37,24 @@ const toLocalDT = (d) => {
     return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
 };
 
+// Ideal width:height ratio (and how far off is still "fine") per placement/tile
+// size — used only to warn the admin before they publish an image that'll get
+// cropped hard by the client's object-cover hero/grid, not to block upload.
+const idealRatio = (placement, span) => {
+    if (placement === "mid") {
+        if (span === "full") return { ratio: 3.2, tolerance: 0.45 };
+        if (span === "third") return { ratio: 1.0, tolerance: 0.35 };
+        return { ratio: 2.0, tolerance: 0.35 }; // half
+    }
+    return { ratio: 2.88, tolerance: 0.3 }; // hero — matches the 1440x500 hint above
+};
+
 const AdminEditBanner = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const [form, setForm] = useState({
-        title: "", subtitle: "", description: "", link: "", linkType: "none", buttonText: "",
-        isActive: true, order: 0, type: "ecommerce", placement: "hero", startDate: "", endDate: "",
+        title: "", subtitle: "", tag: "", highlight: "", description: "", link: "", linkType: "none", buttonText: "",
+        isActive: true, order: 0, type: "ecommerce", placement: "hero", span: "half", startDate: "", endDate: "",
     });
     const [currentImage, setCurrentImage] = useState("");
     const [imageFile, setImageFile] = useState(null);
@@ -50,6 +62,7 @@ const AdminEditBanner = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
+    const [ratioWarning, setRatioWarning] = useState("");
 
     useEffect(() => {
         (async () => {
@@ -60,6 +73,8 @@ const AdminEditBanner = () => {
                 setForm({
                     title: banner.title || "",
                     subtitle: banner.subtitle || "",
+                    tag: banner.tag || "",
+                    highlight: banner.highlight || "",
                     description: banner.description || "",
                     link: banner.link || "",
                     linkType: banner.linkType || (banner.link ? "route" : "none"),
@@ -68,6 +83,7 @@ const AdminEditBanner = () => {
                     order: banner.order || 0,
                     type: banner.type || "ecommerce",
                     placement: banner.placement || "hero",
+                    span: banner.span || "half",
                     startDate: toLocalDT(banner.startDate),
                     endDate: toLocalDT(banner.endDate),
                 });
@@ -91,7 +107,23 @@ const AdminEditBanner = () => {
         if (!file) return;
         if (file.size / (1024 * 1024) > 5) return setError("Image must be under 5MB");
         setImageFile(file);
-        setPreview(URL.createObjectURL(file));
+        const url = URL.createObjectURL(file);
+        setPreview(url);
+        setRatioWarning("");
+
+        const img = new Image();
+        img.onload = () => {
+            const actual = img.naturalWidth / img.naturalHeight;
+            const { ratio, tolerance } = idealRatio(form.placement, form.span);
+            if (Math.abs(actual - ratio) / ratio > tolerance) {
+                setRatioWarning(
+                    `This image is ${img.naturalWidth}×${img.naturalHeight} (${actual.toFixed(2)}:1). ` +
+                    `This slot displays around ${ratio.toFixed(2)}:1 — a very different shape will get cropped ` +
+                    `hard by the site's edge-to-edge display, especially on wide desktop screens. Consider a wider crop.`
+                );
+            }
+        };
+        img.src = url;
     };
 
     const handleSubmit = async (e) => {
@@ -102,6 +134,8 @@ const AdminEditBanner = () => {
             const fd = new FormData();
             fd.append("title", form.title.trim());
             fd.append("subtitle", form.subtitle.trim());
+            fd.append("tag", form.tag.trim());
+            fd.append("highlight", form.highlight.trim());
             fd.append("description", form.description.trim());
             fd.append("link", form.link.trim());
             fd.append("linkType", form.linkType);
@@ -110,6 +144,7 @@ const AdminEditBanner = () => {
             fd.append("order", form.order);
             fd.append("type", form.type);
             fd.append("placement", form.placement);
+            fd.append("span", form.span);
             if (form.startDate) fd.append("startDate", form.startDate);
             if (form.endDate) fd.append("endDate", form.endDate);
             if (imageFile) fd.append("image", imageFile);
@@ -203,11 +238,26 @@ const AdminEditBanner = () => {
                                     </button>
                                 </div>
                             )}
+                            {ratioWarning && (
+                                <p style={{ fontSize: 11, color: "var(--adm-warning, #b45309)", marginTop: 8, lineHeight: 1.5 }}>
+                                    ⚠️ {ratioWarning}
+                                </p>
+                            )}
+                        </Field>
+
+                        {/* Tag */}
+                        <Field label="Tag" hint="(optional — small pill shown above the title, e.g. 'COMING SOON')">
+                            <Input name="tag" value={form.tag} onChange={handleChange} placeholder="e.g. LIMITED TIME" style={{ width: "100%", boxSizing: "border-box" }} />
                         </Field>
 
                         {/* Title */}
                         <Field label="Title" hint="(optional — shown as main heading)">
                             <Input name="title" value={form.title} onChange={handleChange} placeholder="e.g. Summer Sale — Up to 70% Off" style={{ width: "100%", boxSizing: "border-box" }} />
+                        </Field>
+
+                        {/* Highlight */}
+                        <Field label="Highlight" hint="(optional — accent-colored second line below the title)">
+                            <Input name="highlight" value={form.highlight} onChange={handleChange} placeholder="e.g. Launching Soon" style={{ width: "100%", boxSizing: "border-box" }} />
                         </Field>
 
                         {/* Subtitle */}
@@ -270,6 +320,24 @@ const AdminEditBanner = () => {
                                 </div>
                             </Field>
                         </div>
+
+                        {/* Tile size — only relevant for mid-page (editorial grid) banners */}
+                        {form.placement === "mid" && (
+                            <Field label="Tile Size" hint="(how wide this tile is in the homepage banner grid)">
+                                <div style={{ display: "flex", gap: 8 }}>
+                                    {[
+                                        { value: "full", label: "▭ Full width" },
+                                        { value: "half", label: "◧ Half" },
+                                        { value: "third", label: "◱ Third" },
+                                    ].map(opt => (
+                                        <button key={opt.value} type="button" onClick={() => setForm(prev => ({ ...prev, span: opt.value }))}
+                                            style={{ flex: 1, padding: "9px 10px", border: `2px solid ${form.span === opt.value ? "var(--adm-primary)" : "var(--adm-border)"}`, borderRadius: "var(--adm-radius-md)", background: form.span === opt.value ? "var(--adm-primary-tint)" : "var(--adm-surface)", cursor: "pointer", fontSize: 12, fontWeight: form.span === opt.value ? 700 : 500, color: form.span === opt.value ? "var(--adm-primary)" : "var(--adm-text-secondary)", fontFamily: "inherit" }}>
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </Field>
+                        )}
 
                         {/* Schedule */}
                         <div className="bnr-grid2">

@@ -131,7 +131,7 @@ const allowedOrigins = [
     "http://localhost:5175",
     "http://localhost:5176",
     "http://localhost:5177",
-
+    "http://localhost:8081",
     // Environment Variables
     process.env.VITE_API_URL,
     process.env.CLIENT_URL,
@@ -300,7 +300,7 @@ process.on("uncaughtException", (err) => {
     console.error("💥 UNCAUGHT EXCEPTION — shutting down:", err);
     captureException(err, { source: "uncaughtException" });
     logger.error("Uncaught exception", { message: err.message, stack: err.stack })
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => process.exit(1));
     // Hard fallback in case the async log write itself hangs.
     setTimeout(() => process.exit(1), 3000).unref();
@@ -311,7 +311,7 @@ process.on("unhandledRejection", (reason) => {
     console.error("💥 UNHANDLED REJECTION — shutting down:", err);
     captureException(err, { source: "unhandledRejection" });
     logger.error("Unhandled rejection", { message: err.message, stack: err.stack })
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => process.exit(1));
     setTimeout(() => process.exit(1), 3000).unref();
 });

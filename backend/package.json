@@ -8,6 +8,7 @@
     "dev": "nodemon server.js",
     "create-admin": "node scripts/createAdmin.js",
     "seed:categories": "node scripts/seedCategories.js",
+    "seed:catalog": "node scripts/seedFullCatalog.js",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --forceExit --detectOpenHandles",
     "test:watch": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --watch"
   },

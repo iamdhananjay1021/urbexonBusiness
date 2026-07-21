@@ -78,7 +78,13 @@
       "Bash(timeout 180 ./node_modules/.bin/vite build)",
       "Bash(grep -n 'rgba\\(84,87,229\\\\|h-12 px-[67].*rounded-lg\\\\|h-11 px-[678].*rounded-lg\\\\|rounded-lg$' src/pages/Home.jsx)",
       "PowerShell(npm run build 2>&1)",
-      "PowerShell(npx eslint src/pages/UrbexonHour.jsx src/components/Navbar.jsx 2>&1)"
+      "PowerShell(npx eslint src/pages/UrbexonHour.jsx src/components/Navbar.jsx 2>&1)",
+      "Bash(JWT_SECRET=\"this_is_a_test_secret_that_is_at_least_32_chars_long\" MONGO_URI=mongodb://127.0.0.1:27017/x RAZORPAY_KEY_ID=x RAZORPAY_KEY_SECRET=x CLOUDINARY_CLOUD_NAME=x CLOUDINARY_API_KEY=x CLOUDINARY_API_SECRET=x timeout 15 node -e \"import\\('./controllers/authController.js'\\).then\\(\\(\\)=>console.log\\('AUTH_IMPORT_OK'\\)\\).catch\\(e=>{console.error\\(e\\); process.exit\\(1\\)}\\)\")",
+      "Bash(npx --yes expo install react-native-screens react-native-safe-area-context expo-secure-store expo-image expo-constants expo-linking expo-status-bar @react-native-async-storage/async-storage)",
+      "Bash(npm config *)",
+      "Bash(CI=true npx --yes expo install react-native-screens react-native-safe-area-context expo-secure-store expo-image expo-constants expo-linking @react-native-async-storage/async-storage @react-navigation/native @react-navigation/native-stack @react-navigation/bottom-tabs react-native-gesture-handler axios)",
+      "Bash(npx expo *)",
+      "Bash(npm view *)"
     ]
   }
 }

@@ -573,6 +573,44 @@ export const getSuggestions = async (req, res) => {
 };
 
 /* ════════════════════════════════════════
+   PUBLIC — Scan lookup (barcode / SKU)
+   GET /api/products/scan?code=<value>
+   The mobile app's camera barcode scanner hits this with whatever code it
+   decoded. Exact (case-insensitive) match on `barcode` or `sku` only — no
+   fuzzy fallback here; a miss just means "not this exact product," and the
+   client falls back to treating the scanned code as a plain text search
+   via the existing getProducts endpoint instead.
+════════════════════════════════════════ */
+export const scanProductByCode = async (req, res) => {
+    try {
+        const raw = (req.query.code || "").trim();
+        if (!raw || raw.length > 64) {
+            return res.status(400).json({ success: false, message: "A valid code is required" });
+        }
+
+        const cacheKey = `scan:${raw.toLowerCase()}`;
+        const cached = await safeGetCache(cacheKey);
+        if (cached) return res.json(cached);
+
+        const rx = new RegExp(`^${escapeRegex(raw)}$`, "i");
+        const product = await Product.findOne({
+            isActive: true,
+            productType: "ecommerce",
+            $or: [{ barcode: rx }, { sku: rx }],
+        })
+            .select("name slug category brand price mrp images rating numReviews inStock stock isDeal dealEndsAt isFeatured tags productType vendorId colorVariants sizes")
+            .lean();
+
+        const result = product ? { found: true, product } : { found: false };
+        await safeSetCache(cacheKey, result, 60);
+        res.json(result);
+    } catch (err) {
+        console.error("[scanProductByCode]", err);
+        res.status(500).json({ success: false, message: "Failed to look up product" });
+    }
+};
+
+/* ════════════════════════════════════════
    PUBLIC — Deals page
 ════════════════════════════════════════ */
 export const getDeals = async (req, res) => {
@@ -1299,6 +1337,10 @@ export const adminUpdateProduct = async (req, res) => {
 
         const parseBool = (val) => val === "true" || val === true;
         const safeNumber = (val, fallback = 0) => { const num = Number(val); return isNaN(num) ? fallback : num; };
+        const safeParse = (val, fallback) => {
+            try { return typeof val === "string" ? JSON.parse(val) : val; }
+            catch { return fallback; }
+        };
 
         let colorVariantsMeta = [];
         try {

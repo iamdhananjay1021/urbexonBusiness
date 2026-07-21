@@ -74,7 +74,7 @@ export const getAllBanners = async (req, res) => {
 /* ── CREATE BANNER (admin) ── */
 export const createBanner = async (req, res) => {
     try {
-        const { title, subtitle, description, link, linkType, buttonText, isActive, order, type, placement, startDate, endDate } = req.body;
+        const { title, subtitle, tag, highlight, description, link, linkType, buttonText, isActive, order, type, placement, span, startDate, endDate } = req.body;
 
         if (!req.file) return res.status(400).json({ success: false, message: "Banner image is required" });
 
@@ -83,6 +83,8 @@ export const createBanner = async (req, res) => {
         const banner = await Banner.create({
             title: title?.trim() || "",
             subtitle: subtitle?.trim() || "",
+            tag: tag?.trim() || "",
+            highlight: highlight?.trim() || "",
             description: description?.trim() || "",
             link: link?.trim() || "",
             linkType: linkType || "none",
@@ -91,6 +93,7 @@ export const createBanner = async (req, res) => {
             order: Number(order) || 0,
             type: type || "ecommerce",
             placement: placement || "hero",
+            span: span || "half",
             startDate: startDate || null,
             endDate: endDate || null,
             image: {
@@ -113,10 +116,12 @@ export const updateBanner = async (req, res) => {
         const banner = await Banner.findById(req.params.id);
         if (!banner) return res.status(404).json({ success: false, message: "Banner not found" });
 
-        const { title, subtitle, description, link, linkType, buttonText, isActive, order, type, placement, startDate, endDate } = req.body;
+        const { title, subtitle, tag, highlight, description, link, linkType, buttonText, isActive, order, type, placement, span, startDate, endDate } = req.body;
 
         if (title !== undefined) banner.title = title.trim();
         if (subtitle !== undefined) banner.subtitle = subtitle.trim();
+        if (tag !== undefined) banner.tag = tag.trim();
+        if (highlight !== undefined) banner.highlight = highlight.trim();
         if (description !== undefined) banner.description = description.trim();
         if (link !== undefined) banner.link = link.trim();
         if (linkType !== undefined) banner.linkType = linkType;
@@ -125,6 +130,7 @@ export const updateBanner = async (req, res) => {
         if (order !== undefined) banner.order = Number(order) || 0;
         if (type !== undefined) banner.type = type;
         if (placement !== undefined) banner.placement = placement;
+        if (span !== undefined) banner.span = span;
         if (startDate !== undefined) banner.startDate = startDate || null;
         if (endDate !== undefined) banner.endDate = endDate || null;
 

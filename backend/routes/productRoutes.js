@@ -19,6 +19,7 @@ import {
     getProductBySlug,
     getRelatedProducts,
     getSuggestions,
+    scanProductByCode,
     adminGetAllProducts,
     adminCreateProduct,
     adminUpdateProduct,
@@ -92,6 +93,7 @@ router.get("/search/trending", getTrendingSearches);
 router.get("/homepage", getHomepageProducts);
 router.get("/deals", getDeals);
 router.get("/suggestions", getSuggestions);
+router.get("/scan", scanProductByCode);
 router.get("/urbexon-hour", getUrbexonHourProducts);
 router.get("/urbexon-hour/deals", getUrbexonHourDeals);
 router.get("/urbexon-hour/homepage", getUrbexonHourHomepage);

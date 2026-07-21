@@ -141,8 +141,19 @@ const issueTokens = async (res, user, scope, req = null) => {
 
     res.cookie(scopeCookieName(validScope), refreshToken, REFRESH_COOKIE_OPTIONS(expiresAt));
 
-    return accessToken;
+    return { accessToken, refreshToken };
 };
+
+// [MOBILE AUTH] Native apps (React Native, etc.) can't rely on the httpOnly
+// refresh cookie the 4 web panels use — there's no browser cookie jar by
+// default. Rather than a parallel auth system, this is a pure transport
+// opt-in on the SAME session (scope stays "client"): when the request body
+// says `tokenTransport: "body"`, the refresh token is also returned in the
+// JSON response (in addition to — never instead of — the cookie, which
+// stays harmless-but-unused on native), and refresh/logout accept it back
+// from the body as a fallback when no cookie is present. Every existing
+// cookie-only web flow is completely unchanged.
+const wantsTokenInBody = (req) => req.body?.tokenTransport === "body";
 
 const sanitizeEmail = (e) => e?.toLowerCase().trim();
 const sanitizeName = (n) => n?.trim().slice(0, 100);
@@ -344,11 +355,12 @@ const authenticateByRole = async (req, res, { roleFilter, deniedMessage, allowAd
     }
     await user.save({ validateBeforeSave: false });
 
-    const accessToken = await issueTokens(res, user, scope, req);
+    const { accessToken, refreshToken } = await issueTokens(res, user, scope, req);
     return res.status(200).json({
         success: true,
         token: accessToken,
         user: safeUserPayload(user),
+        ...(wantsTokenInBody(req) && { refreshToken }),
         ...(vendorApplicationStatus !== null && { vendorApplicationStatus }),
         ...(deliveryApplicationStatus !== null && { deliveryApplicationStatus }),
     });
@@ -474,7 +486,7 @@ export const verifyOtp = asyncHandler(async (req, res) => {
     user.isEmailVerified = true;
     await user.save({ validateBeforeSave: false }); // Use false to avoid re-validating fields not being changed
 
-    const accessToken = await issueTokens(res, user, null, req);
+    const { accessToken, refreshToken } = await issueTokens(res, user, null, req);
 
     // ✅ FIX: Also return applicationStatus right after OTP verification so the
     // delivery/vendor panel frontend can route a freshly-verified user straight
@@ -494,6 +506,7 @@ export const verifyOtp = asyncHandler(async (req, res) => {
         success: true,
         token: accessToken,
         user: safeUserPayload(user),
+        ...(wantsTokenInBody(req) && { refreshToken }),
         ...(vendorApplicationStatus !== null && { vendorApplicationStatus }),
         ...(deliveryApplicationStatus !== null && { deliveryApplicationStatus }),
     };
@@ -676,8 +689,8 @@ export const googleLogin = asyncHandler(async (req, res) => {
             user.loginHistory.splice(10);
         }
         await user.save({ validateBeforeSave: false });
-        const accessToken = await issueTokens(res, user, null, req);
-        return res.json({ success: true, token: accessToken, user: safeUserPayload(user) });
+        const { accessToken, refreshToken } = await issueTokens(res, user, null, req);
+        return res.json({ success: true, token: accessToken, user: safeUserPayload(user), ...(wantsTokenInBody(req) && { refreshToken }) });
     }
 
     const assignedRole = PUBLIC_ROLES.includes(role) ? role : "user";
@@ -694,8 +707,8 @@ export const googleLogin = asyncHandler(async (req, res) => {
         googleId: uid,
     });
 
-    const accessToken = await issueTokens(res, user, null, req);
-    return res.status(201).json({ success: true, token: accessToken, user: safeUserPayload(user) });
+    const { accessToken, refreshToken } = await issueTokens(res, user, null, req);
+    return res.status(201).json({ success: true, token: accessToken, user: safeUserPayload(user), ...(wantsTokenInBody(req) && { refreshToken }) });
 });
 
 /* ═══════════════════════════════════════════════════
@@ -871,6 +884,16 @@ export const logout = asyncHandler(async (req, res) => {
         res.clearCookie(scopeCookieName(s), CLEAR_COOKIE_OPTIONS());
     }
 
+    // [MOBILE AUTH] No cookie jar on native — the app sends back whichever
+    // refresh token it has stored so its session gets revoked server-side
+    // too, matching what the cookie path above does for web panels.
+    if (req.body?.refreshToken) {
+        await User.updateOne(
+            { "refreshSessions.token": req.body.refreshToken },
+            { $pull: { refreshSessions: { token: req.body.refreshToken } } }
+        );
+    }
+
     // Legacy cookie (pre-scoped deploys) — revoke and clear it too.
     const legacyToken = req.cookies?.refreshToken;
     if (legacyToken) {
@@ -906,6 +929,14 @@ export const refreshToken = asyncHandler(async (req, res) => {
         // cookie is present, use it (old frontend build talking to new API).
         const present = AUTH_SCOPES.filter(s => req.cookies?.[scopeCookieName(s)]);
         if (present.length === 1) token = req.cookies[scopeCookieName(present[0])];
+    }
+
+    // [MOBILE AUTH] No cookie arrived at all (native client, no cookie
+    // jar) — fall back to the refresh token the app stored itself and is
+    // sending back explicitly. Cookie-bearing requests always win above;
+    // this only ever activates when there was truly no cookie to read.
+    if (!token && req.body?.refreshToken) {
+        token = req.body.refreshToken;
     }
 
     if (!token) {
