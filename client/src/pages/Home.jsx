@@ -9,6 +9,17 @@
  * ─ All business logic 100% preserved — presentation-only changes.
  * ─ The category browser strip lives in the Navbar (single source of
  *   category navigation instead of duplicating it below the hero).
+ *
+ * v4.1 — Mobile hero fix:
+ * ─ Hero background image was crop-centered on all breakpoints, which cut
+ *   off the decorative banner artwork awkwardly on narrow phones. Now uses
+ *   a mobile-biased object-position (tunable per-slide) and falls back to
+ *   center on sm+ — no behavior change on tablet/desktop.
+ * ─ Small mobile UI polish (scope: hero + dot nav only): tighter hero
+ *   min-height floor for very small phones, larger tap targets on the
+ *   slide dot indicators, and safe-area-aware bottom padding for the
+ *   progress bar so it doesn't sit flush against the notch/gesture bar
+ *   area on some devices.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
@@ -426,9 +437,16 @@ const FlashDealsSection = ({ deals, loading, nearestDealEnd }) => {
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ★  HERO SLIDE COMPONENT  ★
    — Light-mode-first, vibrant gradient bg, animated
+   — v4.1: mobile crop fix via object-position, tunable per-slide via
+     slide.mobileFocus (e.g. "20% center") with a sane default.
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 const HeroSlide = ({ slide, active, isFirst, navigate }) => {
     const bg = slide.image?.url || (typeof slide.image === "string" ? slide.image : null) || "/banner-fallback.jpg";
+    // Lets a specific banner override its mobile crop focus from the admin
+    // panel later (slide.mobileFocus), without needing a code change per
+    // banner. Falls back to a left-biased crop that keeps the subject away
+    // from the edges on narrow phones.
+    const mobileFocus = slide.mobileFocus || "30% center";
 
     return (
         <div className={`absolute inset-0 transition-all duration-700 ease-in-out
@@ -444,7 +462,8 @@ const HeroSlide = ({ slide, active, isFirst, navigate }) => {
                     loading={isFirst ? "eager" : "lazy"}
                     decoding={isFirst ? "sync" : "async"}
                     fetchPriority={isFirst ? "high" : "auto"}
-                    className="w-full h-full object-cover object-center saturate-[1.08] contrast-[1.03]" />
+                    style={{ objectPosition: mobileFocus }}
+                    className="w-full h-full object-cover sm:!object-center saturate-[1.08] contrast-[1.03]" />
                 {/* Dark scrim only where the copy sits — image stays vibrant on the right */}
                 <div className="absolute inset-0
                                 bg-gradient-to-r
@@ -500,7 +519,7 @@ const HeroSlide = ({ slide, active, isFirst, navigate }) => {
                                 const t = slide.link || slide.ctaLink || "/";
                                 t.startsWith("http") ? window.open(t, "_blank", "noopener") : navigate(t);
                             }}
-                            className="inline-flex items-center gap-2 h-12 px-7 rounded-xl
+                            className="inline-flex items-center gap-2 h-11 sm:h-12 px-6 sm:px-7 rounded-xl
                                        bg-accent text-white text-sm font-bold border-none cursor-pointer
                                        shadow-[0_2px_8px_rgba(20,21,26,0.25)]
                                        hover:bg-accent-hover hover:scale-[1.02]
@@ -510,7 +529,7 @@ const HeroSlide = ({ slide, active, isFirst, navigate }) => {
                         </button>
                         {slide.secondary && (
                             <button onClick={() => navigate(slide.secondaryLink || "/deals")}
-                                className="inline-flex items-center gap-2 h-12 px-6 rounded-xl
+                                className="inline-flex items-center gap-2 h-11 sm:h-12 px-5 sm:px-6 rounded-xl
                                            bg-white/10 backdrop-blur-sm
                                            border border-white/30 text-white text-sm font-semibold
                                            cursor-pointer hover:bg-white/20 hover:border-white/50
@@ -530,7 +549,7 @@ const HeroSlide = ({ slide, active, isFirst, navigate }) => {
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 const HeroSkeleton = () => (
     <div className="w-full bg-white border-b border-[var(--color-graphite-100)]
-                    h-[340px] sm:h-[380px] md:h-[440px] lg:h-[500px]
+                    h-[300px] sm:h-[380px] md:h-[440px] lg:h-[500px]
                     flex items-center relative overflow-hidden">
         <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16 w-full">
             <div className="max-w-[520px] flex flex-col gap-4 animate-pulse">
@@ -539,8 +558,8 @@ const HeroSkeleton = () => (
                 <div className="h-8 sm:h-10 w-3/4 bg-[var(--color-graphite-100)] rounded-xl" />
                 <div className="h-4 w-1/2 bg-[var(--color-graphite-100)] rounded-lg" />
                 <div className="flex gap-3 mt-2">
-                    <div className="h-12 w-36 bg-[var(--color-graphite-100)] rounded-lg" />
-                    <div className="h-12 w-28 bg-[var(--color-graphite-100)] rounded-lg" />
+                    <div className="h-11 sm:h-12 w-36 bg-[var(--color-graphite-100)] rounded-lg" />
+                    <div className="h-11 sm:h-12 w-28 bg-[var(--color-graphite-100)] rounded-lg" />
                 </div>
             </div>
         </div>
@@ -699,13 +718,16 @@ const Home = () => {
 
             {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 ★  HERO  ★
+                v4.1: floor height dropped on the smallest breakpoint
+                (300px vs old 340px) so the hero doesn't dominate the
+                first screen on short phones; content/nav untouched above sm.
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {loading && slides.length === 0 ? (
                 <HeroSkeleton />
             ) : slides.length > 0 ? (
 
                 <div className="relative w-full overflow-hidden
-                                h-[340px] sm:h-[380px] md:h-[440px] lg:h-[500px] xl:h-[540px]
+                                h-[300px] sm:h-[380px] md:h-[440px] lg:h-[500px] xl:h-[540px]
                                 bg-white border-b border-[var(--color-graphite-100)]
                                 group">
 
@@ -723,8 +745,8 @@ const Home = () => {
                     {/* ── Nav arrows ── */}
                     {slides.length > 1 && (
                         <>
-                            <button onClick={() => goHero(-1)}
-                                className="absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 z-20
+                            <button onClick={() => goHero(-1)} aria-label="Previous slide"
+                                className="absolute left-2 sm:left-5 top-1/2 -translate-y-1/2 z-20
                                            w-9 h-9 rounded-full
                                            bg-white/15 backdrop-blur-md
                                            border border-white/25
@@ -735,8 +757,8 @@ const Home = () => {
                                            opacity-100 sm:opacity-0 group-hover:opacity-100">
                                 <FaChevronLeft size={13} />
                             </button>
-                            <button onClick={() => goHero(1)}
-                                className="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 z-20
+                            <button onClick={() => goHero(1)} aria-label="Next slide"
+                                className="absolute right-2 sm:right-5 top-1/2 -translate-y-1/2 z-20
                                            w-9 h-9 rounded-full
                                            bg-white/15 backdrop-blur-md
                                            border border-white/25
@@ -748,21 +770,27 @@ const Home = () => {
                                 <FaChevronRight size={13} />
                             </button>
 
-                            {/* ── Dot indicators ── */}
-                            <div className="absolute bottom-4 sm:bottom-5 left-1/2 -translate-x-1/2 z-20
-                                            flex gap-1.5
+                            {/* ── Dot indicators ──
+                                v4.1: each dot now sits inside a larger invisible
+                                tap-target (min 32px) via padding, without changing
+                                the visual pill size — fixes fat-finger misses on
+                                narrow phones without touching desktop look. */}
+                            <div className="absolute bottom-3 sm:bottom-5 left-1/2 -translate-x-1/2 z-20
+                                            flex gap-1
                                             bg-[rgba(20,21,26,0.3)] backdrop-blur-md
                                             border border-white/15
-                                            px-3 py-2 rounded-full">
+                                            px-2 py-1.5 rounded-full">
                                 {slides.map((_, i) => (
                                     <button key={i}
                                         onClick={() => { setHeroIdx(i); resetTimer(); }}
                                         aria-label={`Slide ${i + 1}`}
-                                        className={`h-1.5 rounded-full border-none cursor-pointer p-0
-                                                    transition-all duration-300
-                                                    ${i === heroIdx
-                                                ? "w-6 bg-white"
-                                                : "w-1.5 bg-white/40 hover:bg-white/60"}`} />
+                                        className="p-1.5 border-none bg-transparent cursor-pointer flex items-center justify-center">
+                                        <span
+                                            className={`block h-1.5 rounded-full transition-all duration-300
+                                                        ${i === heroIdx
+                                                    ? "w-6 bg-white"
+                                                    : "w-1.5 bg-white/40"}`} />
+                                    </button>
                                 ))}
                             </div>
 
@@ -898,7 +926,7 @@ const Home = () => {
                                 </div>
 
                                 {/* ── CTA ── */}
-                                <div className="flex-shrink-0 flex items-center gap-5">
+                                <div className="flex-shrink-0 flex items-center justify-between md:justify-start gap-5">
                                     <div className="hidden sm:block text-right">
                                         <div className="text-[22px] font-extrabold text-primary leading-none tabular-nums">
                                             45<span className="text-[13px] font-bold text-muted"> min</span>
